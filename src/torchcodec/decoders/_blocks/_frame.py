@@ -76,9 +76,14 @@ class DecodedFrame:
         pts_seconds: float,
         duration_seconds: float,
         device: str = "cpu",
+        storage: torch.Tensor | None = None,
     ):
         self._handle = handle
         self._device = device
+        # The tensor owning this frame's GPU buffer, when it has one. A
+        # consumer reading the frame on another CUDA stream must call
+        # record_stream() on it. See ColorConverter.convert().
+        self._storage = storage
         self.pts_seconds = pts_seconds
         self.duration_seconds = duration_seconds
 

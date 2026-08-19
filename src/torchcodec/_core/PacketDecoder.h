@@ -45,6 +45,11 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   // if more input is needed, AVERROR_EOF at end, or a negative error code.
   int receive_frame(UniqueAVFrame& av_frame);
 
+  std::optional<torch::stable::Tensor> get_frame_storage(
+      const AVFrame& av_frame) const {
+    return device_interface_->get_frame_storage(av_frame);
+  }
+
   const StableDevice& device() const {
     return device_interface_->device();
   }

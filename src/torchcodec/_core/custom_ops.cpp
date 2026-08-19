@@ -82,7 +82,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
   m.def(
-      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, str)");
+      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, str, Tensor)");
   m.def(
       "_blocks_create_color_converter(str device=\"cpu\", str output_dtype=\"uint8\") -> Tensor");
   m.def("_blocks_convert_frame(Tensor(a!) converter, Tensor frame) -> Tensor");
@@ -855,9 +855,16 @@ std::string device_to_string(const StableDevice& device) {
   return name;
 }
 
-// (frame_handle, status, pts_seconds, duration_seconds, device).
-using OpsReceiveFrameOutput =
-    std::tuple<torch::stable::Tensor, int64_t, double, double, std::string>;
+// (frame_handle, status, pts_seconds, duration_seconds, device, storage).
+// `storage` is the tensor owning the frame's GPU buffer, or an empty tensor
+// for frames that don't have one. Python needs it to call record_stream().
+using OpsReceiveFrameOutput = std::tuple<
+    torch::stable::Tensor,
+    int64_t,
+    double,
+    double,
+    std::string,
+    torch::stable::Tensor>;
 
 OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
     torch::stable::Tensor& decoder) {
@@ -871,7 +878,8 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
         static_cast<int64_t>(status),
         0.0,
         0.0,
-        std::string("cpu"));
+        std::string("cpu"),
+        torch::stable::empty({int64_t(0)}, kStableUInt8));
   }
   AVRational time_base = decoder_ptr->time_base();
   double pts_seconds = pts_to_seconds(get_pts_or_dts(*av_frame), time_base);
@@ -881,12 +889,16 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
   // TODO_API_BREAKDOWN DESIGN P1: Not sure we need to return the device at all,
   // the device should always match the device parameter now.
   std::string device = device_to_string(decoder_ptr->device());
+  torch::stable::Tensor storage =
+      decoder_ptr->get_frame_storage(*av_frame).value_or(
+          torch::stable::empty({int64_t(0)}, kStableUInt8));
   return std::make_tuple(
       wrap_pointer_to_tensor(std::move(av_frame)),
       static_cast<int64_t>(0),
       pts_seconds,
       duration_seconds,
-      device);
+      device,
+      storage);
 }
 
 torch::stable::Tensor _blocks_create_color_converter(

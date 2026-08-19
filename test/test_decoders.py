@@ -7,6 +7,7 @@
 import concurrent.futures
 import contextlib
 import gc
+import itertools
 import math
 import queue
 import threading
@@ -3903,6 +3904,33 @@ class TestBlocks:
             (width + (1 << log2_w) - 1) >> log2_w,
         )
         assert U.shape == V.shape == expected_chroma_shape
+
+    @pytest.mark.needs_cuda
+    def test_backlogged_converter_on_separate_stream(self):
+        # Decode and color-convert on two different CUDA streams, with the
+        # converter deliberately kept behind, and drop each frame as soon as its
+        # conversion is enqueued. A decoded frame's storage comes from the
+        # caching allocator, which knows nothing about the converter's reads, so
+        # dropping the frame early is what lets the next frame's copy land in
+        # the same block mid-read.
+        video = NASA_VIDEO.path
+        demuxer, decoder, converter = self._make_blocks(video, "cuda")
+        decode_stream = torch.cuda.Stream()
+        convert_stream = torch.cuda.Stream()
+
+        frames = []
+        for packet in itertools.chain(demuxer, [None]):
+            with torch.cuda.stream(decode_stream):
+                decoded = decoder.flush() if packet is None else decoder.decode(packet)
+            with torch.cuda.stream(convert_stream):
+                while decoded:
+                    torch.cuda._sleep(20_000_000)  # ~10ms
+                    frames.append(converter.convert(decoded.pop(0)))
+        torch.cuda.synchronize()
+
+        got = self._to_frame_batch(frames)
+        ref = VideoDecoder(video, device="cuda").get_all_frames()
+        torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
 
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)
