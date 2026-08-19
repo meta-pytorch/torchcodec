@@ -119,7 +119,6 @@ from .utils import (
     SINE_MONO_S32_8000,
     SINE_MONO_U8,
     SINE_STEREO_MP2_MPEG_PS,
-    supports_nearest_chroma_comparison,
     TEST_NON_ZERO_START,
     TEST_SRC_2_12BIT_HDR,
     TEST_SRC_2_720P,
@@ -1811,17 +1810,30 @@ class TestVideoDecoder:
 
         gpu_frames = decoder_gpu.get_frames_at([0, 1, 2]).data.cpu()
         cpu_frames = decoder_cpu.get_frames_at([0, 1, 2]).data
-        assert gpu_frames.shape == cpu_frames.shape
+        expected_shape = (3, 3, asset.height, asset.width)
+        assert gpu_frames.shape == expected_shape
+        assert cpu_frames.shape == expected_shape
         assert gpu_frames.dtype == output_dtype
-        if supports_nearest_chroma_comparison(asset):
-            atol = 3 if output_dtype == torch.uint8 else 3 / 255
-            assert_tensor_close_on_at_least(
-                gpu_frames, cpu_frames, percentage=98, atol=atol
-            )
-        # For an odd height there is no useful pixel-wise comparison against a
-        # CPU decode to make, so the shape assertions above are all we check
-        # here. TestBlocks::test_matches_video_decoder covers those pixels
-        # instead: both of its sides run our kernels.
+
+        if asset is TESTSRC2_ODD_HEIGHT_AND_WIDTH_MPEG2:
+            # An odd height stops swscale from using its fast unscaled
+            # yuv420p -> rgb converter, which pairs each chroma row with exactly
+            # two luma rows. It falls back to the general path and *resizes* the
+            # chroma plane's ceil(height / 2) rows onto `height` rows - a ratio
+            # just under 2, interpolated. We replicate chroma exactly 2x, like
+            # NVDEC does, so the two disagree along every colour edge in the
+            # frame. Only ~79% of samples land within 5, hence the loose bound;
+            # the pixels themselves are checked exactly by
+            # TestBlocks::test_matches_video_decoder, where both sides are ours.
+            percentage, atol = 75, 5
+        else:
+            percentage, atol = 98, 3
+        assert_tensor_close_on_at_least(
+            gpu_frames,
+            cpu_frames,
+            percentage=percentage,
+            atol=atol if output_dtype == torch.uint8 else atol / 255,
+        )
 
     @needs_cuda
     def test_10bit_gpu_fallsback_to_cpu(self):
@@ -3750,8 +3762,8 @@ class TestBlocks:
             TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT,
             # Odd dimensions with 4:2:0 chroma, taking the CPU-fallback path
             # (MPEG-2 isn't decoded by NVDEC): the frame is uploaded padded to
-            # even dimensions, and the converter must crop it back. Both
-            # sides of this comparison use our own kernels, so unlike the
+            # even dimensions, and the converter must crop it back. Both sides
+            # of this comparison use our own kernels, so unlike the
             # CPU-reference tests the odd-height one can be compared exactly.
             TESTSRC2_ODD_WIDTH_MPEG2,
             TESTSRC2_ODD_HEIGHT_AND_WIDTH_MPEG2,

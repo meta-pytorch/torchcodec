@@ -1357,8 +1357,6 @@ TESTSRC2_ODD_WIDTH_MPEG2 = TestVideo(
 
 # Also odd in height, which additionally exercises the chroma plane's own
 # rounding: an odd-height 4:2:0 frame has ceil(height / 2) chroma rows.
-# Comparing this one against a CPU decode is near-useless, see
-# supports_nearest_chroma_comparison().
 # ffmpeg -f lavfi -i "testsrc2=rate=25:duration=0.4:size=121x81,format=rgb24" \
 #  -c:v mpeg2video -pix_fmt yuv420p testsrc2_odd_height_and_width_mpeg2.mp4
 TESTSRC2_ODD_HEIGHT_AND_WIDTH_MPEG2 = TestVideo(
@@ -1369,19 +1367,6 @@ TESTSRC2_ODD_HEIGHT_AND_WIDTH_MPEG2 = TestVideo(
     },
     frames={0: {}},
 )
-
-
-def supports_nearest_chroma_comparison(asset: TestVideo) -> bool:
-    # Whether a CUDA decode of this asset can be compared tightly against a CPU
-    # one. For an odd *height*, swscale can't use its fast unscaled
-    # yuv420p -> rgb converter (that one pairs each chroma row with exactly two
-    # luma rows), so it falls back to the general path and *resizes* the chroma
-    # plane's ceil(height / 2) rows onto `height` rows - a ratio just under 2,
-    # interpolated, with a phase that drifts down the frame. Our CUDA kernels
-    # replicate chroma exactly 2x, like NVDEC and DALI do, so the two disagree
-    # over the whole frame rather than just at the edge. An odd width doesn't
-    # trigger it: swscale keeps its fast path and repeats the last UV pair.
-    return asset.height % 2 == 0
 
 
 def supports_approximate_mode(asset: TestVideo) -> bool:
