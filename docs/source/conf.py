@@ -81,6 +81,7 @@ class CustomGalleryExampleSortKey:
                 "custom_frame_mappings.py",
                 "transforms.py",
                 "hdr_decoding.py",
+                "blocks.py",
             ]
         elif "examples/encoding" in self.src_dir:
             order = [

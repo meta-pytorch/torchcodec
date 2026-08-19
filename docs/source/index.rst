@@ -106,6 +106,13 @@ Decoding
 
         How to decode HDR videos with the ``output_dtype`` parameter
 
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Blocks (experimental)
+        :link: generated_examples/decoding/blocks.html
+        :link-type: url
+
+        A preview of the unreleased building-block decoding APIs
+
 
 Encoding
 ^^^^^^^^
