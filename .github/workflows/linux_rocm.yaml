@@ -162,16 +162,35 @@ jobs:
         echo '::endgroup::'
 
         echo '::group::Run FFmpeg-free image decoder tests (incl. rocJPEG GPU)'
-        # Dump ldd output for the image .so so a missing transitive dep is
-        # visible in the log rather than wrapped in a bare OSError.
+        # ROCm 7.14 pip-wheel layout: the ROCm runtime and its vendored system
+        # deps (librocm_sysdeps_va.so.2 etc.) live inside _rocm_sdk_core/lib/
+        # and _rocm_sdk_core/lib/rocm_sysdeps/lib/.  The RPATH on the bundled
+        # librocjpeg-HASH.so points there via $ORIGIN, but the dynamic linker
+        # may not expand $ORIGIN correctly without execution permission.  Set
+        # LD_LIBRARY_PATH explicitly as belt-and-suspenders.
+        rocm_core_lib=$(python -c "
+import importlib.util, pathlib, os
+spec = importlib.util.find_spec('_rocm_sdk_core')
+if spec:
+    p = pathlib.Path(spec.submodule_search_locations[0])
+    dirs = [str(p/'lib'), str(p/'lib'/'rocm_sysdeps'/'lib')]
+    print(os.pathsep.join(d for d in dirs if pathlib.Path(d).is_dir()))
+" 2>/dev/null || true)
+        if [ -n "${rocm_core_lib}" ]; then
+          export LD_LIBRARY_PATH="${rocm_core_lib}:${LD_LIBRARY_PATH:-}"
+          echo "LD_LIBRARY_PATH (rocm_sdk_core): ${rocm_core_lib}"
+        fi
+        # Diagnostics: dump ldd and RPATH so any remaining missing dep is visible.
         image_so=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('torchcodec'); print(pathlib.Path(spec.origin).parent / 'libtorchcodec_image.so')" 2>/dev/null || true)
         if [ -n "${image_so}" ] && [ -f "${image_so}" ]; then
           echo "ldd ${image_so}:"
           ldd "${image_so}" || true
-          rocjpeg_so=$(find "$(dirname "${image_so}")" -name 'librocjpeg*.so*' 2>/dev/null | head -1 || true)
+          rocjpeg_so=$(find "$(dirname "${image_so}")/../torchcodec.libs" -name 'librocjpeg*.so*' 2>/dev/null | head -1 || true)
           if [ -n "${rocjpeg_so}" ]; then
             echo "ldd ${rocjpeg_so}:"
             ldd "${rocjpeg_so}" || true
+            echo "RPATH of ${rocjpeg_so}:"
+            objdump -p "${rocjpeg_so}" 2>/dev/null | grep -E "RPATH|RUNPATH" || true
           fi
         fi
         # torch.cuda.is_available() is True on ROCm (HIP masquerades as CUDA), so
