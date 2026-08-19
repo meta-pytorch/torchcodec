@@ -526,9 +526,20 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     // What happens to those decode surfaces that haven't yet been mapped is
     // unclear.
     flush();
+    if (surface_read_done_ != nullptr) {
+      // Whoever picks this decoder up from the cache will map its output
+      // surface and overwrite it. We block the host until the last consumer is
+      // done reading.
+      cudaEventSynchronize(surface_read_done_);
+    }
     unmap_previous_frame();
     NVDECCache::get_cache(device_).return_decoder(
         &video_format_, surface_format_, std::move(decoder_));
+  }
+
+  if (surface_read_done_ != nullptr) {
+    cudaEventDestroy(surface_read_done_);
+    surface_read_done_ = nullptr;
   }
 
   if (video_parser_) {
@@ -814,13 +825,15 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   // immediately  after mapping them: they do the color-conversion in-between,
   // which involves a copy of the data, so that works.
   // We, OTOH, will do the color-conversion later, outside of receive_frame().
-  // So we unmap here: just before mapping a new frame. At that point we know
-  // that the previously-mapped frame is no longer needed:
+  // So we unmap here: just before mapping a new frame. At that point the
+  // previously-mapped frame has been consumed, or at least its consumption has
+  // been enqueued:
   // - With SingleStreamDecoder, that frame was either color-converted (with a
   //   copy), or that's a frame that was discarded in SingleStreamDecoder.
-  //   Either way, the underlying output surface can be safely re-used.
   // - With the "Blocks" APIs, the PacketDecoder forces a copy in
   //   make_frame_standalone().
+  // Those reads are asynchronous, which is what the call below accounts for.
+  order_mapping_after_surface_read();
   unmap_previous_frame();
   CUresult result = cuvidMapVideoFrame(
       *decoder_.get(),
@@ -836,6 +849,41 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   av_frame = convert_cuda_frame_to_av_frame(frame_ptr, pitch, disp_info);
 
   return AVSUCCESS;
+}
+
+void BetaCudaDeviceInterface::record_surface_read(cudaStream_t stream) {
+  // Called by every consumer of the mapped surface, once its read has been
+  // enqueued on `stream`.
+  // This sets the surface_read_done_ event that must be waited upon before
+  // mapping a new frame on the surface.
+  if (surface_read_done_ == nullptr) {
+    cudaError_t err =
+        cudaEventCreateWithFlags(&surface_read_done_, cudaEventDisableTiming);
+    STD_TORCH_CHECK(
+        err == cudaSuccess,
+        "cudaEventCreateWithFlags failed: ",
+        cudaGetErrorString(err));
+  }
+  cudaError_t err = cudaEventRecord(surface_read_done_, stream);
+  STD_TORCH_CHECK(
+      err == cudaSuccess, "cudaEventRecord failed: ", cudaGetErrorString(err));
+  surface_reader_stream_ = stream;
+}
+
+void BetaCudaDeviceInterface::order_mapping_after_surface_read() {
+  // The mapping we're about to do on the NVDEC stream writes the output
+  // surface, which the previous frame's consumer may still be reading from
+  // another stream: the NVDEC stream must also wait on that consumer.
+  if (surface_read_done_ == nullptr ||
+      surface_reader_stream_ == nvdec_output_stream_) {
+    return;
+  }
+  cudaError_t err =
+      cudaStreamWaitEvent(nvdec_output_stream_, surface_read_done_, 0);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "cudaStreamWaitEvent failed: ",
+      cudaGetErrorString(err));
 }
 
 void BetaCudaDeviceInterface::unmap_previous_frame() {
@@ -969,6 +1017,32 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
     storage = copy_nvdec_surface(av_frame, current_stream);
   }
 
+  // TODO_API_BREAKDOWN CORRECTNESS P0: `storage` comes from the PyTorch
+  // caching allocator on `current_stream`, but a ColorConverter reads it from
+  // whatever stream it runs on. The allocator only tracks the allocating
+  // stream: once the frame is dropped, the block returns to `current_stream`'s
+  // pool with no synchronisation, and the next frame's copy - same size, same
+  // stream - lands right in it while the converter is still reading. Frames
+  // are then silently corrupted whenever the converter lags behind the
+  // decoder, which is the normal state of a two-stream pipeline. Measured on a
+  // 4K clip with the converter backlogged: 117 of 119 frames wrong, and clean
+  // again as soon as the frames are kept alive.
+  // The usual remedy is Tensor::record_stream() on the consumer side, but
+  // neither the stable ABI nor the AOTI shim exposes it, and StableIValue has
+  // no Stream conversion, so it isn't reachable through the dispatcher either.
+  // We don't actually need it though: the allocator recycles the block because
+  // *we* drop our reference too early, so it's enough to hold on to the
+  // storage until the consumer is done. Have the ColorConverter record an
+  // event on its own stream into the attached data, and make
+  // standalone_frame_free_callback() hand (storage, event) to a per-device
+  // pending-release list instead of dropping the tensor. Drain that list
+  // opportunistically with cudaEventQuery. No host stall, and a consumer that
+  // permanently lags shows up as a growing list, i.e. as backpressure rather
+  // than as silent corruption.
+  // Frames that were never converted have no event and can be released
+  // straight away. Raw planes handed to the user via materialize() keep the
+  // storage alive on their own, and once the user drops those, ordering their
+  // own kernels is their responsibility, same as for any other tensor.
   auto attached_data = new StandAloneFrameAttachedData();
   attached_data->producer_stream = current_stream;
   attached_data->storage = std::move(storage);
@@ -1025,19 +1099,8 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
       "Failed to copy NVDEC surface: ",
       cudaGetErrorString(err));
 
-  // TODO_API_BREAKDOWN CORRECTNESS P0:  We might want to unmap here to clearly
-  // state that the surface memory can be reused and that there's no leak (and
-  // rename this into copy_and_unmap_nvdec_surface). However, regardless of
-  // whether we unmap here or let receive_frame() unmap, I think we have a
-  // problem: the copy is async, and nothing prevents a PacketDecoder from
-  // decoding 2 consecutive frames on 2 separate streams. The following can
-  // happen: with Stream():
-  //   packet_decoder.decode() -> receive_frame() -> copy_nvdec_surface() ->
-  //   cudaMemcpyAsync()
-  // with Stream():
-  //   packet_decoder.decode() -> receive_frame() -> unmap_previous_frame()
-  // where unmap_previous_frame() unmaps the surface before the cudaMemcpyAsync
-  // is able to finish on the other stream.
+  // The copy is async, so the next mapping must be ordered after it.
+  record_surface_read(current_stream);
 
   auto y_plane = static_cast<uint8_t*>(storage.mutable_data_ptr());
   av_frame->data[0] = y_plane;
@@ -1336,6 +1399,17 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     // rotation should be handled as part of the transform pipeline instead.
     frame_output.data = convert_frame(/*preAlloc=*/std::nullopt);
     apply_rotation(frame_output, pre_allocated_output_tensor);
+  }
+
+  if (mode() == Mode::Both && !needs_upload) {
+    // The conversion read the mapped surface directly, and did so
+    // asynchronously, so the next mapping must be ordered after it.
+    // This is only needed in Both() mode because in ColorConverterOnly() mode,
+    // the frame is already standalone and doesn't come from the mapped surface.
+    // It's also only needed in the non-fallback mode (needs_upload is false)
+    // because with the fallback, the GPU frame is a copy of the CPU frame, so
+    // the mapped surface isn't read at all.
+    record_surface_read(current_stream);
   }
 }
 
