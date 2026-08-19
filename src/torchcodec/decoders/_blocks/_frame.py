@@ -80,10 +80,30 @@ class DecodedFrame:
     ):
         self._handle = handle
         self._device = device
-        # The tensor owning this frame's GPU buffer, when it has one. A
-        # consumer reading the frame on another CUDA stream must call
-        # record_stream() on it. See ColorConverter.convert().
-        self._storage = storage
+        #: The tensor owning this frame's GPU buffer, or ``None`` on CPU.
+        #:
+        #: All of :meth:`materialize`'s planes point into it. It comes from
+        #: PyTorch's caching allocator, on the stream the decoder was running
+        #: on, and the allocator only tracks that one stream. So if you read
+        #: this frame's samples from a *different* CUDA stream and then drop
+        #: the frame while that work is still queued, the allocator will hand
+        #: the buffer to the decoder's next frame and overwrite it mid-read -
+        #: silently, with no error.
+        #:
+        #: Tell the allocator about the read before dropping the frame::
+        #:
+        #:     with torch.cuda.stream(my_stream):
+        #:         planes = frame.materialize().planes
+        #:         result = my_kernel(planes)     # only *enqueued* here
+        #:         frame.storage.record_stream(my_stream)
+        #:     del frame
+        #:
+        #: You don't need this if you keep the frame (or its planes) alive
+        #: until the work has run, or if you read it on the same stream the
+        #: decoder used - which includes the default stream, shared by all
+        #: threads. ``record_stream()`` on a plane does *not* work: the planes
+        #: are not allocator-backed, so the call is silently ignored.
+        self.storage = storage
         self.pts_seconds = pts_seconds
         self.duration_seconds = duration_seconds
 

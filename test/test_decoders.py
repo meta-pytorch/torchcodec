@@ -3987,6 +3987,47 @@ class TestBlocks:
         torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
 
     @pytest.mark.needs_cuda
+    @pytest.mark.parametrize("record_stream", (True, False))
+    def test_storage_record_stream(self, record_stream):
+        # The contract documented on DecodedFrame.storage: read the planes on
+        # your own stream, record it on the storage, then drop the frame.
+        # Without the record_stream() call the decoder's next frame is handed
+        # the same buffer and overwrites it while the read is still queued.
+        video = NASA_VIDEO.path
+        decode_stream = torch.cuda.Stream()
+        read_stream = torch.cuda.Stream()
+
+        def run(separate_stream):
+            demuxer, decoder, _ = self._make_blocks(video, "cuda")
+            reads = []
+            for packet in itertools.chain(demuxer, [None]):
+                with torch.cuda.stream(decode_stream):
+                    decoded = (
+                        decoder.flush() if packet is None else decoder.decode(packet)
+                    )
+                with torch.cuda.stream(
+                    read_stream if separate_stream else decode_stream
+                ):
+                    while decoded:
+                        frame = decoded.pop(0)
+                        torch.cuda._sleep(20_000_000)  # ~10ms, fall behind
+                        reads.append(frame.materialize().planes[0].clone())
+                        if separate_stream and record_stream:
+                            frame.storage.record_stream(read_stream)
+            torch.cuda.synchronize()
+            return reads
+
+        ref = run(separate_stream=False)
+        got = run(separate_stream=True)
+        wrong = sum(1 for a, b in zip(ref, got) if not torch.equal(a, b))
+        if record_stream:
+            assert wrong == 0
+        else:
+            # Guards the test itself: without the call this really does corrupt,
+            # so the assertion above is meaningful.
+            assert wrong > 0
+
+    @pytest.mark.needs_cuda
     @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)
     def test_materialize_cuda_planes_match_cpu(self, case):
         # NVDEC and FFmpeg's software decoder produce the very same samples, so

@@ -1019,11 +1019,6 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
     storage = copy_nvdec_surface(av_frame, current_stream);
   }
 
-  // The attached data owns the storage for as long as the frame lives, and
-  // records the stream it was produced on. A ColorConverter running on another
-  // stream needs both: the stream, to order its read after the copy (see
-  // convert_av_frame_to_frame_output()), and the storage itself, to tell the
-  // caching allocator about that read (see get_frame_storage()).
   auto attached_data = new StandAloneFrameAttachedData();
   attached_data->producer_stream = current_stream;
   attached_data->storage = std::move(storage);
@@ -1071,7 +1066,7 @@ std::optional<torch::stable::Tensor> BetaCudaDeviceInterface::get_frame_storage(
   //
   // TODO_API_BREAKDOWN DESIGN P2: if a record_stream shim lands upstream, this
   // accessor, the trailing return value of
-  // _blocks_packet_decoder_receive_frame and DecodedFrame._storage all go
+  // _blocks_packet_decoder_receive_frame and DecodedFrame.storage all go
   // away, replaced by one call at the end of
   // convert_av_frame_to_frame_output().
   if (av_frame.opaque_ref == nullptr) {
