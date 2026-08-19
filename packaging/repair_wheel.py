@@ -958,26 +958,25 @@ def check_bundling():
                 # RPATH so the dynamic linker finds AMD's own librocjpeg at
                 # runtime (AMD's RPATH inside it then handles its transitive
                 # deps). Verify the RPATH was patched by _patch_image_so_rpath_in_wheel.
-                with zipfile.ZipFile(wheel) as zf:
-                    image_names = [n for n in zf.namelist() if "libtorchcodec_image" in n and n.endswith(".so")]
-                    if not image_names:
-                        raise RuntimeError(f"{wheel.name} does not contain libtorchcodec_image.so")
-                    with tempfile.TemporaryDirectory() as tmp:
-                        zf.extract(image_names[0], tmp)
-                        image_so = Path(tmp) / image_names[0]
-                        result = subprocess.run(
-                            ["patchelf", "--print-rpath", str(image_so)],
-                            capture_output=True, text=True, check=True,
+                image_names = [n for n in zf.namelist() if "libtorchcodec_image" in n and n.endswith(".so")]
+                if not image_names:
+                    raise RuntimeError(f"{wheel.name} does not contain libtorchcodec_image.so")
+                with tempfile.TemporaryDirectory() as tmp:
+                    zf.extract(image_names[0], tmp)
+                    image_so = Path(tmp) / image_names[0]
+                    result = subprocess.run(
+                        ["patchelf", "--print-rpath", str(image_so)],
+                        capture_output=True, text=True, check=True,
+                    )
+                    rpath = result.stdout.strip()
+                    if "_rocm_sdk_core/lib" not in rpath and "/opt/rocm/lib" not in rpath:
+                        raise RuntimeError(
+                            f"{wheel.name}: libtorchcodec_image.so RPATH ({rpath!r}) "
+                            "does not contain _rocm_sdk_core/lib or /opt/rocm/lib. "
+                            "librocjpeg will not be found at runtime. "
+                            "Check that _patch_image_so_rpath_in_wheel ran correctly."
                         )
-                        rpath = result.stdout.strip()
-                        if "_rocm_sdk_core/lib" not in rpath and "/opt/rocm/lib" not in rpath:
-                            raise RuntimeError(
-                                f"{wheel.name}: libtorchcodec_image.so RPATH ({rpath!r}) "
-                                "does not contain _rocm_sdk_core/lib or /opt/rocm/lib. "
-                                "librocjpeg will not be found at runtime. "
-                                "Check that _patch_image_so_rpath_in_wheel ran correctly."
-                            )
-                        print(f"  libtorchcodec_image.so RPATH: {rpath}")
+                    print(f"  libtorchcodec_image.so RPATH: {rpath}")
             if bundles_rocjpeg:
                 raise RuntimeError(
                     f"{wheel.name} bundles librocjpeg — this is intentionally "
