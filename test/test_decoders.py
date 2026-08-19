@@ -119,6 +119,7 @@ from .utils import (
     SINE_MONO_S32_8000,
     SINE_MONO_U8,
     SINE_STEREO_MP2_MPEG_PS,
+    supports_nearest_chroma_comparison,
     TEST_NON_ZERO_START,
     TEST_SRC_2_12BIT_HDR,
     TEST_SRC_2_720P,
@@ -135,11 +136,13 @@ from .utils import (
     TESTSRC2_ODD_HEIGHT_444,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT,
+    TESTSRC2_ODD_HEIGHT_AND_WIDTH_MPEG2,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT,
     TESTSRC2_ODD_HEIGHT_VP9,
     TESTSRC2_ODD_HEIGHT_VP9_10BIT,
     TESTSRC2_ODD_WIDTH_444,
+    TESTSRC2_ODD_WIDTH_MPEG2,
     TESTSRC2_ODD_WIDTH_VP9,
     TESTSRC2_ODD_WIDTH_VP9_10BIT,
     TRANSPARENT_GIF,
@@ -1786,6 +1789,38 @@ class TestVideoDecoder:
         cpu_frames = decoder_cpu.get_frames_at([0, 1, 2]).data
         assert gpu_frames.shape == cpu_frames.shape
         assert_tensor_close_on_at_least(gpu_frames, cpu_frames, percentage=89, atol=3)
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "asset", (TESTSRC2_ODD_WIDTH_MPEG2, TESTSRC2_ODD_HEIGHT_AND_WIDTH_MPEG2)
+    )
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.float32))
+    def test_odd_sized_video_420_cpu_fallback(self, asset, output_dtype):
+        # MPEG-2 isn't decoded by NVDEC, so these yuv420p videos go through the
+        # CPU fallback: the frame is decoded on the CPU, then uploaded as NV12
+        # (or P016) for the GPU color conversion. Their odd dimensions mean the
+        # upload has to pad the frame to even ones, which the color conversion
+        # then crops away - if it padded by rescaling instead, or forgot to
+        # crop, the frames below would be shifted or too large.
+        decoder_gpu, _ = make_video_decoder(
+            asset.path, device="cuda", output_dtype=output_dtype
+        )
+        assert decoder_gpu.cpu_fallback
+        decoder_cpu = VideoDecoder(asset.path, device="cpu", output_dtype=output_dtype)
+
+        gpu_frames = decoder_gpu.get_frames_at([0, 1, 2]).data.cpu()
+        cpu_frames = decoder_cpu.get_frames_at([0, 1, 2]).data
+        assert gpu_frames.shape == cpu_frames.shape
+        assert gpu_frames.dtype == output_dtype
+        if supports_nearest_chroma_comparison(asset):
+            atol = 3 if output_dtype == torch.uint8 else 3 / 255
+            assert_tensor_close_on_at_least(
+                gpu_frames, cpu_frames, percentage=98, atol=atol
+            )
+        # For an odd height there is no useful pixel-wise comparison against a
+        # CPU decode to make, so the shape assertions above are all we check
+        # here. TestBlocks::test_matches_video_decoder covers those pixels
+        # instead: both of its sides run our kernels.
 
     @needs_cuda
     def test_10bit_gpu_fallsback_to_cpu(self):
@@ -3704,6 +3739,13 @@ class TestBlocks:
             TESTSRC2_ODD_HEIGHT_444,
             TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
             TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT,
+            # Odd dimensions with 4:2:0 chroma, taking the CPU-fallback path
+            # (MPEG-2 isn't decoded by NVDEC): the frame is uploaded padded to
+            # even dimensions, and the converter must crop it back. Both
+            # sides of this comparison use our own kernels, so unlike the
+            # CPU-reference tests the odd-height one can be compared exactly.
+            TESTSRC2_ODD_WIDTH_MPEG2,
+            TESTSRC2_ODD_HEIGHT_AND_WIDTH_MPEG2,
             # HEVC 4:4:4: NVDEC decodes these natively instead.
             TESTSRC2_444_8BIT_HEVC,
             TESTSRC2_444_10BIT_HEVC,
