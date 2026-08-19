@@ -180,6 +180,17 @@ jobs:
           objdump -p "${image_so}" 2>/dev/null | grep -E "RPATH|RUNPATH" || true
           echo "ldd ${image_so}:"
           ldd "${image_so}" || true
+          # Also check AMD's own librocjpeg RPATH (not bundled; lives in _rocm_sdk_core).
+          # This tells us whether AMD's RPATH handles the transitive deps for real users
+          # (who have no LD_LIBRARY_PATH set), vs. only working because LD_LIBRARY_PATH
+          # is set above.
+          rocjpeg_sdk=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('_rocm_sdk_core'); p = pathlib.Path(spec.submodule_search_locations[0]) if spec else None; print(str(p/'lib'/'librocjpeg.so.1') if p and (p/'lib'/'librocjpeg.so.1').exists() else '')" 2>/dev/null || true)
+          if [ -n "${rocjpeg_sdk}" ]; then
+            echo "RPATH of AMD's ${rocjpeg_sdk}:"
+            objdump -p "${rocjpeg_sdk}" 2>/dev/null | grep -E "RPATH|RUNPATH" || true
+            echo "ldd ${rocjpeg_sdk} (without LD_LIBRARY_PATH):"
+            env -i PATH="${PATH}" ldd "${rocjpeg_sdk}" || true
+          fi
         fi
         # torch.cuda.is_available() is True on ROCm (HIP masquerades as CUDA), so
         # the needs_cuda image tests run here and exercise the GPU JPEG decoder,
