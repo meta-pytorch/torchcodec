@@ -246,11 +246,9 @@ def _patch_image_so_rpath_in_wheel(wheel_path: Path) -> None:
     Two layouts are covered:
       - ROCm >= 7.14 (TheRock / rocm-sdk-* Python wheels):
           librocjpeg lives in <site-packages>/_rocm_sdk_core/lib/.
-          $ORIGIN/../../_rocm_sdk_core/lib reaches that dir from
-          <site-packages>/torchcodec/libtorchcodec_image.so.
-          AMD already set the correct RPATH inside _rocm_sdk_core's librocjpeg
-          to find librocm_sysdeps_* transitive deps, so we do not need to touch
-          those at all.
+          $ORIGIN/../_rocm_sdk_core/lib reaches that dir from
+          <site-packages>/torchcodec/libtorchcodec_image.so
+          (one ../ goes from torchcodec/ up to site-packages/).
       - ROCm <= 7.2 (system install):
           /opt/rocm/lib is the standard path; the AMD installer always
           creates the /opt/rocm symlink even for versioned installs.
@@ -288,7 +286,10 @@ def _patch_image_so_rpath_in_wheel(wheel_path: Path) -> None:
             extra = ":".join([
                 # ROCm >= 7.14: librocjpeg lives in _rocm_sdk_core/lib alongside
                 # the other ROCm libraries shipped as a pip wheel.
-                "$ORIGIN/../../_rocm_sdk_core/lib",
+                # libtorchcodec_image.so is in site-packages/torchcodec/, so
+                # $ORIGIN/.. reaches site-packages/ (same as auditwheel uses for
+                # $ORIGIN/../torchcodec.libs).
+                "$ORIGIN/../_rocm_sdk_core/lib",
                 # ROCm <= 7.2: standard system install (always symlinked to /opt/rocm).
                 "/opt/rocm/lib",
             ])
