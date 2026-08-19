@@ -1019,9 +1019,9 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
 
   // The attached data owns the storage for as long as the frame lives, and
   // records the stream it was produced on. A ColorConverter running on another
-  // stream needs both: the stream to order its read after the copy, and, once
-  // it has read, to order that stream's later writes after the read. See
-  // convert_av_frame_to_frame_output().
+  // stream needs both: the stream, to order its read after the copy (see
+  // convert_av_frame_to_frame_output()), and the storage itself, to tell the
+  // caching allocator about that read (see get_frame_storage()).
   auto attached_data = new StandAloneFrameAttachedData();
   attached_data->producer_stream = current_stream;
   attached_data->storage = std::move(storage);
@@ -1038,6 +1038,40 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
 
 std::optional<torch::stable::Tensor> BetaCudaDeviceInterface::get_frame_storage(
     const AVFrame& av_frame) const {
+  // A standalone frame's samples live in a buffer allocated from the PyTorch
+  // caching allocator, on the stream that was current in
+  // make_frame_standalone() - the decoder's. A consumer reading that buffer
+  // from another stream races with the allocator:
+  //
+  //   converter.convert(frame)  enqueues the conversion kernel and returns.
+  //                             The kernel has not run yet.
+  //   the frame is dropped      the AVFrame, its attached data and this
+  //                             storage tensor are all released host-side,
+  //                             immediately, without waiting for the GPU. The
+  //                             block goes straight back into the decoder
+  //                             stream's pool.
+  //   decoder.decode(...)       allocates the next frame's buffer, is handed
+  //                             that same block, and memcpys into it while the
+  //                             conversion may still be reading it.
+  //
+  // Nothing dangles - the samples are overwritten mid-read, and the converter
+  // silently emits the wrong frame. Note the allocator only ever reuses a
+  // block for allocations on the stream it came from, which is why a consumer
+  // on the decoder's own stream is already safe.
+  //
+  // Tensor::record_stream() is what tells the allocator to hold a block back
+  // until another stream's work has run, and it is what we use - but from
+  // Python, in ColorConverter.convert(), because it isn't callable from here:
+  // the stable ABI has no shim for it, and aten::record_stream isn't reachable
+  // through the dispatcher either since StableIValue can't represent a Stream.
+  // Hence this accessor: we hand the storage tensor to Python and let it
+  // record on our behalf.
+  //
+  // TODO_API_BREAKDOWN DESIGN P2: if a record_stream shim lands upstream, this
+  // accessor, the trailing return value of
+  // _blocks_packet_decoder_receive_frame and DecodedFrame._storage all go
+  // away, replaced by one call at the end of
+  // convert_av_frame_to_frame_output().
   if (av_frame.opaque_ref == nullptr) {
     return std::nullopt;
   }
