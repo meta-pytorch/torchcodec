@@ -164,15 +164,10 @@ jobs:
         echo '::group::Run FFmpeg-free image decoder tests (incl. rocJPEG GPU)'
         # Dump ldd output for the image .so so a missing transitive dep is
         # visible in the log rather than wrapped in a bare OSError.
-        image_so=$(python -c "
-import importlib.util, pathlib
-spec = importlib.util.find_spec('torchcodec')
-print(pathlib.Path(spec.origin).parent / 'libtorchcodec_image.so')
-" 2>/dev/null || true)
+        image_so=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('torchcodec'); print(pathlib.Path(spec.origin).parent / 'libtorchcodec_image.so')" 2>/dev/null || true)
         if [ -n "${image_so}" ] && [ -f "${image_so}" ]; then
           echo "ldd ${image_so}:"
           ldd "${image_so}" || true
-          # Also check the bundled rocjpeg shim if present
           rocjpeg_so=$(find "$(dirname "${image_so}")" -name 'librocjpeg*.so*' 2>/dev/null | head -1 || true)
           if [ -n "${rocjpeg_so}" ]; then
             echo "ldd ${rocjpeg_so}:"
