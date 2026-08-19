@@ -52,6 +52,13 @@ torch::stable::Tensor ColorConverter::convert(const AVFrame& av_frame) {
   FrameOutput frame_output;
   device_interface_->convert_av_frame_to_frame_output(
       av_frame, frame_output, std::nullopt);
+
+  // TODO_API_BREAKDOWN PERF P2: on CPU this is a lot slower than the filter
+  // graph's transpose.
+  frame_output.data = rotate_hwc_tensor(
+      frame_output.data,
+      rotation_from_degrees(get_rotation_from_frame(av_frame)));
+
   return convert_to_output_dtype(frame_output.data, output_dtype);
 }
 

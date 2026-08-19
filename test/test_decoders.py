@@ -3773,6 +3773,8 @@ class TestBlocks:
             TESTSRC2_444_12BIT_HEVC,
             # First keyframe is marked AV_PKT_FLAG_DISCARD by an mp4 edit list.
             DISCARD_FIRST_KEYFRAME_VIDEO,
+            # 90-degree display matrix: the converter must rotate.
+            NASA_VIDEO_ROTATED,
         ),
     )
     @pytest.mark.parametrize(
@@ -3856,11 +3858,11 @@ class TestBlocks:
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_color_converter_reused_across_videos(self, device):
-        # A single unbound ColorConverter must correctly convert frames from two
+        # A single unbound ColorConverter must correctly convert frames from
         # different videos - here interleaved frame-by-frame, so the converter
-        # switches input resolution/format on every call.
+        # switches input resolution/format/rotation on every call.
         converter = ColorConverter(device=device)
-        videos = [NASA_VIDEO, BT709_FULL_RANGE]
+        videos = [NASA_VIDEO, BT709_FULL_RANGE, NASA_VIDEO_ROTATED]
         generators = [self._decoded_frames(v.path, device) for v in videos]
         outputs = [[] for _ in videos]
 
@@ -3957,6 +3959,20 @@ class TestBlocks:
             (width + (1 << log2_w) - 1) >> log2_w,
         )
         assert U.shape == V.shape == expected_chroma_shape
+
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_materialize_planes_are_not_rotated_but_color_conversion_rotates(
+        self, device
+    ):
+        # The planes are views on the decoder's own memory, so they're in the
+        # source's pre-rotation geometry. Only the converted frame is rotated.
+        frame, converter = self._first_frame(NASA_VIDEO_ROTATED.path, device)
+        Y = frame.materialize().planes[0]
+
+        height = NASA_VIDEO_ROTATED.get_height()  # post-rotation
+        width = NASA_VIDEO_ROTATED.get_width()
+        assert Y.shape == (width, height)
+        assert converter.convert(frame).data.shape == (3, height, width)
 
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)

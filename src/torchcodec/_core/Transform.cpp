@@ -150,6 +150,29 @@ Rotation rotation_from_degrees(std::optional<double> degrees) {
   }
 }
 
+torch::stable::Tensor rotate_hwc_tensor(
+    const torch::stable::Tensor& hwc,
+    Rotation rotation) {
+  int k = 0;
+  switch (rotation) {
+    case Rotation::NONE:
+      return hwc;
+    case Rotation::CCW90:
+      k = 1;
+      break;
+    case Rotation::ROTATE180:
+      k = 2;
+      break;
+    case Rotation::CW90:
+      k = 3;
+      break;
+    default:
+      STD_TORCH_CHECK(false, "Unexpected rotation value");
+  }
+  // stable_rot90 returns a view, so we need to make it contiguous.
+  return torch::stable::contiguous(stable_rot90(hwc, k, 0, 1));
+}
+
 RotationTransform::RotationTransform(
     Rotation rotation,
     const FrameDims& input_dims)

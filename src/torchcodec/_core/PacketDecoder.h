@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -58,6 +59,11 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   std::unique_ptr<DeviceInterface> device_interface_;
   SharedAVCodecContext codec_context_;
   AVRational time_base_ = {};
+  // Stamped onto every frame we hand out, so downstream blocks can read the
+  // rotation off the frame itself instead of knowing about the stream. Held by
+  // value: we're only handed the Demuxer at construction and it may well be
+  // gone by the time we decode.
+  std::optional<std::array<int32_t, 9>> display_matrix_;
 };
 
 // A decoded frame's own samples, before any color conversion.
