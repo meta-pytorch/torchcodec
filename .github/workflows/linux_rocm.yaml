@@ -174,14 +174,19 @@ jobs:
           echo "LD_LIBRARY_PATH (rocm_sdk_core): ${rocm_core_lib}"
         fi
         # ROCm 7.14 ships mesa inside _rocm_sdk_core (no separate dnf install
-        # needed). Point libva's driver search path at the DRI drivers bundled
-        # there so vaInitialize() can find the amdgpu/radeonsi VA-API backend.
-        # Search recursively for *_drv_video.so so we find it regardless of
-        # the exact subdirectory AMD chose (typically lib/dri/).
+        # needed). libva auto-detects the DRM driver name as "radeonsi" from the
+        # kernel, then looks for "${driver}_drv_video.so" in LIBVA_DRIVERS_PATH.
+        # AMD vendored the driver as "librocm_sysdeps_gallium_drv_video.so", so
+        # we must also set LIBVA_DRIVER_NAME to that basename (minus _drv_video.so)
+        # to override the DRM-reported name. We derive both values from the actual
+        # file found via rglob so the code stays resilient to future AMD renames.
         rocm_core_dri=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('_rocm_sdk_core'); p = pathlib.Path(spec.submodule_search_locations[0]) if spec else None; hits = list((p/'lib').rglob('*_drv_video.so')) if p else []; print(str(hits[0].parent)) if hits else None" 2>/dev/null || true)
-        if [ -n "${rocm_core_dri}" ]; then
+        rocm_va_driver=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('_rocm_sdk_core'); p = pathlib.Path(spec.submodule_search_locations[0]) if spec else None; hits = list((p/'lib').rglob('*_drv_video.so')) if p else []; print(hits[0].name.replace('_drv_video.so','')) if hits else None" 2>/dev/null || true)
+        if [ -n "${rocm_core_dri}" ] && [ -n "${rocm_va_driver}" ]; then
           export LIBVA_DRIVERS_PATH="${rocm_core_dri}"
+          export LIBVA_DRIVER_NAME="${rocm_va_driver}"
           echo "LIBVA_DRIVERS_PATH: ${rocm_core_dri}"
+          echo "LIBVA_DRIVER_NAME:  ${rocm_va_driver}"
         else
           echo "WARNING: no *_drv_video.so found in _rocm_sdk_core/lib; VA-API driver missing?"
           echo "Contents of _rocm_sdk_core/lib (recursive *_drv_video.so search):"
