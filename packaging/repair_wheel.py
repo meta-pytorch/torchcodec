@@ -29,6 +29,7 @@ import shutil
 import site
 import subprocess
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -261,7 +262,7 @@ def _patch_image_so_rpath_in_wheel(wheel_path: Path) -> None:
             "repairing ROCm wheels."
         )
 
-    import hashlib, base64, tempfile
+    import hashlib, base64
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         with zipfile.ZipFile(wheel_path, "r") as zf:
@@ -797,7 +798,6 @@ def check_bundling():
             or _is_webp(lib)
             or _is_avif(lib)
             or _is_nvjpeg(lib)
-            or _is_rocjpeg(lib)
         ):
             return True
         if platform.system() == "Darwin" and lib.startswith(("libc++", "libpython")):
@@ -944,15 +944,38 @@ def check_bundling():
                     f"{wheel.name} is not a CUDA wheel but bundles libnvjpeg."
                 )
             if is_rocm and not bundles_rocjpeg:
+                # Good: librocjpeg is intentionally NOT bundled. Instead,
+                # libtorchcodec_image.so should have _rocm_sdk_core/lib in its
+                # RPATH so the dynamic linker finds AMD's own librocjpeg at
+                # runtime (AMD's RPATH inside it then handles its transitive
+                # deps). Verify the RPATH was patched by _patch_image_so_rpath_in_wheel.
+                with zipfile.ZipFile(wheel) as zf:
+                    image_names = [n for n in zf.namelist() if "libtorchcodec_image" in n and n.endswith(".so")]
+                    if not image_names:
+                        raise RuntimeError(f"{wheel.name} does not contain libtorchcodec_image.so")
+                    with tempfile.TemporaryDirectory() as tmp:
+                        zf.extract(image_names[0], tmp)
+                        image_so = Path(tmp) / image_names[0]
+                        result = subprocess.run(
+                            ["patchelf", "--print-rpath", str(image_so)],
+                            capture_output=True, text=True, check=True,
+                        )
+                        rpath = result.stdout.strip()
+                        if "_rocm_sdk_core/lib" not in rpath and "/opt/rocm/lib" not in rpath:
+                            raise RuntimeError(
+                                f"{wheel.name}: libtorchcodec_image.so RPATH ({rpath!r}) "
+                                "does not contain _rocm_sdk_core/lib or /opt/rocm/lib. "
+                                "librocjpeg will not be found at runtime. "
+                                "Check that _patch_image_so_rpath_in_wheel ran correctly."
+                            )
+                        print(f"  libtorchcodec_image.so RPATH: {rpath}")
+            if bundles_rocjpeg:
                 raise RuntimeError(
-                    f"{wheel.name} is a ROCm wheel but does not bundle librocjpeg. "
-                    "GPU JPEG decoding (decode_jpeg(..., device='cuda')) needs it. "
-                    "Check that librocjpeg is findable at repair time "
-                    "(set ROCM_HOME or ROCM_PATH) and not excluded."
-                )
-            if not is_rocm and bundles_rocjpeg:
-                raise RuntimeError(
-                    f"{wheel.name} is not a ROCm wheel but bundles librocjpeg."
+                    f"{wheel.name} bundles librocjpeg — this is intentionally "
+                    "avoided. librocjpeg stays in the user's ROCm install so "
+                    "AMD's own RPATH inside it resolves its transitive deps. "
+                    "Remove librocjpeg from the wheel or add it back to the "
+                    "--exclude list."
                 )
             if encoders := [lib for lib in libs if _is_avif_encoder(lib)]:
                 raise RuntimeError(
