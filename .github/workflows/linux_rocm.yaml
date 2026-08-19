@@ -139,8 +139,10 @@ jobs:
         bash packaging/remove_src.sh
 
         echo '::group::Install rocJPEG runtime'
-        # The wheel deliberately does not bundle librocjpeg (see repair_wheel.py),
-        # so decode_jpeg(device="cuda") needs it present at runtime.
+        # librocjpeg is bundled into the wheel by repair_wheel.py (ROCm 7.14
+        # pip-wheel build) or must be present on the system (ROCm <= 7.2 system
+        # install).  install_rocjpeg.sh ensures the runtime side-deps (libva)
+        # are present regardless of how librocjpeg itself was obtained.
         bash packaging/install_rocjpeg.sh
         echo '::endgroup::'
 
@@ -160,6 +162,23 @@ jobs:
         echo '::endgroup::'
 
         echo '::group::Run FFmpeg-free image decoder tests (incl. rocJPEG GPU)'
+        # Dump ldd output for the image .so so a missing transitive dep is
+        # visible in the log rather than wrapped in a bare OSError.
+        image_so=$(python -c "
+import importlib.util, pathlib
+spec = importlib.util.find_spec('torchcodec')
+print(pathlib.Path(spec.origin).parent / 'libtorchcodec_image.so')
+" 2>/dev/null || true)
+        if [ -n "${image_so}" ] && [ -f "${image_so}" ]; then
+          echo "ldd ${image_so}:"
+          ldd "${image_so}" || true
+          # Also check the bundled rocjpeg shim if present
+          rocjpeg_so=$(find "$(dirname "${image_so}")" -name 'librocjpeg*.so*' 2>/dev/null | head -1 || true)
+          if [ -n "${rocjpeg_so}" ]; then
+            echo "ldd ${rocjpeg_so}:"
+            ldd "${rocjpeg_so}" || true
+          fi
+        fi
         # torch.cuda.is_available() is True on ROCm (HIP masquerades as CUDA), so
         # the needs_cuda image tests run here and exercise the GPU JPEG decoder,
         # which is rocJPEG on ROCm: the jpeg_cuda params call

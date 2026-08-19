@@ -165,8 +165,9 @@ def _find_rocjpeg_license():
 def _find_rocjpeg_lib():
     """Find librocjpeg.so at wheel repair time so auditwheel can bundle it.
 
-    Searches ROCM_HOME / ROCM_PATH env vars, torch's ROCM_HOME, and the
-    standard /opt/rocm fallback.
+    Searches ROCM_HOME / ROCM_PATH env vars, torch's ROCM_HOME, the standard
+    /opt/rocm fallback, and (for ROCm >= 7.14) the _rocm_sdk_* pip-wheel
+    site-packages layout where librocjpeg lives inside _rocm_sdk_core/lib.
     """
     search_roots = []
     for var in ("ROCM_HOME", "ROCM_PATH"):
@@ -198,6 +199,34 @@ def _find_rocjpeg_lib():
                 candidate = lib_dir / "librocjpeg.so"
             if candidate.exists():
                 return lib_dir
+
+    # ROCm >= 7.14 pip-wheel fallback: librocjpeg lives in _rocm_sdk_core/lib
+    # (or _rocm_sdk_devel/lib) inside site-packages rather than in a system
+    # prefix like /opt/rocm.  Use the same glob strategy as install_rocjpeg.sh.
+    import glob as _glob
+    import site as _site
+    # Search the current interpreter's site-packages first (avoids crossing
+    # conda env boundaries), then fall back to the broader /opt/conda tree.
+    candidate_dirs: list[str] = []
+    try:
+        candidate_dirs.extend(_site.getsitepackages())
+    except AttributeError:
+        pass
+    try:
+        candidate_dirs.append(_site.getusersitepackages())
+    except AttributeError:
+        pass
+    for site_dir in candidate_dirs:
+        for pkg in ("_rocm_sdk_core", "_rocm_sdk_devel"):
+            lib_dir = Path(site_dir) / pkg / "lib"
+            for lib_name in ("librocjpeg.so.1", "librocjpeg.so"):
+                if (lib_dir / lib_name).exists():
+                    return lib_dir
+    # Last-resort broad glob (covers non-standard conda prefixes).
+    for pattern in ("/opt/conda/**/librocjpeg.so.1", "/opt/conda/**/librocjpeg.so"):
+        hits = sorted(_glob.glob(pattern, recursive=True))
+        if hits:
+            return Path(hits[0]).parent
     return None
 
 
