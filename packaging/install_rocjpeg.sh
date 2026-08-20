@@ -34,21 +34,27 @@ install_rocjpeg_build_only() {
     rpm -Uvh --nodeps "${rpm_dir}"/rocjpeg*.rpm
 }
 
-# Check if librocjpeg is already available (e.g. via ROCm 7.14+ pip wheels).
+# Check if librocjpeg is already available via the ROCm >= 7.14 pip-wheel layout
+# (_rocm_sdk_core / _rocm_sdk_devel under site-packages).  In that layout AMD
+# bundles mesa (the VA-API DRI driver) inside _rocm_sdk_core, so no separate
+# dnf install of mesa-amdgpu-va-drivers is needed — only the base libva soname.
+#
+# NOTE: we intentionally do NOT match /opt/rocm/lib/librocjpeg.so* here.  If
+# librocjpeg was installed via the ROCm <= 7.2 system RPM path it may be
+# present at /opt/rocm but mesa-amdgpu-va-drivers may not be — they are
+# separate packages and must be installed together.  Let the else branch handle
+# that case so it always installs the full VA-API stack.
 if python3 -c "
 import glob, sys
-# _rocm_sdk_core and _rocm_sdk_devel are the pip-wheel-based ROCm installs
-hits = (glob.glob('/opt/conda/**/librocjpeg.so*', recursive=True) +
-        glob.glob('/opt/rocm/lib/librocjpeg.so*'))
+# Only the pip-wheel layout bundles mesa alongside librocjpeg.
+hits = glob.glob('/opt/conda/**/librocjpeg.so*', recursive=True)
 sys.exit(0 if hits else 1)
 " 2>/dev/null; then
-    echo "librocjpeg already present (ROCm pip-wheel install); skipping dnf install."
-    # librocjpeg links libva.so.2 at load time. Since ROCm 7.14, AMD bundles
-    # mesa (incl. the amdgpu/radeonsi VA-API backend DRI driver) inside
-    # _rocm_sdk_core — no separate dnf install needed. Install only the base
-    # libva soname so the dynamic linker can resolve libva.so.2.
+    echo "librocjpeg already present via ROCm pip-wheel install; skipping dnf install."
     dnf install -y libva 2>/dev/null || true
 else
+    # Covers both first-time installs and the ROCm <= 7.2 system-RPM path
+    # (dnf is idempotent for already-installed packages).
     dnf install -y --refresh rocjpeg-devel libva-amdgpu mesa-amdgpu-va-drivers \
         || install_rocjpeg_build_only
 fi
