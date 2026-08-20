@@ -4443,13 +4443,39 @@ class TestBlocks:
         for frame in got:
             assert_frames_equal(frame.data, sequential[frame.pts_seconds])
 
-    @pytest.mark.parametrize("seconds", (-1e-4, -5.0, -1e9))
+    @pytest.mark.parametrize(
+        "video",
+        (
+            NASA_VIDEO,
+            # Starts at 8.33s, so "before the start" is a positive timestamp
+            # here - including 0, which for most files is the start itself.
+            TEST_NON_ZERO_START,
+        ),
+    )
+    @pytest.mark.parametrize("seconds_before_start", (0, 1e-4, 5.0, 1e9))
     @pytest.mark.parametrize("device", _block_devices())
-    def test_seek_before_start(self, seconds, device):
+    def test_seek_before_start(self, video, seconds_before_start, device):
         # Asking for a time before the stream starts isn't an error: there's a
         # sensible place to land, and that's the beginning.
-        video_decoder = VideoDecoder(NASA_VIDEO.path, device=device)
-        blocks = self._make_blocks(NASA_VIDEO.path, device)
+        video_decoder = VideoDecoder(video.path, device=device)
+        begin = video_decoder.metadata.begin_stream_seconds
+        blocks = self._make_blocks(video.path, device)
+
+        got = self._first_frame_after_seek(blocks, begin - seconds_before_start)
+
+        expected = video_decoder.get_frame_at(0)
+        assert got.pts_seconds == expected.pts_seconds
+        assert_frames_equal(got.data, expected.data)
+
+    @pytest.mark.parametrize("seconds", (-1e9, -1.0, 0.0, 1e-3, 1e9))
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_seek_on_single_frame_video(self, seconds, device):
+        # A file with a single frame: wherever we aim, there's only one place
+        # to land.
+        video = TEST_SRC_2_MPEG4_MP4
+        video_decoder = VideoDecoder(video.path, device=device)
+        assert video_decoder.metadata.num_frames == 1
+        blocks = self._make_blocks(video.path, device)
 
         got = self._first_frame_after_seek(blocks, seconds)
 
