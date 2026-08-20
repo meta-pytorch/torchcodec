@@ -286,8 +286,11 @@ RocJpegDecoder::ImagePlan RocJpegDecoder::make_plan(
   // ROCJPEG_OUTPUT_Y is correct in the HW path. The HYBRID backend handles
   // YCbCr→RGB in software and is always correct, so we force HYBRID for any
   // colour JPEG that needs RGB output.
+  // ROCJPEG_CSS_400 is 4:0:0 (grayscale, no chroma). All other subsampling
+  // values (444, 440, 422, 420, 411) are colour JPEGs that require YCbCr→RGB
+  // conversion, which the HW VCN path handles incorrectly on MI350X.
   plan.force_hybrid = (plan.output_format == ROCJPEG_OUTPUT_RGB_PLANAR) &&
-      (subsampling != ROCJPEG_CSS_GRAY);
+      (subsampling != ROCJPEG_CSS_400);
 
   plan.output_tensor = torch::stable::empty(
       {int64_t(output_channels), int64_t(heights[0]), int64_t(widths[0])},

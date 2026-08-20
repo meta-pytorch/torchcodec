@@ -56,8 +56,8 @@ class RocJpegDecoder {
     RocJpegOutputFormat output_format{ROCJPEG_OUTPUT_NATIVE};
     // On some hardware (e.g. MI350X VF), ROCJPEG_BACKEND_HARDWARE +
     // ROCJPEG_OUTPUT_RGB_PLANAR produces incorrect output (~51% of pixels
-    // correct) for color (YCbCr) JPEG sources. Route those to HYBRID, which
-    // performs YCbCr->RGB conversion in software and is always correct.
+    // correct) for colour (YCbCr, i.e. non-ROCJPEG_CSS_400) JPEG sources.
+    // Route those to HYBRID, which performs YCbCr->RGB in software.
     bool force_hybrid{false};
   };
 
