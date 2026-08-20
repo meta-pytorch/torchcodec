@@ -121,6 +121,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
+  std::optional<torch::stable::Tensor> get_frame_storage(
+      const AVFrame& av_frame) const override;
+
   GpuFrameAndStorage upload_cpu_frame_to_gpu(
       const AVFrame& cpu_frame,
       cudaStream_t stream);

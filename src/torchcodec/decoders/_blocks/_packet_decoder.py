@@ -40,7 +40,7 @@ class PacketDecoder:
     def _drain(self) -> list[DecodedFrame]:
         frames = []
         while True:
-            handle, status, pts_seconds, duration_seconds, device = (
+            handle, status, pts_seconds, duration_seconds, device, storage = (
                 _blocks_packet_decoder_receive_frame(self._handle)
             )
             if status != 0:  # EAGAIN (need more packets) or EOF: nothing ready
@@ -51,6 +51,7 @@ class PacketDecoder:
                     pts_seconds,
                     duration_seconds,
                     device=device,
+                    storage=storage if storage.numel() > 0 else None,
                 )
             )
         return frames

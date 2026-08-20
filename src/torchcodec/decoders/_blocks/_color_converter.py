@@ -52,6 +52,9 @@ class ColorConverter:
 
     def convert(self, decoded_frame: DecodedFrame) -> Frame:
         data = _blocks_convert_frame(self._handle, decoded_frame._handle)
+        if decoded_frame.storage is not None:
+            # See [Standalone Frame Storage and the need for record_stream]
+            decoded_frame.storage.record_stream(torch.cuda.current_stream())
         # The core op produces HWC; permute to CHW to match VideoDecoder (which
         # also returns a non-contiguous permuted view).
         data = data.permute(2, 0, 1)

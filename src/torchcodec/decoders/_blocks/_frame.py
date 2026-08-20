@@ -35,6 +35,7 @@ class Packet:
 # and the ColorConverter honors it - but nothing surfaces it in Python, so
 # whoever color-converts the planes themselves has no way of knowing the frame
 # needs rotating. And should reported height and width be pre or post rotation?
+# Same for storage: where should we expose it?
 @dataclass
 class RawFrame:
     planes: tuple[torch.Tensor, ...]
@@ -81,9 +82,11 @@ class DecodedFrame:
         pts_seconds: float,
         duration_seconds: float,
         device: str = "cpu",
+        storage: torch.Tensor | None = None,
     ):
         self._handle = handle
         self._device = device
+        self.storage = storage
         self.pts_seconds = pts_seconds
         self.duration_seconds = duration_seconds
 
