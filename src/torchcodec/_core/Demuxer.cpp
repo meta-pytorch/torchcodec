@@ -12,6 +12,10 @@
 
 namespace facebook::torchcodec {
 
+// FFmpeg reports "this seek cannot be performed" as a bare -1, i.e. EPERM,
+// which renders as the very misleading "Operation not permitted". It covers
+// both a target that the demuxer can't reach and a demuxer with no seeking
+// support whatsoever.
 std::string get_seek_error_message(
     const AVFormatContext* format_context,
     int64_t desired_pts,

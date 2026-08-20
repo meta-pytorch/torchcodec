@@ -48,6 +48,9 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   // Drop the codec's buffered state (reference frames, in-flight frames) and
   // start over. Needed after the demuxer seeked, and after send_eof(), which
   // otherwise leaves the codec permanently in its drained state.
+  // This is called 'reset()' and not 'flush()', because this is publicly
+  // exposed flush() is slightly ambiguous and could mean 'flush the frames out
+  // of the decoder' rather than meaning 'flush the decoder internal state'.
   void reset();
 
   std::optional<torch::stable::Tensor> get_frame_storage(

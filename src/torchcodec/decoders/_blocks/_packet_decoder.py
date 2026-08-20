@@ -73,30 +73,11 @@ class PacketDecoder:
         return self._receive_ready_frames()
 
     def drain(self) -> list[DecodedFrame]:
-        """Signal end-of-stream and return all remaining buffered frames. Call
-        once, after the last packet.
-
-        A decoder holds a few frames back (it needs later packets to
-        reconstruct earlier ones), and this is what gets them out - what FFmpeg
-        calls draining. It ends this decoder's life: decoding another stream
-        means creating a new :class:`PacketDecoder`.
-        """
         _blocks_packet_decoder_send_eof(self._handle)
         frames = self._receive_ready_frames()
         self._drained = True
         return frames
 
     def reset(self) -> None:
-        """Drop the buffered decoding state and start over.
-
-        Call this after :meth:`Demuxer.seek`: the frames the codec holds as
-        references belong to wherever we were before the seek, and decoding the
-        packets from the new position against them produces corrupt output.
-        Any :class:`DecodedFrame` already handed out stays valid.
-
-        This is *not* :meth:`drain`: the frames still buffered here are
-        discarded rather than returned. FFmpeg confusingly calls both of them
-        flushing.
-        """
         _blocks_packet_decoder_reset(self._handle)
         self._drained = False

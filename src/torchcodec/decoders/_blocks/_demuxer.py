@@ -21,6 +21,10 @@ from ._frame import Packet
 # it, document it (?), test it. Maybe we acutally do want to replicate
 # approximate and exact. Might not actually be difficult.
 
+# TODO_API_BREAKDOWN FEAT PERF Do we want / need to support 'batch-like' APIs
+# were containers are pre-allocated for perf? Like if a user wants to decode
+# specific timestamps for sampling?
+
 
 class Demuxer:
     """Demux building block: opens a container and yields the compressed
@@ -51,28 +55,6 @@ class Demuxer:
         return None if is_eof else Packet(handle)
 
     def seek(self, seconds: float) -> None:
-        """Seek to a keyframe near ``seconds``.
-
-        The next packet returned is that keyframe's, so the frames decoded
-        right after a seek typically *precede* ``seconds``: it's up to the
-        caller to drop the ones it doesn't want, by looking at their
-        ``pts_seconds``. Decoding can't start anywhere else, since every frame
-        up to the target is needed to reconstruct it.
-
-        Seeking is approximate, with exactly the semantics of
-        ``VideoDecoder(..., seek_mode="approximate")``: we hand FFmpeg the
-        target and take whatever keyframe it lands on. That is usually the
-        keyframe preceding ``seconds``, but on streams whose keyframes are
-        reordered it can be one displayed *after* it, in which case the frames
-        in between are unreachable. Landing exactly requires an index of our
-        own, which ``VideoDecoder``'s ``seek_mode="exact"`` scans the file to
-        build.
-
-        This does not touch any :class:`PacketDecoder`: their buffered
-        reference frames are stale afterwards, and feeding them post-seek
-        packets without calling :meth:`PacketDecoder.reset` first produces
-        corrupt frames.
-        """
         _blocks_demuxer_seek(self._handle, float(seconds))
 
     def __iter__(self):
