@@ -4294,6 +4294,52 @@ class TestBlocks:
         exact = VideoDecoder(H265_VIDEO.path, seek_mode="exact", device=device)
         assert exact.get_frame_played_at(seconds).pts_seconds == seconds
 
+    @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_seek_matches_video_decoder_approximate_get_frame_played_at(
+        self, video, device
+    ):
+        # Our seek is VideoDecoder's approximate one, frame for frame.
+        #
+        # It holds against get_frame_played_at() and against nothing else, and
+        # that scoping is the point. get_frame_played_at() is the only
+        # VideoDecoder API that seeks straight to the timestamp it was given:
+        # it turns `seconds` into a pts and hands that to FFmpeg, which is the
+        # same two steps Demuxer.seek() takes, so the match is structural
+        # rather than a property of these files. Every other API goes through
+        # a frame index, which approximate mode derives from the header's
+        # average fps and converts back into a pts - a round trip nothing in
+        # the blocks performs, and one that doesn't come back where it started
+        # unless the file is constant-frame-rate.
+        video_decoder = VideoDecoder(video.path, device=device)
+        num_frames = video_decoder.metadata.num_frames
+
+        for index in range(0, num_frames, max(1, num_frames // 10)):
+            frame = video_decoder.get_frame_at(index)
+            # Aim at the middle of a frame, so that no target lands on a frame
+            # boundary where the two sides could round differently.
+            seconds = frame.pts_seconds + frame.duration_seconds / 2
+
+            # A fresh VideoDecoder per target: it skips the seek when the
+            # target is just ahead of the last frame it decoded, which would
+            # hide the very behaviour we're comparing against.
+            expected = VideoDecoder(
+                video.path, seek_mode="approximate", device=device
+            ).get_frame_played_at(seconds)
+
+            blocks = self._make_blocks(video.path, device)
+            got = next(
+                frame
+                for frame in self._frames_after_seek(blocks, seconds)
+                # VideoDecoder's own criterion: the first frame that hasn't
+                # finished playing by then. Not `pts_seconds >= seconds`, which
+                # would skip the target frame whenever we land right on it.
+                if frame.pts_seconds + frame.duration_seconds > seconds
+            )
+
+            assert got.pts_seconds == expected.pts_seconds
+            assert_frames_equal(got.data, expected.data)
+
     @pytest.mark.parametrize("device", _block_devices())
     def test_seek_without_reset_yields_stale_frames(self, device):
         # What goes wrong if you skip the reset: a decoder always holds a few
