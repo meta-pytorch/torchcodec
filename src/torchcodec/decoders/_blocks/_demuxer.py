@@ -8,9 +8,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from torchcodec._core.ops import _blocks_create_demuxer, _blocks_demuxer_next_packet
+from torchcodec._core.ops import (
+    _blocks_create_demuxer,
+    _blocks_demuxer_next_packet,
+    _blocks_demuxer_seek,
+)
 
 from ._frame import Packet
+
+# TODO_API_BREAKDOWN CORRECTNESS P1: Need to understand the seeking we do: it's
+# not completley approximate and it's not completely exact either. Understand
+# it, document it (?), test it. Maybe we acutally do want to replicate
+# approximate and exact. Might not actually be difficult.
+
+# TODO_API_BREAKDOWN FEAT PERF Do we want / need to support 'batch-like' APIs
+# were containers are pre-allocated for perf? Like if a user wants to decode
+# specific timestamps for sampling?
 
 
 class Demuxer:
@@ -19,13 +32,14 @@ class Demuxer:
 
     This block is passive (it does no threading of its own) and is *not*
     thread-safe: use one ``Demuxer`` per thread. It streams from the start of
-    the file; seeking is not supported yet.
+    the file, or from wherever :meth:`seek` left it.
 
     A :class:`Demuxer` also carries the stream configuration used to build a
     :class:`PacketDecoder` and :class:`ColorConverter`, so those are constructed from
     a demuxer and no extra container is opened.
     """
 
+    # TODO_API_BREAKDOWN FEAT P1: support file-like, bytes etc.
     def __init__(self, source: str | Path, *, stream_index: int | None = None):
         if isinstance(source, Path):
             source = str(source)
@@ -39,6 +53,9 @@ class Demuxer:
         """Return the next :class:`Packet`, or ``None`` at end of stream."""
         handle, is_eof = _blocks_demuxer_next_packet(self._handle)
         return None if is_eof else Packet(handle)
+
+    def seek(self, seconds: float) -> None:
+        _blocks_demuxer_seek(self._handle, float(seconds))
 
     def __iter__(self):
         while True:

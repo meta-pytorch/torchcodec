@@ -45,6 +45,13 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   // Pull one frame. Returns AVSUCCESS with `av_frame` filled, AVERROR(EAGAIN)
   // if more input is needed, AVERROR_EOF at end, or a negative error code.
   int receive_frame(UniqueAVFrame& av_frame);
+  // Drop the codec's buffered state (reference frames, in-flight frames) and
+  // start over. Needed after the demuxer seeked, and after send_eof(), which
+  // otherwise leaves the codec permanently in its drained state.
+  // This is called 'reset()' and not 'flush()', because this is publicly
+  // exposed flush() is slightly ambiguous and could mean 'flush the frames out
+  // of the decoder' rather than meaning 'flush the decoder internal state'.
+  void reset();
 
   std::optional<torch::stable::Tensor> get_frame_storage(
       const AVFrame& av_frame) const {
@@ -69,6 +76,10 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   // value: we're only handed the Demuxer at construction and it may well be
   // gone by the time we decode.
   std::optional<std::array<int32_t, 9>> display_matrix_;
+  // The MPEG-PS demuxer doesn't return proper packets just after a seek, so the
+  // first ones we're fed may not be decodable. See send_packet().
+  bool is_mpeg_ps_ = false;
+  bool packet_data_may_be_misaligned_ = false;
 };
 
 // A decoded frame's own samples, before any color conversion.

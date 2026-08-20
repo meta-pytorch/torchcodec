@@ -23,6 +23,11 @@ int read_next_packet(
     int active_stream_index,
     ReferenceAVPacket& packet);
 
+std::string get_seek_error_message(
+    const AVFormatContext* format_context,
+    int64_t desired_pts,
+    int status);
+
 // Demux building block: owns an AVFormatContext, selects one video stream, and
 // yields its (compressed) packets. Does no decoding. Not thread-safe.
 class FORCE_PUBLIC_VISIBILITY Demuxer {
@@ -34,6 +39,8 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
   // Returns the next packet for the active stream as a freshly-allocated
   // packet, or a null packet at end of stream.
   UniqueAVPacket next_packet();
+
+  void seek(double seconds);
 
   AVStream* active_stream() const {
     return stream_;

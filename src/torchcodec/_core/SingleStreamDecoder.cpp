@@ -25,29 +25,6 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
-namespace {
-
-// FFmpeg reports "this seek cannot be performed" as a bare -1, i.e. EPERM,
-// which renders as the very misleading "Operation not permitted". It covers
-// both a target that the demuxer can't reach and a demuxer with no seeking
-// support whatsoever.
-std::string get_seek_error_message(
-    const AVFormatContext* format_context,
-    int64_t desired_pts,
-    int status) {
-  std::stringstream ss;
-  ss << "Could not seek file to pts=" << desired_pts << ": "
-     << get_ffmpeg_error_string_from_error_code(status) << ".";
-  if (status == AVERROR(EPERM)) {
-    ss << " This is either because that timestamp is out of range, or because"
-       << " the '" << format_context->iformat->name << "' format does not"
-       << " support seeking.";
-  }
-  return ss.str();
-}
-
-} // namespace
-
 // --------------------------------------------------------------------------
 // CONSTRUCTORS, INITIALIZATION, DESTRUCTORS
 // --------------------------------------------------------------------------

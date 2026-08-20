@@ -16,9 +16,6 @@ from torchcodec._frame import Frame
 from .._decoder_utils import convert_output_dtype_to_str
 from ._frame import DecodedFrame
 
-# TODO_API_BREAKDOWN FEAT Implement seeking?
-# TODO_API_BREAKDOWN FEAT Implement range-getting (start/end time) for decoding?
-
 
 class ColorConverter:
     """Color-conversion building block: turns a decoded (YUV)
