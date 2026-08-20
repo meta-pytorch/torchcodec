@@ -3983,8 +3983,8 @@ class TestBlocks:
         # frame storage.
         # Without the record_stream() call the decoder's next frame may be
         # handed the same buffer and overwrites it while the read is still
-        # queued. See "Streams and freeing memory"
-        # https://zdevito.github.io/2022/08/04/cuda-caching-allocator.html
+        # queued.
+        # See [Standalone Frame Storage and the need for record_stream]
         video = NASA_VIDEO.path
         decode_stream = torch.cuda.Stream()
         read_stream = torch.cuda.Stream()
@@ -4024,6 +4024,7 @@ class TestBlocks:
         # Similar test to test_storage_record_stream(), but with the ColorConverter on a
         # separate stream. In this case, *we* call record_stream() on behalf of
         # the user.
+        # See [Standalone Frame Storage and the need for record_stream]
         video = NASA_VIDEO.path
         demuxer, decoder, converter = self._make_blocks(video, "cuda")
         decode_stream = torch.cuda.Stream()

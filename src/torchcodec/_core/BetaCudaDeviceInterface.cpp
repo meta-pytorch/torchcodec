@@ -1036,46 +1036,54 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
 std::optional<torch::stable::Tensor> BetaCudaDeviceInterface::get_frame_storage(
     const AVFrame& av_frame) const {
   STD_TORCH_CHECK(
-      mode() == Mode::DecoderOnly,
-      "get_frame_storage() is only valid in decoder-only mode: standalone "
-      "frames are meant to be consumed by a separate ColorConverter or by user-defined consumers.");
-  // A standalone frame's samples live in a buffer allocated from the PyTorch
-  // caching allocator, on the stream that was current in
-  // make_frame_standalone() - the decoder's. A consumer reading that buffer
-  // from another stream races with the allocator:
+      // Only decoder-only should reach here, and this should only be called on
+      // frames that went through make_frame_standalone(), which sets
+      // opaque_ref.
+      mode() == Mode::DecoderOnly && av_frame.opaque_ref != nullptr,
+      "Unexpected call to get_frame_storage(), please report a bug ");
+
+  // Note [Standalone Frame Storage and the need for record_stream]
   //
-  //   converter.convert(frame)  enqueues the conversion kernel and returns.
-  //                             The kernel has not run yet.
-  //   the frame is dropped      the AVFrame, its attached data and this
-  //                             storage tensor are all released host-side,
-  //                             immediately, without waiting for the GPU. The
-  //                             block goes straight back into the decoder
-  //                             stream's pool.
-  //   decoder.decode(...)       allocates the next frame's buffer, is handed
-  //                             that same block, and memcpys into it while the
-  //                             conversion may still be reading it.
+  // A PacketDecoder and a ColorConverter may run on different CUDA streams.
+  // Consider the following:
   //
-  // Nothing dangles - the samples are overwritten mid-read, and the converter
-  // silently emits the wrong frame. Note the allocator only ever reuses a
-  // block for allocations on the stream it came from, which is why a consumer
-  // on the decoder's own stream is already safe.
+  // ```
+  // with decoder_stream:
+  //   frame = decoder.receive_frame()
+  // with color_converter_stream:
+  //   color_converter.convert(frame)
   //
-  // Tensor::record_stream() is what tells the allocator to hold a block back
-  // until another stream's work has run, and it is what we use - but from
-  // Python, in ColorConverter.convert(), because it isn't callable from here:
-  // the stable ABI has no shim for it, and aten::record_stream isn't reachable
-  // through the dispatcher either since StableIValue can't represent a Stream.
-  // Hence this accessor: we hand the storage tensor to Python and let it
-  // record on our behalf.
+  // del frame
   //
-  // TODO_API_BREAKDOWN DESIGN P2: if a record_stream shim lands upstream, this
-  // accessor, the trailing return value of
-  // _blocks_packet_decoder_receive_frame and DecodedFrame.storage all go
-  // away, replaced by one call at the end of
-  // convert_av_frame_to_frame_output().
-  if (av_frame.opaque_ref == nullptr) {
-    return std::nullopt;
-  }
+  // with decoder_stream:
+  //   frame = decoder.receive_frame()
+  // ```
+  //
+  // The call to convert(frame) is non-blocking and just enqueues the
+  // color-conversion kernel. The CPU moves on immediately to `del frame` while
+  // the kernel is still running (it may also not even have started depending on
+  // how color_converter_stream is congested).
+  //
+  // When the frame is deleted, the torch CUDA allocator reclaims its memory and
+  // it becomes available for reuse for any subsequent allocation on the
+  // decoder_stream. If the next decoder.receive_frame() happens before the
+  // color-conversion kernel has finished (specifically: the new storage
+  // allocation for that next frame in make_frame_standalone()), the memory is
+  // reused, overwritten, and the color-conversion kernel reads garbage (i.e.
+  // the next frame's samples!).
+  //
+  // We're hitting exactly what
+  // https://zdevito.github.io/2022/08/04/cuda-caching-allocator.html describes
+  // in the 'Streams and freeing memory' section, and the solution is to call
+  // record_stream() on the frame's storage within color_conversion_stream just
+  // after the kernel is enqueued: this tells the allocator that it must wait
+  // until this point (on the device side) before reclaiming the memory.
+  //
+  // We call record_stream(color_conversion_stream) on the frame storage in the
+  // ColorConverter, on behalf of the user. But we still must expose the storage
+  // for those users who would like to consume the frame with their own
+  // consumer, i.e. not using the ColorConverter: they need to call
+  // frame.storage.record_stream(color_conversion_stream) themselves.
   return reinterpret_cast<StandAloneFrameAttachedData*>(
              av_frame.opaque_ref->data)
       ->storage;
@@ -1387,13 +1395,12 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
       av_get_pix_fmt_name(gpu_pix_fmt));
 
   cudaStream_t producer_stream;
-  StandAloneFrameAttachedData* attached_data = nullptr;
   if (mode() == Mode::ColorConverterOnly) {
     STD_TORCH_CHECK(
         gpu_frame.opaque_ref != nullptr,
         "ColorConverter received a non-standalone frame; frames fed to a "
         "standalone ColorConverter must come from a PacketDecoder.");
-    attached_data = reinterpret_cast<StandAloneFrameAttachedData*>(
+    auto attached_data = reinterpret_cast<StandAloneFrameAttachedData*>(
         gpu_frame.opaque_ref->data);
     producer_stream = attached_data->producer_stream;
   } else {
