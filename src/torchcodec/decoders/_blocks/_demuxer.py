@@ -16,11 +16,6 @@ from torchcodec._core.ops import (
 
 from ._frame import Packet
 
-# TODO_API_BREAKDOWN CORRECTNESS P1: Need to understand the seeking we do: it's
-# not completley approximate and it's not completely exact either. Understand
-# it, document it (?), test it. Maybe we acutally do want to replicate
-# approximate and exact. Might not actually be difficult.
-
 # TODO_API_BREAKDOWN FEAT PERF Do we want / need to support 'batch-like' APIs
 # were containers are pre-allocated for perf? Like if a user wants to decode
 # specific timestamps for sampling?
@@ -54,6 +49,12 @@ class Demuxer:
         handle, is_eof = _blocks_demuxer_next_packet(self._handle)
         return None if is_eof else Packet(handle)
 
+    # TODO_API_BREAKDOWN CORRECTNESS P1: this is VideoDecoder's "approximate"
+    # seek mode. Do we want to offer an "exact" one? It needs a
+    # presentation-order keyframe index, i.e. a scan of the whole file, which
+    # a user would have to opt into (a Demuxer.scan()?). seek() would then snap
+    # the target back to the preceding keyframe in that index, which is all
+    # that VideoDecoder's exact mode does.
     def seek(self, seconds: float) -> None:
         _blocks_demuxer_seek(self._handle, float(seconds))
 
