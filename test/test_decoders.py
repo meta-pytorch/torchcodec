@@ -13,7 +13,6 @@ import os
 import queue
 import subprocess
 import threading
-import time
 from functools import partial
 from typing import NamedTuple
 
