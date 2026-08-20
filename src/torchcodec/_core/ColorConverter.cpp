@@ -59,6 +59,12 @@ void ColorConverter::maybe_initialize_interface(OutputDtype output_dtype) {
 torch::stable::Tensor ColorConverter::convert(
     const AVFrame& av_frame,
     const StableDevice& frame_device) {
+  // TODO_API_BREAKDOWN CC P2: OK, it's not fantastic that we have to pass the
+  // frame's device. Especially given the related design TODO about whether the
+  // RawFrame should carry that device field at all. Maybe it should, maybe it's
+  // overkill. I think the main alternative is to retrieve the device from the
+  // AVFrame, it's possible, but likely requires moving the
+  // StandaloneFrameAttachedData to the public header.
   STD_TORCH_CHECK(
       frame_device == device_,
       "This ColorConverter is on ",
