@@ -50,7 +50,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpo0cg83z1/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpmnq86uzz/video.mp4'], returncode=0)
 ```
 
 ## The three blocks
@@ -61,7 +61,8 @@ at the end.
 
 `PacketDecoder` and `ColorConverter` both accept `device="cuda"`:
 decoding then runs on NVDEC and the color conversion on the GPU, and the
-frames never leave the device. Demuxing always happens on the CPU.
+frames never leave the device. Demuxing always happens on the CPU. Left
+unspecified, `device` is the current default device.
 
 ```
 from torchcodec.decoders._blocks import ColorConverter, Demuxer, PacketDecoder
@@ -385,7 +386,7 @@ ffmpeg.wait()
 -9
 ```
 
-**Total running time of the script:** (0 minutes 1.973 seconds)
+**Total running time of the script:** (0 minutes 1.977 seconds)
 
 [`Download Jupyter notebook: blocks.ipynb`](../../_downloads/37e5fa5a5cd2ea49ae5d47920f4cc2fa/blocks.ipynb)
 

@@ -65,7 +65,8 @@ subprocess.run(
 #
 # ``PacketDecoder`` and ``ColorConverter`` both accept ``device="cuda"``:
 # decoding then runs on NVDEC and the color conversion on the GPU, and the
-# frames never leave the device. Demuxing always happens on the CPU.
+# frames never leave the device. Demuxing always happens on the CPU. Left
+# unspecified, ``device`` is the current default device.
 from torchcodec.decoders._blocks import ColorConverter, Demuxer, PacketDecoder
 
 demuxer = Demuxer(video_path)

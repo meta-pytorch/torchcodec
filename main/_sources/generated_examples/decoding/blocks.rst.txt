@@ -75,11 +75,11 @@ Boilerplate: a test video, and the device we'll run on.
 
     device = 'cuda'
 
-    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpo0cg83z1/video.mp4'], returncode=0)
+    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpmnq86uzz/video.mp4'], returncode=0)
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 59-69
+.. GENERATED FROM PYTHON SOURCE LINES 59-70
 
 The three blocks
 ----------------
@@ -90,9 +90,10 @@ at the end.
 
 ``PacketDecoder`` and ``ColorConverter`` both accept ``device="cuda"``:
 decoding then runs on NVDEC and the color conversion on the GPU, and the
-frames never leave the device. Demuxing always happens on the CPU.
+frames never leave the device. Demuxing always happens on the CPU. Left
+unspecified, ``device`` is the current default device.
 
-.. GENERATED FROM PYTHON SOURCE LINES 69-85
+.. GENERATED FROM PYTHON SOURCE LINES 70-86
 
 .. code-block:: Python
 
@@ -125,7 +126,7 @@ frames never leave the device. Demuxing always happens on the CPU.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 86-93
+.. GENERATED FROM PYTHON SOURCE LINES 87-94
 
 Threading: overlapping the stages
 ---------------------------------
@@ -135,7 +136,7 @@ Each stage is a generator, so a pipeline is a chain of generators. Inserting
 thread: the stages then run concurrently, and since the blocks release the
 GIL, that's real parallelism.
 
-.. GENERATED FROM PYTHON SOURCE LINES 93-165
+.. GENERATED FROM PYTHON SOURCE LINES 94-166
 
 .. code-block:: Python
 
@@ -226,14 +227,14 @@ GIL, that's real parallelism.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 166-170
+.. GENERATED FROM PYTHON SOURCE LINES 167-171
 
 Where you insert the thread boundaries is up to you, and so is everything
 else: nothing stops you from running one pipeline per file, decoding on the
 CPU while color-converting on the GPU, or feeding frames into your own
 pre-fetching data loader.
 
-.. GENERATED FROM PYTHON SOURCE LINES 172-182
+.. GENERATED FROM PYTHON SOURCE LINES 173-183
 
 Seeking
 -------
@@ -246,7 +247,7 @@ drop them until you reach the timestamp you asked for.
 The seek also invalidates the frames the decoder is holding on to, so the
 ``PacketDecoder`` must be ``reset()``.
 
-.. GENERATED FROM PYTHON SOURCE LINES 182-196
+.. GENERATED FROM PYTHON SOURCE LINES 183-197
 
 .. code-block:: Python
 
@@ -277,7 +278,7 @@ The seek also invalidates the frames the decoder is holding on to, so the
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 197-202
+.. GENERATED FROM PYTHON SOURCE LINES 198-203
 
 Raw frames
 ----------
@@ -285,7 +286,7 @@ Raw frames
 Color conversion is optional. A ``DecodedFrame`` can hand out the decoder's
 own planes as tensor views, with no copy and no conversion.
 
-.. GENERATED FROM PYTHON SOURCE LINES 202-212
+.. GENERATED FROM PYTHON SOURCE LINES 203-213
 
 .. code-block:: Python
 
@@ -313,7 +314,7 @@ own planes as tensor views, with no copy and no conversion.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 213-224
+.. GENERATED FROM PYTHON SOURCE LINES 214-225
 
 These are views into the frame's memory: the row stride is the decoder's own
 line size, and the chroma planes of an NVDEC surface are two interleaved
@@ -327,7 +328,7 @@ So we can do the color conversion ourselves. Here it's plain PyTorch ops -
 it could just as well be a Triton or CUDA kernel, fused with whatever your
 model needs next.
 
-.. GENERATED FROM PYTHON SOURCE LINES 224-253
+.. GENERATED FROM PYTHON SOURCE LINES 225-254
 
 .. code-block:: Python
 
@@ -373,7 +374,7 @@ model needs next.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 254-260
+.. GENERATED FROM PYTHON SOURCE LINES 255-261
 
 Raw HDR frames
 ~~~~~~~~~~~~~~
@@ -382,7 +383,7 @@ Raw planes come at the source's own precision, so a 10-bit HDR video gives
 ``uint16`` planes with all 10 bits intact - no clipping to 8 bits, and no
 tone mapping.
 
-.. GENERATED FROM PYTHON SOURCE LINES 260-291
+.. GENERATED FROM PYTHON SOURCE LINES 261-292
 
 .. code-block:: Python
 
@@ -431,7 +432,7 @@ tone mapping.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 292-302
+.. GENERATED FROM PYTHON SOURCE LINES 293-303
 
 Streams of unknown length
 -------------------------
@@ -444,7 +445,7 @@ that has no duration, no frame count, and no end.
 
 Let's make one: FFmpeg generating frames forever into a named pipe.
 
-.. GENERATED FROM PYTHON SOURCE LINES 302-319
+.. GENERATED FROM PYTHON SOURCE LINES 303-320
 
 .. code-block:: Python
 
@@ -472,12 +473,12 @@ Let's make one: FFmpeg generating frames forever into a named pipe.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 320-322
+.. GENERATED FROM PYTHON SOURCE LINES 321-323
 
 ``VideoDecoder`` can't do anything with that (we ask for the approximate
 seek mode; the exact one would scan the stream forever):
 
-.. GENERATED FROM PYTHON SOURCE LINES 322-332
+.. GENERATED FROM PYTHON SOURCE LINES 323-333
 
 .. code-block:: Python
 
@@ -505,11 +506,11 @@ seek mode; the exact one would scan the stream forever):
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 333-334
+.. GENERATED FROM PYTHON SOURCE LINES 334-335
 
 The blocks just stream it, and we stop whenever we want:
 
-.. GENERATED FROM PYTHON SOURCE LINES 334-350
+.. GENERATED FROM PYTHON SOURCE LINES 335-351
 
 .. code-block:: Python
 
@@ -546,7 +547,7 @@ The blocks just stream it, and we stop whenever we want:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 1.973 seconds)
+   **Total running time of the script:** (0 minutes 1.977 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_blocks.py:
