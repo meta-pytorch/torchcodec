@@ -15,6 +15,17 @@
 
 namespace facebook::torchcodec {
 
+namespace {
+// Only ever used to name a device in the error message below.
+std::string printable(const StableDevice& device) {
+  std::string name = device_type_name(device.type());
+  if (device.type() != kStableCPU && device.index() >= 0) {
+    name += ":" + std::to_string(device.index());
+  }
+  return name;
+}
+} // namespace
+
 ColorConverter::ColorConverter(
     const StableDevice& device,
     OutputDtypeConfig output_dtype_config)
@@ -23,6 +34,7 @@ ColorConverter::ColorConverter(
   STD_TORCH_CHECK(
       device_interface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");
+  device_ = device_interface_->device(); // resolved, so we don't have to
 }
 
 void ColorConverter::maybe_initialize_interface(OutputDtype output_dtype) {
@@ -44,7 +56,24 @@ void ColorConverter::maybe_initialize_interface(OutputDtype output_dtype) {
   initialized_output_dtype_ = output_dtype;
 }
 
-torch::stable::Tensor ColorConverter::convert(const AVFrame& av_frame) {
+torch::stable::Tensor ColorConverter::convert(
+    const AVFrame& av_frame,
+    const StableDevice& frame_device) {
+  // TODO_API_BREAKDOWN CC P2: OK, it's not fantastic that we have to pass the
+  // frame's device. Especially given the related design TODO about whether the
+  // RawFrame should carry that device field at all. Maybe it should, maybe it's
+  // overkill. I think the main alternative is to retrieve the device from the
+  // AVFrame, it's possible, but likely requires moving the
+  // StandaloneFrameAttachedData to the public header.
+  STD_TORCH_CHECK(
+      frame_device == device_,
+      "This ColorConverter is on ",
+      printable(device_),
+      " but the frame's samples are on ",
+      printable(frame_device),
+      ". A ColorConverter only converts frames that are already on its own "
+      "device: create one per device, or move the RGB output afterwards.");
+
   OutputDtype output_dtype = resolve_output_dtype(
       output_dtype_config_, static_cast<AVPixelFormat>(av_frame.format));
   maybe_initialize_interface(output_dtype);
