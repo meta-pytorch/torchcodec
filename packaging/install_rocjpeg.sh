@@ -51,7 +51,8 @@ hits = glob.glob('/opt/conda/**/librocjpeg.so*', recursive=True)
 sys.exit(0 if hits else 1)
 " 2>/dev/null; then
     echo "librocjpeg already present via ROCm pip-wheel install; skipping dnf install."
-    dnf install -y libva 2>/dev/null || true
+    # libva is bundled inside _rocm_sdk_core/lib/rocm_sysdeps/lib/ and
+    # librocjpeg's own RPATH resolves it from there — no system install needed.
 else
     # Covers both first-time installs and the ROCm <= 7.2 system-RPM path
     # (dnf is idempotent for already-installed packages).
