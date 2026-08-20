@@ -7,6 +7,7 @@
 import concurrent.futures
 import contextlib
 import gc
+import io
 import itertools
 import math
 import os
@@ -42,10 +43,10 @@ from torchcodec.decoders import (
 )
 from torchcodec.decoders._blocks import (
     ColorConverter,
-    DecodedFrame,
     Demuxer,
     Packet,
     PacketDecoder,
+    RawFrame,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.decoders._image_decoders import _source_to_tensor
@@ -3535,7 +3536,7 @@ def _is_msb_aligned(pix_fmt):
 
 # TODO_API_BREAKDOWN CC P2: this entire class should probably be folded in the
 # test/utils asset class.
-class _MaterializeCase(NamedTuple):
+class _PlanesCase(NamedTuple):
     """A video, how many significant bits its samples carry, and the pixel
     format its frames come out in on each device."""
 
@@ -3566,28 +3567,26 @@ _HDR_VIDEOS = (
 )
 
 
-# Videos spanning the pixel-format axes materialize() has to handle: 4:2:0 vs
+# Videos spanning the pixel-format axes RawFrame.planes has to handle: 4:2:0 vs
 # 4:4:4 chroma, even vs odd dims (chroma rounds up), and 8- vs 10-/12-bit
 # (uint8 vs uint16 planes). All are YUV, so planes are (Y, U, V).
-_MATERIALIZE_VIDEOS = (
-    _MaterializeCase(NASA_VIDEO, 8, "yuv420p", "nv12"),  # even dims
-    _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9, 8, "yuv420p", "nv12"),  # odd
+_PLANES_VIDEOS = (
+    _PlanesCase(NASA_VIDEO, 8, "yuv420p", "nv12"),  # even dims
+    _PlanesCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9, 8, "yuv420p", "nv12"),  # odd
     # 4:4:4 (full-res chroma). NVDEC can't decode H264 4:4:4, so these fall back
     # to the CPU and are uploaded as 4:4:4 rather than have their chroma halved.
-    _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_444, 8, "yuv444p", "yuv444p"),
-    _MaterializeCase(
+    _PlanesCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_444, 8, "yuv444p", "yuv444p"),
+    _PlanesCase(
         TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT, 10, "yuv444p10le", "yuv444p16le"
     ),
     # HEVC 4:4:4, which NVDEC decodes natively into its YUV444 surfaces. The
     # 16-bit one is the only 4:4:4 surface above 8 bits, so 10- and 12-bit
     # sources both land in yuv444p16le.
-    _MaterializeCase(TESTSRC2_444_8BIT_HEVC, 8, "yuv444p", "yuv444p"),
-    _MaterializeCase(TESTSRC2_444_10BIT_HEVC, 10, "yuv444p10le", "yuv444p16le"),
-    _MaterializeCase(TESTSRC2_444_12BIT_HEVC, 12, "yuv444p12le", "yuv444p16le"),
-    _MaterializeCase(
-        TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT, 10, "yuv420p10le", "p010le"
-    ),
-    _MaterializeCase(
+    _PlanesCase(TESTSRC2_444_8BIT_HEVC, 8, "yuv444p", "yuv444p"),
+    _PlanesCase(TESTSRC2_444_10BIT_HEVC, 10, "yuv444p10le", "yuv444p16le"),
+    _PlanesCase(TESTSRC2_444_12BIT_HEVC, 12, "yuv444p12le", "yuv444p16le"),
+    _PlanesCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT, 10, "yuv420p10le", "p010le"),
+    _PlanesCase(
         TEST_SRC_2_12BIT_HDR,
         12,
         "yuv420p12le",
@@ -3597,15 +3596,44 @@ _MATERIALIZE_VIDEOS = (
 )
 
 
-def _materialize_ids(case):
+def _planes_ids(case):
     return case.video.path.stem
+
+
+class _CustomReader:
+    # A file-like object that isn't an io.IOBase subclass, i.e. one recognized
+    # by duck-typing alone.
+    def __init__(self, file):
+        self._file = file
+
+    def read(self, size: int) -> bytes:
+        return self._file.read(size)
+
+    def seek(self, offset: int, whence: int) -> int:
+        return self._file.seek(offset, whence)
+
+
+_BLOCKS_SOURCES = (
+    pytest.param(lambda path: path, id="path"),
+    pytest.param(lambda path: str(path), id="str"),
+    pytest.param(lambda path: path.read_bytes(), id="bytes"),
+    pytest.param(
+        lambda path: torch.frombuffer(bytearray(path.read_bytes()), dtype=torch.uint8),
+        id="tensor",
+    ),
+    pytest.param(lambda path: open(path, "rb"), id="file_like"),
+    pytest.param(lambda path: io.BytesIO(path.read_bytes()), id="bytes_io"),
+    pytest.param(
+        lambda path: _CustomReader(open(path, "rb", buffering=0)), id="custom_reader"
+    ),
+)
 
 
 class TestBlocks:
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_block_output_types(self, device):
-        # Demuxer yields Packets, PacketDecoder yields DecodedFrames, and
+        # Demuxer yields Packets, PacketDecoder yields RawFrames, and
         # ColorConverter yields Frames with the expected shape/dtype.
         demuxer, decoder, converter = self._make_blocks(NASA_VIDEO.path, device)
 
@@ -3614,7 +3642,7 @@ class TestBlocks:
             assert isinstance(packet, Packet)
             num_packets += 1
             for decoded in decoder.decode(packet):
-                assert isinstance(decoded, DecodedFrame)
+                assert isinstance(decoded, RawFrame)
                 frame = converter.convert(decoded)
                 assert isinstance(frame, Frame)
                 assert frame.data.ndim == 3  # CHW
@@ -3685,7 +3713,7 @@ class TestBlocks:
         return demuxer, decoder, converter
 
     def _decoded_frames(self, path, device):
-        # demux + decode, as a single generator of DecodedFrames (pts order).
+        # demux + decode, as a single generator of RawFrames (pts order).
         demuxer, decoder, _ = self._make_blocks(path, device)
         return self._decode(decoder, self._demux(demuxer))
 
@@ -3886,6 +3914,32 @@ class TestBlocks:
             assert got.data.shape == ref.data.shape
             torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
 
+    @needs_cuda
+    @pytest.mark.parametrize(
+        ("frame_device", "converter_device"), (("cpu", "cuda"), ("cuda", "cpu"))
+    )
+    def test_converter_refuses_other_devices(self, frame_device, converter_device):
+        frame = next(self._decoded_frames(NASA_VIDEO.path, frame_device))
+        converter = ColorConverter(device=converter_device)
+        with pytest.raises(
+            RuntimeError, match="only converts frames that are already on its own"
+        ):
+            converter.convert(frame)
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "converter_device", ("cuda", "cuda:0", torch.device("cuda"))
+    )
+    def test_converter_accepts_every_spelling_of_the_same_device(
+        self, converter_device
+    ):
+        # The frame names a concrete GPU ("cuda:0") while the converter may have
+        # been given a bare "cuda". Those are the same place, and a pipeline
+        # that spells them differently must not trip the check.
+        frame = next(self._decoded_frames(NASA_VIDEO.path, "cuda"))
+        converted = ColorConverter(device=converter_device).convert(frame)
+        assert converted.data.device.type == "cuda"
+
     @pytest.mark.parametrize("device", _block_devices())
     def test_set_cuda_backend_is_a_noop(self, device):
         # The blocks always use the NVDEC CUDA backend. Asking for the "ffmpeg"
@@ -3897,18 +3951,49 @@ class TestBlocks:
         torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
 
     def _first_frame(self, path, device):
-        # The first DecodedFrame of a video
+        # The first RawFrame of a video
         demuxer, decoder, converter = self._make_blocks(path, device)
         frame = next(self._decode(decoder, self._demux(demuxer)))
         return frame, converter
 
-    @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)
+    @pytest.mark.parametrize("device_str", _block_devices())
+    def test_device_none_default_device(self, device_str):
+        # PacketDecoder and ColorConverter default to device=None, which should
+        # respect both the torch.device() context manager and
+        # torch.set_default_device().
+
+        def assert_first_frame_is_on_default_device():
+            # Note the absence of any device parameter.
+            demuxer = Demuxer(NASA_VIDEO.path)
+            decoder = PacketDecoder(demuxer)
+            converter = ColorConverter()
+            decoded = next(self._decode(decoder, self._demux(demuxer)))
+            assert decoded.planes[0].device.type == device_str
+            assert converter.convert(decoded).data.device.type == device_str
+
+        with torch.device(device_str):
+            assert_first_frame_is_on_default_device()
+
+        original_device = torch.get_default_device()
+        try:
+            torch.set_default_device(device_str)
+            assert_first_frame_is_on_default_device()
+        finally:
+            torch.set_default_device(original_device)
+
     @pytest.mark.parametrize("device", _block_devices())
-    def test_materialize_structure(self, case, device):
+    def test_device_torch_device_instance(self, device):
+        # device can be a torch.device instance, not just a string.
+        frame, converter = self._first_frame(NASA_VIDEO.path, torch.device(device))
+        assert frame.planes[0].device.type == device
+        assert converter.convert(frame).data.device.type == device
+
+    @pytest.mark.parametrize("case", _PLANES_VIDEOS, ids=_planes_ids)
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_planes_structure(self, case, device):
         # planes shape/dtype/device and the accompanying metadata.
         frame, converter = self._first_frame(case.video.path, device)
-        raw = frame.materialize()
-        planes, pix_fmt = raw.planes, raw.pix_fmt
+        planes, pix_fmt = frame.planes, frame.pix_fmt
 
         expected_pix_fmt = case.pix_fmt(device)
         if (
@@ -3918,33 +4003,32 @@ class TestBlocks:
         ):
             expected_pix_fmt = "p016le"
 
-        # materialize() reports the depth of the pixel format. It usually
-        # matches the source's, but not always - it depends on nvdec's
-        # capabilities.
+        # bit_depth is the depth of the pixel format. It usually matches the
+        # source's, but not always - it depends on nvdec's capabilities.
         expected_bit_depth = (
             16 if expected_pix_fmt in ("p016le", "yuv444p16le") else case.bit_depth
         )
 
         assert pix_fmt == expected_pix_fmt
-        assert raw.colorspace in ("bt709", "bt2020nc", "smpte170m", "unknown")
-        assert raw.color_range in ("tv", "pc", "unknown")  # FFmpeg has only these
+        assert frame.colorspace in ("bt709", "bt2020nc", "smpte170m", "unknown")
+        assert frame.color_range in ("tv", "pc", "unknown")  # FFmpeg has only these
 
         # All planes are 2D views living on the frame's own device.
         # TODO_API_BREAKDOWN DESIGN P1: Can there be more planes? Should test?
         assert len(planes) == 3
         for plane in planes:
             assert plane.ndim == 2
-            assert plane.device.type == frame.device
+            assert plane.device.type == device
 
-        assert raw.bit_depth == expected_bit_depth
+        assert frame.bit_depth == expected_bit_depth
 
-        expected_dtype = torch.uint16 if raw.bit_depth > 8 else torch.uint8
+        expected_dtype = torch.uint16 if frame.bit_depth > 8 else torch.uint8
         assert all(plane.dtype == expected_dtype for plane in planes)
 
         if device == "cuda" and expected_dtype == torch.uint16:
             # Whatever depth the format claims, a 16-bit CUDA surface holds the
             # source's samples msb-aligned, with the unused low bits zeroed.
-            # That's what lets test_materialize_cuda_planes_match_cpu shift them
+            # That's what lets test_cuda_planes_match_cpu shift them
             # back down by 16 - bit_depth and compare against the CPU planes.
             unused_low_bits = (1 << (16 - case.bit_depth)) - 1
             for plane in planes:
@@ -3952,7 +4036,7 @@ class TestBlocks:
 
         Y, U, V = planes
         height, width = converter.convert(frame).data.shape[1:]
-        assert Y.shape == (height, width)
+        assert Y.shape == (height, width) == (frame.height, frame.width)
 
         # Below is just a fancy way to divide by 2 accounting for odd sizes,
         # matching the FFmpeg logic
@@ -3964,18 +4048,23 @@ class TestBlocks:
         assert U.shape == V.shape == expected_chroma_shape
 
     @pytest.mark.parametrize("device", _block_devices())
-    def test_materialize_planes_are_not_rotated_but_color_conversion_rotates(
-        self, device
-    ):
+    def test_planes_are_not_rotated_but_color_conversion_rotates(self, device):
         # The planes are views on the decoder's own memory, so they're in the
-        # source's pre-rotation geometry. Only the converted frame is rotated.
+        # source's pre-rotation geometry, and so are the dims the frame reports.
+        # Only the converted frame is rotated.
         frame, converter = self._first_frame(NASA_VIDEO_ROTATED.path, device)
-        Y = frame.materialize().planes[0]
+        Y = frame.planes[0]
 
         height = NASA_VIDEO_ROTATED.get_height()  # post-rotation
         width = NASA_VIDEO_ROTATED.get_width()
-        assert Y.shape == (width, height)
+        assert Y.shape == (width, height) == (frame.height, frame.width)
+        assert frame.rotation_degrees == 90
         assert converter.convert(frame).data.shape == (3, height, width)
+
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_no_rotation(self, device):
+        frame, _ = self._first_frame(NASA_VIDEO.path, device)
+        assert frame.rotation_degrees == 0
 
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize("record_stream", (True, False))
@@ -4005,7 +4094,7 @@ class TestBlocks:
                     while decoded:
                         frame = decoded.pop(0)
                         torch.cuda._sleep(20_000_000)  # ~10ms, fall behind
-                        reads.append(frame.materialize().planes[0].clone())
+                        reads.append(frame.planes[0].clone())
                         if separate_stream and record_stream:
                             frame.storage.record_stream(read_stream)
             torch.cuda.synchronize()
@@ -4047,13 +4136,13 @@ class TestBlocks:
         torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
 
     @pytest.mark.needs_cuda
-    @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)
-    def test_materialize_cuda_planes_match_cpu(self, case):
+    @pytest.mark.parametrize("case", _PLANES_VIDEOS, ids=_planes_ids)
+    def test_cuda_planes_match_cpu(self, case):
         # NVDEC and FFmpeg's software decoder produce the very same samples, so
         # the raw planes must match bit-for-bit across devices, once the NVDEC
         # ones are shifted back down to the CPU planes' scale.
-        cpu = self._first_frame(case.video.path, "cpu")[0].materialize()
-        cuda = self._first_frame(case.video.path, "cuda")[0].materialize()
+        cpu = self._first_frame(case.video.path, "cpu")[0]
+        cuda = self._first_frame(case.video.path, "cuda")[0]
 
         # Every 16-bit CUDA surface spans the full uint16 range, whether it says
         # so (p016le, yuv444p16le) or reports the source's depth (p010le,
@@ -4069,7 +4158,7 @@ class TestBlocks:
                 rtol=0,
             )
 
-    @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)
+    @pytest.mark.parametrize("case", _PLANES_VIDEOS, ids=_planes_ids)
     @pytest.mark.parametrize("device", _block_devices())
     def test_color_converter_honors_sample_bit_depth(self, case, device):
         # Paint the planes with the limited-range black and white points,
@@ -4078,16 +4167,15 @@ class TestBlocks:
         # a sample carries and where they sit: misreading either sends both ends
         # to the same extreme.
         frame, converter = self._first_frame(case.video.path, device)
-        raw = frame.materialize()
-        assert raw.color_range in ("tv", "unknown")  # unknown is treated as tv
+        assert frame.color_range in ("tv", "unknown")  # unknown is treated as tv
 
         def sample(value_8bit):
-            value = value_8bit << (raw.bit_depth - 8)
-            if _is_msb_aligned(raw.pix_fmt):
-                value <<= 16 - raw.bit_depth
+            value = value_8bit << (frame.bit_depth - 8)
+            if _is_msb_aligned(frame.pix_fmt):
+                value <<= 16 - frame.bit_depth
             return value
 
-        Y, U, V = raw.planes
+        Y, U, V = frame.planes
         U.fill_(sample(128))  # no color
         V.fill_(sample(128))
 
@@ -4101,14 +4189,14 @@ class TestBlocks:
             assert (data - expected).abs().max() <= 5
 
     @pytest.mark.parametrize("device", _block_devices())
-    def test_materialize_mutation_visible_in_color_convert(self, device):
-        # materialize() returns views into the frame's own memory, so editing
-        # them and color-converting the frame reflects the edit.
+    def test_planes_mutation_visible_in_color_convert(self, device):
+        # The planes are views into the frame's own memory, so editing them and
+        # color-converting the frame reflects the edit.
         frame, converter = self._first_frame(NASA_VIDEO.path, device)
 
         original = converter.convert(frame).data.clone()
 
-        planes = frame.materialize().planes
+        planes = frame.planes
         for value, plane in zip((50, 100, 150), planes):
             plane.fill_(value)  # overwrite Y, U, V with distinct constants
         edited = converter.convert(frame).data
@@ -4123,25 +4211,26 @@ class TestBlocks:
             assert channel.min().item() == channel.max().item()
 
     @pytest.mark.parametrize("device", _block_devices())
-    def test_materialize_is_a_view(self, device):
-        # Two independent materialize() calls view the same underlying buffer,
-        # so a write through one is visible through the other.
+    def test_planes_are_views(self, device):
+        # The planes view the frame's own buffer, and they're cached: asking
+        # twice hands back the very same tensors.
         frame, _ = self._first_frame(NASA_VIDEO.path, device)
-        planes_a = frame.materialize().planes
-        planes_b = frame.materialize().planes
+        planes_a = frame.planes
+        planes_b = frame.planes
+        assert all(a is b for a, b in zip(planes_a, planes_b))
 
         original = int(planes_a[0][0, 0].item())
         planes_a[0][0, 0] = original ^ 0xFF  # flip first pixel in Y
         assert int(planes_b[0][0, 0].item()) == (original ^ 0xFF)
 
-    @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)
+    @pytest.mark.parametrize("case", _PLANES_VIDEOS, ids=_planes_ids)
     @pytest.mark.parametrize("device", _block_devices())
-    def test_materialize_planes_outlive_frame(self, case, device):
+    def test_planes_outlive_frame(self, case, device):
         # The views keep the frame alive, so they stay valid (readable and
-        # writable) after the DecodedFrame they came from is dropped.
+        # writable) after the RawFrame they came from is dropped.
         # grep for this test name to see associated comment in the code.
         frame, _ = self._first_frame(case.video.path, device)
-        planes = frame.materialize().planes
+        planes = frame.planes
         saved = [plane.clone() for plane in planes]
 
         del frame
@@ -4155,11 +4244,11 @@ class TestBlocks:
 
     @pytest.mark.parametrize("video", (NASA_VIDEO, BT709_FULL_RANGE))
     @pytest.mark.parametrize("device", _block_devices())
-    def test_materialize_neutral_chroma_is_grayscale(self, video, device):
+    def test_neutral_chroma_is_grayscale(self, video, device):
         # Forcing the chroma planes to neutral (128) yields a gray image
         # (R == G == B). Not testing much, but fun - isn't it?
         frame, converter = self._first_frame(video.path, device)
-        planes = frame.materialize().planes
+        planes = frame.planes
         assert planes[0].dtype == torch.uint8
 
         _, U, V = planes
@@ -4182,18 +4271,45 @@ class TestBlocks:
             (TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT, "yuv444p16le"),
         ),
     )
-    def test_materialize_cpu_fallback_is_on_cuda(self, video, expected_pix_fmt):
+    def test_cpu_fallback_is_on_cuda(self, video, expected_pix_fmt):
         # A CUDA PacketDecoder hands out CUDA frames even for the streams it has
         # to decode on the CPU, and they're in an NVDEC surface format like any
         # other CUDA frame.
         assert VideoDecoder(video.path, device="cuda").cpu_fallback
 
         frame, _ = self._first_frame(video.path, "cuda")
-        assert frame.device == "cuda"
+        assert frame.pix_fmt == expected_pix_fmt
+        assert all(plane.device.type == "cuda" for plane in frame.planes)
 
-        raw = frame.materialize()
-        assert raw.pix_fmt == expected_pix_fmt
-        assert all(plane.device.type == "cuda" for plane in raw.planes)
+    @pytest.mark.parametrize(
+        "pix_fmt, codec, container",
+        (
+            ("pal8", "rawvideo", "nut"),
+            # Before FFmpeg 8 the nut muxer has no rawvideo tag for the float
+            # formats and silently writes a bogus one, so the file reads back as
+            # rgb555le. EXR in mkv stores gbrpf32le properly on all versions.
+            ("gbrpf32le", "exr", "mkv"),
+        ),
+    )
+    def test_planes_of_non_viewable_format(self, tmp_path, pix_fmt, codec, container):
+        # Palettised and float formats can't be handed out as views. Everything
+        # *but* the planes still works, which is what lets a caller check
+        # pix_fmt before reaching for them.
+        path = tmp_path / f"{pix_fmt}.{container}"
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i", "testsrc2=size=64x48:rate=10:duration=1",
+                "-c:v", codec, "-pix_fmt", pix_fmt, str(path),
+            ],
+            check=True,
+        )  # fmt: skip
+
+        frame, _ = self._first_frame(path, "cpu")
+        assert frame.pix_fmt == pix_fmt
+        assert (frame.width, frame.height) == (64, 48)
+        with pytest.raises(RuntimeError, match=f"Cannot expose {pix_fmt} as a view"):
+            frame.planes
 
     # ===== seeking =====
 
@@ -4206,8 +4322,8 @@ class TestBlocks:
         demuxer.seek(seconds)
         decoder.reset()
         for packet in demuxer:
-            for decoded_frame in decoder.decode(packet):
-                yield converter.convert(decoded_frame)
+            for raw_frame in decoder.decode(packet):
+                yield converter.convert(raw_frame)
         # Seeking into the last GOP can leave the codec holding frames until
         # it's told the stream ended.
         for decoded_frame in decoder.drain():
@@ -4293,6 +4409,52 @@ class TestBlocks:
         assert got.pts_seconds > seconds
         exact = VideoDecoder(H265_VIDEO.path, seek_mode="exact", device=device)
         assert exact.get_frame_played_at(seconds).pts_seconds == seconds
+
+    @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_seek_matches_video_decoder_approximate_get_frame_played_at(
+        self, video, device
+    ):
+        # Our seek is VideoDecoder's approximate one, frame for frame.
+        #
+        # It holds against get_frame_played_at() and against nothing else, and
+        # that scoping is the point. get_frame_played_at() is the only
+        # VideoDecoder API that seeks straight to the timestamp it was given:
+        # it turns `seconds` into a pts and hands that to FFmpeg, which is the
+        # same two steps Demuxer.seek() takes, so the match is structural
+        # rather than a property of these files. Every other API goes through
+        # a frame index, which approximate mode derives from the header's
+        # average fps and converts back into a pts - a round trip nothing in
+        # the blocks performs, and one that doesn't come back where it started
+        # unless the file is constant-frame-rate.
+        video_decoder = VideoDecoder(video.path, device=device)
+        num_frames = video_decoder.metadata.num_frames
+
+        for index in range(0, num_frames, max(1, num_frames // 10)):
+            frame = video_decoder.get_frame_at(index)
+            # Aim at the middle of a frame, so that no target lands on a frame
+            # boundary where the two sides could round differently.
+            seconds = frame.pts_seconds + frame.duration_seconds / 2
+
+            # A fresh VideoDecoder per target: it skips the seek when the
+            # target is just ahead of the last frame it decoded, which would
+            # hide the very behaviour we're comparing against.
+            expected = VideoDecoder(
+                video.path, seek_mode="approximate", device=device
+            ).get_frame_played_at(seconds)
+
+            blocks = self._make_blocks(video.path, device)
+            got = next(
+                frame
+                for frame in self._frames_after_seek(blocks, seconds)
+                # VideoDecoder's own criterion: the first frame that hasn't
+                # finished playing by then. Not `pts_seconds >= seconds`, which
+                # would skip the target frame whenever we land right on it.
+                if frame.pts_seconds + frame.duration_seconds > seconds
+            )
+
+            assert got.pts_seconds == expected.pts_seconds
+            assert_frames_equal(got.data, expected.data)
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_seek_without_reset_yields_stale_frames(self, device):
@@ -4599,6 +4761,88 @@ class TestBlocks:
 
         with pytest.raises(RuntimeError, match="has been drained"):
             decoder.decode(packet)
+
+    # ===== source kinds =====
+
+    @pytest.mark.parametrize("make_source", _BLOCKS_SOURCES)
+    def test_source_kinds(self, make_source):
+        # Every source kind demuxes into the very same frames as the path does.
+        got = self._decode_sequential(make_source(NASA_VIDEO.path), "cpu")
+        expected = VideoDecoder(NASA_VIDEO.path).get_all_frames()
+
+        assert len(got) == len(expected)
+        for got_frame, expected_pts, expected_data in zip(
+            got, expected.pts_seconds, expected.data
+        ):
+            assert got_frame.pts_seconds == expected_pts
+            assert_frames_equal(got_frame.data, expected_data)
+
+    @pytest.mark.parametrize("make_source", _BLOCKS_SOURCES)
+    def test_seek_on_every_source_kind(self, make_source):
+        # Seeking anything but a path goes through the AVIO seek callback -
+        # back into Python for a file-like, into our own buffer for bytes and
+        # tensors - instead of through FFmpeg's own file I/O.
+        video_decoder = VideoDecoder(NASA_VIDEO.path)
+        seconds = video_decoder.get_frame_at(
+            video_decoder._get_key_frame_indices()[1]
+        ).pts_seconds
+
+        blocks = self._make_blocks(make_source(NASA_VIDEO.path), "cpu")
+        got = self._first_frame_after_seek(blocks, seconds)
+        expected = video_decoder.get_frame_played_at(seconds)
+
+        assert got.pts_seconds == expected.pts_seconds == seconds
+        assert_frames_equal(got.data, expected.data)
+
+    # ===== stream_index =====
+
+    @pytest.mark.parametrize("stream_index", (None, 0, 3))
+    def test_stream_index(self, stream_index):
+        # nasa_13013.mp4 has two video streams, 0 and 3, of different sizes,
+        # and 3 is the best one, i.e. the one used when nothing is requested.
+        demuxer = Demuxer(NASA_VIDEO.path, stream_index=stream_index)
+        decoder = PacketDecoder(demuxer)
+        converter = ColorConverter()
+        got = [
+            converter.convert(raw_frame)
+            for raw_frame in itertools.islice(
+                self._decode(decoder, self._demux(demuxer)), 10
+            )
+        ]
+
+        expected = VideoDecoder(NASA_VIDEO.path, stream_index=stream_index)[:10]
+
+        assert len(got) == len(expected) == 10
+        for got_frame, expected_data in zip(got, expected):
+            assert_frames_equal(got_frame.data, expected_data)
+
+    @pytest.mark.parametrize("stream_index", (1, 4))  # the mp4's aac streams
+    def test_audio_stream_index_raises(self, stream_index):
+        with pytest.raises(RuntimeError, match="is not a video stream.*'audio'"):
+            Demuxer(NASA_VIDEO.path, stream_index=stream_index)
+
+    def test_audio_only_file_raises(self):
+        with pytest.raises(RuntimeError, match="No valid video stream found"):
+            Demuxer(NASA_AUDIO_MP3.path)
+
+    def test_non_video_stream_index_raises(self):
+        # Stream 2 of the mp4 is a subtitle stream.
+        with pytest.raises(RuntimeError, match="is not a video stream.*'subtitle'"):
+            Demuxer(NASA_VIDEO.path, stream_index=2)
+
+    @pytest.mark.parametrize("stream_index", (-1, 6, 1000))
+    def test_invalid_stream_index_raises(self, stream_index):
+        with pytest.raises(RuntimeError, match="is not a valid stream"):
+            Demuxer(NASA_VIDEO.path, stream_index=stream_index)
+
+    def test_bad_source_type_raises(self):
+        with pytest.raises(TypeError, match="Unknown source type"):
+            Demuxer(123)
+
+        # user mistakenly forgets to specify binary reading when creating a
+        # file-like object from open()
+        with pytest.raises(TypeError, match="binary reading?"):
+            Demuxer(open(NASA_VIDEO.path))
 
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn
@@ -5258,8 +5502,6 @@ class TestImageDecoder:
     @needs_jpeg
     @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
     def test_cuda_jpeg_exif_orientation(self, orientation):
-        import io
-
         base = Image.open(GRADIENT_JPEG.path).convert("RGB")
         exif = base.getexif()
         exif[0x0112] = orientation  # 0x0112 == EXIF Orientation tag

@@ -60,11 +60,71 @@ Demuxer::Demuxer(
   STD_TORCH_CHECK(raw_context != nullptr, "Failed to allocate AVFormatContext");
   format_context_.reset(raw_context);
 
-  status = avformat_find_stream_info(format_context_.get(), nullptr);
+  select_stream(stream_index);
+}
+
+Demuxer::Demuxer(
+    std::unique_ptr<AVIOContextHolder> avio_context_holder,
+    std::optional<int> stream_index)
+    : avio_context_holder_(std::move(avio_context_holder)) {
+  set_ffmpeg_log_level();
+
+  STD_TORCH_CHECK(avio_context_holder_ != nullptr, "Context holder is null");
+
+  // FFmpeg takes a reference to the pointer in the call to open, so we can't
+  // hand it a unique_ptr. That means we must free the context ourselves if the
+  // open fails.
+  AVFormatContext* raw_context = avformat_alloc_context();
+  STD_TORCH_CHECK(raw_context != nullptr, "Failed to allocate AVFormatContext");
+  raw_context->pb = avio_context_holder_->get_avio_context();
+
+  int status = avformat_open_input(&raw_context, nullptr, nullptr, nullptr);
+  if (status != 0) {
+    avformat_free_context(raw_context);
+    STD_TORCH_CHECK(
+        false,
+        "Could not open input buffer: " +
+            get_ffmpeg_error_string_from_error_code(status));
+  }
+  format_context_.reset(raw_context);
+
+  select_stream(stream_index);
+}
+
+void Demuxer::validate_requested_stream(int stream_index) {
+  int num_streams = static_cast<int>(format_context_->nb_streams);
+  STD_TORCH_CHECK(
+      stream_index >= 0 && stream_index < num_streams,
+      "The stream index ",
+      stream_index,
+      " is not a valid stream. The file has ",
+      num_streams,
+      " streams, so the index must be in [0, ",
+      num_streams - 1,
+      "].");
+
+  AVMediaType media_type =
+      format_context_->streams[stream_index]->codecpar->codec_type;
+  const char* media_type_name = av_get_media_type_string(media_type);
+  STD_TORCH_CHECK(
+      media_type == AVMEDIA_TYPE_VIDEO,
+      "The stream at index ",
+      stream_index,
+      " is not a video stream, it is of type '",
+      media_type_name == nullptr ? "unknown" : media_type_name,
+      "'. Only video streams can be demuxed.");
+}
+
+void Demuxer::select_stream(std::optional<int> stream_index) {
+  int status = avformat_find_stream_info(format_context_.get(), nullptr);
   STD_TORCH_CHECK(
       status >= 0,
       "Failed to find stream info: ",
       get_ffmpeg_error_string_from_error_code(status));
+
+  if (stream_index.has_value()) {
+    validate_requested_stream(*stream_index);
+  }
 
   active_stream_index_ = av_find_best_stream(
       format_context_.get(),
@@ -75,9 +135,8 @@ Demuxer::Demuxer(
       /*flags=*/0);
   STD_TORCH_CHECK(
       active_stream_index_ >= 0,
-      "No valid video stream found in input file (requested index ",
-      stream_index.value_or(-1),
-      ").");
+      "No valid video stream found in input file. Only video streams are "
+      "supported: audio streams cannot be demuxed.");
   stream_ = format_context_->streams[active_stream_index_];
 
   // We only need packets from the active stream, so tell FFmpeg to discard the

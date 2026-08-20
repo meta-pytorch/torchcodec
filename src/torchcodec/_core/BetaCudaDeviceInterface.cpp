@@ -384,6 +384,8 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
   STD_TORCH_CHECK(
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
+  device_ = StableDevice(kStableCUDA, get_device_index(device_));
+
   // Note: now that we have the CudaContextGuard, we might not need to do that
   // anymore. The comment says we need pytorch to create the context - maybe
   // that's true, but that's a very old comment now.

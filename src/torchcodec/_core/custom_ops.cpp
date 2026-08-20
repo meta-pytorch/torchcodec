@@ -74,7 +74,11 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "get_frames_by_pts(Tensor(a!) decoder, *, Tensor timestamps) -> (Tensor, Tensor, Tensor)");
   m.def(
-      "_blocks_create_demuxer(str filename, int? stream_index=None) -> Tensor");
+      "_blocks_create_demuxer_from_file(str filename, int? stream_index=None) -> Tensor");
+  m.def(
+      "_blocks_create_demuxer_from_tensor(Tensor video_tensor, int? stream_index=None) -> Tensor");
+  m.def(
+      "_blocks_create_demuxer_from_file_like(int file_like_context, int? stream_index=None) -> Tensor");
   m.def("_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool)");
   m.def("_blocks_demuxer_seek(Tensor(a!) demuxer, float seconds) -> ()");
   m.def(
@@ -84,12 +88,15 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
   m.def("_blocks_packet_decoder_reset(Tensor(a!) decoder) -> ()");
   m.def(
-      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, str, Tensor)");
+      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, Device, Tensor)");
   m.def(
       "_blocks_create_color_converter(str device=\"cpu\", str output_dtype=\"uint8\") -> Tensor");
-  m.def("_blocks_convert_frame(Tensor(a!) converter, Tensor frame) -> Tensor");
   m.def(
-      "_blocks_frame_to_planes(Tensor frame, str device) -> (Tensor, Tensor, Tensor, Tensor, str, str, str, int)");
+      "_blocks_convert_frame(Tensor(a!) converter, Tensor frame, Device device) -> Tensor");
+  m.def(
+      "_blocks_frame_metadata(Tensor frame) -> (str, str, str, int, int, int, float)");
+  m.def(
+      "_blocks_frame_planes(Tensor frame, Device device) -> (Tensor, Tensor, Tensor, Tensor)");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
   m.def("get_json_metadata(Tensor(a!) decoder) -> str");
   m.def("get_container_json_metadata(Tensor(a!) decoder) -> str");
@@ -793,14 +800,51 @@ OpsAudioFramesOutput get_frames_by_pts_in_range_audio(
 // Building-block ops (torchcodec.decoders._blocks)
 // ==============================
 
-torch::stable::Tensor _blocks_create_demuxer(
+std::optional<int> to_optional_int(std::optional<int64_t> value) {
+  if (!value.has_value()) {
+    return std::nullopt;
+  }
+  return static_cast<int>(value.value());
+}
+
+torch::stable::Tensor _blocks_create_demuxer_from_file(
     std::string filename,
     std::optional<int64_t> stream_index) {
-  std::optional<int> stream_index_int;
-  if (stream_index.has_value()) {
-    stream_index_int = static_cast<int>(stream_index.value());
-  }
-  auto demuxer = std::make_unique<Demuxer>(filename, stream_index_int);
+  auto demuxer =
+      std::make_unique<Demuxer>(filename, to_optional_int(stream_index));
+  return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
+}
+
+torch::stable::Tensor _blocks_create_demuxer_from_tensor(
+    const torch::stable::Tensor& video_tensor,
+    std::optional<int64_t> stream_index) {
+  STD_TORCH_CHECK(
+      video_tensor.is_contiguous(), "video_tensor must be contiguous");
+  STD_TORCH_CHECK(
+      video_tensor.scalar_type() == kStableUInt8,
+      "video_tensor must be kUInt8");
+
+  auto avio_context_holder = std::make_unique<AVIOContextHolder>(
+      std::make_unique<TensorReadIO>(video_tensor), /*is_for_writing=*/false);
+  auto demuxer = std::make_unique<Demuxer>(
+      std::move(avio_context_holder), to_optional_int(stream_index));
+  return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
+}
+
+torch::stable::Tensor _blocks_create_demuxer_from_file_like(
+    int64_t file_like_context,
+    std::optional<int64_t> stream_index) {
+  auto file_like_context_ptr =
+      reinterpret_cast<IOInterface*>(file_like_context);
+  STD_TORCH_CHECK(
+      file_like_context_ptr != nullptr,
+      "file_like_context must be a valid pointer");
+
+  auto avio_context_holder = std::make_unique<AVIOContextHolder>(
+      std::unique_ptr<IOInterface>(file_like_context_ptr),
+      /*is_for_writing=*/false);
+  auto demuxer = std::make_unique<Demuxer>(
+      std::move(avio_context_holder), to_optional_int(stream_index));
   return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
 }
 
@@ -854,24 +898,13 @@ void _blocks_packet_decoder_reset(torch::stable::Tensor& decoder) {
   unwrap_tensor_to_pointer<PacketDecoder>(decoder)->reset();
 }
 
-// TODO_API_BREAKDOWN CC P1: I hate this.
-std::string device_to_string(const StableDevice& device) {
-  std::string name = device_type_name(device.type());
-  // A negative index means "unspecified" (e.g. device was just "cuda"); leave
-  // it off so the string round-trips and resolves to the current device.
-  if (device.type() != kStableCPU && device.index() >= 0) {
-    name += ":" + std::to_string(device.index());
-  }
-  return name;
-}
-
 // (frame_handle, status, pts_seconds, duration_seconds, device, storage).
 using OpsReceiveFrameOutput = std::tuple<
     torch::stable::Tensor,
     int64_t,
     double,
     double,
-    std::string,
+    StableDevice,
     torch::stable::Tensor>;
 
 OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
@@ -886,7 +919,7 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
         static_cast<int64_t>(status),
         0.0,
         0.0,
-        std::string("cpu"),
+        StableDevice(kStableCPU),
         torch::stable::empty({int64_t(0)}, kStableUInt8));
   }
   AVRational time_base = decoder_ptr->time_base();
@@ -896,7 +929,7 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
   // ones a CUDA decoder had to decode on the CPU and upload.
   // TODO_API_BREAKDOWN DESIGN P1: Not sure we need to return the device at all,
   // the device should always match the device parameter now.
-  std::string device = device_to_string(decoder_ptr->device());
+  StableDevice device = decoder_ptr->device();
   torch::stable::Tensor storage =
       decoder_ptr->get_frame_storage(*av_frame).value_or(
           torch::stable::empty({int64_t(0)}, kStableUInt8));
@@ -920,42 +953,54 @@ torch::stable::Tensor _blocks_create_color_converter(
 
 torch::stable::Tensor _blocks_convert_frame(
     torch::stable::Tensor& converter,
-    torch::stable::Tensor& frame) {
+    torch::stable::Tensor& frame,
+    StableDevice device) {
   ColorConverter* converter_ptr =
       unwrap_tensor_to_pointer<ColorConverter>(converter);
-  return converter_ptr->convert(*unwrap_tensor_to_pointer<AVFrame>(frame));
+  return converter_ptr->convert(
+      *unwrap_tensor_to_pointer<AVFrame>(frame), device);
 }
 
-using OpsFrameToPlanesOutput = std::tuple<
-    torch::stable::Tensor,
-    torch::stable::Tensor,
-    torch::stable::Tensor,
-    torch::stable::Tensor,
+using OpsFrameMetadataOutput = std::tuple<
     std::string, // pixel-format
     std::string, // colorspace
     std::string, // color range
-    int64_t>; // bit depth
+    int64_t, // bit depth
+    int64_t, // width
+    int64_t, // height
+    double>; // rotation, in degrees
 
-OpsFrameToPlanesOutput _blocks_frame_to_planes(
+OpsFrameMetadataOutput _blocks_frame_metadata(
+    torch::stable::Tensor& tensor_handle) {
+  FrameMetadata metadata =
+      frame_metadata(*unwrap_tensor_to_pointer<AVFrame>(tensor_handle));
+  return std::make_tuple(
+      metadata.pix_fmt,
+      metadata.colorspace,
+      metadata.color_range,
+      metadata.bit_depth,
+      metadata.width,
+      metadata.height,
+      metadata.rotation_degrees);
+}
+
+using OpsFramePlanesOutput = std::tuple<
+    torch::stable::Tensor,
+    torch::stable::Tensor,
+    torch::stable::Tensor,
+    torch::stable::Tensor>;
+
+OpsFramePlanesOutput _blocks_frame_planes(
     torch::stable::Tensor& tensor_handle,
-    std::string device) {
+    StableDevice device) {
   AVFrame* av_frame = unwrap_tensor_to_pointer<AVFrame>(tensor_handle);
-  FramePlanes result =
-      frame_to_planes(*av_frame, StableDevice(device), tensor_handle);
+  std::vector<torch::stable::Tensor> planes =
+      frame_planes(*av_frame, device, tensor_handle);
 
   // Op schema wants a fixed number of planes, so we pad with empty tensors that
   // then get removed at the Python level.
-  std::vector<torch::stable::Tensor> views = std::move(result.planes);
-  views.resize(4, torch::stable::empty({int64_t(0)}, kStableUInt8));
-  return std::make_tuple(
-      views[0],
-      views[1],
-      views[2],
-      views[3],
-      result.pix_fmt,
-      result.colorspace,
-      result.color_range,
-      result.bit_depth);
+  planes.resize(4, torch::stable::empty({int64_t(0)}, kStableUInt8));
+  return std::make_tuple(planes[0], planes[1], planes[2], planes[3]);
 }
 
 // For testing only. We need to implement this operation as a core library
@@ -1443,7 +1488,15 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
   m.impl("_create_from_file_like", TORCH_BOX(&_create_from_file_like));
-  m.impl("_blocks_create_demuxer", TORCH_BOX(&_blocks_create_demuxer));
+  m.impl(
+      "_blocks_create_demuxer_from_file",
+      TORCH_BOX(&_blocks_create_demuxer_from_file));
+  m.impl(
+      "_blocks_create_demuxer_from_tensor",
+      TORCH_BOX(&_blocks_create_demuxer_from_tensor));
+  m.impl(
+      "_blocks_create_demuxer_from_file_like",
+      TORCH_BOX(&_blocks_create_demuxer_from_file_like));
   m.impl(
       "_blocks_create_color_converter",
       TORCH_BOX(&_blocks_create_color_converter));
@@ -1524,7 +1577,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       "_blocks_packet_decoder_receive_frame",
       TORCH_BOX(&_blocks_packet_decoder_receive_frame));
   m.impl("_blocks_convert_frame", TORCH_BOX(&_blocks_convert_frame));
-  m.impl("_blocks_frame_to_planes", TORCH_BOX(&_blocks_frame_to_planes));
+  m.impl("_blocks_frame_metadata", TORCH_BOX(&_blocks_frame_metadata));
+  m.impl("_blocks_frame_planes", TORCH_BOX(&_blocks_frame_planes));
   m.impl("_test_frame_pts_equality", TORCH_BOX(&_test_frame_pts_equality));
   m.impl(
       "scan_all_streams_to_update_metadata",

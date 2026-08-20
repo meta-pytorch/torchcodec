@@ -20,6 +20,7 @@ from torchcodec._core._decoder_utils import create_video_decoder
 from torchcodec._logging import _LG
 from torchcodec.decoders._decoder_utils import (
     _get_cuda_backend,
+    convert_device_to_str,
     convert_output_dtype_to_str,
 )
 from torchcodec.transforms import DecoderTransform
@@ -227,10 +228,7 @@ class VideoDecoder:
         output_dtype = convert_output_dtype_to_str(output_dtype)
 
         device_variant = _get_cuda_backend()
-        if device is None:
-            device = str(torch.get_default_device())
-        elif isinstance(device, torch_device):
-            device = str(device)
+        device = convert_device_to_str(device)
 
         if (
             device.startswith("cuda")
