@@ -843,6 +843,11 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   }
   previously_mapped_frame_ = frame_ptr;
 
+  // The mapping only *enqueues* the post-processing that fills the surface, on
+  // nvdec_output_stream_. Mark that point so consumers running on another
+  // stream can wait for this frame's content, and only for it.
+  nvdec_surface_ready_.record(nvdec_output_stream_);
+
   av_frame = convert_cuda_frame_to_av_frame(frame_ptr, pitch, disp_info);
 
   return AVSUCCESS;
@@ -1086,9 +1091,7 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
   // The surface's content is produced by the mapping post-processing that
   // receive_frame() enqueued on nvdec_output_stream_, which isn't necessarily
   // the stream we're copying on.
-  sync_streams(
-      /*running_stream=*/nvdec_output_stream_,
-      /*waiting_stream=*/current_stream);
+  nvdec_surface_ready_.make_stream_wait(current_stream);
 
   cudaError_t err = cudaMemcpyAsync(
       storage.mutable_data_ptr(),
@@ -1381,9 +1384,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
       // mapping post-processing that receive_frame() enqueued on
       // nvdec_output_stream_. An uploaded frame, on the other hand, was
       // uploaded on current_stream and needs no ordering.
-      sync_streams(
-          /*running_stream=*/nvdec_output_stream_,
-          /*waiting_stream=*/current_stream);
+      nvdec_surface_ready_.make_stream_wait(current_stream);
     }
   }
 

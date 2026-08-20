@@ -37,9 +37,7 @@ namespace facebook::torchcodec {
 // owning a GPU buffer. Find one that covers both.
 struct StandAloneFrameAttachedData {
   // Marks the point where the copy (or upload) that filled `storage` was
-  // enqueued. A consumer on another stream blocks on it, and thereby waits for
-  // this frame's production only - not for whatever the decoder has enqueued
-  // since, which in a pipelined setup is most of a backlog.
+  // enqueued. A consumer on another stream must wait on it.
   CudaEvent frame_ready;
   torch::stable::Tensor storage;
 };
@@ -108,6 +106,13 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   void unmap_previous_frame();
 
   cudaStream_t nvdec_output_stream_ = nullptr;
+
+  // Marks the point in nvdec_output_stream_ where the mapping of the
+  // currently-mapped surface was enqueued. Consumers of that surface running on
+  // another stream wait on it. Re-recorded by every mapping, which is safe:
+  // NVDEC has a single output surface, so a frame is always consumed before the
+  // next one is mapped.
+  CudaEvent nvdec_surface_ready_;
 
   // NVDEC gives us a single output surface, so every mapped frame lives at the
   // same address and a new mapping overwrites whatever the previous frame's

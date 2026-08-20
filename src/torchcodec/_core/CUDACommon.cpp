@@ -76,8 +76,6 @@ void CudaEvent::make_stream_wait(cudaStream_t waiting_stream) const {
   if (event_ == nullptr) {
     return;
   }
-  // The wait captures the event's state as of *now*, so re-recording the event
-  // afterwards doesn't retroactively change what `waiting_stream` waits for.
   cudaError_t err = cudaStreamWaitEvent(waiting_stream, event_, 0);
   STD_TORCH_CHECK(
       err == cudaSuccess,
