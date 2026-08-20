@@ -21,6 +21,7 @@ from ._frame import Packet
 # it, document it (?), test it. Maybe we acutally do want to replicate
 # approximate and exact. Might not actually be difficult.
 
+
 class Demuxer:
     """Demux building block: opens a container and yields the compressed
     :class:`Packet`\\ s for one (video) stream. Does no decoding.
