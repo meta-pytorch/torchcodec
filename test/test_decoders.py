@@ -3944,7 +3944,6 @@ class TestBlocks:
     def test_set_cuda_backend_is_a_noop(self, device):
         # The blocks always use the NVDEC CUDA backend. Asking for the "ffmpeg"
         # one changes nothing, rather than silently producing something else.
-        # TODO_API_BREAKDOWN UF P2: let's just error?
         with set_cuda_backend("ffmpeg"):
             got = self._to_frame_batch(self._decode_sequential(NASA_VIDEO.path, device))
         ref = self._to_frame_batch(self._decode_sequential(NASA_VIDEO.path, device))
