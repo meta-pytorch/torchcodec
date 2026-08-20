@@ -3914,6 +3914,34 @@ class TestBlocks:
             assert got.data.shape == ref.data.shape
             torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
 
+    @needs_cuda
+    @pytest.mark.parametrize(
+        ("frame_device", "converter_device"), (("cpu", "cuda"), ("cuda", "cpu"))
+    )
+    def test_converter_refuses_other_devices(self, frame_device, converter_device):
+        # Moving samples across devices costs as much as converting them, so the
+        # converter says so instead of doing it silently.
+        frame = next(self._decoded_frames(NASA_VIDEO.path, frame_device))
+        converter = ColorConverter(device=converter_device)
+        with pytest.raises(
+            RuntimeError, match="only converts frames that are already on its own"
+        ):
+            converter.convert(frame)
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "converter_device", ("cuda", "cuda:0", torch.device("cuda"))
+    )
+    def test_converter_accepts_every_spelling_of_the_same_device(
+        self, converter_device
+    ):
+        # The frame names a concrete GPU ("cuda:0") while the converter may have
+        # been given a bare "cuda". Those are the same place, and a pipeline
+        # that spells them differently must not trip the check.
+        frame = next(self._decoded_frames(NASA_VIDEO.path, "cuda"))
+        converted = ColorConverter(device=converter_device).convert(frame)
+        assert converted.data.device.type == "cuda"
+
     @pytest.mark.parametrize("device", _block_devices())
     def test_set_cuda_backend_is_a_noop(self, device):
         # The blocks always use the NVDEC CUDA backend. Asking for the "ffmpeg"

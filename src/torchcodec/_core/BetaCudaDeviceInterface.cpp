@@ -384,6 +384,14 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
   STD_TORCH_CHECK(
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
+  // Pin ourselves to a concrete GPU. A device index of -1 means "whatever the
+  // current device is", which is resolved afresh on every CUDA call: an
+  // interface built on one thread and used on another would then straddle two
+  // GPUs, and the device we report to our callers would name neither. It also
+  // lets a ColorConverter compare its device against a frame's without "cuda"
+  // and "cuda:0" looking like two different places.
+  device_ = StableDevice(kStableCUDA, get_device_index(device_));
+
   // Note: now that we have the CudaContextGuard, we might not need to do that
   // anymore. The comment says we need pytorch to create the context - maybe
   // that's true, but that's a very old comment now.
@@ -1402,7 +1410,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         "standalone ColorConverter must come from a PacketDecoder.");
     auto attached_data = reinterpret_cast<StandAloneFrameAttachedData*>(
         gpu_frame.opaque_ref->data);
-    producer_stream = attached_data->producer_stream;
+    producer_stream = static_cast<cudaStream_t>(attached_data->producer_stream);
   } else {
     STD_TORCH_CHECK(
         mode() == Mode::Both,

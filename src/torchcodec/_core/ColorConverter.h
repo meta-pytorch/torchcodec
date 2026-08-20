@@ -8,6 +8,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include "DeviceInterface.h"
@@ -23,7 +24,11 @@ class FORCE_PUBLIC_VISIBILITY ColorConverter {
       const StableDevice& device = StableDevice(kStableCPU),
       OutputDtypeConfig output_dtype_config = OutputDtypeConfig::UINT8);
 
-  torch::stable::Tensor convert(const AVFrame& av_frame);
+  // `frame_device` is where the frame's samples live. It must be this
+  // converter's device: we refuse to move samples around behind your back.
+  torch::stable::Tensor convert(
+      const AVFrame& av_frame,
+      const std::string& frame_device);
 
  private:
   void maybe_initialize_interface(OutputDtype output_dtype);

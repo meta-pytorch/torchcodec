@@ -23,6 +23,11 @@ ColorConverter::ColorConverter(
   STD_TORCH_CHECK(
       device_interface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");
+  // An accelerator interface resolves "current device" to a concrete index at
+  // construction. Take its device rather than the one we were handed, so that
+  // comparing ours against a frame's doesn't call "cuda" and "cuda:0" a
+  // mismatch.
+  device_ = device_interface_->device();
 }
 
 void ColorConverter::maybe_initialize_interface(OutputDtype output_dtype) {
@@ -44,7 +49,18 @@ void ColorConverter::maybe_initialize_interface(OutputDtype output_dtype) {
   initialized_output_dtype_ = output_dtype;
 }
 
-torch::stable::Tensor ColorConverter::convert(const AVFrame& av_frame) {
+torch::stable::Tensor ColorConverter::convert(
+    const AVFrame& av_frame,
+    const std::string& frame_device) {
+  STD_TORCH_CHECK(
+      StableDevice(frame_device) == device_,
+      "This ColorConverter is on ",
+      device_to_string(device_),
+      " but the frame's samples are on ",
+      frame_device,
+      ". A ColorConverter only converts frames that are already on its own "
+      "device: create one per device, or move the RGB output afterwards.");
+
   OutputDtype output_dtype = resolve_output_dtype(
       output_dtype_config_, static_cast<AVPixelFormat>(av_frame.format));
   maybe_initialize_interface(output_dtype);

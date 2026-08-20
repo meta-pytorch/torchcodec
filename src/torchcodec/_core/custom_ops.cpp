@@ -91,7 +91,8 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, str, Tensor)");
   m.def(
       "_blocks_create_color_converter(str device=\"cpu\", str output_dtype=\"uint8\") -> Tensor");
-  m.def("_blocks_convert_frame(Tensor(a!) converter, Tensor frame) -> Tensor");
+  m.def(
+      "_blocks_convert_frame(Tensor(a!) converter, Tensor frame, str device) -> Tensor");
   m.def(
       "_blocks_frame_metadata(Tensor frame) -> (str, str, str, int, int, int, float)");
   m.def(
@@ -897,17 +898,6 @@ void _blocks_packet_decoder_reset(torch::stable::Tensor& decoder) {
   unwrap_tensor_to_pointer<PacketDecoder>(decoder)->reset();
 }
 
-// TODO_API_BREAKDOWN CC P1: I hate this.
-std::string device_to_string(const StableDevice& device) {
-  std::string name = device_type_name(device.type());
-  // A negative index means "unspecified" (e.g. device was just "cuda"); leave
-  // it off so the string round-trips and resolves to the current device.
-  if (device.type() != kStableCPU && device.index() >= 0) {
-    name += ":" + std::to_string(device.index());
-  }
-  return name;
-}
-
 // (frame_handle, status, pts_seconds, duration_seconds, device, storage).
 using OpsReceiveFrameOutput = std::tuple<
     torch::stable::Tensor,
@@ -961,12 +951,16 @@ torch::stable::Tensor _blocks_create_color_converter(
   return wrap_pointer_to_tensor<ColorConverter>(std::move(converter));
 }
 
+// `device` is where the frame's samples live, as reported by the PacketDecoder
+// that produced it. It has to be the converter's own device.
 torch::stable::Tensor _blocks_convert_frame(
     torch::stable::Tensor& converter,
-    torch::stable::Tensor& frame) {
+    torch::stable::Tensor& frame,
+    std::string device) {
   ColorConverter* converter_ptr =
       unwrap_tensor_to_pointer<ColorConverter>(converter);
-  return converter_ptr->convert(*unwrap_tensor_to_pointer<AVFrame>(frame));
+  return converter_ptr->convert(
+      *unwrap_tensor_to_pointer<AVFrame>(frame), device);
 }
 
 using OpsFrameMetadataOutput = std::tuple<

@@ -38,6 +38,10 @@ class ColorConverter:
 
     ``device`` accepts a string or a ``torch.device``. It defaults to ``None``,
     which means the current default device (see ``torch.set_default_device``).
+    It must be the device the frames are already on: converting raises rather
+    than move samples between devices behind your back, since a transfer costs
+    as much as the conversion itself. To end up on another device, convert on
+    the frame's device and move the RGB output yourself.
     """
 
     def __init__(
@@ -51,7 +55,7 @@ class ColorConverter:
         )
 
     def convert(self, raw_frame: RawFrame) -> Frame:
-        data = _blocks_convert_frame(self._handle, raw_frame._handle)
+        data = _blocks_convert_frame(self._handle, raw_frame._handle, raw_frame._device)
         if raw_frame.storage is not None:
             # See [Standalone Frame Storage and the need for record_stream]
             raw_frame.storage.record_stream(torch.cuda.current_stream())
