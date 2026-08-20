@@ -60,7 +60,7 @@ subprocess.run(
 # ----------------
 #
 # A pipeline is just a loop. The decoder may need more than one packet before
-# it can output a frame, and it buffers a few frames that ``flush()`` returns
+# it can output a frame, and it buffers a few frames that ``drain()`` returns
 # at the end.
 #
 # ``PacketDecoder`` and ``ColorConverter`` both accept ``device="cuda"``:
@@ -76,7 +76,7 @@ frames = []
 for packet in demuxer:
     for decoded_frame in packet_decoder.decode(packet):
         frames.append(color_converter.convert(decoded_frame))
-for decoded_frame in packet_decoder.flush():
+for decoded_frame in packet_decoder.drain():
     frames.append(color_converter.convert(decoded_frame))
 
 print(f"{len(frames)} frames, {frames[0].data.shape = }, "
@@ -101,7 +101,7 @@ def demux(demuxer):
 def decode(packet_decoder, packets):
     for packet in packets:
         yield from packet_decoder.decode(packet)
-    yield from packet_decoder.flush()
+    yield from packet_decoder.drain()
 
 
 def color_convert(color_converter, decoded_frames):
@@ -167,6 +167,31 @@ for pipeline in (sequential, convert_on_own_thread, demux_on_own_thread):
 # else: nothing stops you from running one pipeline per file, decoding on the
 # CPU while color-converting on the GPU, or feeding frames into your own
 # pre-fetching data loader.
+
+# %%
+# Seeking
+# -------
+#
+# ``Demuxer.seek()`` moves the demuxer to a timestamp. A decoder can only start
+# on a keyframe, so the seek lands on the keyframe at or before the target, and
+# the first frames that come out usually precede it: keep decoding forward and
+# drop them until you reach the timestamp you asked for.
+#
+# The seek also invalidates the frames the decoder is holding on to, so the
+# ``PacketDecoder`` must be ``reset()``.
+demuxer = Demuxer(video_path)
+packet_decoder = PacketDecoder(demuxer, device=device)
+color_converter = ColorConverter(device=device)
+
+seconds = 2.5
+demuxer.seek(seconds)
+packet_decoder.reset()
+
+frames = color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
+landed_on = next(frames)
+target = next(frame for frame in frames if frame.pts_seconds >= seconds)
+print(f"asked for {seconds}s, landed on {landed_on.pts_seconds:.3f}s, "
+      f"target frame at {target.pts_seconds:.3f}s")
 
 # %%
 # Raw frames

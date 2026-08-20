@@ -50,13 +50,13 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpza91gg88/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpshv5o7i4/video.mp4'], returncode=0)
 ```
 
 ## The three blocks
 
 A pipeline is just a loop. The decoder may need more than one packet before
-it can output a frame, and it buffers a few frames that `flush()` returns
+it can output a frame, and it buffers a few frames that `drain()` returns
 at the end.
 
 `PacketDecoder` and `ColorConverter` both accept `device="cuda"`:
@@ -74,7 +74,7 @@ frames = []
 for packet in demuxer:
  for decoded_frame in packet_decoder.decode(packet):
  frames.append(color_converter.convert(decoded_frame))
-for decoded_frame in packet_decoder.flush():
+for decoded_frame in packet_decoder.drain():
  frames.append(color_converter.convert(decoded_frame))
 
 print(f"{len(frames)} frames, {frames[0].data.shape = }, "
@@ -102,7 +102,7 @@ def demux(demuxer):
 def decode(packet_decoder, packets):
  for packet in packets:
  yield from packet_decoder.decode(packet)
- yield from packet_decoder.flush()
+ yield from packet_decoder.drain()
 
 def color_convert(color_converter, decoded_frames):
  for decoded_frame in decoded_frames:
@@ -168,6 +168,36 @@ Where you insert the thread boundaries is up to you, and so is everything
 else: nothing stops you from running one pipeline per file, decoding on the
 CPU while color-converting on the GPU, or feeding frames into your own
 pre-fetching data loader.
+
+## Seeking
+
+`Demuxer.seek()` moves the demuxer to a timestamp. A decoder can only start
+on a keyframe, so the seek lands on the keyframe at or before the target, and
+the first frames that come out usually precede it: keep decoding forward and
+drop them until you reach the timestamp you asked for.
+
+The seek also invalidates the frames the decoder is holding on to, so the
+`PacketDecoder` must be `reset()`.
+
+```
+demuxer = Demuxer(video_path)
+packet_decoder = PacketDecoder(demuxer, device=device)
+color_converter = ColorConverter(device=device)
+
+seconds = 2.5
+demuxer.seek(seconds)
+packet_decoder.reset()
+
+frames = color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
+landed_on = next(frames)
+target = next(frame for frame in frames if frame.pts_seconds >= seconds)
+print(f"asked for {seconds}s, landed on {landed_on.pts_seconds:.3f}s, "
+ f"target frame at {target.pts_seconds:.3f}s")
+```
+
+```
+asked for 2.5s, landed on 2.000s, target frame at 2.500s
+```
 
 ## Raw frames
 
@@ -355,7 +385,7 @@ ffmpeg.wait()
 -9
 ```
 
-**Total running time of the script:** (0 minutes 1.970 seconds)
+**Total running time of the script:** (0 minutes 1.962 seconds)
 
 [`Download Jupyter notebook: blocks.ipynb`](../../_downloads/37e5fa5a5cd2ea49ae5d47920f4cc2fa/blocks.ipynb)
 
