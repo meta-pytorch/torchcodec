@@ -4197,21 +4197,31 @@ class TestBlocks:
 
     # ===== seeking =====
 
-    def _first_frame_after_seek(self, blocks, seconds):
-        # Seek, and decode until the decoder hands out its first frame. A seek
+    def _frames_after_seek(self, blocks, seconds, num_frames=1):
+        # Seek, and decode the frames that come out from there. A seek
         # invalidates the frames the decoder holds as references, hence the
         # reset().
         demuxer, decoder, converter = blocks
         demuxer.seek(seconds)
         decoder.reset()
+
+        frames = []
         for packet in demuxer:
             for decoded_frame in decoder.decode(packet):
-                return converter.convert(decoded_frame)
-        # Seeking into the last GOP can leave the codec holding every frame
-        # until it's told the stream ended.
+                frames.append(converter.convert(decoded_frame))
+                if len(frames) == num_frames:
+                    return frames
+        # Seeking into the last GOP can leave the codec holding frames until
+        # it's told the stream ended.
         for decoded_frame in decoder.drain():
-            return converter.convert(decoded_frame)
-        raise AssertionError("No frame could be decoded after seeking")
+            frames.append(converter.convert(decoded_frame))
+            if len(frames) == num_frames:
+                break
+        assert frames, "No frame could be decoded after seeking"
+        return frames
+
+    def _first_frame_after_seek(self, blocks, seconds):
+        return self._frames_after_seek(blocks, seconds)[0]
 
     @pytest.mark.parametrize(
         "video",
@@ -4244,20 +4254,32 @@ class TestBlocks:
     def test_seek_to_non_keyframe_differs_from_get_frame_played_at(self, device):
         # On anything else, the two differ: a decoder can only start on a
         # keyframe, so the seek goes *back* to the one preceding the target and
-        # the first frame out is an earlier one. Getting to the frame that
-        # VideoDecoder returns means decoding forward and dropping everything
-        # before the target.
+        # the first frame out is an earlier one. Getting to the frame
+        # VideoDecoder returns means decoding forward from there, and what we
+        # decode along the way must be the real frames - the ones VideoDecoder
+        # gives for those same indices, in that same order.
+        num_frames = 10
         video_decoder = VideoDecoder(NASA_VIDEO.path, device=device)
         keyframe_index = video_decoder._get_key_frame_indices()[1]
         non_keyframe_index = keyframe_index + 3
         seconds = video_decoder.get_frame_at(non_keyframe_index).pts_seconds
 
         blocks = self._make_blocks(NASA_VIDEO.path, device)
-        got = self._first_frame_after_seek(blocks, seconds)
-        expected = video_decoder.get_frame_played_at(seconds)
+        got = self._frames_after_seek(blocks, seconds, num_frames=num_frames)
+        expected = video_decoder.get_frames_in_range(
+            keyframe_index, keyframe_index + num_frames
+        )
 
-        assert expected.pts_seconds == seconds
-        assert got.pts_seconds < seconds
+        assert video_decoder.get_frame_played_at(seconds).pts_seconds == seconds
+        assert got[0].pts_seconds < seconds  # we landed before the target
+        assert seconds in [frame.pts_seconds for frame in got]  # and we reach it
+
+        assert len(got) == num_frames
+        for got_frame, expected_pts, expected_data in zip(
+            got, expected.pts_seconds, expected.data
+        ):
+            assert got_frame.pts_seconds == expected_pts
+            assert_frames_equal(got_frame.data, expected_data)
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_seek_without_reset_yields_stale_frames(self, device):
@@ -4363,11 +4385,9 @@ class TestBlocks:
 
         got = self._first_frame_after_seek(blocks, end + seconds_past_end)
 
-        assert (
-            got.pts_seconds
-            == video_decoder.get_frame_at(last_keyframe_index).pts_seconds
-        )
-        assert got.pts_seconds < end
+        expected = video_decoder.get_frame_at(last_keyframe_index)
+        assert got.pts_seconds == expected.pts_seconds < end
+        assert_frames_equal(got.data, expected.data)
 
     @needs_ffmpeg_cli
     def test_seek_on_non_seekable_source_raises(self, tmp_path):
