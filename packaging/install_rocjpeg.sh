@@ -23,9 +23,8 @@ set -euo pipefail
 #
 # ROCm >= 7.14 distributes the full ROCm stack (including rocJPEG and mesa)
 # as pip wheels (_rocm_sdk_core / _rocm_sdk_devel site-packages). In that case
-# librocjpeg.so and rocjpeg.h are already present and the AMD VA-API backend
-# driver (mesa) is bundled inside _rocm_sdk_core — no separate dnf install
-# needed. We only need the base libva soname for the dynamic linker.
+# librocjpeg.so, rocjpeg.h, and the AMD VA-API backend driver (mesa) are all
+# bundled inside _rocm_sdk_core — no separate dnf install needed.
 install_rocjpeg_build_only() {
     dnf install -y --refresh libva
     dnf install -y "dnf-command(download)" >/dev/null 2>&1 || dnf install -y dnf-plugins-core
@@ -56,6 +55,9 @@ sys.exit(0 if hits else 1)
 else
     # Covers both first-time installs and the ROCm <= 7.2 system-RPM path
     # (dnf is idempotent for already-installed packages).
-    dnf install -y --refresh rocjpeg-devel libva-amdgpu mesa-amdgpu-va-drivers \
+    # Per https://github.com/ROCm/rocJPEG/tree/release/rocm-rel-7.2#libraries,
+    # "Package install auto installs all dependencies" (libva-amdgpu,
+    # mesa-amdgpu-va-drivers, etc.), so listing them explicitly is redundant.
+    dnf install -y --refresh rocjpeg-devel \
         || install_rocjpeg_build_only
 fi
