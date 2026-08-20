@@ -67,7 +67,7 @@ def _demux(demuxer):
 def _decode(decoder, packets):
     for packet in packets:
         yield from decoder.decode(packet)
-    yield from decoder.flush()
+    yield from decoder.drain()
 
 
 def _convert(converter, frames):

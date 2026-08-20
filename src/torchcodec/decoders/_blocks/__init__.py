@@ -28,3 +28,6 @@ __all__ = [
     "DecodedFrame",
     "RawFrame",
 ]
+
+# TODO_API_BREAKDOWN FEAT P1 we probably need a way to expose metadata -
+# something that would avoid using VideoDecoder?

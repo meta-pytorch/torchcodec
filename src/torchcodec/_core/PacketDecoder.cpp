@@ -65,6 +65,8 @@ PacketDecoder::PacketDecoder(
 
   AVStream* stream = demuxer.active_stream();
   time_base_ = stream->time_base;
+  is_mpeg_ps_ =
+      std::string_view(demuxer.format_context()->iformat->name) == "mpeg";
   if (const int32_t* matrix = get_display_matrix_from_stream(stream)) {
     display_matrix_.emplace();
     std::copy(
@@ -100,11 +102,31 @@ int PacketDecoder::send_packet(AVPacket* packet) {
   ReferenceAVPacket ref(auto_packet);
   int status = av_packet_ref(ref.get(), packet);
   STD_TORCH_CHECK(status >= AVSUCCESS, "av_packet_ref failed");
-  return device_interface_->send_packet(ref);
+
+  status = device_interface_->send_packet(ref);
+
+  if (status == AVERROR_INVALIDDATA && packet_data_may_be_misaligned_) {
+    // Seeking in an MPEG program stream lands on a container-level byte offset,
+    // so the parser resumes mid-frame and the packets it rebuilds are garbage
+    // until it resyncs. Report those as consumed rather than as a corrupt file:
+    // dropping them is exactly what resyncing means.
+    return AVSUCCESS;
+  }
+  if (status >= AVSUCCESS) {
+    // The decoder accepted a packet, so we're aligned again: from now on
+    // invalid data means the file is corrupt, and we want to report it.
+    packet_data_may_be_misaligned_ = false;
+  }
+  return status;
 }
 
 int PacketDecoder::send_eof() {
   return device_interface_->send_eof_packet();
+}
+
+void PacketDecoder::reset() {
+  device_interface_->flush();
+  packet_data_may_be_misaligned_ = is_mpeg_ps_;
 }
 
 int PacketDecoder::receive_frame(UniqueAVFrame& av_frame) {
