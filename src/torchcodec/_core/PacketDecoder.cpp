@@ -141,15 +141,43 @@ int PacketDecoder::receive_frame(UniqueAVFrame& av_frame) {
   return status;
 }
 
-FramePlanes frame_to_planes(
+namespace {
+const AVPixFmtDescriptor* get_pix_fmt_desc(const AVFrame& av_frame) {
+  const AVPixFmtDescriptor* desc =
+      av_pix_fmt_desc_get(static_cast<AVPixelFormat>(av_frame.format));
+  STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
+  return desc;
+}
+
+std::string get_pix_fmt_name(const AVFrame& av_frame) {
+  const char* name =
+      av_get_pix_fmt_name(static_cast<AVPixelFormat>(av_frame.format));
+  return name ? name : "unknown";
+}
+} // namespace
+
+FrameMetadata frame_metadata(const AVFrame& av_frame) {
+  const AVPixFmtDescriptor* desc = get_pix_fmt_desc(av_frame);
+  const char* colorspace_name = av_color_space_name(av_frame.colorspace);
+  const char* color_range_name = av_color_range_name(av_frame.color_range);
+
+  FrameMetadata result;
+  result.pix_fmt = get_pix_fmt_name(av_frame);
+  result.colorspace = colorspace_name ? colorspace_name : "unknown";
+  result.color_range = color_range_name ? color_range_name : "unknown";
+  result.bit_depth = desc->comp[0].depth;
+  result.width = av_frame.width;
+  result.height = av_frame.height;
+  result.rotation_degrees = get_rotation_from_frame(av_frame).value_or(0);
+  return result;
+}
+
+std::vector<torch::stable::Tensor> frame_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
     const torch::stable::Tensor& tensor_handle) {
-  auto pix_fmt = static_cast<AVPixelFormat>(av_frame.format);
-  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(pix_fmt);
-  STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
-  const char* pix_fmt_name = av_get_pix_fmt_name(pix_fmt);
-  std::string fmt_name = pix_fmt_name ? pix_fmt_name : "unknown";
+  const AVPixFmtDescriptor* desc = get_pix_fmt_desc(av_frame);
+  std::string fmt_name = get_pix_fmt_name(av_frame);
 
   STD_TORCH_CHECK(
       !(desc->flags &
@@ -163,16 +191,7 @@ FramePlanes frame_to_planes(
       fmt_name,
       " has an unsupported number of components.");
 
-  const char* colorspace_name = av_color_space_name(av_frame.colorspace);
-  const char* color_range_name = av_color_range_name(av_frame.color_range);
-
-  FramePlanes result;
-  result.pix_fmt = fmt_name;
-  result.colorspace = colorspace_name ? colorspace_name : "unknown";
-  result.color_range = color_range_name ? color_range_name : "unknown";
-
-  result.bit_depth = desc->comp[0].depth;
-
+  std::vector<torch::stable::Tensor> planes;
   for (int c = 0; c < desc->nb_components; ++c) {
     const AVComponentDescriptor& comp = desc->comp[c];
     int64_t bytes_per_sample = (comp.depth > 8) ? 2 : 1;
@@ -204,12 +223,12 @@ FramePlanes frame_to_planes(
 
     // The planes are views on the AVFrame's data. The AVFrame and its data are
     // owned by the tensor_handle. We want the planes to outlive the Python
-    // tensor handle (see test_materialize_planes_outlive_frame). So for each
-    // plane, we create a (shallow) copy of the tensor handle, and capture it in
-    // the plane's deleter. As long as a handle [copy] lives, the AVFrame and
-    // its data are alive.
+    // tensor handle (see test_planes_outlive_frame). So for each plane, we
+    // create a (shallow) copy of the tensor handle, and capture it in the
+    // plane's deleter. As long as a handle [copy] lives, the AVFrame and its
+    // data are alive.
     torch::stable::Tensor handle_copy = tensor_handle;
-    result.planes.push_back(torch::stable::from_blob(
+    planes.push_back(torch::stable::from_blob(
         av_frame.data[comp.plane] + comp.offset,
         {sizes, 2},
         {strides, 2},
@@ -218,7 +237,7 @@ FramePlanes frame_to_planes(
         [handle_copy](void*) {}));
   }
 
-  return result;
+  return planes;
 }
 
 } // namespace facebook::torchcodec

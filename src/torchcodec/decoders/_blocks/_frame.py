@@ -6,11 +6,23 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from typing import NamedTuple
 
 import torch
 
-from torchcodec._core.ops import _blocks_frame_to_planes
+from torchcodec._core.ops import _blocks_frame_metadata, _blocks_frame_planes
+
+
+class _Metadata(NamedTuple):
+    """The fields of the `_blocks_frame_metadata` op, in order."""
+
+    pix_fmt: str
+    colorspace: str
+    color_range: str
+    bit_depth: int
+    width: int
+    height: int
+    rotation_degrees: float
 
 
 class Packet:
@@ -25,55 +37,32 @@ class Packet:
         self._handle = handle
 
 
-# TODO_API_BREAKDOWN DESIGN P1: should these fields (pix_format, colorspace
-# etc.) also exist on the DecodedFrame class? Should there **just** be the
-# DecodedFrame class and actually just call materialize() transparently whenever
-# the user wants to access the planes? If materialize() is super cheap (it
-# should be???) then this might be a good UX.
-# Similarly we really need to figure out where and how to expose rotation. It's
-# already *applied* - the PacketDecoder puts the display matrix on every frame
-# and the ColorConverter honors it - but nothing surfaces it in Python, so
-# whoever color-converts the planes themselves has no way of knowing the frame
-# needs rotating. And should reported height and width be pre or post rotation?
-# Same for storage: where should we expose it?
-@dataclass
+# TODO_API_BREAKDOWN DESIGN P1: API design - the public fields, the class name,
+# whether planes should be 2D (they are), whether they should be named, etc.
 class RawFrame:
-    planes: tuple[torch.Tensor, ...]
-    # FFmpeg pixel-format name. On CPU this is the source's own format, e.g.
-    # "yuv420p". On CUDA it is always an NVDEC surface format: "nv12",
-    # "p010le", "p012le", "p016le", "yuv444p" or "yuv444p16le".
-    pix_fmt: str
-    colorspace: str  # e.g. "bt709"
-    color_range: str  # "tv" (limited) or "pc" (full)
-    # The depth of pix_fmt (always), which is the source's bit depth except
-    # where a CUDA surface format's container is wider than the source samples:
-    # a 10-bit 4:4:4 source is uploaded as yuv444p16le, and a 12-bit source is
-    # tagged p016le on FFmpeg < 6 (which lacks p012le). Both report 16 here (on
-    # CPU they'd report 10 and 12).
-    # Everything downstream still reads right, because those samples are
-    # msb-aligned and are therefore genuinely valid 16-bit ones, with zeroed
-    # low bits.
-    #
-    # TODO_API_BREAKDOWN DESIGN P2: should this report the depth of the source instead
-    # of the depth of the pixel format?
-    bit_depth: int
-
-
-# TODO_API_BREAKDOWN DESIGN P1: API design - especially the materialize() method but
-# also the public fields, class name etc.
-class DecodedFrame:
-    """A decoded (YUV) frame: an opaque, thread-movable handle to the raw frame
-    plus its presentation timestamp and duration (in seconds).
+    """A decoded (YUV) frame, as the decoder produced it: an opaque,
+    thread-movable handle to the frame plus everything describing it.
 
     Produced by :class:`PacketDecoder`, consumed by :class:`ColorConverter`. The
-    handle wraps a raw pointer and is process-local. pts/duration are stamped by
-    the decoder (which knows the stream time base) and carried here so the
-    :class:`ColorConverter` need not be bound to any stream.
+    handle wraps a raw pointer and is process-local. ``pts_seconds`` and
+    ``duration_seconds`` are stamped by the decoder (which knows the stream time
+    base) and carried here so the :class:`ColorConverter` need not be bound to
+    any stream.
 
-    ``device`` is where this frame's samples are, and it is always the device
-    its decoder was created with. A CUDA decoder falls back to CPU decoding for
-    streams NVDEC can't handle, but it uploads those frames before handing them
-    out, so they are indistinguishable from NVDEC ones here.
+    Every field describes the frame as it was decoded, with no conversion
+    applied. In particular ``width``, ``height`` and :attr:`planes` are all
+    pre-rotation: :attr:`rotation_degrees` is what ``ColorConverter`` applies
+    for you, and what you have to apply yourself if you color-convert the planes
+    on your own.
+
+    The samples live on the device of the decoder that produced the frame. A
+    CUDA decoder falls back to CPU decoding for streams NVDEC can't handle, but
+    it uploads those frames before handing them out, so they are
+    indistinguishable from NVDEC ones here.
+
+    All the fields but ``pts_seconds``, ``duration_seconds`` and ``storage`` are
+    computed on first access and then cached, so nothing is paid for by a
+    pipeline that only color-converts.
     """
 
     def __init__(
@@ -85,39 +74,91 @@ class DecodedFrame:
         storage: torch.Tensor | None = None,
     ):
         self._handle = handle
+        # TODO_API_BREAKDOWN DESIGN P2: do we need this at all? It is always the
+        # device of the decoder that produced the frame, and users can get it
+        # from `storage.device` or from `planes[0].device`. We need *something*
+        # here because the planes op needs a device to build the views on.
         self._device = device
+        # A CUDA consumer reading the frame on a different stream than the
+        # decoder's must call storage.record_stream() on it.
+        # See [Standalone Frame Storage and the need for record_stream]
         self.storage = storage
         self.pts_seconds = pts_seconds
         self.duration_seconds = duration_seconds
+        self._metadata: _Metadata | None = None
+        self._planes: tuple[torch.Tensor, ...] | None = None
 
-    # TODO_API_BREAKDOWN DESIGN P2 Why is this a property???
-    # Do we even need to havet this?
+    def _get_metadata(self) -> _Metadata:
+        if self._metadata is None:
+            self._metadata = _Metadata(*_blocks_frame_metadata(self._handle))
+        return self._metadata
+
     @property
-    def device(self) -> str:
-        return self._device
+    def pix_fmt(self) -> str:
+        """FFmpeg pixel-format name. On CPU this is the source's own format,
+        e.g. ``"yuv420p"``. On CUDA it is always an NVDEC surface format:
+        ``"nv12"``, ``"p010le"``, ``"p012le"``, ``"p016le"``, ``"yuv444p"`` or
+        ``"yuv444p16le"``.
+        """
+        return self._get_metadata().pix_fmt
 
-    # TODO_API_BREAKDOWN DESIGN P1: Really need to think hard about the API of *all* of
-    # this.
-    # materialize()?
-    # What about the planes - should they be 2D (right now they are)? Should we
-    # give them names?
-    def materialize(self) -> RawFrame:
-        (
-            p0,
-            p1,
-            p2,
-            p3,
-            pix_fmt,
-            colorspace,
-            color_range,
-            bit_depth,
-        ) = _blocks_frame_to_planes(self._handle, self._device)
-        # Absent components come back as empty tensors; real ones are 2D views.
-        planes = tuple(p for p in (p0, p1, p2, p3) if p.numel() > 0)
-        return RawFrame(
-            planes=planes,
-            pix_fmt=pix_fmt,
-            colorspace=colorspace,
-            color_range=color_range,
-            bit_depth=bit_depth,
-        )
+    @property
+    def colorspace(self) -> str:
+        """e.g. ``"bt709"``."""
+        return self._get_metadata().colorspace
+
+    @property
+    def color_range(self) -> str:
+        """``"tv"`` (limited) or ``"pc"`` (full)."""
+        return self._get_metadata().color_range
+
+    @property
+    def bit_depth(self) -> int:
+        """The depth of :attr:`pix_fmt` (always), which is the source's bit
+        depth except where a CUDA surface format's container is wider than the
+        source samples: a 10-bit 4:4:4 source is uploaded as ``yuv444p16le``,
+        and a 12-bit source is tagged ``p016le`` on FFmpeg < 6 (which lacks
+        ``p012le``). Both report 16 here (on CPU they'd report 10 and 12).
+
+        Everything downstream still reads right, because those samples are
+        msb-aligned and are therefore genuinely valid 16-bit ones, with zeroed
+        low bits.
+        """
+        # TODO_API_BREAKDOWN DESIGN P2: should this report the depth of the
+        # source instead of the depth of the pixel format?
+        return self._get_metadata().bit_depth
+
+    @property
+    def width(self) -> int:
+        """Width of the decoded samples, before rotation."""
+        return self._get_metadata().width
+
+    @property
+    def height(self) -> int:
+        """Height of the decoded samples, before rotation."""
+        return self._get_metadata().height
+
+    @property
+    def rotation_degrees(self) -> float:
+        """Degrees counter-clockwise the frame needs to be rotated by to be
+        upright, or 0 if the container asks for no rotation. It is *not*
+        applied to :attr:`planes`; :class:`ColorConverter` applies it (rounded
+        to the nearest multiple of 90) to its output.
+        """
+        return self._get_metadata().rotation_degrees
+
+    @property
+    def planes(self) -> tuple[torch.Tensor, ...]:
+        """The decoder's own samples as 2D tensor views, with no copy and no
+        conversion: one per component, in the order :attr:`pix_fmt` describes.
+
+        Raises for the pixel formats that can't be viewed without a copy
+        (sub-byte-packed, palettised and float ones) - check :attr:`pix_fmt`
+        first if you're decoding something exotic.
+        """
+        if self._planes is None:
+            planes = _blocks_frame_planes(self._handle, self._device)
+            # Absent components come back as empty tensors; real ones are 2D
+            # views.
+            self._planes = tuple(p for p in planes if p.numel() > 0)
+        return self._planes

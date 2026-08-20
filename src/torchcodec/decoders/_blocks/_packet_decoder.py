@@ -18,7 +18,7 @@ from torchcodec._core.ops import (
 
 from .._decoder_utils import convert_device_to_str
 from ._demuxer import Demuxer
-from ._frame import DecodedFrame, Packet
+from ._frame import Packet, RawFrame
 
 
 # TODO_API_BREAKDOWN DOC P1 revisit every single docstring / comments at some point.
@@ -26,7 +26,7 @@ from ._frame import DecodedFrame, Packet
 
 class PacketDecoder:
     """Decode building block: turns compressed :class:`Packet`\\ s into decoded
-    (YUV) :class:`DecodedFrame`\\ s.
+    (YUV) :class:`RawFrame`\\ s.
 
     Built from a :class:`Demuxer` (for its codec parameters) and stateful (it
     holds the codec's reference-frame buffer). Passive and *not* thread-safe:
@@ -44,7 +44,7 @@ class PacketDecoder:
         )
         self._drained = False
 
-    def _receive_ready_frames(self) -> list[DecodedFrame]:
+    def _receive_ready_frames(self) -> list[RawFrame]:
         frames = []
         while True:
             handle, status, pts_seconds, duration_seconds, device, storage = (
@@ -53,7 +53,7 @@ class PacketDecoder:
             if status != 0:  # EAGAIN (need more packets) or EOF: nothing ready
                 break
             frames.append(
-                DecodedFrame(
+                RawFrame(
                     handle,
                     pts_seconds,
                     duration_seconds,
@@ -63,7 +63,7 @@ class PacketDecoder:
             )
         return frames
 
-    def decode(self, packet: Packet) -> list[DecodedFrame]:
+    def decode(self, packet: Packet) -> list[RawFrame]:
         """Send one packet and return whatever frames are now ready (possibly
         empty, e.g. while the codec buffers B-frames)."""
         if self._drained:
@@ -77,7 +77,7 @@ class PacketDecoder:
             raise RuntimeError(f"Failed to send packet to decoder (status {status})")
         return self._receive_ready_frames()
 
-    def drain(self) -> list[DecodedFrame]:
+    def drain(self) -> list[RawFrame]:
         _blocks_packet_decoder_send_eof(self._handle)
         frames = self._receive_ready_frames()
         self._drained = True
