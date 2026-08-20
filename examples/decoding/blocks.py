@@ -169,6 +169,31 @@ for pipeline in (sequential, convert_on_own_thread, demux_on_own_thread):
 # pre-fetching data loader.
 
 # %%
+# Seeking
+# -------
+#
+# ``Demuxer.seek()`` moves the demuxer to a timestamp. A decoder can only start
+# on a keyframe, so the seek lands on the keyframe at or before the target, and
+# the first frames that come out usually precede it: keep decoding forward and
+# drop them until you reach the timestamp you asked for.
+#
+# The seek also invalidates the frames the decoder is holding on to, so the
+# ``PacketDecoder`` must be ``reset()``.
+demuxer = Demuxer(video_path)
+packet_decoder = PacketDecoder(demuxer, device=device)
+color_converter = ColorConverter(device=device)
+
+seconds = 2.5
+demuxer.seek(seconds)
+packet_decoder.reset()
+
+frames = color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
+landed_on = next(frames)
+target = next(frame for frame in frames if frame.pts_seconds >= seconds)
+print(f"asked for {seconds}s, landed on {landed_on.pts_seconds:.3f}s, "
+      f"target frame at {target.pts_seconds:.3f}s")
+
+# %%
 # Raw frames
 # ----------
 #
