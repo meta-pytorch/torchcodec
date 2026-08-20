@@ -15,6 +15,8 @@ This is experimental and private; the API may change. See
 API_breakdown_claude_plan.md for the design and rationale.
 """
 
+from torchcodec._core._metadata import VideoStreamHeaderMetadata
+
 from ._color_converter import ColorConverter
 from ._demuxer import Demuxer
 from ._frame import Packet, RawFrame
@@ -26,7 +28,5 @@ __all__ = [
     "ColorConverter",
     "Packet",
     "RawFrame",
+    "VideoStreamHeaderMetadata",
 ]
-
-# TODO_API_BREAKDOWN FEAT P1 we probably need a way to expose metadata -
-# something that would avoid using VideoDecoder?

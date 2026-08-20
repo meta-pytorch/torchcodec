@@ -7,12 +7,21 @@
 from __future__ import annotations
 
 import io
+from functools import cached_property
 from pathlib import Path
 
 from torch import Tensor
 
 from torchcodec._core._decoder_utils import create_demuxer
-from torchcodec._core.ops import _blocks_demuxer_next_packet, _blocks_demuxer_seek
+from torchcodec._core._metadata import (
+    get_video_stream_header_metadata,
+    VideoStreamHeaderMetadata,
+)
+from torchcodec._core.ops import (
+    _blocks_demuxer_metadata,
+    _blocks_demuxer_next_packet,
+    _blocks_demuxer_seek,
+)
 
 from ._frame import Packet
 
@@ -59,6 +68,19 @@ class Demuxer:
         stream_index: int | None = None,
     ):
         self._handle = create_demuxer(source=source, stream_index=stream_index)
+
+    @cached_property
+    def metadata(self) -> VideoStreamHeaderMetadata:
+        """Header metadata of the demuxed stream, as a
+        :class:`VideoStreamHeaderMetadata`.
+
+        This is what the container's header reports, which is free to obtain
+        but can be inaccurate: ``num_frames_from_header`` in particular may
+        disagree with the number of frames the stream actually decodes to.
+        Values that are only knowable by reading the whole stream aren't part
+        of this object.
+        """
+        return get_video_stream_header_metadata(_blocks_demuxer_metadata(self._handle))
 
     def next_packet(self) -> Packet | None:
         """Return the next :class:`Packet`, or ``None`` at end of stream."""

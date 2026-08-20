@@ -6,6 +6,7 @@
 
 import concurrent.futures
 import contextlib
+import dataclasses
 import gc
 import io
 import itertools
@@ -47,6 +48,7 @@ from torchcodec.decoders._blocks import (
     Packet,
     PacketDecoder,
     RawFrame,
+    VideoStreamHeaderMetadata,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.decoders._image_decoders import _source_to_tensor
@@ -4735,6 +4737,53 @@ class TestBlocks:
 
         with pytest.raises(RuntimeError, match="has been drained"):
             decoder.decode(packet)
+
+    # ===== metadata =====
+
+    @pytest.mark.parametrize("video", _ALL_VIDEOS)
+    def test_metadata_matches_video_decoder(self, video):
+        # Every field we expose is a header field, so it doesn't depend on the
+        # scan that VideoDecoder does, and both must agree.
+        metadata = Demuxer(video.path).metadata
+        expected = VideoDecoder(video.path).metadata
+
+        for field in dataclasses.fields(VideoStreamHeaderMetadata):
+            assert getattr(metadata, field.name) == getattr(expected, field.name)
+
+    @pytest.mark.parametrize("make_source", _BLOCKS_SOURCES)
+    def test_metadata_on_every_source_kind(self, make_source):
+        metadata = Demuxer(make_source(NASA_VIDEO.path)).metadata
+        assert metadata == Demuxer(NASA_VIDEO.path).metadata
+
+    @pytest.mark.parametrize("stream_index", (None, 0, 3))
+    def test_metadata_stream_index(self, stream_index):
+        metadata = Demuxer(NASA_VIDEO.path, stream_index=stream_index).metadata
+        expected = VideoDecoder(NASA_VIDEO.path, stream_index=stream_index).metadata
+
+        assert metadata.stream_index == expected.stream_index
+        assert (metadata.width, metadata.height) == (expected.width, expected.height)
+
+    def test_metadata_is_header_only(self):
+        # The header of this file claims 30 frames, but its first keyframe is
+        # marked AV_PKT_FLAG_DISCARD so only 25 are ever decoded. We report
+        # what the header says, under a name that says so.
+        metadata = Demuxer(DISCARD_FIRST_KEYFRAME_VIDEO.path).metadata
+        assert metadata.num_frames_from_header == 30
+        assert VideoDecoder(DISCARD_FIRST_KEYFRAME_VIDEO.path).metadata.num_frames == 25
+
+        # Nothing whose value would depend on a scan is exposed: there's no
+        # attribute here that could mean two different things.
+        for name in (
+            "num_frames",
+            "average_fps",
+            "duration_seconds",
+            "begin_stream_seconds",
+            "end_stream_seconds",
+            "num_frames_from_content",
+            "begin_stream_seconds_from_content",
+            "end_stream_seconds_from_content",
+        ):
+            assert not hasattr(metadata, name)
 
     # ===== source kinds =====
 

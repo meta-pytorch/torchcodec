@@ -115,93 +115,18 @@ void SingleStreamDecoder::initialize_decoder() {
 
   for (unsigned int i = 0; i < format_context_->nb_streams; i++) {
     AVStream* av_stream = format_context_->streams[i];
-    StreamMetadata stream_metadata;
 
     STD_TORCH_CHECK(
         static_cast<int>(i) == av_stream->index,
         "Our stream index, " + std::to_string(i) +
             ", does not match AVStream's index, " +
             std::to_string(av_stream->index) + ".");
-    stream_metadata.stream_index = i;
-    stream_metadata.codec_name =
-        avcodec_get_name(av_stream->codecpar->codec_id);
-    stream_metadata.media_type = av_stream->codecpar->codec_type;
-    stream_metadata.bit_rate = av_stream->codecpar->bit_rate;
 
-    int64_t frame_count = av_stream->nb_frames;
-    if (frame_count > 0) {
-      stream_metadata.num_frames_from_header = frame_count;
-    }
+    StreamMetadata stream_metadata = stream_metadata_from_av_stream(av_stream);
 
-    if (av_stream->duration > 0 && av_stream->time_base.den > 0) {
-      stream_metadata.duration_seconds_from_header =
-          pts_to_seconds(av_stream->duration, av_stream->time_base);
-    }
-    if (av_stream->start_time != AV_NOPTS_VALUE) {
-      stream_metadata.begin_stream_seconds_from_header =
-          pts_to_seconds(av_stream->start_time, av_stream->time_base);
-    }
-
-    if (av_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-      double fps = av_q2d(av_stream->r_frame_rate);
-      if (fps > 0) {
-        stream_metadata.average_fps_from_header = fps;
-      }
-      stream_metadata.rotation = get_rotation_from_stream(av_stream);
-
-      // Report post-rotation dimensions: swap width/height for 90 or -90
-      // degree rotations so metadata matches what the decoder returns.
-      int width = av_stream->codecpar->width;
-      int height = av_stream->codecpar->height;
-      Rotation rotation = rotation_from_degrees(stream_metadata.rotation);
-      // 90° rotations swap dimensions
-      if (rotation == Rotation::CCW90 || rotation == Rotation::CW90) {
-        std::swap(width, height);
-      }
-      stream_metadata.post_rotation_width = width;
-      stream_metadata.post_rotation_height = height;
-
-      stream_metadata.sample_aspect_ratio =
-          av_stream->codecpar->sample_aspect_ratio;
-
-      if (av_stream->codecpar->color_primaries != AVCOL_PRI_UNSPECIFIED) {
-        stream_metadata.color_primaries = av_stream->codecpar->color_primaries;
-      }
-      if (av_stream->codecpar->color_space != AVCOL_SPC_UNSPECIFIED) {
-        stream_metadata.color_space = av_stream->codecpar->color_space;
-      }
-      if (av_stream->codecpar->color_trc != AVCOL_TRC_UNSPECIFIED) {
-        stream_metadata.color_transfer_characteristic =
-            av_stream->codecpar->color_trc;
-      }
-      AVPixelFormat pixel_format =
-          static_cast<AVPixelFormat>(av_stream->codecpar->format);
-      // If the AVPixelFormat is not recognized, we get back nullptr. We have
-      // to make sure we don't initialize a std::string with nullptr. There's
-      // nothing to do on the else branch because we're already using an
-      // optional; it'll just remain empty.
-      const char* raw_pixel_format = av_get_pix_fmt_name(pixel_format);
-      if (raw_pixel_format != nullptr) {
-        stream_metadata.pixel_format = std::string(raw_pixel_format);
-      }
-
+    if (stream_metadata.media_type == AVMEDIA_TYPE_VIDEO) {
       container_metadata_.num_video_streams++;
-    } else if (av_stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-      AVSampleFormat format =
-          static_cast<AVSampleFormat>(av_stream->codecpar->format);
-      stream_metadata.sample_rate =
-          static_cast<int64_t>(av_stream->codecpar->sample_rate);
-      stream_metadata.num_channels =
-          static_cast<int64_t>(get_num_channels(av_stream->codecpar));
-
-      // If the AVSampleFormat is not recognized, we get back nullptr. We have
-      // to make sure we don't initialize a std::string with nullptr. There's
-      // nothing to do on the else branch because we're already using an
-      // optional; it'll just remain empty.
-      const char* raw_sample_format = av_get_sample_fmt_name(format);
-      if (raw_sample_format != nullptr) {
-        stream_metadata.sample_format = std::string(raw_sample_format);
-      }
+    } else if (stream_metadata.media_type == AVMEDIA_TYPE_AUDIO) {
       container_metadata_.num_audio_streams++;
     }
 

@@ -81,6 +81,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_create_demuxer_from_file_like(int file_like_context, int? stream_index=None) -> Tensor");
   m.def("_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool)");
   m.def("_blocks_demuxer_seek(Tensor(a!) demuxer, float seconds) -> ()");
+  m.def("_blocks_demuxer_metadata(Tensor demuxer) -> str");
   m.def(
       "_blocks_create_packet_decoder(Tensor demuxer, *, int? num_threads=None, str device=\"cpu\") -> Tensor");
   m.def(
@@ -366,6 +367,102 @@ void write_fallback_based_metadata(
   if (average_fps.has_value()) {
     map["averageFps"] = fmt::to_string(average_fps.value());
   }
+}
+
+// Serializes a StreamMetadata to JSON. The fallback-based fields (numFrames,
+// durationSeconds, ...) are only written when `seek_mode_for_fallbacks` is
+// set: their value depends on whether a scan was performed, so callers that
+// only ever read the header pass nullopt and get none of them.
+std::string stream_metadata_to_json(
+    const StreamMetadata& stream_metadata,
+    std::optional<SeekMode> seek_mode_for_fallbacks) {
+  std::map<std::string, std::string> map;
+
+  map["streamIndex"] = std::to_string(stream_metadata.stream_index);
+  if (stream_metadata.duration_seconds_from_header.has_value()) {
+    map["durationSecondsFromHeader"] =
+        fmt::to_string(*stream_metadata.duration_seconds_from_header);
+  }
+  if (stream_metadata.bit_rate.has_value()) {
+    map["bitRate"] = fmt::to_string(*stream_metadata.bit_rate);
+  }
+  if (stream_metadata.num_frames_from_content.has_value()) {
+    map["numFramesFromContent"] =
+        std::to_string(*stream_metadata.num_frames_from_content);
+  }
+  if (stream_metadata.num_frames_from_header.has_value()) {
+    map["numFramesFromHeader"] =
+        std::to_string(*stream_metadata.num_frames_from_header);
+  }
+  if (stream_metadata.begin_stream_seconds_from_header.has_value()) {
+    map["beginStreamSecondsFromHeader"] =
+        fmt::to_string(*stream_metadata.begin_stream_seconds_from_header);
+  }
+  if (stream_metadata.begin_stream_pts_seconds_from_content.has_value()) {
+    map["beginStreamSecondsFromContent"] =
+        fmt::to_string(*stream_metadata.begin_stream_pts_seconds_from_content);
+  }
+  if (stream_metadata.end_stream_pts_seconds_from_content.has_value()) {
+    map["endStreamSecondsFromContent"] =
+        fmt::to_string(*stream_metadata.end_stream_pts_seconds_from_content);
+  }
+  if (stream_metadata.codec_name.has_value()) {
+    map["codec"] = quote_value(stream_metadata.codec_name.value());
+  }
+  if (stream_metadata.post_rotation_width.has_value()) {
+    map["width"] = std::to_string(*stream_metadata.post_rotation_width);
+  }
+  if (stream_metadata.post_rotation_height.has_value()) {
+    map["height"] = std::to_string(*stream_metadata.post_rotation_height);
+  }
+  if (stream_metadata.sample_aspect_ratio.has_value()) {
+    map["sampleAspectRatioNum"] =
+        std::to_string((*stream_metadata.sample_aspect_ratio).num);
+    map["sampleAspectRatioDen"] =
+        std::to_string((*stream_metadata.sample_aspect_ratio).den);
+  }
+  if (stream_metadata.rotation.has_value()) {
+    map["rotation"] = std::to_string(*stream_metadata.rotation);
+  }
+  if (auto name = stream_metadata.get_color_primaries_name()) {
+    map["colorPrimaries"] = quote_value(*name);
+  }
+  if (auto name = stream_metadata.get_color_space_name()) {
+    map["colorSpace"] = quote_value(*name);
+  }
+  if (auto name = stream_metadata.get_color_transfer_characteristic_name()) {
+    map["colorTransferCharacteristic"] = quote_value(*name);
+  }
+  if (stream_metadata.pixel_format.has_value()) {
+    map["pixelFormat"] = quote_value(stream_metadata.pixel_format.value());
+  }
+  if (stream_metadata.average_fps_from_header.has_value()) {
+    map["averageFpsFromHeader"] =
+        fmt::to_string(*stream_metadata.average_fps_from_header);
+  }
+  if (stream_metadata.sample_rate.has_value()) {
+    map["sampleRate"] = std::to_string(*stream_metadata.sample_rate);
+  }
+  if (stream_metadata.num_channels.has_value()) {
+    map["numChannels"] = std::to_string(*stream_metadata.num_channels);
+  }
+  if (stream_metadata.sample_format.has_value()) {
+    map["sampleFormat"] = quote_value(stream_metadata.sample_format.value());
+  }
+  if (stream_metadata.media_type == AVMEDIA_TYPE_VIDEO) {
+    map["mediaType"] = quote_value("video");
+  } else if (stream_metadata.media_type == AVMEDIA_TYPE_AUDIO) {
+    map["mediaType"] = quote_value("audio");
+  } else {
+    map["mediaType"] = quote_value("other");
+  }
+
+  if (seek_mode_for_fallbacks.has_value()) {
+    write_fallback_based_metadata(
+        map, stream_metadata, *seek_mode_for_fallbacks);
+  }
+
+  return map_to_json(map);
 }
 
 int checked_to_positive_int(const std::string& str) {
@@ -864,6 +961,16 @@ void _blocks_demuxer_seek(torch::stable::Tensor& demuxer, double seconds) {
   unwrap_tensor_to_pointer<Demuxer>(demuxer)->seek(seconds);
 }
 
+// Header metadata of the demuxer's active stream. Header-only: the demuxer
+// never scans, so none of the content-derived or fallback-computed fields are
+// part of the output.
+std::string _blocks_demuxer_metadata(torch::stable::Tensor& demuxer) {
+  Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
+  return stream_metadata_to_json(
+      stream_metadata_from_av_stream(demuxer_ptr->active_stream()),
+      /*seek_mode_for_fallbacks=*/std::nullopt);
+}
+
 torch::stable::Tensor _blocks_create_packet_decoder(
     torch::stable::Tensor& demuxer,
     std::optional<int64_t> num_threads,
@@ -1156,86 +1263,6 @@ std::string get_stream_json_metadata(
   auto seek_mode = video_decoder->get_seek_mode();
   int active_stream_index = video_decoder->get_active_stream_index();
 
-  std::map<std::string, std::string> map;
-
-  if (stream_metadata.duration_seconds_from_header.has_value()) {
-    map["durationSecondsFromHeader"] =
-        fmt::to_string(*stream_metadata.duration_seconds_from_header);
-  }
-  if (stream_metadata.bit_rate.has_value()) {
-    map["bitRate"] = fmt::to_string(*stream_metadata.bit_rate);
-  }
-  if (stream_metadata.num_frames_from_content.has_value()) {
-    map["numFramesFromContent"] =
-        std::to_string(*stream_metadata.num_frames_from_content);
-  }
-  if (stream_metadata.num_frames_from_header.has_value()) {
-    map["numFramesFromHeader"] =
-        std::to_string(*stream_metadata.num_frames_from_header);
-  }
-  if (stream_metadata.begin_stream_seconds_from_header.has_value()) {
-    map["beginStreamSecondsFromHeader"] =
-        fmt::to_string(*stream_metadata.begin_stream_seconds_from_header);
-  }
-  if (stream_metadata.begin_stream_pts_seconds_from_content.has_value()) {
-    map["beginStreamSecondsFromContent"] =
-        fmt::to_string(*stream_metadata.begin_stream_pts_seconds_from_content);
-  }
-  if (stream_metadata.end_stream_pts_seconds_from_content.has_value()) {
-    map["endStreamSecondsFromContent"] =
-        fmt::to_string(*stream_metadata.end_stream_pts_seconds_from_content);
-  }
-  if (stream_metadata.codec_name.has_value()) {
-    map["codec"] = quote_value(stream_metadata.codec_name.value());
-  }
-  if (stream_metadata.post_rotation_width.has_value()) {
-    map["width"] = std::to_string(*stream_metadata.post_rotation_width);
-  }
-  if (stream_metadata.post_rotation_height.has_value()) {
-    map["height"] = std::to_string(*stream_metadata.post_rotation_height);
-  }
-  if (stream_metadata.sample_aspect_ratio.has_value()) {
-    map["sampleAspectRatioNum"] =
-        std::to_string((*stream_metadata.sample_aspect_ratio).num);
-    map["sampleAspectRatioDen"] =
-        std::to_string((*stream_metadata.sample_aspect_ratio).den);
-  }
-  if (stream_metadata.rotation.has_value()) {
-    map["rotation"] = std::to_string(*stream_metadata.rotation);
-  }
-  if (auto name = stream_metadata.get_color_primaries_name()) {
-    map["colorPrimaries"] = quote_value(*name);
-  }
-  if (auto name = stream_metadata.get_color_space_name()) {
-    map["colorSpace"] = quote_value(*name);
-  }
-  if (auto name = stream_metadata.get_color_transfer_characteristic_name()) {
-    map["colorTransferCharacteristic"] = quote_value(*name);
-  }
-  if (stream_metadata.pixel_format.has_value()) {
-    map["pixelFormat"] = quote_value(stream_metadata.pixel_format.value());
-  }
-  if (stream_metadata.average_fps_from_header.has_value()) {
-    map["averageFpsFromHeader"] =
-        fmt::to_string(*stream_metadata.average_fps_from_header);
-  }
-  if (stream_metadata.sample_rate.has_value()) {
-    map["sampleRate"] = std::to_string(*stream_metadata.sample_rate);
-  }
-  if (stream_metadata.num_channels.has_value()) {
-    map["numChannels"] = std::to_string(*stream_metadata.num_channels);
-  }
-  if (stream_metadata.sample_format.has_value()) {
-    map["sampleFormat"] = quote_value(stream_metadata.sample_format.value());
-  }
-  if (stream_metadata.media_type == AVMEDIA_TYPE_VIDEO) {
-    map["mediaType"] = quote_value("video");
-  } else if (stream_metadata.media_type == AVMEDIA_TYPE_AUDIO) {
-    map["mediaType"] = quote_value("audio");
-  } else {
-    map["mediaType"] = quote_value("other");
-  }
-
   // Check whether content-based metadata is available for this stream.
   // In exact mode: content-based metadata exists for all streams.
   // In approximate mode: content-based metadata does not exist for any stream.
@@ -1245,11 +1272,9 @@ std::string get_stream_json_metadata(
   // Our fallback logic assumes content-based metadata is available.
   // It is available for decoding on the active stream, but would break
   // when getting metadata from non-active streams.
-  if ((seek_mode != SeekMode::custom_frame_mappings) ||
-      (seek_mode == SeekMode::custom_frame_mappings &&
-       stream_index == active_stream_index)) {
-    write_fallback_based_metadata(map, stream_metadata, seek_mode);
-  } else if (seek_mode == SeekMode::custom_frame_mappings) {
+  SeekMode seek_mode_for_fallbacks = seek_mode;
+  if (seek_mode == SeekMode::custom_frame_mappings &&
+      stream_index != active_stream_index) {
     // If this is not the active stream, then we don't have content-based
     // metadata for custom frame mappings. In that case, we want the same
     // behavior as we would get with approximate mode. Encoding this behavior in
@@ -1262,10 +1287,10 @@ std::string get_stream_json_metadata(
     //       not the constructor because we need to know the stream index. If we
     //       can encode the relevant stream indices into custom frame mappings
     //       itself, then we can put it in the constructor.
-    write_fallback_based_metadata(map, stream_metadata, SeekMode::approximate);
+    seek_mode_for_fallbacks = SeekMode::approximate;
   }
 
-  return map_to_json(map);
+  return stream_metadata_to_json(stream_metadata, seek_mode_for_fallbacks);
 }
 
 // Returns version information about the various FFMPEG libraries that are
@@ -1570,6 +1595,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "_blocks_demuxer_next_packet", TORCH_BOX(&_blocks_demuxer_next_packet));
   m.impl("_blocks_demuxer_seek", TORCH_BOX(&_blocks_demuxer_seek));
+  m.impl("_blocks_demuxer_metadata", TORCH_BOX(&_blocks_demuxer_metadata));
   m.impl(
       "_blocks_create_packet_decoder",
       TORCH_BOX(&_blocks_create_packet_decoder));

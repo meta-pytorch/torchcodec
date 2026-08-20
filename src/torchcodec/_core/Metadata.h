@@ -12,6 +12,7 @@
 
 extern "C" {
 #include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
 #include <libavutil/pixfmt.h>
 #include <libavutil/rational.h>
@@ -84,6 +85,10 @@ struct StreamMetadata {
   std::optional<std::string> get_color_space_name() const;
   std::optional<std::string> get_color_transfer_characteristic_name() const;
 };
+
+// Populates a StreamMetadata from the AVStream's header. The content-derived
+// fields (*_from_content) are left unset: they require a scan.
+StreamMetadata stream_metadata_from_av_stream(const AVStream* av_stream);
 
 struct ContainerMetadata {
   std::vector<StreamMetadata> all_stream_metadata;

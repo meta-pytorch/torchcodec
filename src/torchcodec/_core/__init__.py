@@ -10,6 +10,7 @@ from ._metadata import (
     ContainerMetadata,
     get_container_metadata,
     get_container_metadata_from_header,
+    VideoStreamHeaderMetadata,
     VideoStreamMetadata,
 )
 from .ops import (

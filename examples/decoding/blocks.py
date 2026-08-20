@@ -84,6 +84,17 @@ print(f"{len(frames)} frames, {frames[0].data.shape = }, "
       f"{frames[0].pts_seconds = }, {frames[0].data.device = }")
 
 # %%
+# Metadata
+# --------
+#
+# ``Demuxer.metadata`` describes the stream being demuxed. It is what the
+# container's header says, which is free to obtain but not always accurate:
+# ``num_frames_from_header`` can disagree with the number of frames the stream
+# really decodes to. Values that can only be known by reading the whole stream
+# aren't part of it, so no field here silently means two different things.
+print(Demuxer(video_path).metadata)
+
+# %%
 # Threading: overlapping the stages
 # ---------------------------------
 #
