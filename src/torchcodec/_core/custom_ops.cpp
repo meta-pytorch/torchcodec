@@ -74,7 +74,11 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "get_frames_by_pts(Tensor(a!) decoder, *, Tensor timestamps) -> (Tensor, Tensor, Tensor)");
   m.def(
-      "_blocks_create_demuxer(str filename, int? stream_index=None) -> Tensor");
+      "_blocks_create_demuxer_from_file(str filename, int? stream_index=None) -> Tensor");
+  m.def(
+      "_blocks_create_demuxer_from_tensor(Tensor video_tensor, int? stream_index=None) -> Tensor");
+  m.def(
+      "_blocks_create_demuxer_from_file_like(int file_like_context, int? stream_index=None) -> Tensor");
   m.def("_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool)");
   m.def("_blocks_demuxer_seek(Tensor(a!) demuxer, float seconds) -> ()");
   m.def(
@@ -795,14 +799,51 @@ OpsAudioFramesOutput get_frames_by_pts_in_range_audio(
 // Building-block ops (torchcodec.decoders._blocks)
 // ==============================
 
-torch::stable::Tensor _blocks_create_demuxer(
+std::optional<int> to_optional_int(std::optional<int64_t> value) {
+  if (!value.has_value()) {
+    return std::nullopt;
+  }
+  return static_cast<int>(value.value());
+}
+
+torch::stable::Tensor _blocks_create_demuxer_from_file(
     std::string filename,
     std::optional<int64_t> stream_index) {
-  std::optional<int> stream_index_int;
-  if (stream_index.has_value()) {
-    stream_index_int = static_cast<int>(stream_index.value());
-  }
-  auto demuxer = std::make_unique<Demuxer>(filename, stream_index_int);
+  auto demuxer =
+      std::make_unique<Demuxer>(filename, to_optional_int(stream_index));
+  return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
+}
+
+torch::stable::Tensor _blocks_create_demuxer_from_tensor(
+    const torch::stable::Tensor& video_tensor,
+    std::optional<int64_t> stream_index) {
+  STD_TORCH_CHECK(
+      video_tensor.is_contiguous(), "video_tensor must be contiguous");
+  STD_TORCH_CHECK(
+      video_tensor.scalar_type() == kStableUInt8,
+      "video_tensor must be kUInt8");
+
+  auto avio_context_holder = std::make_unique<AVIOContextHolder>(
+      std::make_unique<TensorReadIO>(video_tensor), /*is_for_writing=*/false);
+  auto demuxer = std::make_unique<Demuxer>(
+      std::move(avio_context_holder), to_optional_int(stream_index));
+  return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
+}
+
+torch::stable::Tensor _blocks_create_demuxer_from_file_like(
+    int64_t file_like_context,
+    std::optional<int64_t> stream_index) {
+  auto file_like_context_ptr =
+      reinterpret_cast<IOInterface*>(file_like_context);
+  STD_TORCH_CHECK(
+      file_like_context_ptr != nullptr,
+      "file_like_context must be a valid pointer");
+
+  auto avio_context_holder = std::make_unique<AVIOContextHolder>(
+      std::unique_ptr<IOInterface>(file_like_context_ptr),
+      /*is_for_writing=*/false);
+  auto demuxer = std::make_unique<Demuxer>(
+      std::move(avio_context_holder), to_optional_int(stream_index));
   return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
 }
 
@@ -1455,7 +1496,15 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
   m.impl("_create_from_file_like", TORCH_BOX(&_create_from_file_like));
-  m.impl("_blocks_create_demuxer", TORCH_BOX(&_blocks_create_demuxer));
+  m.impl(
+      "_blocks_create_demuxer_from_file",
+      TORCH_BOX(&_blocks_create_demuxer_from_file));
+  m.impl(
+      "_blocks_create_demuxer_from_tensor",
+      TORCH_BOX(&_blocks_create_demuxer_from_tensor));
+  m.impl(
+      "_blocks_create_demuxer_from_file_like",
+      TORCH_BOX(&_blocks_create_demuxer_from_file_like));
   m.impl(
       "_blocks_create_color_converter",
       TORCH_BOX(&_blocks_create_color_converter));

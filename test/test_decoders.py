@@ -7,6 +7,7 @@
 import concurrent.futures
 import contextlib
 import gc
+import io
 import itertools
 import math
 import os
@@ -3599,6 +3600,35 @@ def _planes_ids(case):
     return case.video.path.stem
 
 
+class _CustomReader:
+    # A file-like object that isn't an io.IOBase subclass, i.e. one recognized
+    # by duck-typing alone.
+    def __init__(self, file):
+        self._file = file
+
+    def read(self, size: int) -> bytes:
+        return self._file.read(size)
+
+    def seek(self, offset: int, whence: int) -> int:
+        return self._file.seek(offset, whence)
+
+
+_BLOCKS_SOURCES = (
+    pytest.param(lambda path: path, id="path"),
+    pytest.param(lambda path: str(path), id="str"),
+    pytest.param(lambda path: path.read_bytes(), id="bytes"),
+    pytest.param(
+        lambda path: torch.frombuffer(bytearray(path.read_bytes()), dtype=torch.uint8),
+        id="tensor",
+    ),
+    pytest.param(lambda path: open(path, "rb"), id="file_like"),
+    pytest.param(lambda path: io.BytesIO(path.read_bytes()), id="bytes_io"),
+    pytest.param(
+        lambda path: _CustomReader(open(path, "rb", buffering=0)), id="custom_reader"
+    ),
+)
+
+
 class TestBlocks:
 
     @pytest.mark.parametrize("device", _block_devices())
@@ -4697,6 +4727,47 @@ class TestBlocks:
         with pytest.raises(RuntimeError, match="has been drained"):
             decoder.decode(packet)
 
+    # ===== source kinds =====
+
+    @pytest.mark.parametrize("make_source", _BLOCKS_SOURCES)
+    def test_source_kinds(self, make_source):
+        # Every source kind demuxes into the very same frames as the path does.
+        got = self._decode_sequential(make_source(NASA_VIDEO.path), "cpu")
+        expected = VideoDecoder(NASA_VIDEO.path).get_all_frames()
+
+        assert len(got) == len(expected)
+        for got_frame, expected_pts, expected_data in zip(
+            got, expected.pts_seconds, expected.data
+        ):
+            assert got_frame.pts_seconds == expected_pts
+            assert_frames_equal(got_frame.data, expected_data)
+
+    @pytest.mark.parametrize("make_source", _BLOCKS_SOURCES)
+    def test_seek_on_every_source_kind(self, make_source):
+        # Seeking anything but a path goes through the AVIO seek callback -
+        # back into Python for a file-like, into our own buffer for bytes and
+        # tensors - instead of through FFmpeg's own file I/O.
+        video_decoder = VideoDecoder(NASA_VIDEO.path)
+        seconds = video_decoder.get_frame_at(
+            video_decoder._get_key_frame_indices()[1]
+        ).pts_seconds
+
+        blocks = self._make_blocks(make_source(NASA_VIDEO.path), "cpu")
+        got = self._first_frame_after_seek(blocks, seconds)
+        expected = video_decoder.get_frame_played_at(seconds)
+
+        assert got.pts_seconds == expected.pts_seconds == seconds
+        assert_frames_equal(got.data, expected.data)
+
+    def test_bad_source_type_raises(self):
+        with pytest.raises(TypeError, match="Unknown source type"):
+            Demuxer(123)
+
+        # user mistakenly forgets to specify binary reading when creating a
+        # file-like object from open()
+        with pytest.raises(TypeError, match="binary reading?"):
+            Demuxer(open(NASA_VIDEO.path))
+
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn
 def _jpeg_param(*values):
@@ -5355,8 +5426,6 @@ class TestImageDecoder:
     @needs_jpeg
     @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
     def test_cuda_jpeg_exif_orientation(self, orientation):
-        import io
-
         base = Image.open(GRADIENT_JPEG.path).convert("RGB")
         exif = base.getexif()
         exif[0x0112] = orientation  # 0x0112 == EXIF Orientation tag

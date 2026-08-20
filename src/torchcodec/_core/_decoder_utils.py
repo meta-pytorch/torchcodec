@@ -16,6 +16,10 @@ from torchcodec._core._metadata import (
     VideoStreamMetadata,
 )
 from torchcodec._core.ops import (
+    _blocks_create_demuxer_from_bytes,
+    _blocks_create_demuxer_from_file,
+    _blocks_create_demuxer_from_file_like,
+    _blocks_create_demuxer_from_tensor,
     add_audio_stream,
     add_video_stream,
     create_from_bytes,
@@ -60,6 +64,37 @@ def create_decoder(
         )
     elif hasattr(source, "read") and hasattr(source, "seek"):
         return create_from_file_like(source, seek_mode)
+
+    raise TypeError(
+        f"Unknown source type: {type(source)}. "
+        "Supported types are str, Path, bytes, Tensor and file-like objects with "
+        "read(self, size: int) -> bytes and "
+        "seek(self, offset: int, whence: int) -> int methods."
+    )
+
+
+def create_demuxer(
+    *,
+    source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
+    stream_index: int | None = None,
+) -> Tensor:
+    load_core_libraries()
+    if isinstance(source, str):
+        return _blocks_create_demuxer_from_file(source, stream_index)
+    elif isinstance(source, Path):
+        return _blocks_create_demuxer_from_file(str(source), stream_index)
+    elif isinstance(source, bytes):
+        return _blocks_create_demuxer_from_bytes(source, stream_index)
+    elif isinstance(source, Tensor):
+        return _blocks_create_demuxer_from_tensor(source, stream_index)
+    elif isinstance(source, (io.RawIOBase, io.BufferedReader)):
+        return _blocks_create_demuxer_from_file_like(source, stream_index)
+    elif isinstance(source, io.TextIOBase):
+        raise TypeError(
+            "source is for reading text, likely from open(..., 'r'). Try with 'rb' for binary reading?"
+        )
+    elif hasattr(source, "read") and hasattr(source, "seek"):
+        return _blocks_create_demuxer_from_file_like(source, stream_index)
 
     raise TypeError(
         f"Unknown source type: {type(source)}. "
