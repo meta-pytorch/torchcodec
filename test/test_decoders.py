@@ -4255,17 +4255,26 @@ class TestBlocks:
         assert frame.pix_fmt == expected_pix_fmt
         assert all(plane.device.type == "cuda" for plane in frame.planes)
 
-    @pytest.mark.parametrize("pix_fmt", ("pal8", "gbrpf32le"))
-    def test_planes_of_non_viewable_format(self, tmp_path, pix_fmt):
+    @pytest.mark.parametrize(
+        "pix_fmt, codec, container",
+        (
+            ("pal8", "rawvideo", "nut"),
+            # Before FFmpeg 8 the nut muxer has no rawvideo tag for the float
+            # formats and silently writes a bogus one, so the file reads back as
+            # rgb555le. EXR in mkv stores gbrpf32le properly on all versions.
+            ("gbrpf32le", "exr", "mkv"),
+        ),
+    )
+    def test_planes_of_non_viewable_format(self, tmp_path, pix_fmt, codec, container):
         # Palettised and float formats can't be handed out as views. Everything
         # *but* the planes still works, which is what lets a caller check
         # pix_fmt before reaching for them.
-        path = tmp_path / f"{pix_fmt}.nut"
+        path = tmp_path / f"{pix_fmt}.{container}"
         subprocess.run(
             [
                 "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
                 "-f", "lavfi", "-i", "testsrc2=size=64x48:rate=10:duration=1",
-                "-c:v", "rawvideo", "-pix_fmt", pix_fmt, str(path),
+                "-c:v", codec, "-pix_fmt", pix_fmt, str(path),
             ],
             check=True,
         )  # fmt: skip
