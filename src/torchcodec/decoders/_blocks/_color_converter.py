@@ -13,7 +13,7 @@ import torch
 from torchcodec._core.ops import _blocks_convert_frame, _blocks_create_color_converter
 from torchcodec._frame import Frame
 
-from .._decoder_utils import convert_output_dtype_to_str
+from .._decoder_utils import convert_device_to_str, convert_output_dtype_to_str
 from ._frame import DecodedFrame
 
 
@@ -35,16 +35,19 @@ class ColorConverter:
     Rotation is applied too, so the output matches ``VideoDecoder``'s. The angle
     is part of the frame, like its dims and colorspace, so honoring it doesn't
     bind the converter to a stream either.
+
+    ``device`` accepts a string or a ``torch.device``. It defaults to ``None``,
+    which means the current default device (see ``torch.set_default_device``).
     """
 
-    # TODO_API_BREAKDOWN UF P1: device default should be None
     def __init__(
         self,
-        device="cpu",
+        device: str | torch.device | None = None,
         output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
     ):
         self._handle = _blocks_create_color_converter(
-            device=device, output_dtype=convert_output_dtype_to_str(output_dtype)
+            device=convert_device_to_str(device),
+            output_dtype=convert_output_dtype_to_str(output_dtype),
         )
 
     def convert(self, decoded_frame: DecodedFrame) -> Frame:
