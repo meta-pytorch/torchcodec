@@ -54,6 +54,15 @@ class ColorConverter:
             output_dtype=convert_output_dtype_to_str(output_dtype),
         )
 
+    # TODO_API_BREAKDOWN DESIGN P2: The frame device must match the converter
+    # device. We have two alternative options:
+    # - not take a device parameter in the constructor and make the converter
+    #   device-agnostic. It requires caching the interfaces on the Converter.
+    # - take a device parameter and always honor it: that means downloading or
+    #   uploading CPU frames when needed.
+    # I feel like maybe we want to allow a CPU frame to be CCed on the GPU and
+    # do the upload ourselves (the download makes no sense, it's super slow).
+    # Anyway, that can be done later.
     def convert(self, raw_frame: RawFrame) -> Frame:
         data = _blocks_convert_frame(self._handle, raw_frame._handle, raw_frame._device)
         if raw_frame.storage is not None:

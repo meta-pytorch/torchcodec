@@ -1331,14 +1331,6 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   //
   // In contrast, a PacketDecoder will always upload CPU frames before retuning
   // them because its contract is to respect its device parameter.
-  //
-  // TODO_API_BREAKDOWN UF P1: Should test mismatch between device param of
-  // PacketDecoder and ColorConversion - maybe we're fine not handling this?
-  // Should check CUDA-CPU, CPU-CUDA, and CUDA-CUDA (with different devices)
-  // cases.
-  // TODO_API_BREAKDOWN UF P1: OK but we want the ColorConverter to be
-  // standalone: can we feed it frames on CPU and then on GPU? Will it be OK
-  // with that? Does that influence the TODO just above?
   bool needs_upload = mode() == Mode::Both && decoding_on_cpu_;
 
   // `uploaded` owns the GPU buffer for as long as it's in scope, which covers
