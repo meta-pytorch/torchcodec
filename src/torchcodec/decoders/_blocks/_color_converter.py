@@ -53,19 +53,6 @@ class ColorConverter:
     def convert(self, decoded_frame: DecodedFrame) -> Frame:
         data = _blocks_convert_frame(self._handle, decoded_frame._handle)
         if decoded_frame.storage is not None:
-            # The conversion above only *enqueues* its kernel, and the caller
-            # may drop the frame as soon as we return - which releases the
-            # frame's buffer host-side, without waiting for the GPU. That
-            # buffer was allocated on the decoder's stream, so the caching
-            # allocator would hand it to the decoder's next frame while our
-            # kernel is still reading it. This tells the allocator to hold the
-            # block back until the work we just queued has run.
-            #
-            # It has to happen here rather than in the C++ conversion because
-            # record_stream() isn't reachable through the stable ABI. See
-            # BetaCudaDeviceInterface::get_frame_storage(), and
-            # DecodedFrame.storage for the contract users have to follow when
-            # they write their own conversion.
             decoded_frame.storage.record_stream(torch.cuda.current_stream())
         # The core op produces HWC; permute to CHW to match VideoDecoder (which
         # also returns a non-contiguous permuted view).

@@ -856,8 +856,6 @@ std::string device_to_string(const StableDevice& device) {
 }
 
 // (frame_handle, status, pts_seconds, duration_seconds, device, storage).
-// `storage` is the tensor owning the frame's GPU buffer, or an empty tensor
-// for frames that don't have one. Python needs it to call record_stream().
 using OpsReceiveFrameOutput = std::tuple<
     torch::stable::Tensor,
     int64_t,

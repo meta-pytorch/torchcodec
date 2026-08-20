@@ -160,11 +160,6 @@ class DeviceInterface {
   virtual void make_frame_standalone([[maybe_unused]] UniqueAVFrame& av_frame) {
   };
 
-  // The tensor owning the GPU buffer that make_frame_standalone() attached to
-  // `av_frame`, if any. A consumer reading that buffer on a stream other than
-  // the one it was allocated on must tell the caching allocator, or the buffer
-  // can be recycled mid-read. See BetaCudaDeviceInterface::get_frame_storage()
-  // for the full story.
   virtual std::optional<torch::stable::Tensor> get_frame_storage(
       [[maybe_unused]] const AVFrame& av_frame) const {
     return std::nullopt;

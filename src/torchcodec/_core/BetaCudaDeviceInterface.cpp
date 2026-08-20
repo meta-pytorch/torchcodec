@@ -1035,6 +1035,10 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
 
 std::optional<torch::stable::Tensor> BetaCudaDeviceInterface::get_frame_storage(
     const AVFrame& av_frame) const {
+  STD_TORCH_CHECK(
+      mode() == Mode::DecoderOnly,
+      "get_frame_storage() is only valid in decoder-only mode: standalone "
+      "frames are meant to be consumed by a separate ColorConverter or by user-defined consumers.");
   // A standalone frame's samples live in a buffer allocated from the PyTorch
   // caching allocator, on the stream that was current in
   // make_frame_standalone() - the decoder's. A consumer reading that buffer

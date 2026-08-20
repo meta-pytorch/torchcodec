@@ -3976,39 +3976,15 @@ class TestBlocks:
         assert converter.convert(frame).data.shape == (3, height, width)
 
     @pytest.mark.needs_cuda
-    def test_backlogged_converter_on_separate_stream(self):
-        # Decode and color-convert on two different CUDA streams, with the
-        # converter deliberately kept behind, and drop each frame as soon as its
-        # conversion is enqueued. A decoded frame's storage comes from the
-        # caching allocator, which knows nothing about the converter's reads, so
-        # dropping the frame early is what lets the next frame's copy land in
-        # the same block mid-read.
-        video = NASA_VIDEO.path
-        demuxer, decoder, converter = self._make_blocks(video, "cuda")
-        decode_stream = torch.cuda.Stream()
-        convert_stream = torch.cuda.Stream()
-
-        frames = []
-        for packet in itertools.chain(demuxer, [None]):
-            with torch.cuda.stream(decode_stream):
-                decoded = decoder.flush() if packet is None else decoder.decode(packet)
-            with torch.cuda.stream(convert_stream):
-                while decoded:
-                    torch.cuda._sleep(20_000_000)  # ~10ms
-                    frames.append(converter.convert(decoded.pop(0)))
-        torch.cuda.synchronize()
-
-        got = self._to_frame_batch(frames)
-        ref = VideoDecoder(video, device="cuda").get_all_frames()
-        torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
-
-    @pytest.mark.needs_cuda
     @pytest.mark.parametrize("record_stream", (True, False))
     def test_storage_record_stream(self, record_stream):
-        # The contract documented on DecodedFrame.storage: read the planes on
-        # your own stream, record it on the storage, then drop the frame.
-        # Without the record_stream() call the decoder's next frame is handed
-        # the same buffer and overwrites it while the read is still queued.
+        # Using PacketDecoder on one stream and consuming the frames on a
+        # different stream requires the user to call record_stream() on the
+        # frame storage.
+        # Without the record_stream() call the decoder's next frame may be
+        # handed the same buffer and overwrites it while the read is still
+        # queued. See "Streams and freeing memory"
+        # https://zdevito.github.io/2022/08/04/cuda-caching-allocator.html
         video = NASA_VIDEO.path
         decode_stream = torch.cuda.Stream()
         read_stream = torch.cuda.Stream()
@@ -4042,6 +4018,30 @@ class TestBlocks:
             # Guards the test itself: without the call this really does corrupt,
             # so the assertion above is meaningful.
             assert wrong > 0
+
+    @pytest.mark.needs_cuda
+    def test_backlogged_converter_on_separate_stream(self):
+        # Similar test to test_storage_record_stream(), but with the ColorConverter on a
+        # separate stream. In this case, *we* call record_stream() on behalf of
+        # the user.
+        video = NASA_VIDEO.path
+        demuxer, decoder, converter = self._make_blocks(video, "cuda")
+        decode_stream = torch.cuda.Stream()
+        convert_stream = torch.cuda.Stream()
+
+        frames = []
+        for packet in itertools.chain(demuxer, [None]):
+            with torch.cuda.stream(decode_stream):
+                decoded = decoder.flush() if packet is None else decoder.decode(packet)
+            with torch.cuda.stream(convert_stream):
+                while decoded:
+                    torch.cuda._sleep(20_000_000)  # ~10ms
+                    frames.append(converter.convert(decoded.pop(0)))
+        torch.cuda.synchronize()
+
+        got = self._to_frame_batch(frames)
+        ref = VideoDecoder(video, device="cuda").get_all_frames()
+        torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
 
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)
