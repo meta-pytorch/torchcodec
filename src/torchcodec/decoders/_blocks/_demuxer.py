@@ -49,12 +49,10 @@ class Demuxer:
         handle, is_eof = _blocks_demuxer_next_packet(self._handle)
         return None if is_eof else Packet(handle)
 
-    # TODO_API_BREAKDOWN CORRECTNESS P1: this is VideoDecoder's "approximate"
-    # seek mode. Do we want to offer an "exact" one? It needs a
-    # presentation-order keyframe index, i.e. a scan of the whole file, which
-    # a user would have to opt into (a Demuxer.scan()?). seek() would then snap
-    # the target back to the preceding keyframe in that index, which is all
-    # that VideoDecoder's exact mode does.
+    # TODO_API_BREAKDOWN FEAT P1: this is VideoDecoder's "approximate"
+    # seek mode (with get_frame_played_at() only). Do we want to offer an
+    # "exact" one? It needs a presentation-order keyframe index, i.e. a scan of
+    # the whole file, which a user would have to opt into (a Demuxer.scan()?).
     def seek(self, seconds: float) -> None:
         _blocks_demuxer_seek(self._handle, float(seconds))
 
