@@ -27,7 +27,7 @@ stages separately:
 .. code-block::
 
    Demuxer  ->  PacketDecoder  ->  ColorConverter
-    Packet       DecodedFrame        RGB Frame
+    Packet         RawFrame          RGB Frame
 
 The blocks are passive: they never create threads, and they release the GIL.
 You decide how they are composed, on which threads, and where to stop. Below
@@ -75,7 +75,7 @@ Boilerplate: a test video, and the device we'll run on.
 
     device = 'cuda'
 
-    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpmnq86uzz/video.mp4'], returncode=0)
+    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpa9zoolos/video.mp4'], returncode=0)
 
 
 
@@ -105,10 +105,10 @@ unspecified, ``device`` is the current default device.
 
     frames = []
     for packet in demuxer:
-        for decoded_frame in packet_decoder.decode(packet):
-            frames.append(color_converter.convert(decoded_frame))
-    for decoded_frame in packet_decoder.drain():
-        frames.append(color_converter.convert(decoded_frame))
+        for raw_frame in packet_decoder.decode(packet):
+            frames.append(color_converter.convert(raw_frame))
+    for raw_frame in packet_decoder.drain():
+        frames.append(color_converter.convert(raw_frame))
 
     print(f"{len(frames)} frames, {frames[0].data.shape = }, "
           f"{frames[0].pts_seconds = }, {frames[0].data.device = }")
@@ -154,9 +154,9 @@ GIL, that's real parallelism.
         yield from packet_decoder.drain()
 
 
-    def color_convert(color_converter, decoded_frames):
-        for decoded_frame in decoded_frames:
-            yield color_converter.convert(decoded_frame)
+    def color_convert(color_converter, raw_frames):
+        for raw_frame in raw_frames:
+            yield color_converter.convert(raw_frame)
 
 
     def prefetch(upstream, buffer_size=8):
@@ -193,8 +193,8 @@ GIL, that's real parallelism.
         demuxer = Demuxer(video_path)
         packet_decoder = PacketDecoder(demuxer, device=device)
         color_converter = ColorConverter(device=device)
-        decoded_frames = prefetch(decode(packet_decoder, demux(demuxer)))
-        return color_convert(color_converter, decoded_frames)
+        raw_frames = prefetch(decode(packet_decoder, demux(demuxer)))
+        return color_convert(color_converter, raw_frames)
 
 
     def demux_on_own_thread():
@@ -283,18 +283,17 @@ The seek also invalidates the frames the decoder is holding on to, so the
 Raw frames
 ----------
 
-Color conversion is optional. A ``DecodedFrame`` can hand out the decoder's
-own planes as tensor views, with no copy and no conversion.
+Color conversion is optional. A ``RawFrame`` can hand out the decoder's own
+planes as tensor views, with no copy and no conversion.
 
-.. GENERATED FROM PYTHON SOURCE LINES 203-213
+.. GENERATED FROM PYTHON SOURCE LINES 203-212
 
 .. code-block:: Python
 
     demuxer = Demuxer(video_path)
     packet_decoder = PacketDecoder(demuxer, device=device)
-    decoded_frame = next(decode(packet_decoder, demux(demuxer)))
+    raw_frame = next(decode(packet_decoder, demux(demuxer)))
 
-    raw_frame = decoded_frame.materialize()
     Y, U, V = raw_frame.planes
     print(f"{raw_frame.pix_fmt = }, {raw_frame.bit_depth = }, "
           f"{raw_frame.colorspace = }, {raw_frame.color_range = }")
@@ -314,15 +313,16 @@ own planes as tensor views, with no copy and no conversion.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 214-225
+.. GENERATED FROM PYTHON SOURCE LINES 213-225
 
 These are views into the frame's memory: the row stride is the decoder's own
 line size, and the chroma planes of an NVDEC surface are two interleaved
 views over a single plane. Writing through them is visible downstream.
 
 Being the decoder's own planes, they are also never rotated - a video whose
-container asks for a rotation gives you the samples as they were encoded.
-``ColorConverter`` applies the rotation for you.
+container asks for a rotation gives you the samples as they were encoded, and
+``raw_frame.rotation_degrees`` tells you what to apply. ``ColorConverter``
+applies it for you.
 
 So we can do the color conversion ourselves. Here it's plain PyTorch ops -
 it could just as well be a Triton or CUDA kernel, fused with whatever your
@@ -357,7 +357,7 @@ model needs next.
 
 
     ours = yuv420_to_rgb(Y, U, V)
-    reference = ColorConverter(device=device).convert(decoded_frame).data
+    reference = ColorConverter(device=device).convert(raw_frame).data
     print(f"{ours.shape = }, mean abs diff vs ColorConverter: "
           f"{(ours.float() - reference.float()).abs().mean():.2f}")
 
@@ -383,7 +383,7 @@ Raw planes come at the source's own precision, so a 10-bit HDR video gives
 ``uint16`` planes with all 10 bits intact - no clipping to 8 bits, and no
 tone mapping.
 
-.. GENERATED FROM PYTHON SOURCE LINES 261-292
+.. GENERATED FROM PYTHON SOURCE LINES 261-291
 
 .. code-block:: Python
 
@@ -403,9 +403,8 @@ tone mapping.
 
     hdr_demuxer = Demuxer(hdr_video_path)
     hdr_packet_decoder = PacketDecoder(hdr_demuxer, device=device)
-    hdr_frame = next(decode(hdr_packet_decoder, demux(hdr_demuxer)))
+    hdr_raw = next(decode(hdr_packet_decoder, demux(hdr_demuxer)))
 
-    hdr_raw = hdr_frame.materialize()
     hdr_Y = hdr_raw.planes[0]
     print(f"{hdr_raw.pix_fmt = }, {hdr_raw.bit_depth = }, "
           f"{hdr_raw.colorspace = }, {hdr_Y.dtype = }")
@@ -432,7 +431,7 @@ tone mapping.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 293-303
+.. GENERATED FROM PYTHON SOURCE LINES 292-302
 
 Streams of unknown length
 -------------------------
@@ -445,7 +444,7 @@ that has no duration, no frame count, and no end.
 
 Let's make one: FFmpeg generating frames forever into a named pipe.
 
-.. GENERATED FROM PYTHON SOURCE LINES 303-320
+.. GENERATED FROM PYTHON SOURCE LINES 302-319
 
 .. code-block:: Python
 
@@ -473,12 +472,12 @@ Let's make one: FFmpeg generating frames forever into a named pipe.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 321-323
+.. GENERATED FROM PYTHON SOURCE LINES 320-322
 
 ``VideoDecoder`` can't do anything with that (we ask for the approximate
 seek mode; the exact one would scan the stream forever):
 
-.. GENERATED FROM PYTHON SOURCE LINES 323-333
+.. GENERATED FROM PYTHON SOURCE LINES 322-332
 
 .. code-block:: Python
 
@@ -506,11 +505,11 @@ seek mode; the exact one would scan the stream forever):
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 334-335
+.. GENERATED FROM PYTHON SOURCE LINES 333-334
 
 The blocks just stream it, and we stop whenever we want:
 
-.. GENERATED FROM PYTHON SOURCE LINES 335-351
+.. GENERATED FROM PYTHON SOURCE LINES 334-350
 
 .. code-block:: Python
 
@@ -547,7 +546,7 @@ The blocks just stream it, and we stop whenever we want:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 1.977 seconds)
+   **Total running time of the script:** (0 minutes 1.959 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_blocks.py:
