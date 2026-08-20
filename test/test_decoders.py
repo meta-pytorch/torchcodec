@@ -4281,17 +4281,26 @@ class TestBlocks:
         assert frame.pix_fmt == expected_pix_fmt
         assert all(plane.device.type == "cuda" for plane in frame.planes)
 
-    @pytest.mark.parametrize("pix_fmt", ("pal8", "gbrpf32le"))
-    def test_planes_of_non_viewable_format(self, tmp_path, pix_fmt):
+    @pytest.mark.parametrize(
+        "pix_fmt, codec, container",
+        (
+            ("pal8", "rawvideo", "nut"),
+            # Before FFmpeg 8 the nut muxer has no rawvideo tag for the float
+            # formats and silently writes a bogus one, so the file reads back as
+            # rgb555le. EXR in mkv stores gbrpf32le properly on all versions.
+            ("gbrpf32le", "exr", "mkv"),
+        ),
+    )
+    def test_planes_of_non_viewable_format(self, tmp_path, pix_fmt, codec, container):
         # Palettised and float formats can't be handed out as views. Everything
         # *but* the planes still works, which is what lets a caller check
         # pix_fmt before reaching for them.
-        path = tmp_path / f"{pix_fmt}.nut"
+        path = tmp_path / f"{pix_fmt}.{container}"
         subprocess.run(
             [
                 "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
                 "-f", "lavfi", "-i", "testsrc2=size=64x48:rate=10:duration=1",
-                "-c:v", "rawvideo", "-pix_fmt", pix_fmt, str(path),
+                "-c:v", codec, "-pix_fmt", pix_fmt, str(path),
             ],
             check=True,
         )  # fmt: skip
@@ -4784,6 +4793,47 @@ class TestBlocks:
 
         assert got.pts_seconds == expected.pts_seconds == seconds
         assert_frames_equal(got.data, expected.data)
+
+    # ===== stream_index =====
+
+    @pytest.mark.parametrize("stream_index", (None, 0, 3))
+    def test_stream_index(self, stream_index):
+        # nasa_13013.mp4 has two video streams, 0 and 3, of different sizes,
+        # and 3 is the best one, i.e. the one used when nothing is requested.
+        demuxer = Demuxer(NASA_VIDEO.path, stream_index=stream_index)
+        decoder = PacketDecoder(demuxer)
+        converter = ColorConverter()
+        got = [
+            converter.convert(raw_frame)
+            for raw_frame in itertools.islice(
+                self._decode(decoder, self._demux(demuxer)), 10
+            )
+        ]
+
+        expected = VideoDecoder(NASA_VIDEO.path, stream_index=stream_index)[:10]
+
+        assert len(got) == len(expected) == 10
+        for got_frame, expected_data in zip(got, expected):
+            assert_frames_equal(got_frame.data, expected_data)
+
+    @pytest.mark.parametrize("stream_index", (1, 4))  # the mp4's aac streams
+    def test_audio_stream_index_raises(self, stream_index):
+        with pytest.raises(RuntimeError, match="is not a video stream.*'audio'"):
+            Demuxer(NASA_VIDEO.path, stream_index=stream_index)
+
+    def test_audio_only_file_raises(self):
+        with pytest.raises(RuntimeError, match="No valid video stream found"):
+            Demuxer(NASA_AUDIO_MP3.path)
+
+    def test_non_video_stream_index_raises(self):
+        # Stream 2 of the mp4 is a subtitle stream.
+        with pytest.raises(RuntimeError, match="is not a video stream.*'subtitle'"):
+            Demuxer(NASA_VIDEO.path, stream_index=2)
+
+    @pytest.mark.parametrize("stream_index", (-1, 6, 1000))
+    def test_invalid_stream_index_raises(self, stream_index):
+        with pytest.raises(RuntimeError, match="is not a valid stream"):
+            Demuxer(NASA_VIDEO.path, stream_index=stream_index)
 
     def test_bad_source_type_raises(self):
         with pytest.raises(TypeError, match="Unknown source type"):
