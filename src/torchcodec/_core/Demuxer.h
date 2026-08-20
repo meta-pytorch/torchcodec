@@ -38,9 +38,6 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
       const std::string& file_path,
       std::optional<int> stream_index = std::nullopt);
 
-  // Demuxes from the AVIOContext inside the AVIOContextHolder, which wraps an
-  // IOInterface specializing how reads and seeks work (in-memory tensor,
-  // Python file-like, ...).
   explicit Demuxer(
       std::unique_ptr<AVIOContextHolder> avio_context_holder,
       std::optional<int> stream_index = std::nullopt);
@@ -64,6 +61,7 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
   }
 
  private:
+  void validate_requested_stream(int stream_index);
   void select_stream(std::optional<int> stream_index);
 
   // Declared before format_context_ so that it outlives it: the format context

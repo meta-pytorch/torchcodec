@@ -47,8 +47,9 @@ class Demuxer:
 
         stream_index (int, optional): Specifies which stream in the video to
             demux packets from. Note that this index is absolute across all
-            media types. If left unspecified, then the :term:`best stream` is
-            used.
+            media types. It must refer to a video stream: audio streams aren't
+            supported, and requesting one raises an error. If left unspecified,
+            then the :term:`best stream` is used.
     """
 
     def __init__(

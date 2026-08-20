@@ -4759,6 +4759,47 @@ class TestBlocks:
         assert got.pts_seconds == expected.pts_seconds == seconds
         assert_frames_equal(got.data, expected.data)
 
+    # ===== stream_index =====
+
+    @pytest.mark.parametrize("stream_index", (None, 0, 3))
+    def test_stream_index(self, stream_index):
+        # nasa_13013.mp4 has two video streams, 0 and 3, of different sizes,
+        # and 3 is the best one, i.e. the one used when nothing is requested.
+        demuxer = Demuxer(NASA_VIDEO.path, stream_index=stream_index)
+        decoder = PacketDecoder(demuxer)
+        converter = ColorConverter()
+        got = [
+            converter.convert(raw_frame)
+            for raw_frame in itertools.islice(
+                self._decode(decoder, self._demux(demuxer)), 10
+            )
+        ]
+
+        expected = VideoDecoder(NASA_VIDEO.path, stream_index=stream_index)[:10]
+
+        assert len(got) == len(expected) == 10
+        for got_frame, expected_data in zip(got, expected):
+            assert_frames_equal(got_frame.data, expected_data)
+
+    @pytest.mark.parametrize("stream_index", (1, 4))  # the mp4's aac streams
+    def test_audio_stream_index_raises(self, stream_index):
+        with pytest.raises(RuntimeError, match="is not a video stream.*'audio'"):
+            Demuxer(NASA_VIDEO.path, stream_index=stream_index)
+
+    def test_audio_only_file_raises(self):
+        with pytest.raises(RuntimeError, match="No valid video stream found"):
+            Demuxer(NASA_AUDIO_MP3.path)
+
+    def test_non_video_stream_index_raises(self):
+        # Stream 2 of the mp4 is a subtitle stream.
+        with pytest.raises(RuntimeError, match="is not a video stream.*'subtitle'"):
+            Demuxer(NASA_VIDEO.path, stream_index=2)
+
+    @pytest.mark.parametrize("stream_index", (-1, 6, 1000))
+    def test_invalid_stream_index_raises(self, stream_index):
+        with pytest.raises(RuntimeError, match="is not a valid stream"):
+            Demuxer(NASA_VIDEO.path, stream_index=stream_index)
+
     def test_bad_source_type_raises(self):
         with pytest.raises(TypeError, match="Unknown source type"):
             Demuxer(123)
