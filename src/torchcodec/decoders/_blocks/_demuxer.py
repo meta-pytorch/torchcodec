@@ -16,6 +16,10 @@ from torchcodec._core.ops import (
 
 from ._frame import Packet
 
+# TODO_API_BREAKDOWN CORRECTNESS P1: Need to understand the seeking we do: it's
+# not completley approximate and it's not completely exact either. Understand
+# it, document it (?), test it. Maybe we acutally do want to replicate
+# approximate and exact. Might not actually be difficult.
 
 class Demuxer:
     """Demux building block: opens a container and yields the compressed

@@ -4346,6 +4346,52 @@ class TestBlocks:
             assert got.pts_seconds == expected.pts_seconds == seconds
             assert_frames_equal(got.data, expected.data)
 
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_seek_while_demuxing_on_another_thread(self, device):
+        # Demuxing on one thread and decoding on another. Each block belongs to
+        # the thread that drives it, so the seek happens on the demux thread
+        # and the reset on the decode thread - and the reset has to land
+        # between the last pre-seek packet and the first post-seek one, which
+        # is a matter of *ordering*, not timing. Sequencing it through the
+        # queue is all it takes: the demux thread posts a marker where it
+        # seeked, the same way prefetch() posts one at end of stream.
+        num_frames = 5
+        reset_marker = object()
+        video_decoder = VideoDecoder(NASA_VIDEO.path, device=device)
+        keyframe_index = video_decoder._get_key_frame_indices()[1]
+        seconds = video_decoder.get_frame_at(keyframe_index).pts_seconds
+
+        demuxer, decoder, converter = self._make_blocks(NASA_VIDEO.path, device)
+
+        def demux_then_seek():
+            for _, packet in zip(range(6), demuxer):
+                yield packet
+            demuxer.seek(seconds)
+            yield reset_marker
+            for _, packet in zip(range(15), demuxer):
+                yield packet
+
+        frames = []
+        seeked = False
+        for item in self.prefetch(demux_then_seek()):
+            if item is reset_marker:
+                decoder.reset()
+                seeked = True
+                continue
+            decoded_frames = decoder.decode(item)
+            if seeked:
+                frames.extend(converter.convert(frame) for frame in decoded_frames)
+
+        expected = video_decoder.get_frames_in_range(
+            keyframe_index, keyframe_index + num_frames
+        )
+        assert len(frames) >= num_frames
+        for frame, expected_pts, expected_data in zip(
+            frames, expected.pts_seconds, expected.data
+        ):
+            assert frame.pts_seconds == expected_pts
+            assert_frames_equal(frame.data, expected_data)
+
     @pytest.mark.parametrize("seconds", (1.0, 2.0, 3.0))
     @pytest.mark.parametrize("device", _block_devices())
     def test_seek_mpeg_program_stream(self, seconds, device):
