@@ -827,8 +827,8 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   //   copy), or that's a frame that was discarded in SingleStreamDecoder.
   // - With the "Blocks" APIs, the PacketDecoder forces a copy in
   //   make_frame_standalone().
-  // Those reads are asynchronous, which is what the wait below accounts for:
   if (surface_reader_stream_ != nvdec_output_stream_) {
+    // Those reads are asynchronous, so we must wait on them to finish.
     surface_read_done_.make_stream_wait(nvdec_output_stream_);
   }
   unmap_previous_frame();
