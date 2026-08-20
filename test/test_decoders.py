@@ -4346,6 +4346,27 @@ class TestBlocks:
             assert got.pts_seconds == expected.pts_seconds == seconds
             assert_frames_equal(got.data, expected.data)
 
+    @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_seek_is_repeatable(self, video, device):
+        # Seeking to the same place twice, and going elsewhere and back, lands
+        # on the same frame every time: neither block keeps state that biases
+        # the next seek.
+        video_decoder = VideoDecoder(video.path, device=device)
+        keyframe_indices = video_decoder._get_key_frame_indices()
+        seconds = video_decoder.get_frame_at(keyframe_indices[0]).pts_seconds
+        elsewhere = video_decoder.get_frame_at(keyframe_indices[-1]).pts_seconds
+        blocks = self._make_blocks(video.path, device)
+
+        first = self._first_frame_after_seek(blocks, seconds)
+        again = self._first_frame_after_seek(blocks, seconds)
+        self._first_frame_after_seek(blocks, elsewhere)
+        after_going_elsewhere = self._first_frame_after_seek(blocks, seconds)
+
+        for frame in (again, after_going_elsewhere):
+            assert frame.pts_seconds == first.pts_seconds
+            assert_frames_equal(frame.data, first.data)
+
     @pytest.mark.parametrize("device", _block_devices())
     def test_seek_while_demuxing_on_another_thread(self, device):
         # Demuxing on one thread and decoding on another. Each block belongs to
