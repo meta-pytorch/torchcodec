@@ -22,7 +22,7 @@ stages separately:
 .. code-block::
 
    Demuxer  ->  PacketDecoder  ->  ColorConverter
-    Packet       DecodedFrame        RGB Frame
+    Packet         RawFrame          RGB Frame
 
 The blocks are passive: they never create threads, and they release the GIL.
 You decide how they are composed, on which threads, and where to stop. Below
@@ -75,10 +75,10 @@ color_converter = ColorConverter(device=device)
 
 frames = []
 for packet in demuxer:
-    for decoded_frame in packet_decoder.decode(packet):
-        frames.append(color_converter.convert(decoded_frame))
-for decoded_frame in packet_decoder.drain():
-    frames.append(color_converter.convert(decoded_frame))
+    for raw_frame in packet_decoder.decode(packet):
+        frames.append(color_converter.convert(raw_frame))
+for raw_frame in packet_decoder.drain():
+    frames.append(color_converter.convert(raw_frame))
 
 print(f"{len(frames)} frames, {frames[0].data.shape = }, "
       f"{frames[0].pts_seconds = }, {frames[0].data.device = }")
@@ -105,9 +105,9 @@ def decode(packet_decoder, packets):
     yield from packet_decoder.drain()
 
 
-def color_convert(color_converter, decoded_frames):
-    for decoded_frame in decoded_frames:
-        yield color_converter.convert(decoded_frame)
+def color_convert(color_converter, raw_frames):
+    for raw_frame in raw_frames:
+        yield color_converter.convert(raw_frame)
 
 
 def prefetch(upstream, buffer_size=8):
@@ -144,8 +144,8 @@ def convert_on_own_thread():
     demuxer = Demuxer(video_path)
     packet_decoder = PacketDecoder(demuxer, device=device)
     color_converter = ColorConverter(device=device)
-    decoded_frames = prefetch(decode(packet_decoder, demux(demuxer)))
-    return color_convert(color_converter, decoded_frames)
+    raw_frames = prefetch(decode(packet_decoder, demux(demuxer)))
+    return color_convert(color_converter, raw_frames)
 
 
 def demux_on_own_thread():
@@ -198,13 +198,12 @@ print(f"asked for {seconds}s, landed on {landed_on.pts_seconds:.3f}s, "
 # Raw frames
 # ----------
 #
-# Color conversion is optional. A ``DecodedFrame`` can hand out the decoder's
-# own planes as tensor views, with no copy and no conversion.
+# Color conversion is optional. A ``RawFrame`` can hand out the decoder's own
+# planes as tensor views, with no copy and no conversion.
 demuxer = Demuxer(video_path)
 packet_decoder = PacketDecoder(demuxer, device=device)
-decoded_frame = next(decode(packet_decoder, demux(demuxer)))
+raw_frame = next(decode(packet_decoder, demux(demuxer)))
 
-raw_frame = decoded_frame.materialize()
 Y, U, V = raw_frame.planes
 print(f"{raw_frame.pix_fmt = }, {raw_frame.bit_depth = }, "
       f"{raw_frame.colorspace = }, {raw_frame.color_range = }")
@@ -216,8 +215,9 @@ print(f"{Y.shape = }, {U.shape = }, {Y.dtype = }, {Y.stride() = }")
 # views over a single plane. Writing through them is visible downstream.
 #
 # Being the decoder's own planes, they are also never rotated - a video whose
-# container asks for a rotation gives you the samples as they were encoded.
-# ``ColorConverter`` applies the rotation for you.
+# container asks for a rotation gives you the samples as they were encoded, and
+# ``raw_frame.rotation_degrees`` tells you what to apply. ``ColorConverter``
+# applies it for you.
 #
 # So we can do the color conversion ourselves. Here it's plain PyTorch ops -
 # it could just as well be a Triton or CUDA kernel, fused with whatever your
@@ -247,7 +247,7 @@ def yuv420_to_rgb(Y, U, V):
 
 
 ours = yuv420_to_rgb(Y, U, V)
-reference = ColorConverter(device=device).convert(decoded_frame).data
+reference = ColorConverter(device=device).convert(raw_frame).data
 print(f"{ours.shape = }, mean abs diff vs ColorConverter: "
       f"{(ours.float() - reference.float()).abs().mean():.2f}")
 
@@ -274,9 +274,8 @@ subprocess.run(
 
 hdr_demuxer = Demuxer(hdr_video_path)
 hdr_packet_decoder = PacketDecoder(hdr_demuxer, device=device)
-hdr_frame = next(decode(hdr_packet_decoder, demux(hdr_demuxer)))
+hdr_raw = next(decode(hdr_packet_decoder, demux(hdr_demuxer)))
 
-hdr_raw = hdr_frame.materialize()
 hdr_Y = hdr_raw.planes[0]
 print(f"{hdr_raw.pix_fmt = }, {hdr_raw.bit_depth = }, "
       f"{hdr_raw.colorspace = }, {hdr_Y.dtype = }")

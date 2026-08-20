@@ -89,7 +89,9 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_create_color_converter(str device=\"cpu\", str output_dtype=\"uint8\") -> Tensor");
   m.def("_blocks_convert_frame(Tensor(a!) converter, Tensor frame) -> Tensor");
   m.def(
-      "_blocks_frame_to_planes(Tensor frame, str device) -> (Tensor, Tensor, Tensor, Tensor, str, str, str, int)");
+      "_blocks_frame_metadata(Tensor frame) -> (str, str, str, int, int, int, float)");
+  m.def(
+      "_blocks_frame_planes(Tensor frame, str device) -> (Tensor, Tensor, Tensor, Tensor)");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
   m.def("get_json_metadata(Tensor(a!) decoder) -> str");
   m.def("get_container_json_metadata(Tensor(a!) decoder) -> str");
@@ -926,36 +928,46 @@ torch::stable::Tensor _blocks_convert_frame(
   return converter_ptr->convert(*unwrap_tensor_to_pointer<AVFrame>(frame));
 }
 
-using OpsFrameToPlanesOutput = std::tuple<
-    torch::stable::Tensor,
-    torch::stable::Tensor,
-    torch::stable::Tensor,
-    torch::stable::Tensor,
+using OpsFrameMetadataOutput = std::tuple<
     std::string, // pixel-format
     std::string, // colorspace
     std::string, // color range
-    int64_t>; // bit depth
+    int64_t, // bit depth
+    int64_t, // width
+    int64_t, // height
+    double>; // rotation, in degrees
 
-OpsFrameToPlanesOutput _blocks_frame_to_planes(
+OpsFrameMetadataOutput _blocks_frame_metadata(
+    torch::stable::Tensor& tensor_handle) {
+  FrameMetadata metadata =
+      frame_metadata(*unwrap_tensor_to_pointer<AVFrame>(tensor_handle));
+  return std::make_tuple(
+      metadata.pix_fmt,
+      metadata.colorspace,
+      metadata.color_range,
+      metadata.bit_depth,
+      metadata.width,
+      metadata.height,
+      metadata.rotation_degrees);
+}
+
+using OpsFramePlanesOutput = std::tuple<
+    torch::stable::Tensor,
+    torch::stable::Tensor,
+    torch::stable::Tensor,
+    torch::stable::Tensor>;
+
+OpsFramePlanesOutput _blocks_frame_planes(
     torch::stable::Tensor& tensor_handle,
     std::string device) {
   AVFrame* av_frame = unwrap_tensor_to_pointer<AVFrame>(tensor_handle);
-  FramePlanes result =
-      frame_to_planes(*av_frame, StableDevice(device), tensor_handle);
+  std::vector<torch::stable::Tensor> planes =
+      frame_planes(*av_frame, StableDevice(device), tensor_handle);
 
   // Op schema wants a fixed number of planes, so we pad with empty tensors that
   // then get removed at the Python level.
-  std::vector<torch::stable::Tensor> views = std::move(result.planes);
-  views.resize(4, torch::stable::empty({int64_t(0)}, kStableUInt8));
-  return std::make_tuple(
-      views[0],
-      views[1],
-      views[2],
-      views[3],
-      result.pix_fmt,
-      result.colorspace,
-      result.color_range,
-      result.bit_depth);
+  planes.resize(4, torch::stable::empty({int64_t(0)}, kStableUInt8));
+  return std::make_tuple(planes[0], planes[1], planes[2], planes[3]);
 }
 
 // For testing only. We need to implement this operation as a core library
@@ -1524,7 +1536,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       "_blocks_packet_decoder_receive_frame",
       TORCH_BOX(&_blocks_packet_decoder_receive_frame));
   m.impl("_blocks_convert_frame", TORCH_BOX(&_blocks_convert_frame));
-  m.impl("_blocks_frame_to_planes", TORCH_BOX(&_blocks_frame_to_planes));
+  m.impl("_blocks_frame_metadata", TORCH_BOX(&_blocks_frame_metadata));
+  m.impl("_blocks_frame_planes", TORCH_BOX(&_blocks_frame_planes));
   m.impl("_test_frame_pts_equality", TORCH_BOX(&_test_frame_pts_equality));
   m.impl(
       "scan_all_streams_to_update_metadata",

@@ -14,12 +14,12 @@ from torchcodec._core.ops import _blocks_convert_frame, _blocks_create_color_con
 from torchcodec._frame import Frame
 
 from .._decoder_utils import convert_device_to_str, convert_output_dtype_to_str
-from ._frame import DecodedFrame
+from ._frame import RawFrame
 
 
 class ColorConverter:
     """Color-conversion building block: turns a decoded (YUV)
-    :class:`DecodedFrame` into an RGB :class:`~torchcodec._frame.Frame` (CHW).
+    :class:`RawFrame` into an RGB :class:`~torchcodec._frame.Frame` (CHW).
 
     Not bound to anything: everything it needs (dims, pixel format, colorspace)
     comes from the frame itself, so one converter can process frames from any
@@ -50,16 +50,16 @@ class ColorConverter:
             output_dtype=convert_output_dtype_to_str(output_dtype),
         )
 
-    def convert(self, decoded_frame: DecodedFrame) -> Frame:
-        data = _blocks_convert_frame(self._handle, decoded_frame._handle)
-        if decoded_frame.storage is not None:
+    def convert(self, raw_frame: RawFrame) -> Frame:
+        data = _blocks_convert_frame(self._handle, raw_frame._handle)
+        if raw_frame.storage is not None:
             # See [Standalone Frame Storage and the need for record_stream]
-            decoded_frame.storage.record_stream(torch.cuda.current_stream())
+            raw_frame.storage.record_stream(torch.cuda.current_stream())
         # The core op produces HWC; permute to CHW to match VideoDecoder (which
         # also returns a non-contiguous permuted view).
         data = data.permute(2, 0, 1)
         return Frame(
             data=data,
-            pts_seconds=decoded_frame.pts_seconds,
-            duration_seconds=decoded_frame.duration_seconds,
+            pts_seconds=raw_frame.pts_seconds,
+            duration_seconds=raw_frame.duration_seconds,
         )

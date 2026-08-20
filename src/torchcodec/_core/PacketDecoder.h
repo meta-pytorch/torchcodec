@@ -82,19 +82,31 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   bool packet_data_may_be_misaligned_ = false;
 };
 
-// A decoded frame's own samples, before any color conversion.
-struct FramePlanes {
-  // One view per component, in the frame's native order: (Y, U, V) for YUV,
-  // (R, G, B) for RGB codecs, (Y,) for grayscale, plus a trailing alpha view
-  // when the format has one.
-  std::vector<torch::stable::Tensor> planes;
+// How a decoded frame's samples are laid out and how they should be
+// interpreted, before any color conversion.
+struct FrameMetadata {
   std::string pix_fmt;
   std::string colorspace;
   std::string color_range;
   int64_t bit_depth = 8;
+  // The dimensions of the samples as they were decoded, i.e. before rotation.
+  int64_t width = 0;
+  int64_t height = 0;
+  // Degrees counter-clockwise needed to make the frame upright. 0 when the
+  // frame carries no display matrix.
+  double rotation_degrees = 0;
 };
 
-FORCE_PUBLIC_VISIBILITY FramePlanes frame_to_planes(
+// Describes `av_frame` without touching its samples. Unlike frame_planes(),
+// this works for every pixel format, so callers can ask what a frame is before
+// asking for views they may not be able to get.
+FORCE_PUBLIC_VISIBILITY FrameMetadata frame_metadata(const AVFrame& av_frame);
+
+// A decoded frame's own samples, before any color conversion: one view per
+// component, in the frame's native order: (Y, U, V) for YUV, (R, G, B) for RGB
+// codecs, (Y,) for grayscale, plus a trailing alpha view when the format has
+// one.
+FORCE_PUBLIC_VISIBILITY std::vector<torch::stable::Tensor> frame_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
     const torch::stable::Tensor& tensor_handle);
