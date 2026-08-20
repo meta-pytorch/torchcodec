@@ -60,7 +60,7 @@ subprocess.run(
 # ----------------
 #
 # A pipeline is just a loop. The decoder may need more than one packet before
-# it can output a frame, and it buffers a few frames that ``flush()`` returns
+# it can output a frame, and it buffers a few frames that ``drain()`` returns
 # at the end.
 #
 # ``PacketDecoder`` and ``ColorConverter`` both accept ``device="cuda"``:
@@ -76,7 +76,7 @@ frames = []
 for packet in demuxer:
     for decoded_frame in packet_decoder.decode(packet):
         frames.append(color_converter.convert(decoded_frame))
-for decoded_frame in packet_decoder.flush():
+for decoded_frame in packet_decoder.drain():
     frames.append(color_converter.convert(decoded_frame))
 
 print(f"{len(frames)} frames, {frames[0].data.shape = }, "
@@ -101,7 +101,7 @@ def demux(demuxer):
 def decode(packet_decoder, packets):
     for packet in packets:
         yield from packet_decoder.decode(packet)
-    yield from packet_decoder.flush()
+    yield from packet_decoder.drain()
 
 
 def color_convert(color_converter, decoded_frames):

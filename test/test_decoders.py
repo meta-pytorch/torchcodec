@@ -3637,7 +3637,7 @@ class TestBlocks:
     def _decode(decoder, packets):
         for packet in packets:
             yield from decoder.decode(packet)
-        yield from decoder.flush()
+        yield from decoder.drain()
 
     @staticmethod
     def _convert(converter, frames):
@@ -3996,7 +3996,7 @@ class TestBlocks:
             for packet in itertools.chain(demuxer, [None]):
                 with torch.cuda.stream(decode_stream):
                     decoded = (
-                        decoder.flush() if packet is None else decoder.decode(packet)
+                        decoder.drain() if packet is None else decoder.decode(packet)
                     )
                 with torch.cuda.stream(
                     read_stream if separate_stream else decode_stream
@@ -4034,7 +4034,7 @@ class TestBlocks:
         frames = []
         for packet in itertools.chain(demuxer, [None]):
             with torch.cuda.stream(decode_stream):
-                decoded = decoder.flush() if packet is None else decoder.decode(packet)
+                decoded = decoder.drain() if packet is None else decoder.decode(packet)
             with torch.cuda.stream(convert_stream):
                 while decoded:
                     torch.cuda._sleep(20_000_000)  # ~10ms
@@ -4522,8 +4522,8 @@ class TestBlocks:
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_reset_makes_decoder_reusable(self, device):
-        # A decoder is drained for good once it's been told the stream ended,
-        # unless it's reset.
+        # Seeking back to the start and resetting decodes the same frames all
+        # over again.
         demuxer, decoder, converter = self._make_blocks(H265_VIDEO.path, device)
         first = list(
             self._convert(converter, self._decode(decoder, self._demux(demuxer)))
@@ -4531,10 +4531,32 @@ class TestBlocks:
 
         again = list(self._convert(converter, self._decode_from(demuxer, decoder, 0)))
 
-        assert len(first) == len(again)
-        for frame, refetched in zip(first, again):
-            assert frame.pts_seconds == refetched.pts_seconds
-            torch.testing.assert_close(frame.data, refetched.data, atol=0, rtol=0)
+        self._assert_same_frames(first, again)
+
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_drain_leaves_decoder_reusable(self, device):
+        # Draining tells the codec the stream ended, which would leave it
+        # ignoring every subsequent packet. It must come back from that on its
+        # own: a second stream decodes without the caller resetting anything.
+        demuxer, decoder, converter = self._make_blocks(H265_VIDEO.path, device)
+        first = list(
+            self._convert(converter, self._decode(decoder, self._demux(demuxer)))
+        )
+
+        again = list(
+            self._convert(
+                converter, self._decode(decoder, self._demux(Demuxer(H265_VIDEO.path)))
+            )
+        )
+
+        self._assert_same_frames(first, again)
+
+    @staticmethod
+    def _assert_same_frames(frames, other_frames):
+        assert len(frames) == len(other_frames) > 0
+        for frame, other_frame in zip(frames, other_frames):
+            assert frame.pts_seconds == other_frame.pts_seconds
+            torch.testing.assert_close(frame.data, other_frame.data, atol=0, rtol=0)
 
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn

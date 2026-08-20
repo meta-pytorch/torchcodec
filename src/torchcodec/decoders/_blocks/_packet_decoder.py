@@ -38,7 +38,7 @@ class PacketDecoder:
             demuxer._handle, num_threads=1, device=device
         )
 
-    def _drain(self) -> list[DecodedFrame]:
+    def _receive_ready_frames(self) -> list[DecodedFrame]:
         frames = []
         while True:
             handle, status, pts_seconds, duration_seconds, device, storage = (
@@ -63,15 +63,23 @@ class PacketDecoder:
         status = _blocks_packet_decoder_send_packet(self._handle, packet._handle)
         if status < 0:
             raise RuntimeError(f"Failed to send packet to decoder (status {status})")
-        return self._drain()
+        return self._receive_ready_frames()
 
-    # TODO_API_BREAKDOWN DESIGN P2 maybe this shouldn't be called flush, at least not
-    # as-is. It's not the same flush as the FFmpeg decoder buffer flush.
-    def flush(self) -> list[DecodedFrame]:
+    def drain(self) -> list[DecodedFrame]:
         """Signal end-of-stream and return all remaining buffered frames. Call
-        once, after the last packet."""
+        once, after the last packet.
+
+        A decoder holds a few frames back (it needs later packets to
+        reconstruct earlier ones), and this is what gets them out - what FFmpeg
+        calls draining. The decoder is left ready to decode again, so it can be
+        fed another stream without an explicit :meth:`reset`.
+        """
         _blocks_packet_decoder_send_eof(self._handle)
-        return self._drain()
+        frames = self._receive_ready_frames()
+        # Once it's been told the stream ended, a codec stays in that state
+        # until its buffers are reset, and would ignore any further packet.
+        _blocks_packet_decoder_reset(self._handle)
+        return frames
 
     def reset(self) -> None:
         """Drop the buffered decoding state and start over.
@@ -81,7 +89,8 @@ class PacketDecoder:
         packets from the new position against them produces corrupt output.
         Any :class:`DecodedFrame` already handed out stays valid.
 
-        This is also what makes a decoder reusable after :meth:`flush`, which
-        ends the stream and would otherwise leave the decoder drained for good.
+        This is *not* :meth:`drain`: the frames still buffered here are
+        discarded rather than returned. FFmpeg confusingly calls both of them
+        flushing.
         """
         _blocks_packet_decoder_reset(self._handle)
