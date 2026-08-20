@@ -34,11 +34,7 @@ ColorConverter::ColorConverter(
   STD_TORCH_CHECK(
       device_interface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");
-  // An accelerator interface resolves "current device" to a concrete index at
-  // construction. Take its device rather than the one we were handed, so that
-  // comparing ours against a frame's doesn't call "cuda" and "cuda:0" a
-  // mismatch.
-  device_ = device_interface_->device();
+  device_ = device_interface_->device();  // resolved, so we don't have to
 }
 
 void ColorConverter::maybe_initialize_interface(OutputDtype output_dtype) {

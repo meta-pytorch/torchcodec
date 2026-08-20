@@ -70,7 +70,7 @@ class RawFrame:
         handle: torch.Tensor,
         pts_seconds: float,
         duration_seconds: float,
-        device: torch.device = torch.device("cpu"),
+        device: torch.device,
         storage: torch.Tensor | None = None,
     ):
         self._handle = handle

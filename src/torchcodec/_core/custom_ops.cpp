@@ -951,8 +951,6 @@ torch::stable::Tensor _blocks_create_color_converter(
   return wrap_pointer_to_tensor<ColorConverter>(std::move(converter));
 }
 
-// `device` is where the frame's samples live, as reported by the PacketDecoder
-// that produced it. It has to be the converter's own device.
 torch::stable::Tensor _blocks_convert_frame(
     torch::stable::Tensor& converter,
     torch::stable::Tensor& frame,

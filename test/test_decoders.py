@@ -3919,8 +3919,6 @@ class TestBlocks:
         ("frame_device", "converter_device"), (("cpu", "cuda"), ("cuda", "cpu"))
     )
     def test_converter_refuses_other_devices(self, frame_device, converter_device):
-        # Moving samples across devices costs as much as converting them, so the
-        # converter says so instead of doing it silently.
         frame = next(self._decoded_frames(NASA_VIDEO.path, frame_device))
         converter = ColorConverter(device=converter_device)
         with pytest.raises(

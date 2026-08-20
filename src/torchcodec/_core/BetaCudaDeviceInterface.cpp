@@ -384,12 +384,6 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
   STD_TORCH_CHECK(
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
-  // Pin ourselves to a concrete GPU. A device index of -1 means "whatever the
-  // current device is", which is resolved afresh on every CUDA call: an
-  // interface built on one thread and used on another would then straddle two
-  // GPUs, and the device we report to our callers would name neither. It also
-  // lets a ColorConverter compare its device against a frame's without "cuda"
-  // and "cuda:0" looking like two different places.
   device_ = StableDevice(kStableCUDA, get_device_index(device_));
 
   // Note: now that we have the CudaContextGuard, we might not need to do that
