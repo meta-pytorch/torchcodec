@@ -229,10 +229,6 @@ FORCE_PUBLIC_VISIBILITY void validate_device_interface(
     const std::string& device,
     const std::string& variant = "default");
 
-// "cpu", "cuda", "cuda:1"...
-FORCE_PUBLIC_VISIBILITY std::string device_to_string(
-    const StableDevice& device);
-
 TORCHCODEC_THIRD_PARTY_API std::unique_ptr<DeviceInterface>
 create_device_interface(
     const StableDevice& device,

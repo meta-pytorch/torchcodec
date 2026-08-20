@@ -88,15 +88,15 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
   m.def("_blocks_packet_decoder_reset(Tensor(a!) decoder) -> ()");
   m.def(
-      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, str, Tensor)");
+      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, Device, Tensor)");
   m.def(
       "_blocks_create_color_converter(str device=\"cpu\", str output_dtype=\"uint8\") -> Tensor");
   m.def(
-      "_blocks_convert_frame(Tensor(a!) converter, Tensor frame, str device) -> Tensor");
+      "_blocks_convert_frame(Tensor(a!) converter, Tensor frame, Device device) -> Tensor");
   m.def(
       "_blocks_frame_metadata(Tensor frame) -> (str, str, str, int, int, int, float)");
   m.def(
-      "_blocks_frame_planes(Tensor frame, str device) -> (Tensor, Tensor, Tensor, Tensor)");
+      "_blocks_frame_planes(Tensor frame, Device device) -> (Tensor, Tensor, Tensor, Tensor)");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
   m.def("get_json_metadata(Tensor(a!) decoder) -> str");
   m.def("get_container_json_metadata(Tensor(a!) decoder) -> str");
@@ -904,7 +904,7 @@ using OpsReceiveFrameOutput = std::tuple<
     int64_t,
     double,
     double,
-    std::string,
+    StableDevice,
     torch::stable::Tensor>;
 
 OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
@@ -919,7 +919,7 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
         static_cast<int64_t>(status),
         0.0,
         0.0,
-        std::string("cpu"),
+        StableDevice(kStableCPU),
         torch::stable::empty({int64_t(0)}, kStableUInt8));
   }
   AVRational time_base = decoder_ptr->time_base();
@@ -929,7 +929,7 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
   // ones a CUDA decoder had to decode on the CPU and upload.
   // TODO_API_BREAKDOWN DESIGN P1: Not sure we need to return the device at all,
   // the device should always match the device parameter now.
-  std::string device = device_to_string(decoder_ptr->device());
+  StableDevice device = decoder_ptr->device();
   torch::stable::Tensor storage =
       decoder_ptr->get_frame_storage(*av_frame).value_or(
           torch::stable::empty({int64_t(0)}, kStableUInt8));
@@ -956,7 +956,7 @@ torch::stable::Tensor _blocks_create_color_converter(
 torch::stable::Tensor _blocks_convert_frame(
     torch::stable::Tensor& converter,
     torch::stable::Tensor& frame,
-    std::string device) {
+    StableDevice device) {
   ColorConverter* converter_ptr =
       unwrap_tensor_to_pointer<ColorConverter>(converter);
   return converter_ptr->convert(
@@ -994,10 +994,10 @@ using OpsFramePlanesOutput = std::tuple<
 
 OpsFramePlanesOutput _blocks_frame_planes(
     torch::stable::Tensor& tensor_handle,
-    std::string device) {
+    StableDevice device) {
   AVFrame* av_frame = unwrap_tensor_to_pointer<AVFrame>(tensor_handle);
   std::vector<torch::stable::Tensor> planes =
-      frame_planes(*av_frame, StableDevice(device), tensor_handle);
+      frame_planes(*av_frame, device, tensor_handle);
 
   // Op schema wants a fixed number of planes, so we pad with empty tensors that
   // then get removed at the Python level.

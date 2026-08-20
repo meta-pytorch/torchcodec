@@ -47,16 +47,6 @@ StableDeviceType parse_device_type(const std::string& device_type) {
 
 } // namespace
 
-std::string device_to_string(const StableDevice& device) {
-  std::string name = device_type_name(device.type());
-  // A negative index means "unspecified" (e.g. device was just "cuda"); leave
-  // it off so the string round-trips and resolves to the current device.
-  if (device.type() != kStableCPU && device.index() >= 0) {
-    name += ":" + std::to_string(device.index());
-  }
-  return name;
-}
-
 bool register_device_interface(
     const DeviceInterfaceKey& key,
     CreateDeviceInterfaceFn create_interface) {

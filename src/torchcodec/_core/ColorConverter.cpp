@@ -15,6 +15,17 @@
 
 namespace facebook::torchcodec {
 
+namespace {
+// Only ever used to name a device in the error message below.
+std::string printable(const StableDevice& device) {
+  std::string name = device_type_name(device.type());
+  if (device.type() != kStableCPU && device.index() >= 0) {
+    name += ":" + std::to_string(device.index());
+  }
+  return name;
+}
+} // namespace
+
 ColorConverter::ColorConverter(
     const StableDevice& device,
     OutputDtypeConfig output_dtype_config)
@@ -51,13 +62,13 @@ void ColorConverter::maybe_initialize_interface(OutputDtype output_dtype) {
 
 torch::stable::Tensor ColorConverter::convert(
     const AVFrame& av_frame,
-    const std::string& frame_device) {
+    const StableDevice& frame_device) {
   STD_TORCH_CHECK(
-      StableDevice(frame_device) == device_,
+      frame_device == device_,
       "This ColorConverter is on ",
-      device_to_string(device_),
+      printable(device_),
       " but the frame's samples are on ",
-      frame_device,
+      printable(frame_device),
       ". A ColorConverter only converts frames that are already on its own "
       "device: create one per device, or move the RGB output afterwards.");
 

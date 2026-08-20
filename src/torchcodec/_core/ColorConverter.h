@@ -28,7 +28,7 @@ class FORCE_PUBLIC_VISIBILITY ColorConverter {
   // converter's device: we refuse to move samples around behind your back.
   torch::stable::Tensor convert(
       const AVFrame& av_frame,
-      const std::string& frame_device);
+      const StableDevice& frame_device);
 
  private:
   void maybe_initialize_interface(OutputDtype output_dtype);
