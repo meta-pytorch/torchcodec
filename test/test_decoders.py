@@ -19,7 +19,6 @@ import pytest
 import torch
 from PIL import Image, ImageOps
 from torchcodec import _core, ffmpeg_major_version, FrameBatch
-from torchcodec._core.ops import add_video_stream, create_from_file, seek_to_pts
 from torchcodec._frame import Frame
 from torchcodec.decoders import (
     AudioDecoder,
@@ -4196,350 +4195,130 @@ class TestBlocks:
 
     # ===== seeking =====
 
-    # Seeking in the blocks is approximate, i.e. it has the exact semantics of
-    # VideoDecoder(seek_mode="approximate"): we hand FFmpeg a target and take
-    # whatever keyframe it lands on. Most of the tests below therefore check
-    # that the blocks land where a SingleStreamDecoder in approximate mode
-    # lands, rather than checking against exact mode - matching exact mode
-    # needs an index of the file, which the blocks don't build (yet).
-
-    # The seek targets used throughout, as fractions of a stream's duration.
-    _SEEK_FRACS = (0, 0.1, 0.25, 0.33, 0.5, 0.66, 0.75, 0.9)
-
-    _SEEK_VIDEOS = (
-        NASA_VIDEO,
-        # Keyframes are reordered, so the seek lands after the target. See
-        # test_seek_can_land_after_target_on_reordered_stream.
-        H265_VIDEO,
-        # Frames don't start at pts=0, so a target isn't an offset into the
-        # stream.
-        TEST_NON_ZERO_START,
-        # Matroska rather than mp4, so a different index implementation.
-        AV1_VIDEO,
-        # Leading GOP trimmed by an mp4 edit list (AV_PKT_FLAG_DISCARD).
-        DISCARD_FIRST_KEYFRAME_VIDEO,
-        NASA_VIDEO_ROTATED,
-        NASA_VIDEO_HDR,
-        # MPEG-2 with odd dimensions: NVDEC can't decode it, so on CUDA these
-        # seek on the CPU-fallback path.
-        TESTSRC2_ODD_HEIGHT_AND_WIDTH_MPEG2,
-        TEST_SRC_2_720P_VP9,
-    )
-
-    @staticmethod
-    def _seek_target(video, seek_frac, device="cpu"):
-        metadata = VideoDecoder(video.path, device=device).metadata
-        begin = metadata.begin_stream_seconds
-        return begin + seek_frac * (metadata.end_stream_seconds - begin)
-
-    def _decode_from(self, demuxer, decoder, seconds):
-        # DecodedFrames from the keyframe the seek landed on. The first ones
-        # typically precede `seconds`: they're the ones the target frame is
-        # reconstructed from, and it's up to the caller to drop them.
+    def _first_frame_after_seek(self, blocks, seconds):
+        # Seek, and decode until the decoder hands out its first frame. A seek
+        # invalidates the frames the decoder holds as references, hence the
+        # reset().
+        demuxer, decoder, converter = blocks
         demuxer.seek(seconds)
         decoder.reset()
-        return self._decode(decoder, self._demux(demuxer))
-
-    # SingleStreamDecoder compares a target against frame timestamps in the
-    # stream's own integer time base, while the blocks only ever expose
-    # seconds. A target that lands on a frame boundary can therefore come out a
-    # double rounding error *above* that frame's pts, and drop the very frame
-    # it was asking for, so callers working in seconds need a tolerance. A
-    # nanosecond is far below any real frame duration.
-    _PTS_TOLERANCE_SECONDS = 1e-9
-
-    def _frames_from(self, path, device, seconds, max_frames=None):
-        # Blocks: everything decodable from `seconds` onwards.
-        demuxer, decoder, converter = self._make_blocks(path, device)
-        frames = []
-        for decoded in self._decode_from(demuxer, decoder, seconds):
-            if decoded.pts_seconds < seconds - self._PTS_TOLERANCE_SECONDS:
-                continue
-            frames.append(converter.convert(decoded))
-            if max_frames is not None and len(frames) == max_frames:
-                break
-        return frames
-
-    @staticmethod
-    def _core_frames_from(path, device, seconds, max_frames=None):
-        # The same thing through SingleStreamDecoder in approximate seek mode:
-        # seek_to_pts() + get_next_frame() *is* "the first frame at or after
-        # this timestamp", and repeating it walks the stream from there.
-        decoder = create_from_file(str(path), "approximate")
-        add_video_stream(decoder, device=device)
-        seek_to_pts(decoder, seconds)
-
-        frames = []
-        while max_frames is None or len(frames) < max_frames:
-            try:
-                data, pts_seconds, duration_seconds = _core.get_next_frame(decoder)
-            except (IndexError, RuntimeError):  # EOF
-                break
-            frames.append(
-                Frame(
-                    data=data,
-                    pts_seconds=float(pts_seconds),
-                    duration_seconds=float(duration_seconds),
-                )
-            )
-        return frames
-
-    def _decode_range(self, path, device, start_seconds, stop_seconds):
-        # Same frames as VideoDecoder.get_frames_played_in_range: those
-        # displayed during [start_seconds, stop_seconds). A frame is displayed
-        # until the next one starts, so we hold each frame back until the next
-        # one tells us when it stops being displayed. Adding duration_seconds
-        # to pts_seconds instead would be off by a float rounding error exactly
-        # when start_seconds falls on a frame boundary.
-        demuxer, decoder, converter = self._make_blocks(path, device)
-        frames = []
-        held = None
-        for decoded in self._decode_from(demuxer, decoder, start_seconds):
-            if held is not None and decoded.pts_seconds > start_seconds:
-                frames.append(converter.convert(held))
-            if decoded.pts_seconds >= stop_seconds:
-                held = None
-                break
-            held = decoded
-        if (
-            held is not None
-            and held.pts_seconds + held.duration_seconds > start_seconds
-        ):
-            frames.append(converter.convert(held))
-        return frames
-
-    def _decode_frames_played_at(self, path, device, seconds_list):
-        # Same frames as VideoDecoder.get_frames_played_at: for each target,
-        # the last frame whose pts precedes it. Targets are decoded in pts
-        # order and deduplicated, as VideoDecoder does.
-        demuxer, decoder, converter = self._make_blocks(path, device)
-        by_target = {}
-        for target in sorted(set(seconds_list)):
-            held = None
-            for decoded in self._decode_from(demuxer, decoder, target):
-                if decoded.pts_seconds > target:
-                    break
-                held = decoded
-            by_target[target] = converter.convert(held)
-        return [by_target[target] for target in seconds_list]
-
-    @pytest.mark.parametrize("video", _SEEK_VIDEOS)
-    @pytest.mark.parametrize("seek_frac", _SEEK_FRACS)
-    @pytest.mark.parametrize("device", _block_devices())
-    def test_seek_matches_approximate_seek_mode(self, video, seek_frac, device):
-        # Where a seek lands, for one asset and one target: the first frame the
-        # blocks can produce from there must be the one approximate mode
-        # produces. Both are exposed to the same FFmpeg seek, so this holds
-        # even where that seek is off (see
-        # test_seek_can_land_after_target_on_reordered_stream).
-        target = self._seek_target(video, seek_frac, device)
-
-        got = self._frames_from(video.path, device, target, max_frames=1)
-        ref = self._core_frames_from(video.path, device, target, max_frames=1)
-
-        assert len(got) == len(ref) == 1
-        assert got[0].pts_seconds == ref[0].pts_seconds
-        assert got[0].duration_seconds == ref[0].duration_seconds
-        self._assert_matches_video_decoder(got[0].data, ref[0].data, video)
-
-    @pytest.mark.parametrize("video", _SEEK_VIDEOS)
-    @pytest.mark.parametrize("seek_frac", (0.25, 0.5, 0.75))
-    @pytest.mark.parametrize("device", _block_devices())
-    def test_frames_after_seek_match_approximate_seek_mode(
-        self, video, seek_frac, device
-    ):
-        # Not just the first frame: the whole run from the seek point must
-        # match approximate mode, frame for frame. This is what catches a seek
-        # that lands in the right place but leaves the decoder in a state where
-        # some frames can't be reconstructed.
-        target = self._seek_target(video, seek_frac, device)
-
-        got = self._frames_from(video.path, device, target, max_frames=20)
-        ref = self._core_frames_from(video.path, device, target, max_frames=20)
-
-        assert [frame.pts_seconds for frame in got] == [
-            frame.pts_seconds for frame in ref
-        ]
-        for got_frame, ref_frame in zip(got, ref):
-            assert got_frame.duration_seconds == ref_frame.duration_seconds
-            self._assert_matches_video_decoder(got_frame.data, ref_frame.data, video)
-
-    @pytest.mark.parametrize("video", _SEEK_VIDEOS)
-    @pytest.mark.parametrize("seek_frac", _SEEK_FRACS)
-    @pytest.mark.parametrize("device", _block_devices())
-    def test_seek_is_repeatable(self, video, seek_frac, device):
-        # Seeking to the same place twice, and seeking forwards and back again,
-        # lands in the same place: neither the demuxer nor the decoder keeps
-        # state that biases the next seek.
-        target = self._seek_target(video, seek_frac, device)
-        demuxer, decoder, _ = self._make_blocks(video.path, device)
-
-        def landing_pts(seconds):
-            # The first frame the decoder emits after a seek, whether or not it
-            # precedes the target: that's where we landed.
-            return next(iter(self._decode_from(demuxer, decoder, seconds))).pts_seconds
-
-        first = landing_pts(target)
-        again = landing_pts(target)
-
-        landing_pts(self._seek_target(video, 0.95, device))
-        after_going_forward = landing_pts(target)
-
-        assert first == again == after_going_forward
-
-    @pytest.mark.parametrize("device", _block_devices())
-    def test_seek_out_of_range(self, device):
-        video = NASA_VIDEO
-        end = VideoDecoder(video.path, device=device).metadata.end_stream_seconds
-
-        # Before the start of the stream: clamped to the first keyframe, like
-        # approximate mode.
-        for target in (-1e-4, -5.0):
-            got = self._frames_from(video.path, device, target, max_frames=1)
-            ref = self._core_frames_from(video.path, device, target, max_frames=1)
-            assert got[0].pts_seconds == ref[0].pts_seconds
-
-        # Past the end: the seek itself succeeds, but no frame satisfies the
-        # target. Approximate mode reports that same emptiness by raising when
-        # asked for the next frame.
-        assert self._frames_from(video.path, device, end + 10) == []
-        assert self._core_frames_from(video.path, device, end + 10) == []
-
-    def test_seek_can_land_after_target_on_reordered_stream(self):
-        # The known limitation of approximate seeking, pinned down on the one
-        # asset that exhibits it: this file's keyframes are reordered (the
-        # keyframe whose *decode* timestamp precedes 0.5 is displayed at 0.6),
-        # so the seek lands past the target and the frames in between become
-        # unreachable. The blocks are wrong here in exactly the same way as
-        # approximate mode, and exact mode - which scans the file to build a
-        # presentation-order index - is the one that gets it right.
-        target = 0.5
-
-        blocks = self._frames_from(H265_VIDEO.path, "cpu", target, max_frames=1)
-        approximate = self._core_frames_from(
-            H265_VIDEO.path, "cpu", target, max_frames=1
-        )
-        assert blocks[0].pts_seconds == approximate[0].pts_seconds == 0.6
-
-        exact = VideoDecoder(H265_VIDEO.path, seek_mode="exact")
-        assert exact.get_frame_played_at(target).pts_seconds == target
+        for packet in demuxer:
+            for decoded_frame in decoder.decode(packet):
+                return converter.convert(decoded_frame)
+        # Seeking into the last GOP can leave the codec holding every frame
+        # until it's told the stream ended.
+        for decoded_frame in decoder.drain():
+            return converter.convert(decoded_frame)
+        raise AssertionError("No frame could be decoded after seeking")
 
     @pytest.mark.parametrize(
         "video",
         (
             NASA_VIDEO,
-            TEST_NON_ZERO_START,
-            AV1_VIDEO,
-            NASA_VIDEO_ROTATED,
-            NASA_VIDEO_HDR,
-            DISCARD_FIRST_KEYFRAME_VIDEO,
-            TESTSRC2_ODD_HEIGHT_AND_WIDTH_MPEG2,
-            TEST_SRC_2_720P_VP9,
+            # 5 keyframes for 10 frames, and they're reordered: the densest
+            # seeking any of our assets asks for.
+            H265_VIDEO,
+            TEST_SRC_2_720P_MPEG4,
         ),
     )
-    @pytest.mark.parametrize(
-        "start_frac, stop_frac", ((0, 1), (0.3, 0.6), (0.72, 1), (0.5, 0.55))
-    )
     @pytest.mark.parametrize("device", _block_devices())
-    def test_range_matches_video_decoder(self, video, start_frac, stop_frac, device):
-        # The range recipe, against VideoDecoder's own range API. These assets
-        # are ones whose seeks do land before the target, so approximate is as
-        # good as exact on them and the two APIs must agree frame for frame.
-        ref_decoder = VideoDecoder(video.path, device=device)
-        begin = ref_decoder.metadata.begin_stream_seconds
-        duration = ref_decoder.metadata.end_stream_seconds - begin
-        start = begin + start_frac * duration
-        stop = begin + stop_frac * duration
+    def test_seek_to_keyframe_matches_get_frame_played_at(self, video, device):
+        # On a keyframe, seeking and taking the next frame is the same thing as
+        # VideoDecoder.get_frame_played_at: the seek lands on that keyframe, so
+        # it's the first thing the decoder outputs. This holds for every
+        # keyframe of the file, not just a lucky one.
+        video_decoder = VideoDecoder(video.path, device=device)
+        for keyframe_index in video_decoder._get_key_frame_indices():
+            seconds = video_decoder.get_frame_at(keyframe_index).pts_seconds
 
-        got = self._to_frame_batch(self._decode_range(video.path, device, start, stop))
-        ref = ref_decoder.get_frames_played_in_range(start, stop)
+            blocks = self._make_blocks(video.path, device)
+            got = self._first_frame_after_seek(blocks, seconds)
+            expected = video_decoder.get_frame_played_at(seconds)
 
-        assert got.data.shape == ref.data.shape
-        self._assert_matches_video_decoder(got.data, ref.data, video)
-        torch.testing.assert_close(got.pts_seconds, ref.pts_seconds, atol=0, rtol=0)
+            assert got.pts_seconds == expected.pts_seconds == seconds
+            assert_frames_equal(got.data, expected.data)
 
     @pytest.mark.parametrize("device", _block_devices())
-    def test_frames_played_at_matches_video_decoder(self, device):
-        # Unsorted, with a duplicate and a repeat of an earlier target: the
-        # backwards jumps are what force a seek.
-        targets = [3.5, 0.2, 12.0, 3.5, 7.7, 1.0]
+    def test_seek_to_non_keyframe_differs_from_get_frame_played_at(self, device):
+        # On anything else, the two differ: a decoder can only start on a
+        # keyframe, so the seek goes *back* to the one preceding the target and
+        # the first frame out is an earlier one. Getting to the frame that
+        # VideoDecoder returns means decoding forward and dropping everything
+        # before the target.
+        video_decoder = VideoDecoder(NASA_VIDEO.path, device=device)
+        keyframe_index = video_decoder._get_key_frame_indices()[1]
+        non_keyframe_index = keyframe_index + 3
+        seconds = video_decoder.get_frame_at(non_keyframe_index).pts_seconds
 
-        got = self._to_frame_batch(
-            self._decode_frames_played_at(NASA_VIDEO.path, device, targets)
-        )
-        ref = VideoDecoder(NASA_VIDEO.path, device=device).get_frames_played_at(targets)
+        blocks = self._make_blocks(NASA_VIDEO.path, device)
+        got = self._first_frame_after_seek(blocks, seconds)
+        expected = video_decoder.get_frame_played_at(seconds)
 
-        assert got.data.shape == ref.data.shape
-        self._assert_matches_video_decoder(got.data, ref.data, NASA_VIDEO)
-        torch.testing.assert_close(got.pts_seconds, ref.pts_seconds, atol=0, rtol=0)
-
-    @pytest.mark.parametrize("seek_frac", (0.25, 0.5, 0.75))
-    @pytest.mark.parametrize("device", _block_devices())
-    def test_seek_mpeg_program_stream(self, seek_frac, device):
-        # Seeking in an MPEG program stream is byte-offset based: it lands on a
-        # container offset rather than on a keyframe, typically mid-GOP, and
-        # the packets it then yields are undecodable until the parser resyncs.
-        # So the frames right after the target can be missing - but the ones we
-        # do get must be exactly the ones a sequential decode produces, not
-        # corrupt output decoded against the wrong references.
-        video = SINE_STEREO_MP2_MPEG_PS
-        target = self._seek_target(video, seek_frac, device)
-        sequential = {
-            frame.pts_seconds: frame.data
-            for frame in self._decode_sequential(video.path, device)
-        }
-
-        got = self._frames_from(video.path, device, target)
-        assert len(got) > 0
-        for frame in got:
-            torch.testing.assert_close(
-                frame.data, sequential[frame.pts_seconds], atol=0, rtol=0
-            )
-
-        # And what we skip is what approximate mode skips: SingleStreamDecoder
-        # drops those unparsable packets too.
-        ref = self._core_frames_from(video.path, device, target, max_frames=len(got))
-        assert [frame.pts_seconds for frame in got[: len(ref)]] == [
-            frame.pts_seconds for frame in ref
-        ]
+        assert expected.pts_seconds == seconds
+        assert got.pts_seconds < seconds
 
     @pytest.mark.parametrize("device", _block_devices())
-    def test_reset_makes_decoder_reusable(self, device):
-        # Seeking back to the start and resetting decodes the same frames all
-        # over again.
-        demuxer, decoder, converter = self._make_blocks(H265_VIDEO.path, device)
-        first = list(
-            self._convert(converter, self._decode(decoder, self._demux(demuxer)))
-        )
+    def test_seek_without_reset_yields_stale_frames(self, device):
+        # What goes wrong if you skip the reset: a decoder always holds a few
+        # frames back, and those belong to wherever we were *before* the seek.
+        # It hands those out first, so the frames don't line up with where the
+        # demuxer now is. They aren't corrupt - the landing keyframe gives the
+        # codec a clean slate to decode from - they're just from the wrong
+        # place, and a caller looking at the first frame gets the wrong one.
+        video_decoder = VideoDecoder(NASA_VIDEO.path, device=device)
+        keyframe_index = video_decoder._get_key_frame_indices()[1]
+        seconds = video_decoder.get_frame_at(keyframe_index).pts_seconds
 
-        again = list(self._convert(converter, self._decode_from(demuxer, decoder, 0)))
+        demuxer = Demuxer(NASA_VIDEO.path)
+        decoder = PacketDecoder(demuxer, device=device)
+        num_decoded = 0
+        for packet in demuxer:  # decode a bit, so frames pile up in the codec
+            num_decoded += len(decoder.decode(packet))
+            if num_decoded >= 3:
+                break
 
-        self._assert_same_frames(first, again)
+        demuxer.seek(seconds)  # ... and no reset()
+        stale = next(frame for packet in demuxer for frame in decoder.decode(packet))
+
+        assert stale.pts_seconds < seconds
+        # With the reset, that same seek starts exactly where it was asked to.
+        blocks = self._make_blocks(NASA_VIDEO.path, device)
+        assert self._first_frame_after_seek(blocks, seconds).pts_seconds == seconds
+
+    @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_seek_backwards(self, video, device):
+        # Walking the keyframes in reverse, on a single demuxer and decoder:
+        # every seek here goes back over ground that was already decoded, which
+        # is the case a decoder can't get right on its own - it has to be told
+        # to drop what it holds.
+        video_decoder = VideoDecoder(video.path, device=device)
+        blocks = self._make_blocks(video.path, device)
+
+        for keyframe_index in reversed(list(video_decoder._get_key_frame_indices())):
+            seconds = video_decoder.get_frame_at(keyframe_index).pts_seconds
+
+            got = self._first_frame_after_seek(blocks, seconds)
+            expected = video_decoder.get_frame_played_at(seconds)
+
+            assert got.pts_seconds == expected.pts_seconds == seconds
+            assert_frames_equal(got.data, expected.data)
+
+    # ----- drain() -----
 
     @pytest.mark.parametrize("device", _block_devices())
-    def test_drain_leaves_decoder_reusable(self, device):
-        # Draining tells the codec the stream ended, which would leave it
-        # ignoring every subsequent packet. It must come back from that on its
-        # own: a second stream decodes without the caller resetting anything.
-        demuxer, decoder, converter = self._make_blocks(H265_VIDEO.path, device)
-        first = list(
-            self._convert(converter, self._decode(decoder, self._demux(demuxer)))
-        )
+    def test_decode_after_drain_raises(self, device):
+        # Draining ends the stream as far as the codec is concerned, and it
+        # ignores anything sent afterwards. Rather than silently decoding
+        # nothing, say so.
+        demuxer = Demuxer(H265_VIDEO.path)
+        decoder = PacketDecoder(demuxer, device=device)
+        packet = demuxer.next_packet()
+        decoder.decode(packet)
+        decoder.drain()
 
-        again = list(
-            self._convert(
-                converter, self._decode(decoder, self._demux(Demuxer(H265_VIDEO.path)))
-            )
-        )
-
-        self._assert_same_frames(first, again)
-
-    @staticmethod
-    def _assert_same_frames(frames, other_frames):
-        assert len(frames) == len(other_frames) > 0
-        for frame, other_frame in zip(frames, other_frames):
-            assert frame.pts_seconds == other_frame.pts_seconds
-            torch.testing.assert_close(frame.data, other_frame.data, atol=0, rtol=0)
+        with pytest.raises(RuntimeError, match="has been drained"):
+            decoder.decode(packet)
 
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn

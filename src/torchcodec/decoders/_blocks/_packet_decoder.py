@@ -37,6 +37,7 @@ class PacketDecoder:
         self._handle = _blocks_create_packet_decoder(
             demuxer._handle, num_threads=1, device=device
         )
+        self._drained = False
 
     def _receive_ready_frames(self) -> list[DecodedFrame]:
         frames = []
@@ -60,6 +61,12 @@ class PacketDecoder:
     def decode(self, packet: Packet) -> list[DecodedFrame]:
         """Send one packet and return whatever frames are now ready (possibly
         empty, e.g. while the codec buffers B-frames)."""
+        if self._drained:
+            raise RuntimeError(
+                "This PacketDecoder has been drained, and a codec that has been "
+                "told the stream ended ignores any further packet. Create a new "
+                "PacketDecoder to decode another stream."
+            )
         status = _blocks_packet_decoder_send_packet(self._handle, packet._handle)
         if status < 0:
             raise RuntimeError(f"Failed to send packet to decoder (status {status})")
@@ -71,14 +78,12 @@ class PacketDecoder:
 
         A decoder holds a few frames back (it needs later packets to
         reconstruct earlier ones), and this is what gets them out - what FFmpeg
-        calls draining. The decoder is left ready to decode again, so it can be
-        fed another stream without an explicit :meth:`reset`.
+        calls draining. It ends this decoder's life: decoding another stream
+        means creating a new :class:`PacketDecoder`.
         """
         _blocks_packet_decoder_send_eof(self._handle)
         frames = self._receive_ready_frames()
-        # Once it's been told the stream ended, a codec stays in that state
-        # until its buffers are reset, and would ignore any further packet.
-        _blocks_packet_decoder_reset(self._handle)
+        self._drained = True
         return frames
 
     def reset(self) -> None:
@@ -94,3 +99,4 @@ class PacketDecoder:
         flushing.
         """
         _blocks_packet_decoder_reset(self._handle)
+        self._drained = False
