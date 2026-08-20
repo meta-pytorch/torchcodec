@@ -4281,6 +4281,24 @@ class TestBlocks:
             assert got_frame.pts_seconds == expected_pts
             assert_frames_equal(got_frame.data, expected_data)
 
+    @pytest.mark.parametrize("seconds", (0.3, 0.5, 0.7))
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_seek_to_non_keyframe_can_land_past_target(self, seconds, device):
+        # And sometimes decoding forward doesn't get you there at all. This
+        # file's keyframes are reordered, and FFmpeg resolves a seek against
+        # *decode* timestamps, so it can land on a keyframe that is displayed
+        # after the target - leaving the frames in between unreachable, however
+        # far forward we decode. VideoDecoder's exact mode gets it right by
+        # scanning the file for a presentation-order index, which is what we'd
+        # need too.
+        blocks = self._make_blocks(H265_VIDEO.path, device)
+
+        got = self._first_frame_after_seek(blocks, seconds)
+
+        assert got.pts_seconds > seconds
+        exact = VideoDecoder(H265_VIDEO.path, seek_mode="exact", device=device)
+        assert exact.get_frame_played_at(seconds).pts_seconds == seconds
+
     @pytest.mark.parametrize("device", _block_devices())
     def test_seek_without_reset_yields_stale_frames(self, device):
         # What goes wrong if you skip the reset: a decoder always holds a few
