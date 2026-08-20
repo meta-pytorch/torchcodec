@@ -34,7 +34,7 @@ ColorConverter::ColorConverter(
   STD_TORCH_CHECK(
       device_interface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");
-  device_ = device_interface_->device();  // resolved, so we don't have to
+  device_ = device_interface_->device(); // resolved, so we don't have to
 }
 
 void ColorConverter::maybe_initialize_interface(OutputDtype output_dtype) {
