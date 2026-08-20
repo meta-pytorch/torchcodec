@@ -3738,48 +3738,48 @@ class TestBlocks:
         else:
             torch.testing.assert_close(got, ref, atol=0, rtol=0)
 
-    @pytest.mark.parametrize(
-        "video",
-        (
-            NASA_VIDEO,
-            BT709_FULL_RANGE,
-            NASA_VIDEO_HDR,
-            TEST_SRC_2_720P_HDR,
-            TEST_SRC_2_12BIT_HDR,
-            # NVDEC can't decode this one (too small), so on CUDA this covers
-            # the CPU-fallback path: the decoder hands out CPU frames and the
-            # converter has to notice and upload them itself.
-            H265_VIDEO,
-            # Video with a non-zero start time: exercises pts propagation.
-            TEST_NON_ZERO_START,
-            # Odd dimensions: NVDEC decodes to even-aligned surfaces, so the
-            # converter has to crop back to the real width/height.
-            TESTSRC2_ODD_WIDTH_VP9,
-            TESTSRC2_ODD_HEIGHT_VP9,
-            TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
-            # yuv444p (odd dims too). NVDEC can't decode 4:4:4, so on CUDA these
-            # take the CPU-fallback path.
-            TESTSRC2_ODD_WIDTH_444,
-            TESTSRC2_ODD_HEIGHT_444,
-            TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
-            TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT,
-            # Odd dimensions with 4:2:0 chroma, taking the CPU-fallback path
-            # (MPEG-2 isn't decoded by NVDEC): the frame is uploaded padded to
-            # even dimensions, and the converter must crop it back. Both sides
-            # of this comparison use our own kernels, so unlike the
-            # CPU-reference tests the odd-height one can be compared exactly.
-            TESTSRC2_ODD_WIDTH_MPEG2,
-            TESTSRC2_ODD_HEIGHT_AND_WIDTH_MPEG2,
-            # HEVC 4:4:4: NVDEC decodes these natively instead.
-            TESTSRC2_444_8BIT_HEVC,
-            TESTSRC2_444_10BIT_HEVC,
-            TESTSRC2_444_12BIT_HEVC,
-            # First keyframe is marked AV_PKT_FLAG_DISCARD by an mp4 edit list.
-            DISCARD_FIRST_KEYFRAME_VIDEO,
-            # 90-degree display matrix: the converter must rotate.
-            NASA_VIDEO_ROTATED,
-        ),
+    # Every codec, container and pixel format we care about.
+    _ALL_VIDEOS = (
+        NASA_VIDEO,
+        BT709_FULL_RANGE,
+        NASA_VIDEO_HDR,
+        TEST_SRC_2_720P_HDR,
+        TEST_SRC_2_12BIT_HDR,
+        # NVDEC can't decode this one (too small), so on CUDA this covers
+        # the CPU-fallback path: the decoder hands out CPU frames and the
+        # converter has to notice and upload them itself.
+        H265_VIDEO,
+        # Video with a non-zero start time: exercises pts propagation.
+        TEST_NON_ZERO_START,
+        # Odd dimensions: NVDEC decodes to even-aligned surfaces, so the
+        # converter has to crop back to the real width/height.
+        TESTSRC2_ODD_WIDTH_VP9,
+        TESTSRC2_ODD_HEIGHT_VP9,
+        TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
+        # yuv444p (odd dims too). NVDEC can't decode 4:4:4, so on CUDA these
+        # take the CPU-fallback path.
+        TESTSRC2_ODD_WIDTH_444,
+        TESTSRC2_ODD_HEIGHT_444,
+        TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
+        TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT,
+        # Odd dimensions with 4:2:0 chroma, taking the CPU-fallback path
+        # (MPEG-2 isn't decoded by NVDEC): the frame is uploaded padded to
+        # even dimensions, and the converter must crop it back. Both sides
+        # of this comparison use our own kernels, so unlike the
+        # CPU-reference tests the odd-height one can be compared exactly.
+        TESTSRC2_ODD_WIDTH_MPEG2,
+        TESTSRC2_ODD_HEIGHT_AND_WIDTH_MPEG2,
+        # HEVC 4:4:4: NVDEC decodes these natively instead.
+        TESTSRC2_444_8BIT_HEVC,
+        TESTSRC2_444_10BIT_HEVC,
+        TESTSRC2_444_12BIT_HEVC,
+        # First keyframe is marked AV_PKT_FLAG_DISCARD by an mp4 edit list.
+        DISCARD_FIRST_KEYFRAME_VIDEO,
+        # 90-degree display matrix: the converter must rotate.
+        NASA_VIDEO_ROTATED,
     )
+
+    @pytest.mark.parametrize("video", _ALL_VIDEOS)
     @pytest.mark.parametrize(
         "decode_method",
         (
@@ -4197,31 +4197,24 @@ class TestBlocks:
 
     # ===== seeking =====
 
-    def _frames_after_seek(self, blocks, seconds, num_frames=1):
-        # Seek, and decode the frames that come out from there. A seek
+    def _frames_after_seek(self, blocks, seconds):
+        # Seek, then yield every frame that comes out from there. A seek
         # invalidates the frames the decoder holds as references, hence the
-        # reset().
+        # reset(). The first frames yielded typically precede `seconds`: a
+        # decoder can only start on a keyframe.
         demuxer, decoder, converter = blocks
         demuxer.seek(seconds)
         decoder.reset()
-
-        frames = []
         for packet in demuxer:
             for decoded_frame in decoder.decode(packet):
-                frames.append(converter.convert(decoded_frame))
-                if len(frames) == num_frames:
-                    return frames
+                yield converter.convert(decoded_frame)
         # Seeking into the last GOP can leave the codec holding frames until
         # it's told the stream ended.
         for decoded_frame in decoder.drain():
-            frames.append(converter.convert(decoded_frame))
-            if len(frames) == num_frames:
-                break
-        assert frames, "No frame could be decoded after seeking"
-        return frames
+            yield converter.convert(decoded_frame)
 
     def _first_frame_after_seek(self, blocks, seconds):
-        return self._frames_after_seek(blocks, seconds)[0]
+        return next(self._frames_after_seek(blocks, seconds))
 
     @pytest.mark.parametrize(
         "video",
@@ -4265,7 +4258,9 @@ class TestBlocks:
         seconds = video_decoder.get_frame_at(non_keyframe_index).pts_seconds
 
         blocks = self._make_blocks(NASA_VIDEO.path, device)
-        got = self._frames_after_seek(blocks, seconds, num_frames=num_frames)
+        got = list(
+            itertools.islice(self._frames_after_seek(blocks, seconds), num_frames)
+        )
         expected = video_decoder.get_frames_in_range(
             keyframe_index, keyframe_index + num_frames
         )
@@ -4367,6 +4362,32 @@ class TestBlocks:
             assert frame.pts_seconds == first.pts_seconds
             assert_frames_equal(frame.data, first.data)
 
+    @pytest.mark.parametrize("video", _ALL_VIDEOS)
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_seek_to_mid_file_frame(self, video, device):
+        # Breadth: containers keep their own index and codecs their own
+        # reordering, so seeking is worth trying on every asset the sequential
+        # decode is tried on. One target per file, halfway in, reached the way
+        # a caller would reach it: seek, then decode forward dropping the
+        # frames between the keyframe we land on and the one we want.
+        if video is H265_VIDEO:
+            pytest.skip(
+                "Its seek lands past the target, see "
+                "test_seek_to_non_keyframe_can_land_past_target"
+            )
+        video_decoder = VideoDecoder(video.path, device=device)
+        expected = video_decoder.get_frame_at(video_decoder.metadata.num_frames // 2)
+
+        blocks = self._make_blocks(video.path, device)
+        got = next(
+            frame
+            for frame in self._frames_after_seek(blocks, expected.pts_seconds)
+            if frame.pts_seconds >= expected.pts_seconds
+        )
+
+        assert got.pts_seconds == expected.pts_seconds
+        self._assert_matches_video_decoder(got.data, expected.data, video)
+
     @pytest.mark.parametrize("device", _block_devices())
     def test_independent_pipelines_seek_in_parallel(self, device):
         # What seeking is for: targets spread over a file, one set of blocks
@@ -4379,16 +4400,12 @@ class TestBlocks:
         expected_frames = [video_decoder.get_frame_at(i) for i in frame_indices]
 
         def decode_frame_played_at(seconds):
-            demuxer, decoder, converter = self._make_blocks(NASA_VIDEO.path, device)
-            demuxer.seek(seconds)
-            decoder.reset()
-            for packet in demuxer:
-                for decoded_frame in decoder.decode(packet):
-                    # Drop the frames between the keyframe we landed on and the
-                    # one we're after.
-                    if decoded_frame.pts_seconds >= seconds:
-                        return converter.convert(decoded_frame)
-            raise AssertionError(f"Never reached {seconds}s")
+            blocks = self._make_blocks(NASA_VIDEO.path, device)
+            return next(
+                frame
+                for frame in self._frames_after_seek(blocks, seconds)
+                if frame.pts_seconds >= seconds
+            )
 
         with concurrent.futures.ThreadPoolExecutor(len(frame_indices)) as pool:
             got_frames = list(
