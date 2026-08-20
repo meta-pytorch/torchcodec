@@ -4368,6 +4368,41 @@ class TestBlocks:
             assert_frames_equal(frame.data, first.data)
 
     @pytest.mark.parametrize("device", _block_devices())
+    def test_independent_pipelines_seek_in_parallel(self, device):
+        # What seeking is for: targets spread over a file, one set of blocks
+        # per thread, each seeking to its own part of the stream and decoding
+        # forward to the frame it wants. The pipelines share nothing - not even
+        # the container, since each opens its own - so each has to come back
+        # with exactly what VideoDecoder decodes for that frame.
+        frame_indices = (10, 100, 200, 350)
+        video_decoder = VideoDecoder(NASA_VIDEO.path, device=device)
+        expected_frames = [video_decoder.get_frame_at(i) for i in frame_indices]
+
+        def decode_frame_played_at(seconds):
+            demuxer, decoder, converter = self._make_blocks(NASA_VIDEO.path, device)
+            demuxer.seek(seconds)
+            decoder.reset()
+            for packet in demuxer:
+                for decoded_frame in decoder.decode(packet):
+                    # Drop the frames between the keyframe we landed on and the
+                    # one we're after.
+                    if decoded_frame.pts_seconds >= seconds:
+                        return converter.convert(decoded_frame)
+            raise AssertionError(f"Never reached {seconds}s")
+
+        with concurrent.futures.ThreadPoolExecutor(len(frame_indices)) as pool:
+            got_frames = list(
+                pool.map(
+                    decode_frame_played_at,
+                    [frame.pts_seconds for frame in expected_frames],
+                )
+            )
+
+        for got, expected in zip(got_frames, expected_frames):
+            assert got.pts_seconds == expected.pts_seconds
+            assert_frames_equal(got.data, expected.data)
+
+    @pytest.mark.parametrize("device", _block_devices())
     def test_seek_while_demuxing_on_another_thread(self, device):
         # Demuxing on one thread and decoding on another. Each block belongs to
         # the thread that drives it, so the seek happens on the demux thread
