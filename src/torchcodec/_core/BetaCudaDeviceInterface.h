@@ -119,7 +119,6 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   // consumer is reading. These track that read so the next mapping, in
   // receive_frame(), can be ordered after it.
   CudaEvent surface_read_done_;
-  cudaStream_t surface_reader_stream_ = nullptr;
   void record_surface_read(cudaStream_t stream);
 
   UniqueAVFrame convert_cuda_frame_to_av_frame(

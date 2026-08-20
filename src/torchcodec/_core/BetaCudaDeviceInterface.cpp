@@ -827,10 +827,8 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   //   copy), or that's a frame that was discarded in SingleStreamDecoder.
   // - With the "Blocks" APIs, the PacketDecoder forces a copy in
   //   make_frame_standalone().
-  if (surface_reader_stream_ != nvdec_output_stream_) {
-    // Those reads are asynchronous, so we must wait on them to finish.
-    surface_read_done_.make_stream_wait(nvdec_output_stream_);
-  }
+  // Those reads are asynchronous, so we must wait on them to finish.
+  surface_read_done_.make_stream_wait(nvdec_output_stream_);
   unmap_previous_frame();
   CUresult result = cuvidMapVideoFrame(
       *decoder_.get(),
@@ -843,9 +841,6 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   }
   previously_mapped_frame_ = frame_ptr;
 
-  // The mapping only *enqueues* the post-processing that fills the surface, on
-  // nvdec_output_stream_. Mark that point so consumers running on another
-  // stream can wait for this frame's content, and only for it.
   nvdec_surface_ready_.record(nvdec_output_stream_);
 
   av_frame = convert_cuda_frame_to_av_frame(frame_ptr, pitch, disp_info);
@@ -859,7 +854,6 @@ void BetaCudaDeviceInterface::record_surface_read(cudaStream_t stream) {
   // This sets the surface_read_done_ event that must be waited upon before
   // mapping a new frame on the surface.
   surface_read_done_.record(stream);
-  surface_reader_stream_ = stream;
 }
 
 void BetaCudaDeviceInterface::unmap_previous_frame() {

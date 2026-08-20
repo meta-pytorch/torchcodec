@@ -93,7 +93,8 @@ class CudaEvent {
   void record(cudaStream_t running_stream);
 
   // Order `waiting_stream` after the work marked by the last record(). Doesn't
-  // block the host. No-op if record() was never called.
+  // block the host. No-op if record() was never called, or if `waiting_stream`
+  // is the stream that was recorded on.
   void make_stream_wait(cudaStream_t waiting_stream) const;
 
   // Block the host until the marked work has completed. No-op if record() was
@@ -102,6 +103,7 @@ class CudaEvent {
 
  private:
   cudaEvent_t event_ = nullptr;
+  cudaStream_t recorded_on_ = nullptr;
 };
 
 void initialize_cuda_context_with_pytorch(const StableDevice& device);

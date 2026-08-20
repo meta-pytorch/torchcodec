@@ -44,8 +44,10 @@ CudaEvent::~CudaEvent() {
   }
 }
 
-CudaEvent::CudaEvent(CudaEvent&& other) noexcept : event_(other.event_) {
+CudaEvent::CudaEvent(CudaEvent&& other) noexcept
+    : event_(other.event_), recorded_on_(other.recorded_on_) {
   other.event_ = nullptr;
+  other.recorded_on_ = nullptr;
 }
 
 CudaEvent& CudaEvent::operator=(CudaEvent&& other) noexcept {
@@ -54,7 +56,9 @@ CudaEvent& CudaEvent::operator=(CudaEvent&& other) noexcept {
       cudaEventDestroy(event_);
     }
     event_ = other.event_;
+    recorded_on_ = other.recorded_on_;
     other.event_ = nullptr;
+    other.recorded_on_ = nullptr;
   }
   return *this;
 }
@@ -70,10 +74,11 @@ void CudaEvent::record(cudaStream_t running_stream) {
   cudaError_t err = cudaEventRecord(event_, running_stream);
   STD_TORCH_CHECK(
       err == cudaSuccess, "cudaEventRecord failed: ", cudaGetErrorString(err));
+  recorded_on_ = running_stream;
 }
 
 void CudaEvent::make_stream_wait(cudaStream_t waiting_stream) const {
-  if (event_ == nullptr) {
+  if (event_ == nullptr || waiting_stream == recorded_on_) {
     return;
   }
   cudaError_t err = cudaStreamWaitEvent(waiting_stream, event_, 0);
