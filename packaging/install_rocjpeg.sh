@@ -55,9 +55,10 @@ sys.exit(0 if hits else 1)
 else
     # Covers both first-time installs and the ROCm <= 7.2 system-RPM path
     # (dnf is idempotent for already-installed packages).
-    # Per https://github.com/ROCm/rocJPEG/tree/release/rocm-rel-7.2#libraries,
-    # "Package install auto installs all dependencies" (libva-amdgpu,
-    # mesa-amdgpu-va-drivers, etc.), so listing them explicitly is redundant.
-    dnf install -y --refresh rocjpeg-devel \
+    # rocjpeg-devel auto-installs its own library deps (libamdhip64 etc.) but
+    # the VA-API stack (libva-amdgpu, mesa-amdgpu-va-drivers) is listed as a
+    # prerequisite in the rocJPEG docs and may not be an RPM Requires: dep, so
+    # install it explicitly to ensure vaInitialize() works at runtime.
+    dnf install -y --refresh rocjpeg-devel libva-amdgpu mesa-amdgpu-va-drivers \
         || install_rocjpeg_build_only
 fi
