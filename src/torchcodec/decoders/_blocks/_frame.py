@@ -19,24 +19,10 @@ class Packet:
     Produced by :class:`Demuxer`, consumed by :class:`PacketDecoder`. It wraps a raw
     pointer, so it is only valid within the process that created it (it cannot
     cross a process boundary).
-
-    ``pts_seconds``, ``duration_seconds`` and ``is_keyframe`` describe the
-    packet without decoding it. They're what lets a caller decide where to seek
-    to, and tell where the demuxer actually landed after a seek (a keyframe
-    near the requested time, not the requested time itself).
     """
 
-    def __init__(
-        self,
-        handle: torch.Tensor,
-        pts_seconds: float,
-        duration_seconds: float,
-        is_keyframe: bool,
-    ):
+    def __init__(self, handle: torch.Tensor):
         self._handle = handle
-        self.pts_seconds = pts_seconds
-        self.duration_seconds = duration_seconds
-        self.is_keyframe = is_keyframe
 
 
 # TODO_API_BREAKDOWN DESIGN P1: should these fields (pix_format, colorspace

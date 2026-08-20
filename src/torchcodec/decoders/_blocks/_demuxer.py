@@ -41,12 +41,8 @@ class Demuxer:
 
     def next_packet(self) -> Packet | None:
         """Return the next :class:`Packet`, or ``None`` at end of stream."""
-        handle, is_eof, pts_seconds, duration_seconds, is_keyframe = (
-            _blocks_demuxer_next_packet(self._handle)
-        )
-        if is_eof:
-            return None
-        return Packet(handle, pts_seconds, duration_seconds, is_keyframe)
+        handle, is_eof = _blocks_demuxer_next_packet(self._handle)
+        return None if is_eof else Packet(handle)
 
     def seek(self, seconds: float) -> None:
         """Seek to a keyframe near ``seconds``.

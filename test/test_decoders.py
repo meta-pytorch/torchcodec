@@ -4366,36 +4366,26 @@ class TestBlocks:
 
     @pytest.mark.parametrize("video", _SEEK_VIDEOS)
     @pytest.mark.parametrize("seek_frac", _SEEK_FRACS)
-    def test_seek_lands_on_a_keyframe(self, video, seek_frac):
-        # Whatever the seek picks, decoding must be able to start there.
-        demuxer = Demuxer(video.path)
-        demuxer.seek(self._seek_target(video, seek_frac))
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_seek_is_repeatable(self, video, seek_frac, device):
+        # Seeking to the same place twice, and seeking forwards and back again,
+        # lands in the same place: neither the demuxer nor the decoder keeps
+        # state that biases the next seek.
+        target = self._seek_target(video, seek_frac, device)
+        demuxer, decoder, _ = self._make_blocks(video.path, device)
 
-        packet = demuxer.next_packet()
-        assert packet is not None
-        assert packet.is_keyframe
+        def landing_pts(seconds):
+            # The first frame the decoder emits after a seek, whether or not it
+            # precedes the target: that's where we landed.
+            return next(iter(self._decode_from(demuxer, decoder, seconds))).pts_seconds
 
-    @pytest.mark.parametrize("video", _SEEK_VIDEOS)
-    @pytest.mark.parametrize("seek_frac", _SEEK_FRACS)
-    def test_seek_is_repeatable(self, video, seek_frac):
-        # Seeking to the same place twice, and seeking forwards then back,
-        # lands on the same packet: the demuxer keeps no state that biases the
-        # next seek.
-        target = self._seek_target(video, seek_frac)
+        first = landing_pts(target)
+        again = landing_pts(target)
 
-        demuxer = Demuxer(video.path)
-        demuxer.seek(target)
-        first = demuxer.next_packet()
+        landing_pts(self._seek_target(video, 0.95, device))
+        after_going_forward = landing_pts(target)
 
-        demuxer.seek(target)
-        again = demuxer.next_packet()
-
-        demuxer.seek(self._seek_target(video, 0.95))
-        demuxer.next_packet()
-        demuxer.seek(target)
-        after_going_forward = demuxer.next_packet()
-
-        assert first.pts_seconds == again.pts_seconds == after_going_forward.pts_seconds
+        assert first == again == after_going_forward
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_seek_out_of_range(self, device):
@@ -4409,12 +4399,9 @@ class TestBlocks:
             ref = self._core_frames_from(video.path, device, target, max_frames=1)
             assert got[0].pts_seconds == ref[0].pts_seconds
 
-        # Past the end: the seek itself succeeds and lands on the last
-        # keyframe, but no frame satisfies the target. Approximate mode reports
-        # that same emptiness by raising when asked for the next frame.
-        demuxer = Demuxer(video.path)
-        demuxer.seek(end + 10)
-        assert demuxer.next_packet().is_keyframe
+        # Past the end: the seek itself succeeds, but no frame satisfies the
+        # target. Approximate mode reports that same emptiness by raising when
+        # asked for the next frame.
         assert self._frames_from(video.path, device, end + 10) == []
         assert self._core_frames_from(video.path, device, end + 10) == []
 
@@ -4427,10 +4414,6 @@ class TestBlocks:
         # approximate mode, and exact mode - which scans the file to build a
         # presentation-order index - is the one that gets it right.
         target = 0.5
-
-        demuxer = Demuxer(H265_VIDEO.path)
-        demuxer.seek(target)
-        assert demuxer.next_packet().pts_seconds > target
 
         blocks = self._frames_from(H265_VIDEO.path, "cpu", target, max_frames=1)
         approximate = self._core_frames_from(

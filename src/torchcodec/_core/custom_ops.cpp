@@ -75,8 +75,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "get_frames_by_pts(Tensor(a!) decoder, *, Tensor timestamps) -> (Tensor, Tensor, Tensor)");
   m.def(
       "_blocks_create_demuxer(str filename, int? stream_index=None) -> Tensor");
-  m.def(
-      "_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool, float, float, bool)");
+  m.def("_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool)");
   m.def("_blocks_demuxer_seek(Tensor(a!) demuxer, float seconds) -> ()");
   m.def(
       "_blocks_create_packet_decoder(Tensor demuxer, *, int? num_threads=None, str device=\"cpu\") -> Tensor");
@@ -805,30 +804,17 @@ torch::stable::Tensor _blocks_create_demuxer(
   return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
 }
 
-// (packet_handle, is_eof, pts_seconds, duration_seconds, is_keyframe). On EOF
-// the packet_handle is a dummy tensor that must not be used, and the other
-// fields are meaningless. Native scalars avoid per-packet .item() overhead in
-// Python.
-using OpsPacketOutput =
-    std::tuple<torch::stable::Tensor, bool, double, double, bool>;
+// (packet_handle, is_eof). On EOF the packet_handle is a dummy tensor that must
+// not be used. Native bool avoids per-frame .item() overhead in Python.
+using OpsPacketOutput = std::tuple<torch::stable::Tensor, bool>;
 
 OpsPacketOutput _blocks_demuxer_next_packet(torch::stable::Tensor& demuxer) {
   Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
   UniqueAVPacket packet = demuxer_ptr->next_packet();
   if (packet == nullptr) {
-    return std::make_tuple(
-        torch::stable::full({1}, 0, kStableInt64), true, 0.0, 0.0, false);
+    return std::make_tuple(torch::stable::full({1}, 0, kStableInt64), true);
   }
-  AVRational time_base = demuxer_ptr->time_base();
-  double pts_seconds = pts_to_seconds(get_pts_or_dts(*packet), time_base);
-  double duration_seconds = pts_to_seconds(packet->duration, time_base);
-  bool is_keyframe = (packet->flags & AV_PKT_FLAG_KEY) != 0;
-  return std::make_tuple(
-      wrap_pointer_to_tensor(std::move(packet)),
-      false,
-      pts_seconds,
-      duration_seconds,
-      is_keyframe);
+  return std::make_tuple(wrap_pointer_to_tensor(std::move(packet)), false);
 }
 
 void _blocks_demuxer_seek(torch::stable::Tensor& demuxer, double seconds) {

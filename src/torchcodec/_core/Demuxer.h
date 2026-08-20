@@ -62,10 +62,6 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
     return stream_;
   }
 
-  AVRational time_base() const {
-    return stream_->time_base;
-  }
-
   int active_stream_index() const {
     return active_stream_index_;
   }
