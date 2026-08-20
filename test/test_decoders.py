@@ -4304,6 +4304,36 @@ class TestBlocks:
             assert got.pts_seconds == expected.pts_seconds == seconds
             assert_frames_equal(got.data, expected.data)
 
+    @pytest.mark.parametrize("seconds", (1.0, 2.0, 3.0))
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_seek_mpeg_program_stream(self, seconds, device):
+        # Seeking in an MPEG program stream lands on a container byte offset
+        # rather than on a keyframe, so the packets that follow are typically
+        # mid-GOP ones whose reference frames were never demuxed. The frames
+        # they'd produce are simply missing from the output - what must not
+        # happen is the decoder emitting them anyway, decoded against whatever
+        # references it happens to hold.
+        #
+        # VideoDecoder can't act as a reference here: it fails on this asset's
+        # video stream in both seek modes. We compare against a sequential
+        # decode of the same file through the blocks instead.
+        video = SINE_STEREO_MP2_MPEG_PS
+        sequential = {
+            frame.pts_seconds: frame.data
+            for frame in self._decode_sequential(video.path, device)
+        }
+
+        demuxer, decoder, converter = self._make_blocks(video.path, device)
+        demuxer.seek(seconds)
+        decoder.reset()
+        got = list(
+            self._convert(converter, self._decode(decoder, self._demux(demuxer)))
+        )
+
+        assert len(got) > 0
+        for frame in got:
+            assert_frames_equal(frame.data, sequential[frame.pts_seconds])
+
     # ----- drain() -----
 
     @pytest.mark.parametrize("device", _block_devices())
