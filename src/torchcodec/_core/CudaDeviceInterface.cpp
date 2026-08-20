@@ -339,10 +339,17 @@ void CudaDeviceInterface::convert_av_frame_to_frame_output(
   cudaStream_t nvdec_stream = // That's always the default stream. Sad.
       cuda_device_ctx->stream;
 
+  // FFmpeg gives us no hook to record an event when it's done producing this
+  // particular frame, so the best we can do is wait on everything it has
+  // enqueued so far.
+  cudaStream_t current_stream = get_current_cuda_stream(device_.index());
+  sync_streams(
+      /*running_stream=*/nvdec_stream, /*waiting_stream=*/current_stream);
+
   frame_output.data = convert_yuv_frame_to_rgb(
       av_frame,
       device_,
-      nvdec_stream,
+      current_stream,
       pre_allocated_output_tensor,
       FrameDims(av_frame.height, av_frame.width),
       actual_format,

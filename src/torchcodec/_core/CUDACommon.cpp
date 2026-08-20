@@ -11,20 +11,17 @@
 
 namespace facebook::torchcodec {
 
-// Make waitingStream wait until all work currently enqueued on runningStream
-// has completed.
-// TODO_API_BREAKDOWN PERF P2: this creates and destroys a cudaEvent_t on every
-// call, and a timing-enabled one at that, which is the more expensive flavour.
-// It sits on the per-frame path: convert_yuv_frame_to_rgb() calls it for every
-// single frame, including when both streams are the same and the whole thing
-// is a no-op. Two easy wins: return early when the two streams are equal, and
-// take a caller-owned event created with cudaEventDisableTiming instead of
-// allocating one here (see record_surface_read() in BetaCudaDeviceInterface).
 void sync_streams(cudaStream_t running_stream, cudaStream_t waiting_stream) {
+  if (running_stream == waiting_stream) {
+    return;
+  }
+
   cudaEvent_t event;
-  cudaError_t err = cudaEventCreate(&event);
+  cudaError_t err = cudaEventCreateWithFlags(&event, cudaEventDisableTiming);
   STD_TORCH_CHECK(
-      err == cudaSuccess, "cudaEventCreate failed: ", cudaGetErrorString(err));
+      err == cudaSuccess,
+      "cudaEventCreateWithFlags failed: ",
+      cudaGetErrorString(err));
 
   err = cudaEventRecord(event, running_stream);
   STD_TORCH_CHECK(
@@ -37,6 +34,66 @@ void sync_streams(cudaStream_t running_stream, cudaStream_t waiting_stream) {
       cudaGetErrorString(err));
 
   cudaEventDestroy(event);
+}
+
+CudaEvent::~CudaEvent() {
+  if (event_ != nullptr) {
+    // Destroying an event that hasn't completed yet is fine: CUDA frees it once
+    // it does.
+    cudaEventDestroy(event_);
+  }
+}
+
+CudaEvent::CudaEvent(CudaEvent&& other) noexcept : event_(other.event_) {
+  other.event_ = nullptr;
+}
+
+CudaEvent& CudaEvent::operator=(CudaEvent&& other) noexcept {
+  if (this != &other) {
+    if (event_ != nullptr) {
+      cudaEventDestroy(event_);
+    }
+    event_ = other.event_;
+    other.event_ = nullptr;
+  }
+  return *this;
+}
+
+void CudaEvent::record(cudaStream_t stream) {
+  if (event_ == nullptr) {
+    cudaError_t err = cudaEventCreateWithFlags(&event_, cudaEventDisableTiming);
+    STD_TORCH_CHECK(
+        err == cudaSuccess,
+        "cudaEventCreateWithFlags failed: ",
+        cudaGetErrorString(err));
+  }
+  cudaError_t err = cudaEventRecord(event_, stream);
+  STD_TORCH_CHECK(
+      err == cudaSuccess, "cudaEventRecord failed: ", cudaGetErrorString(err));
+}
+
+void CudaEvent::block(cudaStream_t stream) const {
+  if (event_ == nullptr) {
+    return;
+  }
+  // The wait captures the event's state as of *now*, so re-recording the event
+  // afterwards doesn't retroactively change what `stream` waits for.
+  cudaError_t err = cudaStreamWaitEvent(stream, event_, 0);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "cudaStreamWaitEvent failed: ",
+      cudaGetErrorString(err));
+}
+
+void CudaEvent::synchronize() const {
+  if (event_ == nullptr) {
+    return;
+  }
+  cudaError_t err = cudaEventSynchronize(event_);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "cudaEventSynchronize failed: ",
+      cudaGetErrorString(err));
 }
 
 void initialize_cuda_context_with_pytorch(const StableDevice& device) {
