@@ -30,6 +30,7 @@ class Demuxer:
     a demuxer and no extra container is opened.
     """
 
+    # TODO_API_BREAKDOWN FEAT P1: support file-like, bytes etc.
     def __init__(self, source: str | Path, *, stream_index: int | None = None):
         if isinstance(source, Path):
             source = str(source)

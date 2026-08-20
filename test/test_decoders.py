@@ -9,7 +9,9 @@ import contextlib
 import gc
 import itertools
 import math
+import os
 import queue
+import subprocess
 import threading
 from functools import partial
 from typing import NamedTuple
@@ -4333,6 +4335,71 @@ class TestBlocks:
         assert len(got) > 0
         for frame in got:
             assert_frames_equal(frame.data, sequential[frame.pts_seconds])
+
+    @pytest.mark.parametrize("seconds", (-1e-4, -5.0, -1e9))
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_seek_before_start(self, seconds, device):
+        # Asking for a time before the stream starts isn't an error: there's a
+        # sensible place to land, and that's the beginning.
+        video_decoder = VideoDecoder(NASA_VIDEO.path, device=device)
+        blocks = self._make_blocks(NASA_VIDEO.path, device)
+
+        got = self._first_frame_after_seek(blocks, seconds)
+
+        expected = video_decoder.get_frame_at(0)
+        assert got.pts_seconds == expected.pts_seconds
+        assert_frames_equal(got.data, expected.data)
+
+    @pytest.mark.parametrize("seconds_past_end", (0, 10, 1e9))
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_seek_past_end(self, seconds_past_end, device):
+        # Same on the other side: we land on the last keyframe, because that's
+        # the closest the file gets to the target. Everything decodable from
+        # there is *before* the target.
+        video_decoder = VideoDecoder(NASA_VIDEO.path, device=device)
+        end = video_decoder.metadata.end_stream_seconds
+        last_keyframe_index = video_decoder._get_key_frame_indices()[-1]
+        blocks = self._make_blocks(NASA_VIDEO.path, device)
+
+        got = self._first_frame_after_seek(blocks, end + seconds_past_end)
+
+        assert (
+            got.pts_seconds
+            == video_decoder.get_frame_at(last_keyframe_index).pts_seconds
+        )
+        assert got.pts_seconds < end
+
+    @needs_ffmpeg_cli
+    def test_seek_on_non_seekable_source_raises(self, tmp_path):
+        # A named pipe fed by a live stream: there's nothing to seek in, and
+        # FFmpeg reports that as a bare EPERM, which we turn into something
+        # that names the format and says what's wrong.
+        fifo_path = tmp_path / "live.ts"
+        os.mkfifo(fifo_path)
+        ffmpeg = subprocess.Popen(
+            # fmt: off
+            [
+                "ffmpeg", "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=30",
+                "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+                "-g", "30", "-f", "mpegts", "-y", str(fifo_path),
+            ],
+            # fmt: on
+        )
+        try:
+            demuxer = Demuxer(fifo_path)
+            decoder = PacketDecoder(demuxer)
+            num_decoded = 0
+            for packet in demuxer:  # make sure the stream is really flowing
+                num_decoded += len(decoder.decode(packet))
+                if num_decoded > 0:
+                    break
+
+            with pytest.raises(RuntimeError, match="does not support seeking"):
+                demuxer.seek(60)
+        finally:
+            ffmpeg.kill()
+            ffmpeg.wait()
 
     # ----- drain() -----
 
