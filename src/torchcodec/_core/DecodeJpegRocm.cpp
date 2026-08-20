@@ -207,9 +207,19 @@ RocJpegHandle RocJpegDecoder::base_handle() {
 }
 
 RocJpegHandle RocJpegDecoder::ensure_hybrid_handle() {
+  if (hybrid_unavailable_) {
+    return nullptr;
+  }
   if (handle_hybrid_ == nullptr) {
     RocJpegStatus status =
         rocJpegCreate(ROCJPEG_BACKEND_HYBRID, device_index_, &handle_hybrid_);
+    if (status == ROCJPEG_STATUS_NOT_IMPLEMENTED) {
+      // HYBRID is not supported on this GPU (e.g. MI300X with gfx942). On
+      // such hardware the HW backend correctly performs YCbCr->RGB, so callers
+      // that wanted HYBRID as a workaround can safely fall back to HW.
+      hybrid_unavailable_ = true;
+      return nullptr;
+    }
     STD_TORCH_CHECK(
         status == ROCJPEG_STATUS_SUCCESS,
         "Failed to initialize rocJPEG with the hybrid backend: ",
@@ -352,6 +362,25 @@ void RocJpegDecoder::decode_hybrid(
     std::vector<ImagePlan>& plans,
     const std::vector<size_t>& indices) {
   RocJpegHandle handle = ensure_hybrid_handle();
+  if (handle == nullptr) {
+    // HYBRID is not available on this GPU (ROCJPEG_STATUS_NOT_IMPLEMENTED).
+    // Fall back to the HW backend. On hardware where HYBRID is unavailable the
+    // HW path correctly handles YCbCr->RGB conversion for colour JPEGs.
+    STD_TORCH_CHECK(
+        handle_hw_ != nullptr,
+        "rocJPEG: neither HW nor HYBRID backend is available");
+    for (size_t idx : indices) {
+      RocJpegDecodeParams params = {};
+      params.output_format = plans[idx].output_format;
+      RocJpegStatus status = rocJpegDecode(
+          handle_hw_, plans[idx].stream, &params, &plans[idx].output_image);
+      STD_TORCH_CHECK(
+          status == ROCJPEG_STATUS_SUCCESS,
+          "rocJpegDecode (HW fallback) failed: ",
+          rocJpegGetErrorName(status));
+    }
+    return;
+  }
   for (size_t idx : indices) {
     RocJpegDecodeParams params = {};
     params.output_format = plans[idx].output_format;

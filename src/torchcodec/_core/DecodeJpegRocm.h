@@ -91,6 +91,11 @@ class RocJpegDecoder {
   // HYBRID backend handle, created lazily the first time we need it
   // (progressive JPEGs, or all images when there's no HW engine).
   RocJpegHandle handle_hybrid_{nullptr};
+  // Set to true if rocJpegCreate(ROCJPEG_BACKEND_HYBRID) returned
+  // ROCJPEG_STATUS_NOT_IMPLEMENTED. On such hardware (e.g. MI300X) the HW
+  // backend handles YCbCr->RGB correctly, so force_hybrid images fall back to
+  // HW without loss of correctness.
+  bool hybrid_unavailable_{false};
 };
 
 // A per-device pool of reusable RocJpegDecoder objects. Modeled on NVJpegCache
