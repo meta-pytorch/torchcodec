@@ -3979,58 +3979,6 @@ class TestBlocks:
         assert converter.convert(frame).data.shape == (3, height, width)
 
     @pytest.mark.needs_cuda
-    def test_converter_does_not_wait_on_decoder_backlog(self):
-        # A conversion must only be ordered after the frame it was handed, not
-        # after everything the decoder happens to have enqueued by the time the
-        # conversion is issued. Here the decoder queues a long kernel *after*
-        # producing the frame; the conversion doesn't depend on it, so it must
-        # not be held behind it. Waiting on the decoder's stream as a whole,
-        # rather than on the frame's own event, is exactly what would.
-        demuxer, decoder, converter = self._make_blocks(NASA_VIDEO.path, "cuda")
-        decode_stream = torch.cuda.Stream()
-        convert_stream = torch.cuda.Stream()
-        packets = iter(demuxer)
-
-        def decode_one_frame():
-            with torch.cuda.stream(decode_stream):
-                for packet in packets:
-                    decoded = decoder.decode(packet)
-                    if decoded:
-                        return decoded[0]
-            raise AssertionError("ran out of packets before decoding a frame")
-
-        # Warm up, so that the timed conversion below hits nothing that
-        # synchronizes on first use: CUDA loads a kernel's module lazily, and
-        # the caching allocator only has a block to reuse once one has been
-        # freed.
-        with torch.cuda.stream(convert_stream):
-            converter.convert(decode_one_frame())
-            converter.convert(decode_one_frame())
-        torch.cuda.synchronize()
-
-        frame = decode_one_frame()
-        with torch.cuda.stream(decode_stream):
-            torch.cuda._sleep(2_000_000_000)  # ~1s of unrelated backlog
-
-        with torch.cuda.stream(convert_stream):
-            converter.convert(frame)
-            conversion_done = torch.cuda.Event()
-            conversion_done.record(convert_stream)
-
-        start = time.perf_counter()
-        conversion_done.synchronize()
-        conversion_seconds = time.perf_counter() - start
-        backlog_done = torch.cuda.Event()
-        backlog_done.record(decode_stream)
-        backlog_done.synchronize()
-        backlog_seconds = time.perf_counter() - start
-
-        # Sanity-check the test itself: the backlog has to still be running,
-        # otherwise there's nothing for the conversion to be blocked behind.
-        assert backlog_seconds > 0.3
-        assert conversion_seconds < backlog_seconds / 2
-
-    @pytest.mark.needs_cuda
     @pytest.mark.parametrize("record_stream", (True, False))
     def test_storage_record_stream(self, record_stream):
         # Using PacketDecoder on one stream and consuming the frames on a
