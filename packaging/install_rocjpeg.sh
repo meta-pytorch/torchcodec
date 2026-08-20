@@ -13,25 +13,10 @@
 
 set -euo pipefail
 
-# rocJPEG decodes via VA-API, so at runtime it needs the AMD VA-API driver
-# (mesa-amdgpu-va-drivers + libva-amdgpu), not just librocjpeg -- without it,
-# vaInitialize() fails and decoding errors out. A proper `dnf install` pulls that
-# whole stack, but only where AMD's amdgpu-graphics repo is configured (the ROCm
-# test runners). On the plain build image that repo is absent; there we only need
-# to *compile* against rocjpeg.h/librocjpeg.so, so fall back to installing just
-# those with --nodeps (base libva provides the libva.so.2 soname we link).
-#
 # ROCm >= 7.14 distributes the full ROCm stack (including rocJPEG and mesa)
 # as pip wheels (_rocm_sdk_core / _rocm_sdk_devel site-packages). In that case
 # librocjpeg.so, rocjpeg.h, and the AMD VA-API backend driver (mesa) are all
 # bundled inside _rocm_sdk_core — no separate dnf install needed.
-install_rocjpeg_build_only() {
-    dnf install -y --refresh libva
-    dnf install -y "dnf-command(download)" >/dev/null 2>&1 || dnf install -y dnf-plugins-core
-    rpm_dir="$(mktemp -d)"
-    dnf download --destdir "${rpm_dir}" rocjpeg rocjpeg-devel
-    rpm -Uvh --nodeps "${rpm_dir}"/rocjpeg*.rpm
-}
 
 # Check if librocjpeg is already available via the ROCm >= 7.14 pip-wheel layout
 # (_rocm_sdk_core / _rocm_sdk_devel under site-packages).  In that layout AMD
@@ -53,12 +38,9 @@ sys.exit(0 if hits else 1)
     # libva is bundled inside _rocm_sdk_core/lib/rocm_sysdeps/lib/ and
     # librocjpeg's own RPATH resolves it from there — no system install needed.
 else
-    # Covers both first-time installs and the ROCm <= 7.2 system-RPM path
-    # (dnf is idempotent for already-installed packages).
-    # rocjpeg-devel auto-installs its own library deps (libamdhip64 etc.) but
-    # the VA-API stack (libva-amdgpu, mesa-amdgpu-va-drivers) is listed as a
-    # prerequisite in the rocJPEG docs and may not be an RPM Requires: dep, so
-    # install it explicitly to ensure vaInitialize() works at runtime.
-    dnf install -y --refresh rocjpeg-devel libva-amdgpu mesa-amdgpu-va-drivers \
-        || install_rocjpeg_build_only
+    # ROCm <=7.2 system RPM path.
+    # Per https://github.com/ROCm/rocJPEG/tree/release/rocm-rel-7.2#libraries:
+    # install the VA-API prerequisites first, then rocjpeg-devel (package
+    # install auto installs remaining dependencies).
+    dnf install -y --refresh libva-amdgpu mesa-amdgpu-va-drivers rocjpeg-devel
 fi
