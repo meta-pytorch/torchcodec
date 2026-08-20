@@ -9,6 +9,7 @@ from __future__ import annotations
 from torchcodec._core.ops import (
     _blocks_create_packet_decoder,
     _blocks_packet_decoder_receive_frame,
+    _blocks_packet_decoder_reset,
     _blocks_packet_decoder_send_eof,
     _blocks_packet_decoder_send_packet,
 )
@@ -71,3 +72,16 @@ class PacketDecoder:
         once, after the last packet."""
         _blocks_packet_decoder_send_eof(self._handle)
         return self._drain()
+
+    def reset(self) -> None:
+        """Drop the buffered decoding state and start over.
+
+        Call this after :meth:`Demuxer.seek`: the frames the codec holds as
+        references belong to wherever we were before the seek, and decoding the
+        packets from the new position against them produces corrupt output.
+        Any :class:`DecodedFrame` already handed out stays valid.
+
+        This is also what makes a decoder reusable after :meth:`flush`, which
+        ends the stream and would otherwise leave the decoder drained for good.
+        """
+        _blocks_packet_decoder_reset(self._handle)

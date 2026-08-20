@@ -23,6 +23,15 @@ int read_next_packet(
     int active_stream_index,
     ReferenceAVPacket& packet);
 
+// FFmpeg reports "this seek cannot be performed" as a bare -1, i.e. EPERM,
+// which renders as the very misleading "Operation not permitted". It covers
+// both a target that the demuxer can't reach and a demuxer with no seeking
+// support whatsoever.
+std::string get_seek_error_message(
+    const AVFormatContext* format_context,
+    int64_t desired_pts,
+    int status);
+
 // Demux building block: owns an AVFormatContext, selects one video stream, and
 // yields its (compressed) packets. Does no decoding. Not thread-safe.
 class FORCE_PUBLIC_VISIBILITY Demuxer {
@@ -35,8 +44,26 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
   // packet, or a null packet at end of stream.
   UniqueAVPacket next_packet();
 
+  // Seeks so that the next packet read is a keyframe's, close to `seconds`.
+  // Same semantics as SingleStreamDecoder's approximate seek mode: we hand
+  // FFmpeg the target and take whatever keyframe it lands on. That is usually
+  // the keyframe preceding `seconds`, but on streams whose keyframes are
+  // reordered it can be one displayed *after* it, because the container's
+  // index is in decode order (see https://trac.ffmpeg.org/ticket/11137).
+  // Landing exactly needs a presentation-order index of our own, which is what
+  // SingleStreamDecoder's exact mode scans for.
+  //
+  // This deliberately does not touch any decoder: a PacketDecoder's reference
+  // frames are stale after a seek and it is the caller's job to reset() it,
+  // because the decoder may well live on another thread.
+  void seek(double seconds);
+
   AVStream* active_stream() const {
     return stream_;
+  }
+
+  AVRational time_base() const {
+    return stream_->time_base;
   }
 
   int active_stream_index() const {

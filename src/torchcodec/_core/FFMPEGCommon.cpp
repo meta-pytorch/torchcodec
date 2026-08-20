@@ -123,8 +123,12 @@ int64_t get_duration(const AVFrame& av_frame) {
 // happens, we fall back to the dts value which hopefully exists and is correct.
 // Accessing AVFrames' and AVPackets' pts values should **always** go through
 // these helpers.
+int64_t get_pts_or_dts(const AVPacket& packet) {
+  return packet.pts == INT64_MIN ? packet.dts : packet.pts;
+}
+
 int64_t get_pts_or_dts(ReferenceAVPacket& packet) {
-  return packet->pts == INT64_MIN ? packet->dts : packet->pts;
+  return get_pts_or_dts(*packet.get());
 }
 
 int64_t get_pts_or_dts(const AVFrame& av_frame) {

@@ -269,6 +269,7 @@ void set_duration(AVFrame& frame, int64_t duration);
 
 // pts accessors that fall back to dts when pts is unset (INT64_MIN). See the
 // definitions for details.
+int64_t get_pts_or_dts(const AVPacket& packet);
 int64_t get_pts_or_dts(ReferenceAVPacket& packet);
 int64_t get_pts_or_dts(const AVFrame& av_frame);
 

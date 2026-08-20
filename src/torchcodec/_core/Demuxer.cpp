@@ -5,9 +5,27 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "Demuxer.h"
+
+#include <sstream>
+
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
+
+std::string get_seek_error_message(
+    const AVFormatContext* format_context,
+    int64_t desired_pts,
+    int status) {
+  std::stringstream ss;
+  ss << "Could not seek file to pts=" << desired_pts << ": "
+     << get_ffmpeg_error_string_from_error_code(status) << ".";
+  if (status == AVERROR(EPERM)) {
+    ss << " This is either because that timestamp is out of range, or because"
+       << " the '" << format_context->iformat->name << "' format does not"
+       << " support seeking.";
+  }
+  return ss.str();
+}
 
 int read_next_packet(
     AVFormatContext* format_context,
@@ -66,6 +84,21 @@ Demuxer::Demuxer(
       format_context_->streams[i]->discard = AVDISCARD_ALL;
     }
   }
+}
+
+void Demuxer::seek(double seconds) {
+  int64_t desired_pts = seconds_to_closest_pts(seconds, stream_->time_base);
+
+  int status = avformat_seek_file(
+      format_context_.get(),
+      active_stream_index_,
+      INT64_MIN,
+      desired_pts,
+      desired_pts,
+      0);
+  STD_TORCH_CHECK(
+      status >= 0,
+      get_seek_error_message(format_context_.get(), desired_pts, status));
 }
 
 UniqueAVPacket Demuxer::next_packet() {

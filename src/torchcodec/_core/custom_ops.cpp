@@ -75,12 +75,15 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "get_frames_by_pts(Tensor(a!) decoder, *, Tensor timestamps) -> (Tensor, Tensor, Tensor)");
   m.def(
       "_blocks_create_demuxer(str filename, int? stream_index=None) -> Tensor");
-  m.def("_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool)");
+  m.def(
+      "_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool, float, float, bool)");
+  m.def("_blocks_demuxer_seek(Tensor(a!) demuxer, float seconds) -> ()");
   m.def(
       "_blocks_create_packet_decoder(Tensor demuxer, *, int? num_threads=None, str device=\"cpu\") -> Tensor");
   m.def(
       "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
+  m.def("_blocks_packet_decoder_reset(Tensor(a!) decoder) -> ()");
   m.def(
       "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, str, Tensor)");
   m.def(
@@ -802,17 +805,34 @@ torch::stable::Tensor _blocks_create_demuxer(
   return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
 }
 
-// (packet_handle, is_eof). On EOF the packet_handle is a dummy tensor that must
-// not be used. Native bool avoids per-frame .item() overhead in Python.
-using OpsPacketOutput = std::tuple<torch::stable::Tensor, bool>;
+// (packet_handle, is_eof, pts_seconds, duration_seconds, is_keyframe). On EOF
+// the packet_handle is a dummy tensor that must not be used, and the other
+// fields are meaningless. Native scalars avoid per-packet .item() overhead in
+// Python.
+using OpsPacketOutput =
+    std::tuple<torch::stable::Tensor, bool, double, double, bool>;
 
 OpsPacketOutput _blocks_demuxer_next_packet(torch::stable::Tensor& demuxer) {
   Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
   UniqueAVPacket packet = demuxer_ptr->next_packet();
   if (packet == nullptr) {
-    return std::make_tuple(torch::stable::full({1}, 0, kStableInt64), true);
+    return std::make_tuple(
+        torch::stable::full({1}, 0, kStableInt64), true, 0.0, 0.0, false);
   }
-  return std::make_tuple(wrap_pointer_to_tensor(std::move(packet)), false);
+  AVRational time_base = demuxer_ptr->time_base();
+  double pts_seconds = pts_to_seconds(get_pts_or_dts(*packet), time_base);
+  double duration_seconds = pts_to_seconds(packet->duration, time_base);
+  bool is_keyframe = (packet->flags & AV_PKT_FLAG_KEY) != 0;
+  return std::make_tuple(
+      wrap_pointer_to_tensor(std::move(packet)),
+      false,
+      pts_seconds,
+      duration_seconds,
+      is_keyframe);
+}
+
+void _blocks_demuxer_seek(torch::stable::Tensor& demuxer, double seconds) {
+  unwrap_tensor_to_pointer<Demuxer>(demuxer)->seek(seconds);
 }
 
 torch::stable::Tensor _blocks_create_packet_decoder(
@@ -842,6 +862,10 @@ int64_t _blocks_packet_decoder_send_packet(
 int64_t _blocks_packet_decoder_send_eof(torch::stable::Tensor& decoder) {
   PacketDecoder* decoder_ptr = unwrap_tensor_to_pointer<PacketDecoder>(decoder);
   return static_cast<int64_t>(decoder_ptr->send_eof());
+}
+
+void _blocks_packet_decoder_reset(torch::stable::Tensor& decoder) {
+  unwrap_tensor_to_pointer<PacketDecoder>(decoder)->reset();
 }
 
 // TODO_API_BREAKDOWN CC P1: I hate this.
@@ -1498,6 +1522,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("get_frames_by_pts", TORCH_BOX(&get_frames_by_pts));
   m.impl(
       "_blocks_demuxer_next_packet", TORCH_BOX(&_blocks_demuxer_next_packet));
+  m.impl("_blocks_demuxer_seek", TORCH_BOX(&_blocks_demuxer_seek));
   m.impl(
       "_blocks_create_packet_decoder",
       TORCH_BOX(&_blocks_create_packet_decoder));
@@ -1507,6 +1532,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "_blocks_packet_decoder_send_eof",
       TORCH_BOX(&_blocks_packet_decoder_send_eof));
+  m.impl(
+      "_blocks_packet_decoder_reset", TORCH_BOX(&_blocks_packet_decoder_reset));
   m.impl(
       "_blocks_packet_decoder_receive_frame",
       TORCH_BOX(&_blocks_packet_decoder_receive_frame));
