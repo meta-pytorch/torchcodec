@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import torch
+
 from torchcodec._core.ops import (
     _blocks_create_packet_decoder,
     _blocks_packet_decoder_receive_frame,
@@ -14,6 +16,7 @@ from torchcodec._core.ops import (
     _blocks_packet_decoder_send_packet,
 )
 
+from .._decoder_utils import convert_device_to_str
 from ._demuxer import Demuxer
 from ._frame import DecodedFrame, Packet
 
@@ -30,12 +33,14 @@ class PacketDecoder:
     use one ``PacketDecoder`` per thread. FFmpeg's internal codec thread count
     is kept at 1 for now (not exposed); parallelism comes from composing blocks
     on your own threads.
+
+    ``device`` accepts a string or a ``torch.device``. It defaults to ``None``,
+    which means the current default device (see ``torch.set_default_device``).
     """
 
-    # TODO_API_BREAKDOWN UF P1: device default should be None, here and everywhere else
-    def __init__(self, demuxer: Demuxer, device="cpu"):
+    def __init__(self, demuxer: Demuxer, device: str | torch.device | None = None):
         self._handle = _blocks_create_packet_decoder(
-            demuxer._handle, num_threads=1, device=device
+            demuxer._handle, num_threads=1, device=convert_device_to_str(device)
         )
         self._drained = False
 

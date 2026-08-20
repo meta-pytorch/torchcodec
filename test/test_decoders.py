@@ -3902,6 +3902,40 @@ class TestBlocks:
         frame = next(self._decode(decoder, self._demux(demuxer)))
         return frame, converter
 
+    @pytest.mark.parametrize("device_str", _block_devices())
+    def test_device_none_default_device(self, device_str):
+        # PacketDecoder and ColorConverter default to device=None, which should
+        # respect both the torch.device() context manager and
+        # torch.set_default_device().
+
+        def assert_first_frame_is_on_default_device():
+            # Note the absence of any device parameter.
+            demuxer = Demuxer(NASA_VIDEO.path)
+            decoder = PacketDecoder(demuxer)
+            converter = ColorConverter()
+            decoded = next(self._decode(decoder, self._demux(demuxer)))
+            # DecodedFrame.device is a string, and it carries an index
+            # ("cuda:0") since that's what torch.get_default_device() reports.
+            assert torch.device(decoded.device).type == device_str
+            assert converter.convert(decoded).data.device.type == device_str
+
+        with torch.device(device_str):
+            assert_first_frame_is_on_default_device()
+
+        original_device = torch.get_default_device()
+        try:
+            torch.set_default_device(device_str)
+            assert_first_frame_is_on_default_device()
+        finally:
+            torch.set_default_device(original_device)
+
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_device_torch_device_instance(self, device):
+        # device can be a torch.device instance, not just a string.
+        frame, converter = self._first_frame(NASA_VIDEO.path, torch.device(device))
+        assert torch.device(frame.device).type == device
+        assert converter.convert(frame).data.device.type == device
+
     @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)
     @pytest.mark.parametrize("device", _block_devices())
     def test_materialize_structure(self, case, device):
