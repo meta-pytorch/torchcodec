@@ -36,7 +36,11 @@ namespace facebook::torchcodec {
 // TODO_API_BREAKDOWN P2: the name says "standalone", but this is really about
 // owning a GPU buffer. Find one that covers both.
 struct StandAloneFrameAttachedData {
-  cudaStream_t producer_stream = nullptr;
+  // Marks the point where the copy (or upload) that filled `storage` was
+  // enqueued. A consumer on another stream blocks on it, and thereby waits for
+  // this frame's production only - not for whatever the decoder has enqueued
+  // since, which in a pipelined setup is most of a backlog.
+  CudaEvent frame_ready;
   torch::stable::Tensor storage;
 };
 
@@ -109,7 +113,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   // same address and a new mapping overwrites whatever the previous frame's
   // consumer is reading. These track that read so the next mapping can be
   // ordered after it. See order_mapping_after_surface_read().
-  cudaEvent_t surface_read_done_ = nullptr;
+  CudaEvent surface_read_done_;
   cudaStream_t surface_reader_stream_ = nullptr;
   void record_surface_read(cudaStream_t stream);
   void order_mapping_after_surface_read();
