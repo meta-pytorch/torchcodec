@@ -92,7 +92,15 @@ get_frames_by_pts_in_range_audio = (
 )
 get_json_metadata = torch.ops.torchcodec_ns.get_json_metadata.default
 
-_blocks_create_demuxer = torch.ops.torchcodec_ns._blocks_create_demuxer.default
+_blocks_create_demuxer_from_file = (
+    torch.ops.torchcodec_ns._blocks_create_demuxer_from_file.default
+)
+_blocks_create_demuxer_from_tensor = (
+    torch.ops.torchcodec_ns._blocks_create_demuxer_from_tensor.default
+)
+_blocks_create_demuxer_from_file_like_context = (
+    torch.ops.torchcodec_ns._blocks_create_demuxer_from_file_like.default
+)
 _blocks_demuxer_next_packet = (
     torch.ops.torchcodec_ns._blocks_demuxer_next_packet.default
 )
@@ -177,13 +185,15 @@ get_wav_metadata_from_decoder = (
 # =============================
 # Functions not related to custom ops, but similar implementation to c++ ops
 # =============================
-def create_from_bytes(video_bytes: bytes, seek_mode: str | None = None) -> torch.Tensor:
+def _bytes_to_tensor(data: bytes) -> torch.Tensor:
     with warnings.catch_warnings():
-        # Ignore warning stating that the underlying video_bytes buffer is
-        # non-writable.
+        # Ignore warning stating that the underlying buffer is non-writable.
         warnings.filterwarnings("ignore", category=UserWarning)
-        buffer = torch.frombuffer(video_bytes, dtype=torch.uint8)
-    return create_from_tensor(buffer, seek_mode)
+        return torch.frombuffer(data, dtype=torch.uint8)
+
+
+def create_from_bytes(video_bytes: bytes, seek_mode: str | None = None) -> torch.Tensor:
+    return create_from_tensor(_bytes_to_tensor(video_bytes), seek_mode)
 
 
 def create_from_file_like(
@@ -198,11 +208,28 @@ def create_from_file_like(
     )
 
 
+def _blocks_create_demuxer_from_bytes(
+    video_bytes: bytes, stream_index: int | None = None
+) -> torch.Tensor:
+    return _blocks_create_demuxer_from_tensor(
+        _bytes_to_tensor(video_bytes), stream_index
+    )
+
+
+def _blocks_create_demuxer_from_file_like(
+    file_like: io.RawIOBase | io.BufferedReader, stream_index: int | None = None
+) -> torch.Tensor:
+    assert _pybind_ops is not None
+    return _blocks_create_demuxer_from_file_like_context(
+        _pybind_ops.create_file_like_context(
+            file_like, False  # False means not for writing
+        ),
+        stream_index,
+    )
+
+
 def create_wav_decoder_from_bytes(wav_bytes: bytes) -> torch.Tensor:
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=UserWarning)
-        buffer = torch.frombuffer(wav_bytes, dtype=torch.uint8)
-    return create_wav_decoder_from_tensor(buffer)
+    return create_wav_decoder_from_tensor(_bytes_to_tensor(wav_bytes))
 
 
 def create_wav_decoder_from_file_like(

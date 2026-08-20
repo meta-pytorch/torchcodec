@@ -6,9 +6,11 @@
 
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <string>
 
+#include "AVIOContextHolder.h"
 #include "FFMPEGCommon.h"
 #include "StableABICompat.h"
 
@@ -36,6 +38,13 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
       const std::string& file_path,
       std::optional<int> stream_index = std::nullopt);
 
+  // Demuxes from the AVIOContext inside the AVIOContextHolder, which wraps an
+  // IOInterface specializing how reads and seeks work (in-memory tensor,
+  // Python file-like, ...).
+  explicit Demuxer(
+      std::unique_ptr<AVIOContextHolder> avio_context_holder,
+      std::optional<int> stream_index = std::nullopt);
+
   // Returns the next packet for the active stream as a freshly-allocated
   // packet, or a null packet at end of stream.
   UniqueAVPacket next_packet();
@@ -55,6 +64,11 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
   }
 
  private:
+  void select_stream(std::optional<int> stream_index);
+
+  // Declared before format_context_ so that it outlives it: the format context
+  // reads through the AVIOContext this holds.
+  std::unique_ptr<AVIOContextHolder> avio_context_holder_;
   UniqueDecodingAVFormatContext format_context_;
   int active_stream_index_ = -1;
   AVStream* stream_ = nullptr;

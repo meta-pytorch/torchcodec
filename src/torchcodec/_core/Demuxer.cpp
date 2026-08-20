@@ -60,7 +60,39 @@ Demuxer::Demuxer(
   STD_TORCH_CHECK(raw_context != nullptr, "Failed to allocate AVFormatContext");
   format_context_.reset(raw_context);
 
-  status = avformat_find_stream_info(format_context_.get(), nullptr);
+  select_stream(stream_index);
+}
+
+Demuxer::Demuxer(
+    std::unique_ptr<AVIOContextHolder> avio_context_holder,
+    std::optional<int> stream_index)
+    : avio_context_holder_(std::move(avio_context_holder)) {
+  set_ffmpeg_log_level();
+
+  STD_TORCH_CHECK(avio_context_holder_ != nullptr, "Context holder is null");
+
+  // FFmpeg takes a reference to the pointer in the call to open, so we can't
+  // hand it a unique_ptr. That means we must free the context ourselves if the
+  // open fails.
+  AVFormatContext* raw_context = avformat_alloc_context();
+  STD_TORCH_CHECK(raw_context != nullptr, "Failed to allocate AVFormatContext");
+  raw_context->pb = avio_context_holder_->get_avio_context();
+
+  int status = avformat_open_input(&raw_context, nullptr, nullptr, nullptr);
+  if (status != 0) {
+    avformat_free_context(raw_context);
+    STD_TORCH_CHECK(
+        false,
+        "Could not open input buffer: " +
+            get_ffmpeg_error_string_from_error_code(status));
+  }
+  format_context_.reset(raw_context);
+
+  select_stream(stream_index);
+}
+
+void Demuxer::select_stream(std::optional<int> stream_index) {
+  int status = avformat_find_stream_info(format_context_.get(), nullptr);
   STD_TORCH_CHECK(
       status >= 0,
       "Failed to find stream info: ",
