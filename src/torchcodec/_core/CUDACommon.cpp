@@ -59,7 +59,7 @@ CudaEvent& CudaEvent::operator=(CudaEvent&& other) noexcept {
   return *this;
 }
 
-void CudaEvent::record(cudaStream_t stream) {
+void CudaEvent::record(cudaStream_t running_stream) {
   if (event_ == nullptr) {
     cudaError_t err = cudaEventCreateWithFlags(&event_, cudaEventDisableTiming);
     STD_TORCH_CHECK(
@@ -67,18 +67,18 @@ void CudaEvent::record(cudaStream_t stream) {
         "cudaEventCreateWithFlags failed: ",
         cudaGetErrorString(err));
   }
-  cudaError_t err = cudaEventRecord(event_, stream);
+  cudaError_t err = cudaEventRecord(event_, running_stream);
   STD_TORCH_CHECK(
       err == cudaSuccess, "cudaEventRecord failed: ", cudaGetErrorString(err));
 }
 
-void CudaEvent::block(cudaStream_t stream) const {
+void CudaEvent::make_stream_wait(cudaStream_t waiting_stream) const {
   if (event_ == nullptr) {
     return;
   }
   // The wait captures the event's state as of *now*, so re-recording the event
-  // afterwards doesn't retroactively change what `stream` waits for.
-  cudaError_t err = cudaStreamWaitEvent(stream, event_, 0);
+  // afterwards doesn't retroactively change what `waiting_stream` waits for.
+  cudaError_t err = cudaStreamWaitEvent(waiting_stream, event_, 0);
   STD_TORCH_CHECK(
       err == cudaSuccess,
       "cudaStreamWaitEvent failed: ",

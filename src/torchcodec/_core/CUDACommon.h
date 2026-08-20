@@ -76,7 +76,8 @@ void sync_streams(cudaStream_t running_stream, cudaStream_t waiting_stream);
 //
 // An event marks a *point* in a stream, so it expresses "wait for the work that
 // was enqueued up to here" and nothing more. Producers should record() as soon
-// as the work they're advertising is enqueued, and consumers block() on that.
+// as the work they're advertising is enqueued, and consumers call
+// make_stream_wait() on that.
 class CudaEvent {
  public:
   CudaEvent() = default;
@@ -87,13 +88,13 @@ class CudaEvent {
   CudaEvent(const CudaEvent&) = delete;
   CudaEvent& operator=(const CudaEvent&) = delete;
 
-  // Mark the current point in `stream`. Work enqueued on `stream` after this
+  // Mark the current point in `running_stream`. Work enqueued on it after this
   // call is *not* covered.
-  void record(cudaStream_t stream);
+  void record(cudaStream_t running_stream);
 
-  // Order `stream` after the work marked by the last record(). Doesn't block
-  // the host. No-op if record() was never called.
-  void block(cudaStream_t stream) const;
+  // Order `waiting_stream` after the work marked by the last record(). Doesn't
+  // block the host. No-op if record() was never called.
+  void make_stream_wait(cudaStream_t waiting_stream) const;
 
   // Block the host until the marked work has completed. No-op if record() was
   // never called.

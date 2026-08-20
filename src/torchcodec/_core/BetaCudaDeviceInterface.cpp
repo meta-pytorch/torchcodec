@@ -860,7 +860,7 @@ void BetaCudaDeviceInterface::order_mapping_after_surface_read() {
   if (surface_reader_stream_ == nvdec_output_stream_) {
     return;
   }
-  surface_read_done_.block(nvdec_output_stream_);
+  surface_read_done_.make_stream_wait(nvdec_output_stream_);
 }
 
 void BetaCudaDeviceInterface::unmap_previous_frame() {
@@ -1376,7 +1376,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         "standalone ColorConverter must come from a PacketDecoder.");
     auto attached_data = reinterpret_cast<StandAloneFrameAttachedData*>(
         gpu_frame.opaque_ref->data);
-    attached_data->frame_ready.block(current_stream);
+    attached_data->frame_ready.make_stream_wait(current_stream);
   } else {
     STD_TORCH_CHECK(
         mode() == Mode::Both,
