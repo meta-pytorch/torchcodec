@@ -16,7 +16,7 @@ API_breakdown_claude_plan.md for the design and rationale.
 """
 
 from ._color_converter import ColorConverter
-from ._demuxer import Demuxer
+from ._demuxer import Demuxer, StreamIndex
 from ._frame import Packet, RawFrame
 from ._packet_decoder import PacketDecoder
 
@@ -26,7 +26,9 @@ __all__ = [
     "ColorConverter",
     "Packet",
     "RawFrame",
+    "StreamIndex",
 ]
 
-# TODO_API_BREAKDOWN FEAT P1 we probably need a way to expose metadata -
-# something that would avoid using VideoDecoder?
+# TODO_API_BREAKDOWN FEAT P1 we probably need a way to expose the *header*
+# metadata - something that would avoid using VideoDecoder? Demuxer.scan()
+# covers the content-derived half of that.

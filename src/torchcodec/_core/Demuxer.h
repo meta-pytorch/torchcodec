@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "AVIOContextHolder.h"
 #include "FFMPEGCommon.h"
@@ -30,6 +31,16 @@ std::string get_seek_error_message(
     int64_t desired_pts,
     int status);
 
+// The frames of the active stream, in presentation order: three parallel
+// tensors of length N, plus the time base `pts` and `duration` are expressed
+// in.
+struct StreamIndex {
+  torch::stable::Tensor pts; // int64 [N]
+  torch::stable::Tensor duration; // int64 [N]
+  torch::stable::Tensor is_key_frame; // bool [N]
+  AVRational time_base;
+};
+
 // Demux building block: owns an AVFormatContext, selects one video stream, and
 // yields its (compressed) packets. Does no decoding. Not thread-safe.
 class FORCE_PUBLIC_VISIBILITY Demuxer {
@@ -47,6 +58,11 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
   UniqueAVPacket next_packet();
 
   void seek(double seconds);
+
+  // Demuxes the entire stream, without decoding, and returns one entry per
+  // frame sorted by pts. Leaves the demuxer back at the start of the stream,
+  // and keeps no state of its own.
+  StreamIndex scan();
 
   AVStream* active_stream() const {
     return stream_;

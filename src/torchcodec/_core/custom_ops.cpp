@@ -82,6 +82,8 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool)");
   m.def("_blocks_demuxer_seek(Tensor(a!) demuxer, float seconds) -> ()");
   m.def(
+      "_blocks_demuxer_scan(Tensor(a!) demuxer) -> (Tensor, Tensor, Tensor, int, int)");
+  m.def(
       "_blocks_create_packet_decoder(Tensor demuxer, *, int? num_threads=None, str device=\"cpu\") -> Tensor");
   m.def(
       "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
@@ -865,6 +867,25 @@ void _blocks_demuxer_seek(torch::stable::Tensor& demuxer, double seconds) {
   unwrap_tensor_to_pointer<Demuxer>(demuxer)->seek(seconds);
 }
 
+// (pts, duration, is_key_frame, time_base_num, time_base_den). pts and duration
+// are int64 [N] in time-base units rather than seconds
+using OpsScanOutput = std::tuple<
+    torch::stable::Tensor,
+    torch::stable::Tensor,
+    torch::stable::Tensor,
+    int64_t,
+    int64_t>;
+
+OpsScanOutput _blocks_demuxer_scan(torch::stable::Tensor& demuxer) {
+  StreamIndex index = unwrap_tensor_to_pointer<Demuxer>(demuxer)->scan();
+  return std::make_tuple(
+      index.pts,
+      index.duration,
+      index.is_key_frame,
+      static_cast<int64_t>(index.time_base.num),
+      static_cast<int64_t>(index.time_base.den));
+}
+
 torch::stable::Tensor _blocks_create_packet_decoder(
     torch::stable::Tensor& demuxer,
     std::optional<int64_t> num_threads,
@@ -1558,6 +1579,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "_blocks_demuxer_next_packet", TORCH_BOX(&_blocks_demuxer_next_packet));
   m.impl("_blocks_demuxer_seek", TORCH_BOX(&_blocks_demuxer_seek));
+  m.impl("_blocks_demuxer_scan", TORCH_BOX(&_blocks_demuxer_scan));
   m.impl(
       "_blocks_create_packet_decoder",
       TORCH_BOX(&_blocks_create_packet_decoder));

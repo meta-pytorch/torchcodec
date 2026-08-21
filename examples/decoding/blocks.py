@@ -190,9 +190,89 @@ packet_decoder.reset()
 
 frames = color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
 landed_on = next(frames)
-target = next(frame for frame in frames if frame.pts_seconds >= seconds)
+# The frame *playing* at a timestamp is the first one that hasn't finished
+# playing by then. Not `pts_seconds >= seconds`, which skips it whenever the
+# timestamp falls inside a frame rather than on its boundary.
+target = next(
+    frame
+    for frame in frames
+    if frame.pts_seconds + frame.duration_seconds > seconds
+)
 print(f"asked for {seconds}s, landed on {landed_on.pts_seconds:.3f}s, "
       f"target frame at {target.pts_seconds:.3f}s")
+
+# %%
+# Scanning
+# --------
+#
+# ``Demuxer.scan()`` demuxes the whole stream once, without decoding anything,
+# and returns a ``StreamIndex``: one entry per frame, in presentation order.
+# This is the only way to know a stream's exact frame count, timestamps and
+# keyframe positions - a container header can be wrong about all of them. It
+# costs one pass over the file, and it leaves the demuxer back at the start.
+demuxer = Demuxer(video_path)
+index = demuxer.scan()
+packet_decoder = PacketDecoder(demuxer, device=device)
+color_converter = ColorConverter(device=device)
+
+print(f"{len(index)} frames at {index.average_fps} fps, "
+      f"from {index.begin_stream_seconds}s to {index.end_stream_seconds}s")
+
+# %%
+# The index is also what gives the blocks frame *indices*, which they otherwise
+# don't have at all: ``index_at()`` maps a timestamp to the frame on screen
+# then, and ``pts_seconds`` maps back. That's enough to build ``get_frame_at``,
+# or a clip sampler, on top of the blocks.
+i = index.index_at(seconds)
+print(f"frame {i} is on screen at {seconds}s, and starts at {index.pts_seconds[i]}s")
+
+# %%
+# Keyframes
+# ^^^^^^^^^
+#
+# ``is_key_frame`` is a mask over all the frames, and ``key_frame_indices`` the
+# same thing as a list of indices. Keyframes are the frames that decode on
+# their own, which makes them the cheap ones to reach: seeking to a keyframe's
+# timestamp lands exactly on it, and the very next frame out of the decoder is
+# the one you asked for - no decoding forward, nothing to drop.
+#
+# That makes a keyframe-only sampler about as cheap as video decoding gets,
+# which is what you want for thumbnails or coarse previews.
+key_frames = index.key_frame_indices
+print(f"{len(key_frames)} keyframes out of {len(index)} frames, "
+      f"at {index.pts_seconds[key_frames].tolist()}")
+
+thumbnails = []
+for k in key_frames.tolist():
+    demuxer.seek(index.pts_seconds[k])
+    packet_decoder.reset()
+    raw_frame = next(decode(packet_decoder, demux(demuxer)))
+    thumbnails.append(color_converter.convert(raw_frame))
+
+print(f"{len(thumbnails)} thumbnails at "
+      f"{[round(f.pts_seconds, 3) for f in thumbnails]}")
+
+# %%
+# Exact seeking
+# ^^^^^^^^^^^^^
+#
+# One last thing the index buys you, which most files never need.
+# ``seek(seconds)`` already lands on the keyframe at or before the target - but
+# FFmpeg resolves a seek against *decode* timestamps, so on a file whose
+# keyframes are reordered it can land on one that is *displayed after* the
+# target, leaving the frames in between unreachable however far forward you
+# decode. ``key_frame_seconds_for()`` gives you that keyframe's own timestamp
+# instead, which always lands where you meant.
+#
+# The two are the same call on the overwhelming majority of files; this is the
+# whole of what separates :class:`~torchcodec.decoders.VideoDecoder`'s
+# ``seek_mode="exact"`` from ``"approximate"`` for a timestamp lookup.
+demuxer.seek(index.key_frame_seconds_for(seconds))
+packet_decoder.reset()
+
+frames = color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
+target = next(f for f in frames if f.pts_seconds >= index.pts_seconds[i])
+print(f"frame {i} at {target.pts_seconds:.3f}s")
 
 # %%
 # Raw frames
