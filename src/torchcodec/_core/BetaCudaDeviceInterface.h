@@ -27,6 +27,7 @@
 #include <mutex>
 #include <queue>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "nvcuvid_include/cuviddec.h"
@@ -149,6 +150,14 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   CUVIDEOFORMATEX parser_ext_info_ = {};
 
   std::queue<CUVIDPARSERDISPINFO> ready_frames_;
+
+  // The packets flagged AV_PKT_FLAG_DISCARD must be decoded, but their frames
+  // must not be returned (that's how libavcodec does it). We track the
+  // timestamps of those packets and drop the corresponding frames in
+  // receive_frame(). We rely on the packet's pts to identify it: it's not
+  // ideal, the pts may be non-unique or missing. But that's working so far.
+  // Unfortuntely, NVCUVID doesn't give us any other way to pass down that info.
+  std::unordered_set<CUvideotimestamp> discarded_timestamps_;
 
   bool eof_sent_ = false;
 

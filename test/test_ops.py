@@ -43,6 +43,7 @@ from torchcodec._core.ops import (
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
+    DISCARD_FIRST_KEYFRAME_VIDEO,
     get_python_version,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
@@ -91,6 +92,24 @@ class TestVideoDecoderOps:
         seek_to_pts(decoder, -1e-4)
         frame0, _, _ = get_next_frame(decoder)
         assert_frames_equal(frame0, reference_frame0.to(device))
+
+    @pytest.mark.parametrize("device", all_supported_devices())
+    def test_discard_first_keyframe(self, device):
+        # The leading GOP of this asset is trimmed by an mp4 edit list, so its
+        # packets are flagged AV_PKT_FLAG_DISCARD: they must be decoded (the
+        # frame at pts=0 references the discarded keyframe) but never output.
+        # We call get_next_frame() without seeking first, so nothing sets the
+        # decoder's cursor and nothing filters those frames out by pts: this
+        # only passes if the decoding backend drops them itself. In other words,
+        # we're exercising the decoder/interface, not the logic in
+        # SingleStreamDecoder.
+        decoder = create_from_file(str(DISCARD_FIRST_KEYFRAME_VIDEO.path))
+        device, device_variant = unsplit_device_str(device)
+        add_video_stream(decoder, device=device, device_variant=device_variant)
+
+        for expected_pts in (0.0, 0.04, 0.08):
+            _, pts_seconds, _ = get_next_frame(decoder)
+            assert pts_seconds.item() == pytest.approx(expected_pts, abs=1e-6)
 
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_frame_at_pts(self, device):

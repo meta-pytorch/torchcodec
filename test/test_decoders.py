@@ -3821,15 +3821,6 @@ class TestBlocks:
     )
     @pytest.mark.parametrize("device", _block_devices())
     def test_matches_video_decoder(self, video, decode_method, device):
-        # TODO_API_BREAKDOWN CORRECTNESS P1: this fails on CUDA and must be fixed. The blocks
-        # Demuxer doesn't honor AV_PKT_FLAG_DISCARD (unlike SingleStreamDecoder),
-        # so it emits the extra frames trimmed away by the mp4 edit list.
-        # This is kinda related to exact and approximate mode (not exposed on
-        # Blocks (yet??)) so we might want to address that once we have
-        # addressed seeking in the blocks - if we ever support that.
-        if device == "cuda" and video is DISCARD_FIRST_KEYFRAME_VIDEO:
-            pytest.skip("Blocks pipeline does not handle this asset on CUDA yet.")
-
         if (
             video
             in (
@@ -3851,6 +3842,23 @@ class TestBlocks:
         torch.testing.assert_close(
             got.duration_seconds, ref.duration_seconds, atol=0, rtol=0
         )
+
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_discard_first_keyframe(self, device):
+        # The leading GOP of this asset is trimmed by an mp4 edit list, so its
+        # packets are flagged AV_PKT_FLAG_DISCARD: they must be decoded (the
+        # frame at pts=0 references the discarded keyframe) but never output.
+        expected_pts = [pytest.approx(0.04 * i, abs=1e-6) for i in range(25)]
+
+        path = DISCARD_FIRST_KEYFRAME_VIDEO.path
+        frames = self._decode_sequential(path, device)
+        assert [frame.pts_seconds for frame in frames] == expected_pts
+
+        # Seeking to the start makes FFmpeg land on the discarded keyframe, so
+        # those packets are sent down a second time: the tracking must survive
+        # the seek.
+        frames = list(self._frames_after_seek(self._make_blocks(path, device), 0))
+        assert [frame.pts_seconds for frame in frames] == expected_pts
 
     @pytest.mark.parametrize(
         "video", (NASA_VIDEO, NASA_VIDEO_HDR, TEST_SRC_2_12BIT_HDR)
