@@ -46,9 +46,19 @@ int read_next_packet(
   return AVSUCCESS;
 }
 
+namespace {
+// "video" / "audio", for error messages.
+const char* printable(AVMediaType media_type) {
+  const char* name = av_get_media_type_string(media_type);
+  return name == nullptr ? "unknown" : name;
+}
+} // namespace
+
 Demuxer::Demuxer(
     const std::string& file_path,
-    std::optional<int> stream_index) {
+    std::optional<int> stream_index,
+    AVMediaType media_type)
+    : media_type_(media_type) {
   set_ffmpeg_log_level();
 
   AVFormatContext* raw_context = nullptr;
@@ -66,8 +76,10 @@ Demuxer::Demuxer(
 
 Demuxer::Demuxer(
     std::unique_ptr<AVIOContextHolder> avio_context_holder,
-    std::optional<int> stream_index)
-    : avio_context_holder_(std::move(avio_context_holder)) {
+    std::optional<int> stream_index,
+    AVMediaType media_type)
+    : avio_context_holder_(std::move(avio_context_holder)),
+      media_type_(media_type) {
   set_ffmpeg_log_level();
 
   STD_TORCH_CHECK(avio_context_holder_ != nullptr, "Context holder is null");
@@ -104,16 +116,17 @@ void Demuxer::validate_requested_stream(int stream_index) {
       num_streams - 1,
       "].");
 
-  AVMediaType media_type =
+  AVMediaType stream_media_type =
       format_context_->streams[stream_index]->codecpar->codec_type;
-  const char* media_type_name = av_get_media_type_string(media_type);
   STD_TORCH_CHECK(
-      media_type == AVMEDIA_TYPE_VIDEO,
+      stream_media_type == media_type_,
       "The stream at index ",
       stream_index,
-      " is not a video stream, it is of type '",
-      media_type_name == nullptr ? "unknown" : media_type_name,
-      "'. Only video streams can be demuxed.");
+      " is not a ",
+      printable(media_type_),
+      " stream, it is of type '",
+      printable(stream_media_type),
+      "'.");
 }
 
 void Demuxer::select_stream(std::optional<int> stream_index) {
@@ -129,15 +142,16 @@ void Demuxer::select_stream(std::optional<int> stream_index) {
 
   active_stream_index_ = av_find_best_stream(
       format_context_.get(),
-      AVMEDIA_TYPE_VIDEO,
+      media_type_,
       stream_index.value_or(-1),
       /*related_stream=*/-1,
       /*decoder_ret=*/nullptr,
       /*flags=*/0);
   STD_TORCH_CHECK(
       active_stream_index_ >= 0,
-      "No valid video stream found in input file. Only video streams are "
-      "supported: audio streams cannot be demuxed.");
+      "No valid ",
+      printable(media_type_),
+      " stream found in input file.");
   stream_ = format_context_->streams[active_stream_index_];
 
   // We only need packets from the active stream, so tell FFmpeg to discard the

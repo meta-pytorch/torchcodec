@@ -34,7 +34,7 @@ from ._frame import Packet
 # audio!
 @dataclass
 class StreamIndex:
-    """The content of a video stream, as returned by :meth:`Demuxer.scan`.
+    """The content of a video stream, as returned by :meth:`VideoDemuxer.scan`.
 
     One entry per frame, in presentation order. Everything here is derived from
     the packets of the stream rather than from the container header, so the
@@ -110,7 +110,7 @@ class StreamIndex:
         return min(index, len(self) - 1)
 
     def key_frame_seconds_for(self, seconds: float) -> float:
-        """Timestamp to :meth:`Demuxer.seek` to in order to reach ``seconds``:
+        """Timestamp to :meth:`VideoDemuxer.seek` to in order to reach ``seconds``:
         that of the last :term:`keyframe` which isn't after it.
 
         This is what makes a seek *exact*. FFmpeg resolves a seek against decode
@@ -154,17 +154,66 @@ class StreamIndex:
         return self.pts_seconds[self.key_frame_indices]
 
 
-class Demuxer:
+class _BaseDemuxer:
+    """Shared machinery for :class:`VideoDemuxer` and :class:`AudioDemuxer`.
+
+    Subclasses set ``_media_type``, which is what the stream selection is done
+    against.
+    """
+
+    _media_type: str
+
+    def __init__(
+        self,
+        source: str | Path | bytes | Tensor | io.RawIOBase | io.BufferedReader,
+        *,
+        stream_index: int | None = None,
+    ):
+        self._handle = create_demuxer(
+            source=source, stream_index=stream_index, media_type=self._media_type
+        )
+
+    def next_packet(self) -> Packet | None:
+        """Return the next :class:`Packet`, or ``None`` at end of stream."""
+        handle, is_eof = _blocks_demuxer_next_packet(self._handle)
+        return None if is_eof else Packet(handle)
+
+    def seek(self, seconds: float) -> None:
+        """Move the demuxer to ``seconds``.
+
+        A seek invalidates whatever the decoder is holding on to, so the
+        :class:`PacketDecoder` must be ``reset()`` afterwards.
+
+        Where you land, and what comes out first, depends on the medium. For
+        video, a decoder can only start on a :term:`keyframe`, so this lands on
+        the keyframe at or before the target and the first frames that come out
+        usually precede it. Audio has no keyframe to land on: the codec's
+        overlap-add state is lost, so a lossy stream's first few frames after a
+        seek are subtly wrong - plausible, but not the samples that whole-file
+        decoding would give - until it re-primes. Decoding a margin before the
+        target and discarding it is the caller's responsibility.
+        """
+        _blocks_demuxer_seek(self._handle, float(seconds))
+
+    def __iter__(self):
+        while True:
+            packet = self.next_packet()
+            if packet is None:
+                return
+            yield packet
+
+
+class VideoDemuxer(_BaseDemuxer):
     """Demux building block: opens a container and yields the compressed
-    :class:`Packet`\\ s for one (video) stream. Does no decoding.
+    :class:`Packet`\\ s for one video stream. Does no decoding.
 
     This block is passive (it does no threading of its own) and is *not*
-    thread-safe: use one ``Demuxer`` per thread. It streams from the start of
-    the file, or from wherever :meth:`seek` left it.
+    thread-safe: use one ``VideoDemuxer`` per thread. It streams from the start
+    of the file, or from wherever :meth:`seek` left it.
 
-    A :class:`Demuxer` also carries the stream configuration used to build a
-    :class:`PacketDecoder` and :class:`ColorConverter`, so those are constructed from
-    a demuxer and no extra container is opened.
+    A :class:`VideoDemuxer` also carries the stream configuration used to build a
+    :class:`PacketDecoder`, so that is constructed from a demuxer and no extra
+    container is opened.
 
     Args:
         source (str, ``Pathlib.path``, bytes, ``torch.Tensor`` or file-like object): The source of the video:
@@ -180,33 +229,12 @@ class Demuxer:
 
         stream_index (int, optional): Specifies which stream in the video to
             demux packets from. Note that this index is absolute across all
-            media types. It must refer to a video stream: audio streams aren't
-            supported, and requesting one raises an error. If left unspecified,
-            then the :term:`best stream` is used.
+            media types. It must refer to a video stream; use
+            :class:`AudioDemuxer` for audio. If left unspecified, then the
+            :term:`best stream` is used.
     """
 
-    def __init__(
-        self,
-        source: str | Path | bytes | Tensor | io.RawIOBase | io.BufferedReader,
-        *,
-        stream_index: int | None = None,
-    ):
-        self._handle = create_demuxer(source=source, stream_index=stream_index)
-
-    def next_packet(self) -> Packet | None:
-        """Return the next :class:`Packet`, or ``None`` at end of stream."""
-        handle, is_eof = _blocks_demuxer_next_packet(self._handle)
-        return None if is_eof else Packet(handle)
-
-    def seek(self, seconds: float) -> None:
-        """Move the demuxer to ``seconds``.
-
-        A decoder can only start on a :term:`keyframe`, so this lands on the
-        keyframe at or before the target and the first frames that come out
-        usually precede it. The seek also invalidates the frames the decoder is
-        holding on to, so the :class:`PacketDecoder` must be ``reset()``.
-        """
-        _blocks_demuxer_seek(self._handle, float(seconds))
+    _media_type = "video"
 
     def scan(self) -> StreamIndex:
         """Demux the entire stream, without decoding it, and return its
@@ -232,9 +260,43 @@ class Demuxer:
             _time_base_den=time_base_den,
         )
 
-    def __iter__(self):
-        while True:
-            packet = self.next_packet()
-            if packet is None:
-                return
-            yield packet
+
+# TODO_API_BREAKDOWN FEAT P1 no scan() here: StreamIndex is video-shaped
+# (keyframes, frame indices, fps), and audio has none of those notions. What an
+# audio scan should return - exact duration, total sample count - is part of the
+# StreamIndex redesign above.
+class AudioDemuxer(_BaseDemuxer):
+    """Demux building block: opens a container and yields the compressed
+    :class:`Packet`\\ s for one audio stream. Does no decoding.
+
+    This block is passive (it does no threading of its own) and is *not*
+    thread-safe: use one ``AudioDemuxer`` per thread. It streams from the start
+    of the file, or from wherever :meth:`seek` left it.
+
+    An :class:`AudioDemuxer` also carries the stream configuration used to build
+    a :class:`PacketDecoder`, so that is constructed from a demuxer and no extra
+    container is opened.
+
+    Unlike :class:`VideoDemuxer` there is no ``scan()``: a :class:`StreamIndex`
+    describes keyframes and frame indices, and audio has neither.
+
+    Args:
+        source (str, ``Pathlib.path``, bytes, ``torch.Tensor`` or file-like object): The source of the audio:
+
+            - If ``str``: a local path or a URL to an audio or video file.
+            - If ``Pathlib.path``: a path to a local audio or video file.
+            - If ``bytes`` object or ``torch.Tensor``: the raw encoded data.
+            - If file-like object: we read data from the object on demand. The object must
+              expose the methods `read(self, size: int) -> bytes` and
+              `seek(self, offset: int, whence: int) -> int`. Note that every
+              read has to re-acquire the GIL, so a file-like source doesn't
+              parallelize with the rest of a pipeline as well as the others do.
+
+        stream_index (int, optional): Specifies which stream in the file to
+            demux packets from. Note that this index is absolute across all
+            media types. It must refer to an audio stream; use
+            :class:`VideoDemuxer` for video. If left unspecified, then the
+            :term:`best stream` is used.
+    """
+
+    _media_type = "audio"

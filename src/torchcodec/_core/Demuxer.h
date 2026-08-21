@@ -41,17 +41,20 @@ struct StreamIndex {
   AVRational time_base;
 };
 
-// Demux building block: owns an AVFormatContext, selects one video stream, and
-// yields its (compressed) packets. Does no decoding. Not thread-safe.
+// Demux building block: owns an AVFormatContext, selects one stream of the
+// requested media type, and yields its (compressed) packets. Does no decoding.
+// Not thread-safe.
 class FORCE_PUBLIC_VISIBILITY Demuxer {
  public:
   explicit Demuxer(
       const std::string& file_path,
-      std::optional<int> stream_index = std::nullopt);
+      std::optional<int> stream_index = std::nullopt,
+      AVMediaType media_type = AVMEDIA_TYPE_VIDEO);
 
   explicit Demuxer(
       std::unique_ptr<AVIOContextHolder> avio_context_holder,
-      std::optional<int> stream_index = std::nullopt);
+      std::optional<int> stream_index = std::nullopt,
+      AVMediaType media_type = AVMEDIA_TYPE_VIDEO);
 
   // Returns the next packet for the active stream as a freshly-allocated
   // packet, or a null packet at end of stream.
@@ -72,6 +75,10 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
     return active_stream_index_;
   }
 
+  AVMediaType media_type() const {
+    return media_type_;
+  }
+
   const UniqueDecodingAVFormatContext& format_context() const {
     return format_context_;
   }
@@ -86,6 +93,7 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
   UniqueDecodingAVFormatContext format_context_;
   int active_stream_index_ = -1;
   AVStream* stream_ = nullptr;
+  AVMediaType media_type_ = AVMEDIA_TYPE_VIDEO;
   AutoAVPacket auto_packet_;
 };
 

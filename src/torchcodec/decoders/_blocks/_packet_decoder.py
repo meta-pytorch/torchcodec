@@ -17,7 +17,7 @@ from torchcodec._core.ops import (
 )
 
 from .._decoder_utils import convert_device_to_str
-from ._demuxer import Demuxer
+from ._demuxer import VideoDemuxer
 from ._frame import Packet, RawFrame
 
 
@@ -28,7 +28,7 @@ class PacketDecoder:
     """Decode building block: turns compressed :class:`Packet`\\ s into decoded
     (YUV) :class:`RawFrame`\\ s.
 
-    Built from a :class:`Demuxer` (for its codec parameters) and stateful (it
+    Built from a :class:`VideoDemuxer` (for its codec parameters) and stateful (it
     holds the codec's reference-frame buffer). Passive and *not* thread-safe:
     use one ``PacketDecoder`` per thread. FFmpeg's internal codec thread count
     is kept at 1 for now (not exposed); parallelism comes from composing blocks
@@ -38,7 +38,7 @@ class PacketDecoder:
     which means the current default device (see ``torch.set_default_device``).
     """
 
-    def __init__(self, demuxer: Demuxer, device: str | torch.device | None = None):
+    def __init__(self, demuxer: VideoDemuxer, device: str | torch.device | None = None):
         self._handle = _blocks_create_packet_decoder(
             demuxer._handle, num_threads=1, device=convert_device_to_str(device)
         )
