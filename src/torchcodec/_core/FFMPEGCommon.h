@@ -300,6 +300,13 @@ UniqueAVFrame allocate_av_frame(
     int num_channels,
     AVSampleFormat sample_format);
 
+// How a channel layout is spelled, which changed in FFmpeg 5.
+#if FFMPEG_HAS_CH_LAYOUT
+using SwrChannelLayout = AVChannelLayout;
+#else
+using SwrChannelLayout = int64_t;
+#endif
+
 SwrContext* create_swr_context(
     AVSampleFormat src_sample_format,
     AVSampleFormat desired_sample_format,
@@ -307,6 +314,27 @@ SwrContext* create_swr_context(
     int desired_sample_rate,
     const AVFrame& src_av_frame,
     int desired_num_channels);
+
+// Same, for callers that have samples rather than an AVFrame, and so only know
+// how many channels there are. Both layouts are the default one for their
+// channel count, which is what the AVFrame overload also falls back to when the
+// count changes.
+SwrContext* create_swr_context(
+    AVSampleFormat src_sample_format,
+    AVSampleFormat desired_sample_format,
+    int src_sample_rate,
+    int desired_sample_rate,
+    int src_num_channels,
+    int desired_num_channels);
+
+// Upper bound on the number of samples swr_convert() can emit for
+// num_src_samples of input, including whatever it still holds buffered. It is
+// only a bound: narrow the output down to what swr_convert() returned.
+int64_t get_swr_output_num_samples_bound(
+    const UniqueSwrContext& swr_context,
+    int num_src_samples,
+    int src_sample_rate,
+    int out_sample_rate);
 
 // Converts, if needed:
 // - sample format

@@ -37,6 +37,30 @@ torch::headeronly::ScalarType sample_format_dtype(
   return kStableUInt8;
 }
 
+AVSampleFormat planar_sample_format(torch::headeronly::ScalarType dtype) {
+  switch (dtype) {
+    case kStableUInt8:
+      return AV_SAMPLE_FMT_U8P;
+    case kStableInt16:
+      return AV_SAMPLE_FMT_S16P;
+    case kStableInt32:
+      return AV_SAMPLE_FMT_S32P;
+    case kStableInt64:
+      return AV_SAMPLE_FMT_S64P;
+    case kStableFloat32:
+      return AV_SAMPLE_FMT_FLTP;
+    case kStableFloat64:
+      return AV_SAMPLE_FMT_DBLP;
+    default:
+      break;
+  }
+  STD_TORCH_CHECK(
+      false,
+      "Unsupported dtype for audio samples. Expected one of uint8, int16, "
+      "int32, int64, float32 or float64.");
+  return AV_SAMPLE_FMT_NONE;
+}
+
 torch::stable::Tensor swr_convert_to_tensor(
     const UniqueSwrContext& swr_context,
     const uint8_t** src_planes,

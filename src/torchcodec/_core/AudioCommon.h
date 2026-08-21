@@ -24,6 +24,11 @@ constexpr AVSampleFormat kAudioOutSampleFormat = AV_SAMPLE_FMT_FLTP;
 // which one it is given.
 torch::headeronly::ScalarType sample_format_dtype(AVSampleFormat sample_format);
 
+// The inverse: the sample format that a contiguous [num_channels, num_samples]
+// tensor of `dtype` already is. One row per channel is precisely what planar
+// means, which is what lets swresample read such a tensor's rows directly.
+AVSampleFormat planar_sample_format(torch::headeronly::ScalarType dtype);
+
 // Runs swr_convert() straight into a fresh float32 [num_out_channels, N]
 // tensor, narrowed to the number of samples it actually produced - which is
 // at most `num_out_samples_bound` and is often fewer, since swresample holds
