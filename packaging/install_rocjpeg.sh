@@ -19,9 +19,9 @@ set -euo pipefail
 #
 # Use importlib.util.find_spec to query Python's package system — works for
 # any environment (conda, venv, system Python, etc.) without hardcoded paths.
-# Try every Python interpreter available on the system so the check succeeds
-# even when _rocm_sdk_* is installed for a different Python version than the
-# one currently active (e.g. script runs in a Python 3.10 conda env but
+# Search every python3* executable found in PATH so the check succeeds even
+# when _rocm_sdk_* is installed for a different Python version than the one
+# currently active (e.g. script runs in a Python 3.10 conda env but
 # _rocm_sdk_devel is installed under Python 3.11).
 _rocjpeg_check='
 import importlib.util, pathlib, sys
@@ -33,12 +33,13 @@ for pkg in ("_rocm_sdk_core", "_rocm_sdk_devel"):
             sys.exit(0)
 sys.exit(1)
 '
-for _py in python3 python3.13 python3.12 python3.11 python3.10 python3.9; do
-    if command -v "$_py" &>/dev/null && "$_py" -c "$_rocjpeg_check" 2>/dev/null; then
+while IFS= read -r _py; do
+    [ -x "$_py" ] || continue
+    if "$_py" -c "$_rocjpeg_check" 2>/dev/null; then
         echo "rocjpeg already installed via ROCm pip-wheel; skipping dnf install."
         exit 0
     fi
-done
+done < <(echo "$PATH" | tr ':' '\n' | xargs -I{} sh -c 'ls "{}/python3" "{}/python3".[0-9]* 2>/dev/null' | sort -u)
 unset _rocjpeg_check _py
 
 # Install from the ROCm dnf repo.
