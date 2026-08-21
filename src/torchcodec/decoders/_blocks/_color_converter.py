@@ -13,17 +13,13 @@ import torch
 from torchcodec._core.ops import _blocks_convert_frame, _blocks_create_color_converter
 from torchcodec._frame import Frame
 
-from .._decoder_utils import convert_output_dtype_to_str
-from ._frame import DecodedFrame
-
-# TODO_API_BREAKDOWN FEAT We need to support rotation metadata!!
-# TODO_API_BREAKDOWN FEAT Implement seeking?
-# TODO_API_BREAKDOWN FEAT Implement range-getting (start/end time) for decoding?
+from .._decoder_utils import convert_device_to_str, convert_output_dtype_to_str
+from ._frame import RawFrame
 
 
 class ColorConverter:
     """Color-conversion building block: turns a decoded (YUV)
-    :class:`DecodedFrame` into an RGB :class:`~torchcodec._frame.Frame` (CHW).
+    :class:`RawFrame` into an RGB :class:`~torchcodec._frame.Frame` (CHW).
 
     Not bound to anything: everything it needs (dims, pixel format, colorspace)
     comes from the frame itself, so one converter can process frames from any
@@ -36,30 +32,47 @@ class ColorConverter:
     once per stream, so feeding it a mix of SDR and HDR frames yields a mix of
     dtypes.
 
-    Note: automatic rotation (from stream side data) is not applied, since this
-    block is intentionally stream-agnostic.
+    Rotation is applied too, so the output matches ``VideoDecoder``'s. The angle
+    is part of the frame, like its dims and colorspace, so honoring it doesn't
+    bind the converter to a stream either.
+
+    ``device`` accepts a string or a ``torch.device``. It defaults to ``None``,
+    which means the current default device (see ``torch.set_default_device``).
+    It must be the device the frames are already on: converting raises rather
+    than move samples between devices behind your back, since a transfer costs
+    as much as the conversion itself. To end up on another device, convert on
+    the frame's device and move the RGB output yourself.
     """
 
-    # TODO_API_BREAKDOWN P1: device default should be None
-    # TODO_API_BREAKDOWN P1: add checks for coupling between device param of
-    # PacketDecoder and ColorConverter. What if one is CPU and the other is
-    # CUDA? What if they're different CUDA devices? Maybe we should just error.
     def __init__(
         self,
-        device="cpu",
+        device: str | torch.device | None = None,
         output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
     ):
         self._handle = _blocks_create_color_converter(
-            device=device, output_dtype=convert_output_dtype_to_str(output_dtype)
+            device=convert_device_to_str(device),
+            output_dtype=convert_output_dtype_to_str(output_dtype),
         )
 
-    def convert(self, decoded_frame: DecodedFrame) -> Frame:
-        data = _blocks_convert_frame(self._handle, decoded_frame._handle)
+    # TODO_API_BREAKDOWN DESIGN P2: The frame device must match the converter
+    # device. We have two alternative options:
+    # - not take a device parameter in the constructor and make the converter
+    #   device-agnostic. It requires caching the interfaces on the Converter.
+    # - take a device parameter and always honor it: that means downloading or
+    #   uploading CPU frames when needed.
+    # I feel like maybe we want to allow a CPU frame to be CCed on the GPU and
+    # do the upload ourselves (the download makes no sense, it's super slow).
+    # Anyway, that can be done later.
+    def convert(self, raw_frame: RawFrame) -> Frame:
+        data = _blocks_convert_frame(self._handle, raw_frame._handle, raw_frame._device)
+        if raw_frame.storage is not None:
+            # See [Standalone Frame Storage and the need for record_stream]
+            raw_frame.storage.record_stream(torch.cuda.current_stream())
         # The core op produces HWC; permute to CHW to match VideoDecoder (which
         # also returns a non-contiguous permuted view).
         data = data.permute(2, 0, 1)
         return Frame(
             data=data,
-            pts_seconds=decoded_frame.pts_seconds,
-            duration_seconds=decoded_frame.duration_seconds,
+            pts_seconds=raw_frame.pts_seconds,
+            duration_seconds=raw_frame.duration_seconds,
         )

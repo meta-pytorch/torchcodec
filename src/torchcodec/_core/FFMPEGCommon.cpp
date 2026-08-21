@@ -6,6 +6,8 @@
 
 #include "FFMPEGCommon.h"
 
+#include <cstring>
+
 #include "StableABICompat.h"
 
 extern "C" {
@@ -16,44 +18,40 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
+// The AVPixelFormat describing an NVDEC surface for a given source bit depth.
+// bit_depth is the source's, and only matters for the 16-bit containers.
+// FFmpeg < 6 has no P012LE. P016LE describes the same samples just as
+// validly: they're msb-aligned, so a 12-bit surface is a 16-bit one with
+// 4 zeroed low bits.
+AVPixelFormat nvdec_pix_fmt(NvdecSurface surface, int bit_depth) {
+  switch (surface) {
+    case NvdecSurface::NV12:
+      return AV_PIX_FMT_NV12;
+    case NvdecSurface::YUV444:
+      return AV_PIX_FMT_YUV444P;
+    case NvdecSurface::YUV444_16Bit:
+      return AV_PIX_FMT_YUV444P16LE;
+    case NvdecSurface::P016:
+      if (bit_depth == 10) {
+        return AV_PIX_FMT_P010LE;
+      }
 #if FFMPEG_HAS_P012
-// takes is_p016_surface as input instead of the actual NVDEC surface type so we
-// don't have to include the NVDEC headers here
-AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth) {
-  if (!is_p016_surface) {
-    return AV_PIX_FMT_NV12;
-  }
-  switch (bit_depth) {
-    case 10:
-      return AV_PIX_FMT_P010LE;
-    case 12:
-      return AV_PIX_FMT_P012LE;
-    default:
+      if (bit_depth == 12) {
+        return AV_PIX_FMT_P012LE;
+      }
+#endif
       return AV_PIX_FMT_P016LE;
   }
+  return AV_PIX_FMT_NV12;
 }
-#else
-AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth) {
-  // TODO_API_BREAKDOWN P2: needs a comment about P012 missing and why it's
-  // still OK to return P016LE.
-  if (!is_p016_surface) {
-    return AV_PIX_FMT_NV12;
-  }
-  return bit_depth == 10 ? AV_PIX_FMT_P010LE : AV_PIX_FMT_P016LE;
-}
-#endif // FFMPEG_HAS_P012
 
+bool is_nvdec_16bit_pix_fmt(int format) {
+  return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P016LE ||
 #if FFMPEG_HAS_P012
-bool is_nvdec_16bit_surface(int format) {
-  return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P012LE ||
-      format == AV_PIX_FMT_P016LE;
-}
-#else
-
-bool is_nvdec_16bit_surface(int format) {
-  return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P016LE;
-}
+      format == AV_PIX_FMT_P012LE ||
 #endif
+      false;
+}
 
 OutputDtype resolve_output_dtype(
     OutputDtypeConfig output_dtype_config,
@@ -733,13 +731,13 @@ int64_t compute_safe_duration(
   }
 }
 
-std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
+const int32_t* get_display_matrix_from_stream(const AVStream* av_stream) {
   // av_stream_get_side_data() was deprecated in FFmpeg 6.0, but its replacement
   // (av_packet_side_data_get() + codecpar->coded_side_data) is only available
   // from FFmpeg 6.1. We need some #pragma magic to silence the deprecation
   // warning which our compile chain would otherwise treat as an error.
   if (av_stream == nullptr) {
-    return std::nullopt;
+    return nullptr;
   }
 
   const int32_t* display_matrix = nullptr;
@@ -780,6 +778,12 @@ std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
   }
 #endif
 
+  return display_matrix;
+}
+
+namespace {
+std::optional<double> get_rotation_from_display_matrix(
+    const int32_t* display_matrix) {
   if (display_matrix == nullptr) {
     return std::nullopt;
   }
@@ -795,6 +799,50 @@ std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
   }
 
   return rotation;
+}
+} // namespace
+
+std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
+  return get_rotation_from_display_matrix(
+      get_display_matrix_from_stream(av_stream));
+}
+
+std::optional<double> get_rotation_from_frame(const AVFrame& av_frame) {
+  const AVFrameSideData* side_data =
+      av_frame_get_side_data(&av_frame, AV_FRAME_DATA_DISPLAYMATRIX);
+  if (side_data == nullptr) {
+    return std::nullopt;
+  }
+  return get_rotation_from_display_matrix(
+      reinterpret_cast<const int32_t*>(side_data->data));
+}
+
+void set_display_matrix_on_frame(
+    AVFrame& av_frame,
+    const int32_t* display_matrix) {
+  // The frame may already carry a display matrix of its own: FFmpeg propagates
+  // the container's from 6.1 on, and the H.264/HEVC decoders derive one from a
+  // display-orientation SEI. Since av_frame_new_side_data() appends rather than
+  // replaces, and av_frame_get_side_data() returns the first match, not
+  // clearing first would leave whatever the decoder attached in charge and make
+  // ours dead weight - so which matrix wins would depend on the FFmpeg version
+  // and the codec. Clearing keeps it always the container's, which is the one
+  // the SingleStreamDecoder applies.
+  //
+  // Note that no test covers this: for our assets the decoder's matrix, when
+  // there is one, is the container's, so dropping this line changes nothing
+  // observable. It would take a stream whose SEI disagrees with its container.
+  av_frame_remove_side_data(&av_frame, AV_FRAME_DATA_DISPLAYMATRIX);
+  if (display_matrix == nullptr) {
+    return;
+  }
+
+  constexpr size_t kDisplayMatrixSize = 9 * sizeof(int32_t);
+  AVFrameSideData* side_data = av_frame_new_side_data(
+      &av_frame, AV_FRAME_DATA_DISPLAYMATRIX, kDisplayMatrixSize);
+  STD_TORCH_CHECK(
+      side_data != nullptr, "Failed to allocate display matrix side data");
+  std::memcpy(side_data->data, display_matrix, kDisplayMatrixSize);
 }
 
 SwsConfig::SwsConfig(

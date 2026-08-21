@@ -160,9 +160,9 @@ class DeviceInterface {
   virtual void make_frame_standalone([[maybe_unused]] UniqueAVFrame& av_frame) {
   };
 
-  virtual bool is_device_frame(
-      [[maybe_unused]] const UniqueAVFrame& av_frame) const {
-    return false;
+  virtual std::optional<torch::stable::Tensor> get_frame_storage(
+      [[maybe_unused]] const AVFrame& av_frame) const {
+    return std::nullopt;
   }
 
   // Flush remaining frames from decoder

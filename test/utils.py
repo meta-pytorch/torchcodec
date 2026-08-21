@@ -1216,6 +1216,64 @@ TESTSRC2_ODD_HEIGHT_AND_WIDTH_444 = TestVideo(
     frames={0: {}},
 )
 
+# AV1 4:2:0 10-bit. NVDEC offers only a P016 output surface for this one, no
+# NV12, which used to send it to the CPU fallback whenever uint8 was requested.
+# ffmpeg -f lavfi -i "testsrc2=size=320x240:rate=25:duration=1" \
+#  -c:v libsvtav1 -pix_fmt yuv420p10le testsrc2_av1_10bit.mp4
+TESTSRC2_AV1_10BIT = TestVideo(
+    filename="testsrc2_av1_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libx264 -pix_fmt yuv444p10le -profile:v high444 \
+#  testsrc2_odd_height_and_width_444_10bit.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT = TestVideo(
+    filename="testsrc2_odd_height_and_width_444_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# HEVC 4:4:4, which NVDEC *can* decode natively (unlike H264 4:4:4 above), at
+# 8, 10 and 12 bits. Odd dimensions, so they also cover the cropping NVDEC's
+# even-aligned surfaces need. Encoded with, for DEPTH in 8/10/12:
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libx265 -pix_fmt yuv444pDEPTHle -tag:v hvc1 testsrc2_444_DEPTHbit_hevc.mp4
+# (the 8-bit one uses -pix_fmt yuv444p)
+TESTSRC2_444_8BIT_HEVC = TestVideo(
+    filename="testsrc2_444_8bit_hevc.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+TESTSRC2_444_10BIT_HEVC = TestVideo(
+    filename="testsrc2_444_10bit_hevc.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+TESTSRC2_444_12BIT_HEVC = TestVideo(
+    filename="testsrc2_444_12bit_hevc.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
 # ffmpeg -f lavfi -i "testsrc2=size=321x240:rate=25:duration=1,format=rgb24" \
 #  -c:v libvpx-vp9 -pix_fmt yuv420p -b:v 1M testsrc2_odd_width_vp9.mp4
 TESTSRC2_ODD_WIDTH_VP9 = TestVideo(
@@ -1278,6 +1336,34 @@ TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT = TestVideo(
     default_stream_index=0,
     stream_infos={
         0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# Odd dimensions with 4:2:0 chroma, in a codec NVDEC doesn't decode. That's the
+# only combination that reaches the CPU fallback with a frame our 4:2:0 CUDA
+# kernel can't consume as-is: it has to be padded to even dimensions before
+# color conversion, and cropped back afterwards.
+# ffmpeg -f lavfi -i "testsrc2=rate=25:duration=0.4:size=121x80,format=rgb24" \
+#  -c:v mpeg2video -pix_fmt yuv420p testsrc2_odd_width_mpeg2.mp4
+TESTSRC2_ODD_WIDTH_MPEG2 = TestVideo(
+    filename="testsrc2_odd_width_mpeg2.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=121, height=80, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# Also odd in height, which additionally exercises the chroma plane's own
+# rounding: an odd-height 4:2:0 frame has ceil(height / 2) chroma rows.
+# ffmpeg -f lavfi -i "testsrc2=rate=25:duration=0.4:size=121x81,format=rgb24" \
+#  -c:v mpeg2video -pix_fmt yuv420p testsrc2_odd_height_and_width_mpeg2.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_MPEG2 = TestVideo(
+    filename="testsrc2_odd_height_and_width_mpeg2.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=121, height=81, num_color_channels=3),
     },
     frames={0: {}},
 )
@@ -1649,6 +1735,23 @@ SINE_16_CHANNEL_S16 = TestAudio(
             duration_seconds=1,
             num_frames=16,
             sample_format="s16",
+        )
+    },
+)
+
+# Generated with:
+# ffmpeg -y -f lavfi -i "sine=frequency=440:duration=2" -c:a mp3 -b:a 32k -ar 44100 -ac 1 test/resources/sine_mono_mp3.swf
+UNSEEKABLE_SWF = TestAudio(
+    filename="sine_mono_mp3.swf",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=44_100,
+            num_channels=1,
+            duration_seconds=2.2739909297052154,
+            num_frames=78,
+            sample_format="fltp",
         )
     },
 )

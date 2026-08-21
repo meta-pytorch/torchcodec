@@ -4,7 +4,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Private, experimental building-block decode API (CPU only, for now).
+"""Private, experimental building-block decode API.
 
 Exposes the three decode stages -- :class:`Demuxer`, :class:`PacketDecoder`,
 :class:`ColorConverter` -- as passive, composable, GIL-releasing units, so a
@@ -17,7 +17,7 @@ API_breakdown_claude_plan.md for the design and rationale.
 
 from ._color_converter import ColorConverter
 from ._demuxer import Demuxer
-from ._frame import DecodedFrame, Packet, RawFrame
+from ._frame import Packet, RawFrame
 from ._packet_decoder import PacketDecoder
 
 __all__ = [
@@ -25,6 +25,8 @@ __all__ = [
     "PacketDecoder",
     "ColorConverter",
     "Packet",
-    "DecodedFrame",
     "RawFrame",
 ]
+
+# TODO_API_BREAKDOWN FEAT P1 we probably need a way to expose metadata -
+# something that would avoid using VideoDecoder?

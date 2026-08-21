@@ -27,14 +27,24 @@
 #include <mutex>
 #include <queue>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "nvcuvid_include/cuviddec.h"
 #include "nvcuvid_include/nvcuvid.h"
 
 namespace facebook::torchcodec {
+// TODO_API_BREAKDOWN P2: the name says "standalone", but this is really about
+// owning a GPU buffer. Find one that covers both.
 struct StandAloneFrameAttachedData {
-  cudaStream_t producer_stream = nullptr;
+  // Marks the point where the copy (or upload) that filled `storage` was
+  // enqueued. A consumer on another stream must wait on it.
+  CudaEvent frame_ready;
+  torch::stable::Tensor storage;
+};
+
+struct GpuFrameAndStorage {
+  UniqueAVFrame av_frame;
   torch::stable::Tensor storage;
 };
 
@@ -56,7 +66,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       const std::optional<FrameDims>& resized_output_dims) override;
 
   OutputDtype get_pre_allocation_dtype(
-      OutputDtype requested_dtype) const override;
+      [[maybe_unused]] OutputDtype requested_dtype) const override;
 
   void convert_av_frame_to_frame_output(
       const AVFrame& av_frame,
@@ -96,6 +106,22 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   CUdeviceptr previously_mapped_frame_ = 0;
   void unmap_previous_frame();
 
+  cudaStream_t nvdec_output_stream_ = nullptr;
+
+  // Marks the point in nvdec_output_stream_ where the mapping of the
+  // currently-mapped surface was enqueued. Consumers of that surface running on
+  // another stream wait on it. Re-recorded by every mapping, which is safe:
+  // NVDEC has a single output surface, so a frame is always consumed before the
+  // next one is mapped.
+  CudaEvent nvdec_surface_ready_;
+
+  // NVDEC gives us a single output surface, so every mapped frame lives at the
+  // same address and a new mapping overwrites whatever the previous frame's
+  // consumer is reading. These track that read so the next mapping, in
+  // receive_frame(), can be ordered after it.
+  CudaEvent surface_read_done_;
+  void record_surface_read(cudaStream_t stream);
+
   UniqueAVFrame convert_cuda_frame_to_av_frame(
       CUdeviceptr frame_ptr,
       unsigned int pitch,
@@ -103,11 +129,16 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
-  bool is_device_frame(const UniqueAVFrame& av_frame) const override;
+  std::optional<torch::stable::Tensor> get_frame_storage(
+      const AVFrame& av_frame) const override;
 
-  UniqueAVFrame transfer_cpu_frame_to_gpu(
+  GpuFrameAndStorage upload_cpu_frame_to_gpu(
       const AVFrame& cpu_frame,
-      AVPixelFormat target_pix_fmt);
+      cudaStream_t stream);
+
+  torch::stable::Tensor copy_nvdec_surface(
+      UniqueAVFrame& av_frame,
+      cudaStream_t stream);
 
   void apply_rotation(
       FrameOutput& frame_output,
@@ -119,6 +150,14 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   CUVIDEOFORMATEX parser_ext_info_ = {};
 
   std::queue<CUVIDPARSERDISPINFO> ready_frames_;
+
+  // The packets flagged AV_PKT_FLAG_DISCARD must be decoded, but their frames
+  // must not be returned (that's how libavcodec does it). We track the
+  // timestamps of those packets and drop the corresponding frames in
+  // receive_frame(). We rely on the packet's pts to identify it: it's not
+  // ideal, the pts may be non-unique or missing. But that's working so far.
+  // Unfortuntely, NVCUVID doesn't give us any other way to pass down that info.
+  std::unordered_set<CUvideotimestamp> discarded_timestamps_;
 
   bool eof_sent_ = false;
 

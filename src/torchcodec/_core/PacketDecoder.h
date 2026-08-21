@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -44,9 +45,17 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   // Pull one frame. Returns AVSUCCESS with `av_frame` filled, AVERROR(EAGAIN)
   // if more input is needed, AVERROR_EOF at end, or a negative error code.
   int receive_frame(UniqueAVFrame& av_frame);
+  // Drop the codec's buffered state (reference frames, in-flight frames) and
+  // start over. Needed after the demuxer seeked, and after send_eof(), which
+  // otherwise leaves the codec permanently in its drained state.
+  // This is called 'reset()' and not 'flush()', because this is publicly
+  // exposed flush() is slightly ambiguous and could mean 'flush the frames out
+  // of the decoder' rather than meaning 'flush the decoder internal state'.
+  void reset();
 
-  bool is_device_frame(const UniqueAVFrame& av_frame) const {
-    return device_interface_->is_device_frame(av_frame);
+  std::optional<torch::stable::Tensor> get_frame_storage(
+      const AVFrame& av_frame) const {
+    return device_interface_->get_frame_storage(av_frame);
   }
 
   const StableDevice& device() const {
@@ -62,21 +71,42 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   std::unique_ptr<DeviceInterface> device_interface_;
   SharedAVCodecContext codec_context_;
   AVRational time_base_ = {};
+  // Stamped onto every frame we hand out, so downstream blocks can read the
+  // rotation off the frame itself instead of knowing about the stream. Held by
+  // value: we're only handed the Demuxer at construction and it may well be
+  // gone by the time we decode.
+  std::optional<std::array<int32_t, 9>> display_matrix_;
+  // The MPEG-PS demuxer doesn't return proper packets just after a seek, so the
+  // first ones we're fed may not be decodable. See send_packet().
+  bool is_mpeg_ps_ = false;
+  bool packet_data_may_be_misaligned_ = false;
 };
 
-// A decoded frame's own samples, before any color conversion.
-struct FramePlanes {
-  // One view per component, in the frame's native order: (Y, U, V) for YUV,
-  // (R, G, B) for RGB codecs, (Y,) for grayscale, plus a trailing alpha view
-  // when the format has one.
-  std::vector<torch::stable::Tensor> planes;
+// How a decoded frame's samples are laid out and how they should be
+// interpreted, before any color conversion.
+struct FrameMetadata {
   std::string pix_fmt;
   std::string colorspace;
   std::string color_range;
   int64_t bit_depth = 8;
+  // The dimensions of the samples as they were decoded, i.e. before rotation.
+  int64_t width = 0;
+  int64_t height = 0;
+  // Degrees counter-clockwise needed to make the frame upright. 0 when the
+  // frame carries no display matrix.
+  double rotation_degrees = 0;
 };
 
-FORCE_PUBLIC_VISIBILITY FramePlanes frame_to_planes(
+// Describes `av_frame` without touching its samples. Unlike frame_planes(),
+// this works for every pixel format, so callers can ask what a frame is before
+// asking for views they may not be able to get.
+FORCE_PUBLIC_VISIBILITY FrameMetadata frame_metadata(const AVFrame& av_frame);
+
+// A decoded frame's own samples, before any color conversion: one view per
+// component, in the frame's native order: (Y, U, V) for YUV, (R, G, B) for RGB
+// codecs, (Y,) for grayscale, plus a trailing alpha view when the format has
+// one.
+FORCE_PUBLIC_VISIBILITY std::vector<torch::stable::Tensor> frame_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
     const torch::stable::Tensor& tensor_handle);

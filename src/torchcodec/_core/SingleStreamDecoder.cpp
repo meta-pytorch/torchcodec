@@ -12,6 +12,7 @@
 #include <iostream>
 #include <limits>
 #include <numeric>
+#include <sstream>
 #include <string_view>
 #include "Demuxer.h"
 #include "Metadata.h"
@@ -350,9 +351,7 @@ void SingleStreamDecoder::scan_file_and_update_metadata_and_index() {
   // Reset the seek-cursor back to the beginning.
   int status = avformat_seek_file(format_context_.get(), 0, INT64_MIN, 0, 0, 0);
   STD_TORCH_CHECK(
-      status >= 0,
-      "Could not seek file to pts=0: ",
-      get_ffmpeg_error_string_from_error_code(status));
+      status >= 0, get_seek_error_message(format_context_.get(), 0, status));
 
   // Sort all frames by their pts.
   sort_all_frames();
@@ -1511,10 +1510,7 @@ bool SingleStreamDecoder::maybe_seek_to_before_desired_pts() {
       0);
   STD_TORCH_CHECK(
       status >= 0,
-      "Could not seek file to pts=",
-      std::to_string(desired_pts),
-      ": ",
-      get_ffmpeg_error_string_from_error_code(status));
+      get_seek_error_message(format_context_.get(), desired_pts, status));
 
   decode_stats_.num_flushes++;
   device_interface_->flush();

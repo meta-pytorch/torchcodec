@@ -64,6 +64,8 @@ void launch_nv12_to_rgb_kernel(
     const float color_matrix[3][4],
     cudaStream_t stream);
 
+// bit_shift: number of unused least-significant bits in each sample, i.e.
+// AVComponentDescriptor::shift (6 for P010, 4 for P012, 0 for P016).
 void launch_p016_to_rgb16_kernel(
     const uint16_t* y_plane,
     const uint16_t* uv_plane,
@@ -73,19 +75,52 @@ void launch_p016_to_rgb16_kernel(
     int y_pitch,
     int uv_pitch,
     int rgb_pitch,
-    int bit_depth,
+    int bit_shift,
     const float color_matrix[3][4],
     cudaStream_t stream);
 
-// Convert a YUV frame (NV12 or P016) on GPU to an interleaved RGB tensor.
+void launch_yuv444_to_rgb_kernel(
+    const uint8_t* y_plane,
+    const uint8_t* u_plane,
+    const uint8_t* v_plane,
+    uint8_t* rgb_output,
+    int width,
+    int height,
+    int y_pitch,
+    int u_pitch,
+    int v_pitch,
+    int rgb_pitch,
+    const float color_matrix[3][4],
+    cudaStream_t stream);
+
+void launch_yuv444_to_rgb16_kernel(
+    const uint16_t* y_plane,
+    const uint16_t* u_plane,
+    const uint16_t* v_plane,
+    uint16_t* rgb_output,
+    int width,
+    int height,
+    int y_pitch,
+    int u_pitch,
+    int v_pitch,
+    int rgb_pitch,
+    int bit_shift,
+    const float color_matrix[3][4],
+    cudaStream_t stream);
+
+// Convert a YUV frame on GPU to an interleaved RGB tensor. Accepts the NVDEC
+// surface formats: semi-planar 4:2:0 (NV12, P010, P012, P016) and planar 4:4:4
+// (YUV444P, YUV444P16).
 //
 // outputDims: desired output size; if the frame was rounded up to even
 //   dimensions, the result is cropped back to outputDims.
-// pixFmt: the format the samples are actually in (NV12, P010, P012, P016).
+// stream: the stream to run the conversion on. Ordering it after whatever
+//   produced the frame's samples is the caller's job - only the caller knows
+//   what that was.
 torch::stable::Tensor convert_yuv_frame_to_rgb(
     const AVFrame& av_frame,
     const StableDevice& device,
-    cudaStream_t producer_stream,
+    cudaStream_t stream,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor,
     const FrameDims& output_dims,
     AVPixelFormat pix_fmt,
