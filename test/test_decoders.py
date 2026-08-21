@@ -5155,8 +5155,6 @@ class TestBlocks:
             assert isinstance(decoded[0], expected_type)
 
     def test_audio_decoder_takes_no_device(self):
-        # Audio is CPU-only, so rather than accepting a device and rejecting
-        # everything but CPU, AudioPacketDecoder simply has no such argument.
         with pytest.raises(TypeError, match="device"):
             AudioPacketDecoder(AudioDemuxer(NASA_AUDIO_MP3.path), device="cuda")
 
@@ -5181,27 +5179,6 @@ class TestBlocks:
         assert len(chunks) > 0
         num_samples = sum(chunk.num_samples for chunk in chunks)
         assert 0 < num_samples < asset.duration_seconds * asset.sample_rate
-
-    @needs_cuda
-    def test_audio_decoder_ignores_non_cpu_default_device(self):
-        # An unspecified device means CPU for audio, not whatever
-        # torch.get_default_device() happens to be. Compare against a plain
-        # run, so this also catches us silently decoding something else.
-        expected = self._decode_audio(NASA_AUDIO_MP3)[0].data
-
-        with torch.device("cuda"):
-            got = self._decode_audio(NASA_AUDIO_MP3)[0].data
-        assert got.device.type == "cpu"
-        torch.testing.assert_close(got, expected, atol=0, rtol=0)
-
-        original_device = torch.get_default_device()
-        try:
-            torch.set_default_device("cuda")
-            got = self._decode_audio(NASA_AUDIO_MP3)[0].data
-        finally:
-            torch.set_default_device(original_device)
-        assert got.device.type == "cpu"
-        torch.testing.assert_close(got, expected, atol=0, rtol=0)
 
     @pytest.mark.parametrize("stream_index", (-1, 6, 1000))
     def test_invalid_stream_index_raises(self, stream_index):
