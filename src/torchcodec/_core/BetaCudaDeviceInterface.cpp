@@ -700,6 +700,10 @@ int BetaCudaDeviceInterface::send_packet(ReferenceAVPacket& packet) {
   cuvid_packet.flags = CUVID_PKT_TIMESTAMP;
   cuvid_packet.timestamp = packet_to_send->pts;
 
+  if (packet_to_send->flags & AV_PKT_FLAG_DISCARD) {
+    discarded_timestamps_.insert(cuvid_packet.timestamp);
+  }
+
   return send_cuvid_packet(cuvid_packet);
 }
 
@@ -783,6 +787,13 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   CudaContextGuard context_guard(device_.index());
   if (decoding_on_cpu_) {
     return cpu_interface_->receive_frame(av_frame);
+  }
+
+  // Drop those packets that were marked as discard. We only wanted to decode
+  // those, not to return them.
+  while (!ready_frames_.empty() &&
+         discarded_timestamps_.erase(ready_frames_.front().timestamp) > 0) {
+    ready_frames_.pop();
   }
 
   if (ready_frames_.empty()) {
@@ -1130,6 +1141,7 @@ void BetaCudaDeviceInterface::flush() {
 
   std::queue<CUVIDPARSERDISPINFO> empty_queue;
   std::swap(ready_frames_, empty_queue);
+  discarded_timestamps_.clear();
 
   send_seqhdr_packet();
 }
