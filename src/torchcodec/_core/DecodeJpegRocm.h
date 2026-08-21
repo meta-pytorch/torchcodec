@@ -54,6 +54,11 @@ class RocJpegDecoder {
     torch::stable::Tensor output_tensor;
     RocJpegImage output_image{};
     RocJpegOutputFormat output_format{ROCJPEG_OUTPUT_NATIVE};
+    // On some hardware (e.g. MI350X VF), ROCJPEG_BACKEND_HARDWARE +
+    // ROCJPEG_OUTPUT_RGB_PLANAR produces incorrect output (~51% of pixels
+    // correct) for colour (YCbCr, i.e. non-ROCJPEG_CSS_400) JPEG sources.
+    // Route those to HYBRID, which performs YCbCr->RGB in software.
+    bool force_hybrid{false};
   };
 
   RocJpegHandle base_handle();
@@ -64,7 +69,8 @@ class RocJpegDecoder {
       ImageReadMode mode);
 
   std::pair<std::vector<size_t>, std::vector<size_t>> split_images_by_backend(
-      const std::vector<torch::stable::Tensor>& encoded_images);
+      const std::vector<torch::stable::Tensor>& encoded_images,
+      const std::vector<ImagePlan>& plans);
 
   void decode_batched_hardware(
       std::vector<ImagePlan>& plans,
@@ -85,6 +91,11 @@ class RocJpegDecoder {
   // HYBRID backend handle, created lazily the first time we need it
   // (progressive JPEGs, or all images when there's no HW engine).
   RocJpegHandle handle_hybrid_{nullptr};
+  // Set to true if rocJpegCreate(ROCJPEG_BACKEND_HYBRID) returned
+  // ROCJPEG_STATUS_NOT_IMPLEMENTED. On such hardware (e.g. MI300X) the HW
+  // backend handles YCbCr->RGB correctly, so force_hybrid images fall back to
+  // HW without loss of correctness.
+  bool hybrid_unavailable_{false};
 };
 
 // A per-device pool of reusable RocJpegDecoder objects. Modeled on NVJpegCache

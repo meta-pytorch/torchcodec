@@ -72,7 +72,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ['3.10']
-        rocm-version: ['7.1']
+        rocm-version: ['7.14']
     uses: pytorch/test-infra/.github/workflows/linux_job_v2.yml@main
     permissions:
       id-token: write
@@ -139,8 +139,10 @@ jobs:
         bash packaging/remove_src.sh
 
         echo '::group::Install rocJPEG runtime'
-        # The wheel deliberately does not bundle librocjpeg (see repair_wheel.py),
-        # so decode_jpeg(device="cuda") needs it present at runtime.
+        # librocjpeg is NOT bundled into the wheel.  Instead, libtorchcodec_image.so
+        # has an RPATH entry pointing to _rocm_sdk_core/lib (ROCm 7.14 pip-wheel) and
+        # /opt/rocm/lib (ROCm <= 7.2 system install).  install_rocjpeg.sh ensures the
+        # runtime side-deps (libva) are present regardless of layout.
         bash packaging/install_rocjpeg.sh
         echo '::endgroup::'
 
@@ -160,6 +162,55 @@ jobs:
         echo '::endgroup::'
 
         echo '::group::Run FFmpeg-free image decoder tests (incl. rocJPEG GPU)'
+        # ROCm 7.14 pip-wheel layout: librocjpeg lives in _rocm_sdk_core/lib and
+        # its transitive deps (librocm_sysdeps_va.so.2 etc.) are in
+        # _rocm_sdk_core/lib/rocm_sysdeps/lib. The RPATH on libtorchcodec_image.so
+        # points to _rocm_sdk_core/lib, and AMD's own RPATH on librocjpeg handles
+        # the sysdeps. Set LD_LIBRARY_PATH as belt-and-suspenders for the HIP
+        # runtime (libamdhip64) that librocjpeg needs.
+        rocm_core_lib=$(python -c "import importlib.util, pathlib, os; spec = importlib.util.find_spec('_rocm_sdk_core'); p = pathlib.Path(spec.submodule_search_locations[0]) if spec else None; dirs = [str(p/'lib'), str(p/'lib'/'rocm_sysdeps'/'lib')] if p else []; print(os.pathsep.join(d for d in dirs if pathlib.Path(d).is_dir()))" 2>/dev/null || true)
+        if [ -n "${rocm_core_lib}" ]; then
+          export LD_LIBRARY_PATH="${rocm_core_lib}:${LD_LIBRARY_PATH:-}"
+          echo "LD_LIBRARY_PATH (rocm_sdk_core): ${rocm_core_lib}"
+        fi
+        # ROCm 7.14 ships mesa inside _rocm_sdk_core (no separate dnf install
+        # needed). libva auto-detects the DRM driver name as "radeonsi" from the
+        # kernel, then looks for "${driver}_drv_video.so" in LIBVA_DRIVERS_PATH.
+        # AMD vendored the driver as "librocm_sysdeps_gallium_drv_video.so", so
+        # we must also set LIBVA_DRIVER_NAME to that basename (minus _drv_video.so)
+        # to override the DRM-reported name. We derive both values from the actual
+        # file found via rglob so the code stays resilient to future AMD renames.
+        rocm_core_dri=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('_rocm_sdk_core'); p = pathlib.Path(spec.submodule_search_locations[0]) if spec else None; hits = list((p/'lib').rglob('*_drv_video.so')) if p else []; print(str(hits[0].parent)) if hits else None" 2>/dev/null || true)
+        rocm_va_driver=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('_rocm_sdk_core'); p = pathlib.Path(spec.submodule_search_locations[0]) if spec else None; hits = list((p/'lib').rglob('*_drv_video.so')) if p else []; print(hits[0].name.replace('_drv_video.so','')) if hits else None" 2>/dev/null || true)
+        if [ -n "${rocm_core_dri}" ] && [ -n "${rocm_va_driver}" ]; then
+          export LIBVA_DRIVERS_PATH="${rocm_core_dri}"
+          export LIBVA_DRIVER_NAME="${rocm_va_driver}"
+          echo "LIBVA_DRIVERS_PATH: ${rocm_core_dri}"
+          echo "LIBVA_DRIVER_NAME:  ${rocm_va_driver}"
+        else
+          echo "WARNING: no *_drv_video.so found in _rocm_sdk_core/lib; VA-API driver missing?"
+          echo "Contents of _rocm_sdk_core/lib (recursive *_drv_video.so search):"
+          python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('_rocm_sdk_core'); p = pathlib.Path(spec.submodule_search_locations[0]) if spec else None; [print(x) for x in sorted((p/'lib').rglob('*'))] if p else None" 2>/dev/null | grep -E "dri|va|video|mesa|gallium|radeon" || true
+        fi
+        # Diagnostics: dump ldd on the image .so so any missing dep is visible.
+        image_so=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('torchcodec'); print(pathlib.Path(spec.origin).parent / 'libtorchcodec_image.so')" 2>/dev/null || true)
+        if [ -n "${image_so}" ] && [ -f "${image_so}" ]; then
+          echo "RPATH of ${image_so}:"
+          objdump -p "${image_so}" 2>/dev/null | grep -E "RPATH|RUNPATH" || true
+          echo "ldd ${image_so}:"
+          ldd "${image_so}" || true
+          # Also check AMD's own librocjpeg RPATH (not bundled; lives in _rocm_sdk_core).
+          # This tells us whether AMD's RPATH handles the transitive deps for real users
+          # (who have no LD_LIBRARY_PATH set), vs. only working because LD_LIBRARY_PATH
+          # is set above.
+          rocjpeg_sdk=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('_rocm_sdk_core'); p = pathlib.Path(spec.submodule_search_locations[0]) if spec else None; print(str(p/'lib'/'librocjpeg.so.1') if p and (p/'lib'/'librocjpeg.so.1').exists() else '')" 2>/dev/null || true)
+          if [ -n "${rocjpeg_sdk}" ]; then
+            echo "RPATH of AMD's ${rocjpeg_sdk}:"
+            objdump -p "${rocjpeg_sdk}" 2>/dev/null | grep -E "RPATH|RUNPATH" || true
+            echo "ldd ${rocjpeg_sdk} (without LD_LIBRARY_PATH):"
+            env -i PATH="${PATH}" ldd "${rocjpeg_sdk}" || true
+          fi
+        fi
         # torch.cuda.is_available() is True on ROCm (HIP masquerades as CUDA), so
         # the needs_cuda image tests run here and exercise the GPU JPEG decoder,
         # which is rocJPEG on ROCm: the jpeg_cuda params call
