@@ -22,8 +22,9 @@ set -euo pipefail
 # Fallback glob: handles the case where _rocm_sdk_* is installed for a
 # different Python version than the one running this script (e.g. the script
 # runs in a Python 3.10 conda env but _rocm_sdk_devel is under Python 3.11).
-# The pattern /*/lib/python*/site-packages covers standard install prefixes
-# (/opt/conda, /usr, /usr/local, etc.) without being conda-specific.
+# The glob fallback uses both one- and two-level prefix patterns so it covers
+# /usr/lib/python*/ (1-level) and /opt/conda/lib/python*/ (2-level) without
+# hardcoding any specific path.
 if python3 -c "
 import importlib.util, pathlib, sys, glob
 for pkg in ('_rocm_sdk_core', '_rocm_sdk_devel'):
@@ -32,7 +33,9 @@ for pkg in ('_rocm_sdk_core', '_rocm_sdk_devel'):
         pkg_root = pathlib.Path(list(spec.submodule_search_locations)[0])
         if (pkg_root / 'include' / 'rocjpeg' / 'rocjpeg.h').exists():
             sys.exit(0)
-if glob.glob('/*/lib/python*/site-packages/_rocm_sdk_*/include/rocjpeg/rocjpeg.h'):
+suffix = '_rocm_sdk_*/include/rocjpeg/rocjpeg.h'
+if (glob.glob('/*/lib/python*/site-packages/' + suffix) or
+        glob.glob('/*/*/lib/python*/site-packages/' + suffix)):
     sys.exit(0)
 sys.exit(1)
 " 2>/dev/null; then
