@@ -136,6 +136,10 @@ def _find_nvjpeg_license():
 def _find_rocjpeg_license():
     """Find rocjpeg's LICENSE file to document the runtime dependency."""
     search_roots = []
+    print(
+        f"[repair_wheel] _find_rocjpeg_license: ROCM_HOME={os.environ.get('ROCM_HOME')!r}",
+        flush=True,
+    )
     for var in ("ROCM_HOME", "ROCM_PATH"):
         if v := os.environ.get(var):
             search_roots.append(Path(v))
@@ -154,8 +158,10 @@ def _find_rocjpeg_license():
             search_roots.append(Path(result.stdout.strip()))
     except Exception:
         pass
-    search_roots.append(Path("/opt/rocm"))
-
+    print(
+        f"[repair_wheel] _find_rocjpeg_license: searching roots={[str(r) for r in search_roots]}",
+        flush=True,
+    )
     for root in search_roots:
         candidate = root / "share" / "doc" / "rocjpeg" / "LICENSE"
         if candidate.is_file():

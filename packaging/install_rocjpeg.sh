@@ -39,8 +39,6 @@ sys.exit(0 if hits else 1)
     # librocjpeg's own RPATH resolves it from there — no system install needed.
 else
     # ROCm <=7.2 system RPM path.
-    # Per https://github.com/ROCm/rocJPEG/tree/release/rocm-rel-7.2#libraries:
-    # install the VA-API prerequisites first, then rocjpeg-devel (package
-    # install auto installs remaining dependencies).
-    dnf install -y --refresh libva-amdgpu mesa-amdgpu-va-drivers rocjpeg-devel
+    # rocjpeg-devel's RPM dependencies pull in libva and mesa VA drivers automatically.
+    dnf install -y rocjpeg-devel
 fi
