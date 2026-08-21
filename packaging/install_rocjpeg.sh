@@ -13,32 +13,27 @@
 
 set -euo pipefail
 
-# ROCm >= 7.14 distributes the full ROCm stack (including rocJPEG and mesa)
-# as pip wheels (_rocm_sdk_core / _rocm_sdk_devel site-packages). In that case
-# librocjpeg.so, rocjpeg.h, and the AMD VA-API backend driver (mesa) are all
-# bundled inside _rocm_sdk_core — no separate dnf install needed.
-
-# Check if librocjpeg is already available via the ROCm >= 7.14 pip-wheel layout
-# (_rocm_sdk_core / _rocm_sdk_devel under site-packages).  In that layout AMD
-# bundles mesa (the VA-API DRI driver) inside _rocm_sdk_core, so no separate
-# dnf install of mesa-amdgpu-va-drivers is needed — only the base libva soname.
-#
-# NOTE: we intentionally do NOT match /opt/rocm/lib/librocjpeg.so* here.  If
-# librocjpeg was installed via the ROCm <= 7.2 system RPM path it may be
-# present at /opt/rocm but mesa-amdgpu-va-drivers may not be — they are
-# separate packages and must be installed together.  Let the else branch handle
-# that case so it always installs the full VA-API stack.
+# Skip if rocjpeg is already installed (e.g. via the ROCm pip-wheel distribution).
 if python3 -c "
 import glob, sys
-# Only the pip-wheel layout bundles mesa alongside librocjpeg.
-hits = glob.glob('/opt/conda/**/librocjpeg.so*', recursive=True)
-sys.exit(0 if hits else 1)
+found = (glob.glob('/opt/rocm/include/rocjpeg/rocjpeg.h') or
+         glob.glob('/opt/conda/**/rocjpeg.h', recursive=True))
+sys.exit(0 if found else 1)
 " 2>/dev/null; then
-    echo "librocjpeg already present via ROCm pip-wheel install; skipping dnf install."
-    # libva is bundled inside _rocm_sdk_core/lib/rocm_sysdeps/lib/ and
-    # librocjpeg's own RPATH resolves it from there — no system install needed.
-else
-    # ROCm <=7.2 system RPM path.
-    # rocjpeg-devel's RPM dependencies pull in libva and mesa VA drivers automatically.
-    dnf install -y rocjpeg-devel
+    echo "rocjpeg already installed; skipping dnf install."
+    exit 0
+fi
+
+# Install from the ROCm dnf repo.
+# mesa-amdgpu-va-drivers is declared as an RPM dependency of rocjpeg but may
+# not be available as a standalone dnf package (it is installed via
+# amdgpu-install as part of the GPU driver stack). Fall back to rpm --nodeps
+# if the regular dnf install fails for that reason.
+if ! dnf install -y rocjpeg rocjpeg-devel; then
+    # Ensure the 'dnf download' subcommand is available.
+    dnf install -y "dnf-command(download)" 2>/dev/null || dnf install -y dnf-plugins-core
+    tmpdir=$(mktemp -d)
+    dnf download --destdir "$tmpdir" rocjpeg rocjpeg-devel
+    rpm -Uvh --nodeps "$tmpdir"/*.rpm
+    rm -rf "$tmpdir"
 fi
