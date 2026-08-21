@@ -103,6 +103,8 @@ struct FrameMetadata {
   double rotation_degrees = 0;
 };
 
+// TODO_API_BREAKDOWN CC P1 these should bet get_*
+
 // Describes `av_frame` without touching its samples. Unlike frame_planes(),
 // this works for every pixel format, so callers can ask what a frame is before
 // asking for views they may not be able to get.
@@ -124,6 +126,8 @@ FORCE_PUBLIC_VISIBILITY std::vector<torch::stable::Tensor> frame_planes(
 // interleave them, so neither is a [C, N] tensor as it stands. An audio frame
 // is a few kB, so normalizing here buys a uniform layout for the price of a
 // memcpy - and it means a converter can treat the result as planar-of-dtype.
+// TODO_API_BREAKDOWN DESIGN P1: do we want to copy? Should we just keep the
+// original layout?
 FORCE_PUBLIC_VISIBILITY torch::stable::Tensor audio_samples(
     const AVFrame& av_frame);
 

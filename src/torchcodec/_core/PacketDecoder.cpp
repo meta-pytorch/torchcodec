@@ -75,8 +75,6 @@ PacketDecoder::PacketDecoder(
   AVStream* stream = demuxer.active_stream();
   time_base_ = stream->time_base;
 
-  // This is a property of the container, not of the codec: an audio stream in
-  // an MPEG program stream resyncs after a seek exactly like a video one does.
   is_mpeg_ps_ =
       std::string_view(demuxer.format_context()->iformat->name) == "mpeg";
 
@@ -314,27 +312,26 @@ torch::stable::Tensor audio_samples(const AVFrame& av_frame) {
           av_frame.extended_data[channel],
           bytes_per_channel);
     }
-    return samples;
-  }
-
-  const uint8_t* src = av_frame.extended_data[0];
-  int num_samples_int = static_cast<int>(num_samples);
-  switch (bytes_per_sample) {
-    case 1:
-      deinterleave<uint8_t>(src, dst, num_channels, num_samples_int);
-      break;
-    case 2:
-      deinterleave<uint16_t>(src, dst, num_channels, num_samples_int);
-      break;
-    case 4:
-      deinterleave<uint32_t>(src, dst, num_channels, num_samples_int);
-      break;
-    case 8:
-      deinterleave<uint64_t>(src, dst, num_channels, num_samples_int);
-      break;
-    default:
-      STD_TORCH_CHECK(
-          false, "Unexpected sample width: ", bytes_per_sample, " bytes.");
+  } else {
+    const uint8_t* src = av_frame.extended_data[0];
+    int num_samples_int = static_cast<int>(num_samples);
+    switch (bytes_per_sample) {
+      case 1:
+        deinterleave<uint8_t>(src, dst, num_channels, num_samples_int);
+        break;
+      case 2:
+        deinterleave<uint16_t>(src, dst, num_channels, num_samples_int);
+        break;
+      case 4:
+        deinterleave<uint32_t>(src, dst, num_channels, num_samples_int);
+        break;
+      case 8:
+        deinterleave<uint64_t>(src, dst, num_channels, num_samples_int);
+        break;
+      default:
+        STD_TORCH_CHECK(
+            false, "Unexpected sample width: ", bytes_per_sample, " bytes.");
+    }
   }
   return samples;
 }
