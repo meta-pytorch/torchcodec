@@ -42,6 +42,7 @@ from torchcodec.decoders import (
     WavDecoder,
 )
 from torchcodec.decoders._blocks import (
+    AudioConverter,
     AudioDemuxer,
     AudioPacketDecoder,
     ColorConverter,
@@ -5050,7 +5051,9 @@ class TestBlocks:
         assert len(list(AudioDemuxer(make_source(NASA_AUDIO_MP3.path)))) == expected
 
     def test_audio_demuxer_seek(self):
-        # Seeking past the start leaves fewer packets to demux.
+        # Seeking past the start leaves fewer packets to demux. We don't assert
+        # anything about *which* ones: audio has no keyframe to land on, so
+        # where a seek lands is the demuxer's business, not something we pin.
         num_packets_from_start = len(list(AudioDemuxer(NASA_AUDIO_MP3.path)))
 
         demuxer = AudioDemuxer(NASA_AUDIO_MP3.path)
@@ -5058,6 +5061,10 @@ class TestBlocks:
         num_packets_after_seek = len(list(demuxer))
 
         assert 0 < num_packets_after_seek < num_packets_from_start
+
+    def test_audio_demuxer_has_no_scan(self):
+        # See the TODO in _demuxer.py: StreamIndex is video-shaped.
+        assert not hasattr(AudioDemuxer(NASA_AUDIO_MP3.path), "scan")
 
     # ===== Audio decoding: RawAudioSamples =====
 
@@ -5218,6 +5225,199 @@ class TestBlocks:
         assert len(chunks) > 0
         num_samples = sum(chunk.num_samples for chunk in chunks)
         assert 0 < num_samples < asset.duration_seconds * asset.sample_rate
+
+    # ===== AudioConverter =====
+
+    @staticmethod
+    def _convert_audio(asset, drain=True, **converter_kwargs):
+        demuxer = AudioDemuxer(asset.path)
+        decoder = PacketDecoder(demuxer)
+        converter = AudioConverter(**converter_kwargs)
+
+        chunks = []
+        for packet in demuxer:
+            chunks += [converter.convert(raw) for raw in decoder.decode(packet)]
+        chunks += [converter.convert(raw) for raw in decoder.drain()]
+        if drain:
+            chunks.append(converter.drain())
+        return chunks
+
+    @staticmethod
+    def _cat(chunks):
+        return torch.cat([chunk.data for chunk in chunks], dim=1)
+
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            SINE_MONO_U8,
+            SINE_MONO_S16,
+            SINE_MONO_S32,
+            SINE_MONO_F32,
+            SINE_MONO_F64,
+            SINE_STEREO_MP2_MPEG_PS,
+            SINE_16_CHANNEL_S16,
+            NASA_AUDIO_MP3,
+            NASA_AUDIO,
+        ),
+    )
+    def test_audio_converter_matches_audio_decoder(self, asset):
+        # No resampling, no remix: the converter only normalizes the sample
+        # type, which is frame-local, so this is bit exact.
+        got = self._cat(self._convert_audio(asset))
+        expected = AudioDecoder(asset.path).get_all_samples().data
+        torch.testing.assert_close(got, expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        "asset, num_channels",
+        (
+            (NASA_AUDIO_MP3, 1),
+            (NASA_AUDIO_MP3, 2),
+            (SINE_STEREO_MP2_MPEG_PS, 1),
+            (SINE_MONO_S16, 2),
+            (SINE_16_CHANNEL_S16, 2),
+        ),
+    )
+    def test_audio_converter_num_channels(self, asset, num_channels):
+        # Remixing is a matrix over one frame's samples, so it is bit exact too.
+        got = self._cat(self._convert_audio(asset, num_channels=num_channels))
+        expected = (
+            AudioDecoder(asset.path, num_channels=num_channels).get_all_samples().data
+        )
+        assert got.shape[0] == num_channels
+        torch.testing.assert_close(got, expected, atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        "asset, sample_rate",
+        (
+            (NASA_AUDIO_MP3, 16_000),
+            (NASA_AUDIO_MP3, 8_000),
+            (NASA_AUDIO_MP3_44100, 16_000),
+            (SINE_MONO_S32, 8_000),
+            (SINE_MONO_S32, 44_100),
+            (SINE_STEREO_MP2_MPEG_PS, 16_000),
+        ),
+    )
+    def test_audio_converter_sample_rate(self, asset, sample_rate):
+        # Resampling the whole stream from its start is bit exact against
+        # AudioDecoder even though we don't implement its alignment grid: the
+        # number of samples that grid skips is zero when you start at the
+        # beginning. This is what pins that omission as safe.
+        got = self._cat(self._convert_audio(asset, sample_rate=sample_rate))
+        expected = (
+            AudioDecoder(asset.path, sample_rate=sample_rate).get_all_samples().data
+        )
+        torch.testing.assert_close(got, expected, atol=0, rtol=0)
+
+    def test_audio_converter_drain_is_load_bearing_when_resampling(self):
+        # Resampling holds the tail of the stream back until drain(). Pinned so
+        # that dropping drain() from the documented loop fails loudly here
+        # rather than quietly truncating someone's audio.
+        with_drain = self._cat(self._convert_audio(NASA_AUDIO_MP3, sample_rate=16_000))
+        without = self._cat(
+            self._convert_audio(NASA_AUDIO_MP3, drain=False, sample_rate=16_000)
+        )
+        assert without.shape[1] < with_drain.shape[1]
+        torch.testing.assert_close(
+            with_drain[:, : without.shape[1]], without, atol=0, rtol=0
+        )
+
+    def test_audio_converter_drain_is_empty_without_resampling(self):
+        # Nothing is held back when the rate doesn't change, which is why
+        # adding sample_rate= to an existing pipeline can't silently start
+        # losing samples: the drain() call is already there and already a
+        # no-op.
+        chunks = self._convert_audio(NASA_AUDIO_MP3)
+        assert chunks[-1].data.shape[1] == 0
+
+    @pytest.mark.parametrize("sample_rate", (None, 16_000))
+    def test_audio_converter_pts_is_contiguous(self, sample_rate):
+        # A chunk does not start at the pts of the frame that produced it: the
+        # resampler's delay line offsets them. What the converter reports is
+        # the running position in the output stream instead.
+        chunks = self._convert_audio(NASA_AUDIO_MP3, sample_rate=sample_rate)
+        for current, following in zip(chunks, chunks[1:]):
+            assert current.pts_seconds + current.duration_seconds == pytest.approx(
+                following.pts_seconds, abs=1e-9
+            )
+
+    def test_audio_converter_reset_allows_another_stream(self):
+        converter = AudioConverter(sample_rate=16_000)
+
+        def convert_all(asset):
+            demuxer = AudioDemuxer(asset.path)
+            decoder = PacketDecoder(demuxer)
+            chunks = []
+            for packet in demuxer:
+                chunks += [converter.convert(raw) for raw in decoder.decode(packet)]
+            chunks += [converter.convert(raw) for raw in decoder.drain()]
+            chunks.append(converter.drain())
+            return self._cat(chunks)
+
+        first = convert_all(NASA_AUDIO_MP3)
+        converter.reset()
+        second = convert_all(SINE_MONO_S32)
+
+        for got, asset in ((first, NASA_AUDIO_MP3), (second, SINE_MONO_S32)):
+            expected = (
+                AudioDecoder(asset.path, sample_rate=16_000).get_all_samples().data
+            )
+            torch.testing.assert_close(got, expected, atol=0, rtol=0)
+
+    def test_audio_converter_changing_stream_without_reset_raises(self):
+        # swresample is configured from the first samples it sees and its
+        # buffered state belongs to that configuration, so we make the caller
+        # reset() rather than silently reconfiguring.
+        converter = AudioConverter()
+        converter.convert(self._decode_audio(NASA_AUDIO_MP3)[0])
+        with pytest.raises(RuntimeError, match="Call reset\\(\\) to convert"):
+            converter.convert(self._decode_audio(SINE_MONO_S32)[0])
+
+    def test_audio_converter_convert_after_drain_raises(self):
+        converter = AudioConverter()
+        converter.convert(self._decode_audio(NASA_AUDIO_MP3)[0])
+        converter.drain()
+        with pytest.raises(RuntimeError, match="has been drained"):
+            converter.convert(self._decode_audio(NASA_AUDIO_MP3)[0])
+
+        converter.reset()
+        converter.convert(self._decode_audio(NASA_AUDIO_MP3)[0])  # no raise
+
+    def test_audio_converter_drain_before_convert_raises(self):
+        with pytest.raises(RuntimeError, match="hasn't converted any samples"):
+            AudioConverter().drain()
+
+    @pytest.mark.parametrize("kwargs", ({"sample_rate": 0}, {"num_channels": -1}))
+    def test_audio_converter_invalid_args_raise(self, kwargs):
+        with pytest.raises(RuntimeError, match="must be > 0"):
+            AudioConverter(**kwargs)
+
+    def test_audio_pipeline_after_seek(self):
+        # Seeking gives you the tail of the stream, and the three blocks each
+        # need to be told about it. We deliberately do NOT assert that these
+        # samples match the corresponding slice of a whole-file decode: with no
+        # pre-roll and no alignment grid, they don't, and that's documented.
+        seek_seconds = NASA_AUDIO_MP3.duration_seconds / 2
+        num_samples_from_start = self._cat(
+            self._convert_audio(NASA_AUDIO_MP3, sample_rate=16_000)
+        ).shape[1]
+
+        demuxer = AudioDemuxer(NASA_AUDIO_MP3.path)
+        decoder = PacketDecoder(demuxer)
+        converter = AudioConverter(sample_rate=16_000)
+        demuxer.seek(seek_seconds)
+        decoder.reset()
+        converter.reset()
+
+        chunks = []
+        for packet in demuxer:
+            chunks += [converter.convert(raw) for raw in decoder.decode(packet)]
+        chunks += [converter.convert(raw) for raw in decoder.drain()]
+        chunks.append(converter.drain())
+
+        samples = self._cat(chunks)
+        assert samples.shape[0] == 2
+        assert 0 < samples.shape[1] < num_samples_from_start
+        assert chunks[0].pts_seconds == pytest.approx(seek_seconds, abs=0.2)
 
     @pytest.mark.parametrize(
         "demuxer_class", (VideoDemuxer, AudioDemuxer), ids=("video", "audio")

@@ -5,10 +5,12 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "CpuDeviceInterface.h"
+
 #include <algorithm>
 #include <cmath>
 #include <numeric>
 #include <sstream>
+#include "AudioCommon.h"
 
 namespace facebook::torchcodec {
 
@@ -557,27 +559,12 @@ CpuDeviceInterface::maybe_flush_audio_buffers() {
 
   int num_channels = audio_stream_options_.num_channels.value_or(
       get_num_channels(codec_context_));
-  torch::stable::Tensor last_samples =
-      torch::stable::empty({num_channels, num_remaining_samples});
-
-  std::vector<uint8_t*> output_buffers(num_channels);
-  for (auto i = 0; i < num_channels; i++) {
-    output_buffers[i] = reinterpret_cast<uint8_t*>(
-        select_row(last_samples, i).mutable_data_ptr<float>());
-  }
-
-  auto actual_num_remaining_samples = swr_convert(
-      swr_context_.get(),
-      output_buffers.data(),
-      num_remaining_samples,
-      nullptr,
-      0);
-
-  return torch::stable::narrow(
-      last_samples,
-      /*dim=*/1,
-      /*start=*/0,
-      /*length=*/actual_num_remaining_samples);
+  return swr_convert_to_tensor(
+      swr_context_,
+      /*src_planes=*/nullptr,
+      /*num_src_samples=*/0,
+      num_channels,
+      num_remaining_samples);
 }
 
 void CpuDeviceInterface::flush() {

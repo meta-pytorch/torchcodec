@@ -457,27 +457,26 @@ UniqueAVFrame allocate_av_frame(
   return av_frame;
 }
 
-SwrContext* create_swr_context(
+namespace {
+SwrContext* create_swr_context_from_layouts(
     AVSampleFormat src_sample_format,
     AVSampleFormat out_sample_format,
     int src_sample_rate,
     int out_sample_rate,
-    const AVFrame& src_av_frame,
-    int out_num_channels) {
+    const SwrChannelLayout& src_layout,
+    const SwrChannelLayout& out_layout) {
   SwrContext* swr_context = nullptr;
   int status = AVSUCCESS;
 #if FFMPEG_HAS_CH_LAYOUT
-  AVChannelLayout out_layout =
-      get_output_channel_layout(out_num_channels, src_av_frame);
   status = swr_alloc_set_opts2(
       &swr_context,
-      &out_layout,
+      // swr_alloc_set_opts2() only became const-correct in FFmpeg 6
+      // (libswresample 4.12): before that it asks for non-const layouts that
+      // it doesn't modify.
+      const_cast<AVChannelLayout*>(&out_layout),
       out_sample_format,
       out_sample_rate,
-      // swr_alloc_set_opts2() only became const-correct in FFmpeg 6
-      // (libswresample 4.12): before that it asks for a non-const layout that
-      // it doesn't modify.
-      const_cast<AVChannelLayout*>(&src_av_frame.ch_layout),
+      const_cast<AVChannelLayout*>(&src_layout),
       src_sample_format,
       src_sample_rate,
       0,
@@ -488,14 +487,12 @@ SwrContext* create_swr_context(
       "Couldn't create SwrContext: ",
       get_ffmpeg_error_string_from_error_code(status));
 #else
-  int64_t out_layout =
-      get_output_channel_layout(out_num_channels, src_av_frame);
   swr_context = swr_alloc_set_opts(
       nullptr,
       out_layout,
       out_sample_format,
       out_sample_rate,
-      get_channel_layout(src_av_frame),
+      src_layout,
       src_sample_format,
       src_sample_rate,
       0,
@@ -512,6 +509,73 @@ SwrContext* create_swr_context(
       "a buggy FFmpeg version. FFmpeg4 is known to fail here in some "
       "valid scenarios. Try to upgrade FFmpeg?");
   return swr_context;
+}
+} // namespace
+
+SwrContext* create_swr_context(
+    AVSampleFormat src_sample_format,
+    AVSampleFormat out_sample_format,
+    int src_sample_rate,
+    int out_sample_rate,
+    const AVFrame& src_av_frame,
+    int out_num_channels) {
+  return create_swr_context_from_layouts(
+      src_sample_format,
+      out_sample_format,
+      src_sample_rate,
+      out_sample_rate,
+#if FFMPEG_HAS_CH_LAYOUT
+      src_av_frame.ch_layout,
+#else
+      get_channel_layout(src_av_frame),
+#endif
+      get_output_channel_layout(out_num_channels, src_av_frame));
+}
+
+SwrContext* create_swr_context(
+    AVSampleFormat src_sample_format,
+    AVSampleFormat out_sample_format,
+    int src_sample_rate,
+    int out_sample_rate,
+    int src_num_channels,
+    int out_num_channels) {
+#if FFMPEG_HAS_CH_LAYOUT
+  AVChannelLayout src_layout;
+  AVChannelLayout out_layout;
+  av_channel_layout_default(&src_layout, src_num_channels);
+  av_channel_layout_default(&out_layout, out_num_channels);
+#else
+  int64_t src_layout = av_get_default_channel_layout(src_num_channels);
+  int64_t out_layout = av_get_default_channel_layout(out_num_channels);
+#endif
+  return create_swr_context_from_layouts(
+      src_sample_format,
+      out_sample_format,
+      src_sample_rate,
+      out_sample_rate,
+      src_layout,
+      out_layout);
+}
+
+int64_t get_swr_output_num_samples_bound(
+    const UniqueSwrContext& swr_context,
+    int num_src_samples,
+    int src_sample_rate,
+    int out_sample_rate) {
+  if (src_sample_rate == out_sample_rate) {
+    return num_src_samples;
+  }
+  // Note that this is an upper bound on the number of output samples.
+  // `swr_convert()` will likely not produce that many when sample rate
+  // conversion is needed: it buffers the last few, because those require
+  // future samples. That's why callers must narrow to what it actually
+  // returned. We could also use `swr_get_out_samples()`, but empirically
+  // `av_rescale_rnd()` gives a tighter bound.
+  return av_rescale_rnd(
+      swr_get_delay(swr_context.get(), src_sample_rate) + num_src_samples,
+      out_sample_rate,
+      src_sample_rate,
+      AV_ROUND_UP);
 }
 
 AVFilterContext* create_av_filter_context_with_options(
@@ -599,24 +663,11 @@ UniqueAVFrame convert_audio_av_frame_samples(
       maybe_skip_samples(src_av_frame, num_samples_to_skip);
 
   converted_av_frame->sample_rate = out_sample_rate;
-  int src_sample_rate = src_av_frame.sample_rate;
-  if (src_sample_rate != out_sample_rate) {
-    // Note that this is an upper bound on the number of output samples.
-    // `swr_convert()` will likely not fill convertedAVFrame with that many
-    // samples if sample rate conversion is needed. It will buffer the last few
-    // ones because those require future samples. That's also why we reset
-    // nb_samples after the call to `swr_convert()`.
-    // We could also use `swr_get_out_samples()` to determine the number of
-    // output samples, but empirically `av_rescale_rnd()` seems to provide a
-    // tighter bound.
-    converted_av_frame->nb_samples = av_rescale_rnd(
-        swr_get_delay(swr_context.get(), src_sample_rate) + num_src_samples,
-        out_sample_rate,
-        src_sample_rate,
-        AV_ROUND_UP);
-  } else {
-    converted_av_frame->nb_samples = num_src_samples;
-  }
+  // A bound, not the real count, which is why we reset nb_samples after the
+  // call to swr_convert() below.
+  converted_av_frame
+      ->nb_samples = static_cast<int>(get_swr_output_num_samples_bound(
+      swr_context, num_src_samples, src_av_frame.sample_rate, out_sample_rate));
 
   set_channel_layout(*converted_av_frame, src_av_frame, out_num_channels);
 

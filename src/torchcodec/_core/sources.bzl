@@ -35,6 +35,7 @@ decoder_core_sources = [
     "PacketDecoder.cpp",
     "AudioCommon.cpp",
     "ColorConverter.cpp",
+    "AudioConverter.cpp",
     "SingleStreamDecoder.cpp",
     "Encoder.cpp",
     "ValidationUtils.cpp",
