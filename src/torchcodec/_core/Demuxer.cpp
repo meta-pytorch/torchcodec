@@ -6,6 +6,7 @@
 
 #include "Demuxer.h"
 
+#include <algorithm>
 #include <sstream>
 
 #include "StableABICompat.h"
@@ -162,6 +163,72 @@ void Demuxer::seek(double seconds) {
   STD_TORCH_CHECK(
       status >= 0,
       get_seek_error_message(format_context_.get(), desired_pts, status));
+}
+
+namespace {
+struct ScannedPacket {
+  int64_t pts;
+  int64_t duration;
+  bool is_key_frame;
+};
+} // namespace
+
+StreamIndex Demuxer::scan() {
+  std::vector<ScannedPacket> packets;
+  if (stream_->nb_frames > 0) {
+    packets.reserve(static_cast<size_t>(stream_->nb_frames));
+  }
+
+  seek(0);
+
+  while (true) {
+    ReferenceAVPacket packet(auto_packet_);
+    int status =
+        read_next_packet(format_context_.get(), active_stream_index_, packet);
+    if (status == AVERROR_EOF) {
+      break;
+    }
+    STD_TORCH_CHECK(
+        status >= AVSUCCESS,
+        "Could not read frame from input file: ",
+        get_ffmpeg_error_string_from_error_code(status));
+
+    if (packet->flags & AV_PKT_FLAG_DISCARD) {
+      continue;
+    }
+
+    packets.push_back(
+        {get_pts_or_dts(packet),
+         packet->duration,
+         (packet->flags & AV_PKT_FLAG_KEY) != 0});
+  }
+
+  std::stable_sort(
+      packets.begin(),
+      packets.end(),
+      [](const ScannedPacket& a, const ScannedPacket& b) {
+        return a.pts < b.pts;
+      });
+
+  seek(0);
+
+  auto num_frames = static_cast<int64_t>(packets.size());
+  StreamIndex index{
+      torch::stable::empty({num_frames}, kStableInt64),
+      torch::stable::empty({num_frames}, kStableInt64),
+      torch::stable::empty({num_frames}, kStableBool),
+      stream_->time_base};
+
+  auto pts = mutable_accessor<int64_t, 1>(index.pts);
+  auto duration = mutable_accessor<int64_t, 1>(index.duration);
+  auto is_key_frame = mutable_accessor<bool, 1>(index.is_key_frame);
+  for (int64_t i = 0; i < num_frames; ++i) {
+    pts[i] = packets[i].pts;
+    duration[i] = packets[i].duration;
+    is_key_frame[i] = packets[i].is_key_frame;
+  }
+
+  return index;
 }
 
 UniqueAVPacket Demuxer::next_packet() {

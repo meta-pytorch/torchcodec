@@ -4771,6 +4771,175 @@ class TestBlocks:
         with pytest.raises(RuntimeError, match="has been drained"):
             decoder.decode(packet)
 
+    # ===== scanning =====
+
+    @pytest.mark.parametrize(
+        "video",
+        (*_ALL_VIDEOS, TEST_SRC_2_720P_MPEG4, TEST_SRC_2_720P_VP9),
+    )
+    def test_scan_matches_video_decoder_index(self, video):
+        # A scan is the same pass over the file that seek_mode="exact" makes at
+        # construction, so the index has to agree with VideoDecoder on
+        # everything the pass produces: how many frames there are, when each of
+        # them is displayed and for how long, and which ones are keyframes.
+        index = Demuxer(video.path).scan()
+        video_decoder = VideoDecoder(video.path, seek_mode="exact")
+        frames = video_decoder.get_all_frames()
+
+        assert len(index) == video_decoder.metadata.num_frames
+        torch.testing.assert_close(
+            index.pts_seconds, frames.pts_seconds, atol=0, rtol=0
+        )
+        torch.testing.assert_close(
+            index.duration_seconds, frames.duration_seconds, atol=0, rtol=0
+        )
+        torch.testing.assert_close(
+            index.key_frame_indices,
+            video_decoder._get_key_frame_indices(),
+            atol=0,
+            rtol=0,
+        )
+        assert index.begin_stream_seconds == video_decoder.metadata.begin_stream_seconds
+        assert index.end_stream_seconds == video_decoder.metadata.end_stream_seconds
+        assert index.average_fps == video_decoder.metadata.average_fps
+
+    @pytest.mark.parametrize(
+        "video",
+        (
+            NASA_VIDEO,
+            H265_VIDEO,
+            TEST_SRC_2_720P_MPEG4,
+            # The only asset that leaves gaps between its frames: one tick,
+            # after every third frame.
+            TEST_SRC_2_720P_VP9,
+        ),
+    )
+    def test_index_at_matches_video_decoder(self, video):
+        # index_at() looks up which frame is on screen at a timestamp;
+        # get_frame_played_at() decodes to find that same frame. They must
+        # agree.
+        index = Demuxer(video.path).scan()
+        video_decoder = VideoDecoder(video.path, seek_mode="exact")
+
+        for i in range(len(index) - 1):  # -1: each frame needs its successor
+            frame_start = float(index.pts_seconds[i])
+            frame_end = frame_start + float(index.duration_seconds[i])
+            next_frame_start = float(index.pts_seconds[i + 1])
+
+            targets = {
+                "inside the frame": frame_start + (frame_end - frame_start) / 4,
+                "first instant": frame_start,
+                # The boundary itself where the frames touch, a moment when
+                # nothing is on screen where they don't.
+                "just after the end": (frame_end + next_frame_start) / 2,
+            }
+            for description, seconds in targets.items():
+                expected = video_decoder.get_frame_played_at(seconds).pts_seconds
+                got = float(index.pts_seconds[index.index_at(seconds)])
+                assert got == expected, f"frame {i}, {description} ({seconds}s)"
+
+    def test_scan_skips_discarded_packets(self):
+        # This file's mp4 edit list flags its first packets - including the
+        # first keyframe - as AV_PKT_FLAG_DISCARD. They're demuxed but never
+        # become frames, so counting packets would put the index out of step
+        # with both the decoder and VideoDecoder.
+        video = DISCARD_FIRST_KEYFRAME_VIDEO
+        index = Demuxer(video.path).scan()
+
+        assert len(list(Demuxer(video.path))) == 30  # number of packets
+        assert len(index) == 25  # number of frames
+        assert VideoDecoder(video.path, seek_mode="exact").metadata.num_frames == 25
+
+    @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
+    def test_key_frame_seconds_for(self, video):
+        # It must return the last keyframe that isn't after the target, with no
+        # keyframe left in between.
+        index = Demuxer(video.path).scan()
+        key_frame_seconds = index.pts_seconds[index.key_frame_indices].tolist()
+
+        for i in range(len(index)):
+            start = float(index.pts_seconds[i])
+            for seconds in (start, start + float(index.duration_seconds[i]) / 2):
+                got = index.key_frame_seconds_for(seconds)
+                assert got <= seconds
+                assert [k for k in key_frame_seconds if got < k <= seconds] == []
+
+        for k in key_frame_seconds:
+            assert index.key_frame_seconds_for(k) == k
+
+    def test_key_frame_seconds_for_when_the_keyframe_was_trimmed(self):
+        # This file's first frames decode from a keyframe that the mp4 edit
+        # list flagged for discard, so it isn't in the index at all and there's
+        # nothing to point at. Fall back to the start of the stream, which is
+        # where FFmpeg goes looking for it anyway.
+        index = Demuxer(DISCARD_FIRST_KEYFRAME_VIDEO.path).scan()
+        pts_seconds = index.pts_seconds
+
+        assert index.key_frame_indices.tolist() == [5, 15]
+        for i in range(5):
+            # pts_seconds[0] isn't a key frame but it's the first frame, so it's the best we can do.
+            assert index.key_frame_seconds_for(pts_seconds[i]) == pts_seconds[0]
+        for i in range(5, 15):
+            assert index.key_frame_seconds_for(pts_seconds[i]) == pts_seconds[5]
+
+    @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_scan_seek_matches_video_decoder_exact(self, video, device):
+        # What the scan is for. Snapping the target back to the preceding
+        # keyframe before seeking is the entire difference between
+        # VideoDecoder's two seek modes for a timestamp lookup, so doing it
+        # here makes the blocks reproduce the exact one - including on
+        # H265_VIDEO, where a plain seek lands past the target
+        # (test_seek_to_non_keyframe_can_land_past_target) and this must not.
+        index = Demuxer(video.path).scan()
+
+        num_targets = 10
+
+        for i in range(0, len(index), max(1, len(index) // num_targets)):
+            # Aim at the middle of a frame, so that no target lands on a frame
+            # boundary where the two sides could round differently.
+            seconds = float(index.pts_seconds[i] + index.duration_seconds[i] / 2)
+            target_pts = float(index.pts_seconds[index.index_at(seconds)])
+            seek_to = index.key_frame_seconds_for(seconds)
+
+            # A fresh VideoDecoder per target: it skips the seek when the
+            # target is just ahead of the last frame it decoded, which would
+            # hide the very behaviour we're comparing against.
+            expected = VideoDecoder(
+                video.path, seek_mode="exact", device=device
+            ).get_frame_played_at(seconds)
+
+            blocks = self._make_blocks(video.path, device)
+            frames = self._frames_after_seek(blocks, seek_to)
+            got = next(frame for frame in frames if frame.pts_seconds >= target_pts)
+
+            assert got.pts_seconds == expected.pts_seconds
+            assert_frames_equal(got.data, expected.data)
+
+    @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_scan_leaves_demuxer_at_the_start(self, video, device):
+        # A scan reads the file all the way to the end and then rewinds, so a
+        # pipeline built on that same demuxer still decodes the whole stream -
+        # and a scan started from somewhere else gives the very same index.
+        demuxer = Demuxer(video.path)
+        index = demuxer.scan()
+
+        decoder = PacketDecoder(demuxer, device=device)
+        converter = ColorConverter(device=device)
+        frames = list(
+            self._convert(converter, self._decode(decoder, self._demux(demuxer)))
+        )
+
+        assert len(frames) == len(index)
+        for frame, expected_pts in zip(frames, index.pts_seconds):
+            assert frame.pts_seconds == expected_pts
+
+        demuxer.seek(index.end_stream_seconds / 2)
+        torch.testing.assert_close(
+            demuxer.scan().pts_seconds, index.pts_seconds, atol=0, rtol=0
+        )
+
     # ===== source kinds =====
 
     @pytest.mark.parametrize("make_source", _BLOCKS_SOURCES)
