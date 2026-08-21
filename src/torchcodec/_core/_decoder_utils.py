@@ -77,24 +77,25 @@ def create_demuxer(
     *,
     source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
     stream_index: int | None = None,
+    media_type: str = "video",
 ) -> Tensor:
     load_core_libraries()
     if isinstance(source, str):
-        return _blocks_create_demuxer_from_file(source, stream_index)
+        return _blocks_create_demuxer_from_file(source, stream_index, media_type)
     elif isinstance(source, Path):
-        return _blocks_create_demuxer_from_file(str(source), stream_index)
+        return _blocks_create_demuxer_from_file(str(source), stream_index, media_type)
     elif isinstance(source, bytes):
-        return _blocks_create_demuxer_from_bytes(source, stream_index)
+        return _blocks_create_demuxer_from_bytes(source, stream_index, media_type)
     elif isinstance(source, Tensor):
-        return _blocks_create_demuxer_from_tensor(source, stream_index)
+        return _blocks_create_demuxer_from_tensor(source, stream_index, media_type)
     elif isinstance(source, (io.RawIOBase, io.BufferedReader)):
-        return _blocks_create_demuxer_from_file_like(source, stream_index)
+        return _blocks_create_demuxer_from_file_like(source, stream_index, media_type)
     elif isinstance(source, io.TextIOBase):
         raise TypeError(
             "source is for reading text, likely from open(..., 'r'). Try with 'rb' for binary reading?"
         )
     elif hasattr(source, "read") and hasattr(source, "seek"):
-        return _blocks_create_demuxer_from_file_like(source, stream_index)
+        return _blocks_create_demuxer_from_file_like(source, stream_index, media_type)
 
     raise TypeError(
         f"Unknown source type: {type(source)}. "

@@ -74,11 +74,11 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "get_frames_by_pts(Tensor(a!) decoder, *, Tensor timestamps) -> (Tensor, Tensor, Tensor)");
   m.def(
-      "_blocks_create_demuxer_from_file(str filename, int? stream_index=None) -> Tensor");
+      "_blocks_create_demuxer_from_file(str filename, int? stream_index=None, str media_type=\"video\") -> Tensor");
   m.def(
-      "_blocks_create_demuxer_from_tensor(Tensor video_tensor, int? stream_index=None) -> Tensor");
+      "_blocks_create_demuxer_from_tensor(Tensor video_tensor, int? stream_index=None, str media_type=\"video\") -> Tensor");
   m.def(
-      "_blocks_create_demuxer_from_file_like(int file_like_context, int? stream_index=None) -> Tensor");
+      "_blocks_create_demuxer_from_file_like(int file_like_context, int? stream_index=None, str media_type=\"video\") -> Tensor");
   m.def("_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool)");
   m.def("_blocks_demuxer_seek(Tensor(a!) demuxer, float seconds) -> ()");
   m.def(
@@ -809,17 +809,31 @@ std::optional<int> to_optional_int(std::optional<int64_t> value) {
   return static_cast<int>(value.value());
 }
 
+AVMediaType parse_media_type(const std::string& media_type) {
+  if (media_type == "video") {
+    return AVMEDIA_TYPE_VIDEO;
+  }
+  STD_TORCH_CHECK(
+      media_type == "audio",
+      "Invalid media_type: '",
+      media_type,
+      "'. Expected 'video' or 'audio'.");
+  return AVMEDIA_TYPE_AUDIO;
+}
+
 torch::stable::Tensor _blocks_create_demuxer_from_file(
     std::string filename,
-    std::optional<int64_t> stream_index) {
-  auto demuxer =
-      std::make_unique<Demuxer>(filename, to_optional_int(stream_index));
+    std::optional<int64_t> stream_index,
+    std::string media_type) {
+  auto demuxer = std::make_unique<Demuxer>(
+      filename, to_optional_int(stream_index), parse_media_type(media_type));
   return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
 }
 
 torch::stable::Tensor _blocks_create_demuxer_from_tensor(
     const torch::stable::Tensor& video_tensor,
-    std::optional<int64_t> stream_index) {
+    std::optional<int64_t> stream_index,
+    std::string media_type) {
   STD_TORCH_CHECK(
       video_tensor.is_contiguous(), "video_tensor must be contiguous");
   STD_TORCH_CHECK(
@@ -829,13 +843,16 @@ torch::stable::Tensor _blocks_create_demuxer_from_tensor(
   auto avio_context_holder = std::make_unique<AVIOContextHolder>(
       std::make_unique<TensorReadIO>(video_tensor), /*is_for_writing=*/false);
   auto demuxer = std::make_unique<Demuxer>(
-      std::move(avio_context_holder), to_optional_int(stream_index));
+      std::move(avio_context_holder),
+      to_optional_int(stream_index),
+      parse_media_type(media_type));
   return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
 }
 
 torch::stable::Tensor _blocks_create_demuxer_from_file_like(
     int64_t file_like_context,
-    std::optional<int64_t> stream_index) {
+    std::optional<int64_t> stream_index,
+    std::string media_type) {
   auto file_like_context_ptr =
       reinterpret_cast<IOInterface*>(file_like_context);
   STD_TORCH_CHECK(
@@ -846,7 +863,9 @@ torch::stable::Tensor _blocks_create_demuxer_from_file_like(
       std::unique_ptr<IOInterface>(file_like_context_ptr),
       /*is_for_writing=*/false);
   auto demuxer = std::make_unique<Demuxer>(
-      std::move(avio_context_holder), to_optional_int(stream_index));
+      std::move(avio_context_holder),
+      to_optional_int(stream_index),
+      parse_media_type(media_type));
   return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
 }
 

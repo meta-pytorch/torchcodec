@@ -21,7 +21,7 @@ stages separately:
 
 .. code-block::
 
-   Demuxer  ->  PacketDecoder  ->  ColorConverter
+   VideoDemuxer  ->  PacketDecoder  ->  ColorConverter
     Packet         RawFrame          RGB Frame
 
 The blocks are passive: they never create threads, and they release the GIL.
@@ -67,9 +67,9 @@ subprocess.run(
 # decoding then runs on NVDEC and the color conversion on the GPU, and the
 # frames never leave the device. Demuxing always happens on the CPU. Left
 # unspecified, ``device`` is the current default device.
-from torchcodec.decoders._blocks import ColorConverter, Demuxer, PacketDecoder
+from torchcodec.decoders._blocks import ColorConverter, VideoDemuxer, PacketDecoder
 
-demuxer = Demuxer(video_path)
+demuxer = VideoDemuxer(video_path)
 packet_decoder = PacketDecoder(demuxer, device=device)
 color_converter = ColorConverter(device=device)
 
@@ -133,7 +133,7 @@ def prefetch(upstream, buffer_size=8):
 
 def sequential():
     # demux -> decode -> color-convert, all on the calling thread.
-    demuxer = Demuxer(video_path)
+    demuxer = VideoDemuxer(video_path)
     packet_decoder = PacketDecoder(demuxer, device=device)
     color_converter = ColorConverter(device=device)
     return color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
@@ -141,7 +141,7 @@ def sequential():
 
 def convert_on_own_thread():
     # [demux + decode] on one thread || [color-convert] on another.
-    demuxer = Demuxer(video_path)
+    demuxer = VideoDemuxer(video_path)
     packet_decoder = PacketDecoder(demuxer, device=device)
     color_converter = ColorConverter(device=device)
     raw_frames = prefetch(decode(packet_decoder, demux(demuxer)))
@@ -152,7 +152,7 @@ def demux_on_own_thread():
     # [demux] on one thread || [decode + color-convert] on another. This is the
     # natural split on CUDA: demuxing is CPU and I/O work, while decoding and
     # color conversion both happen on the GPU, so they belong together.
-    demuxer = Demuxer(video_path)
+    demuxer = VideoDemuxer(video_path)
     packet_decoder = PacketDecoder(demuxer, device=device)
     color_converter = ColorConverter(device=device)
     packets = prefetch(demux(demuxer))
@@ -173,14 +173,14 @@ for pipeline in (sequential, convert_on_own_thread, demux_on_own_thread):
 # Seeking
 # -------
 #
-# ``Demuxer.seek()`` moves the demuxer to a timestamp. A decoder can only start
+# ``VideoDemuxer.seek()`` moves the demuxer to a timestamp. A decoder can only start
 # on a keyframe, so the seek lands on the keyframe at or before the target, and
 # the first frames that come out usually precede it: keep decoding forward and
 # drop them until you reach the timestamp you asked for.
 #
 # The seek also invalidates the frames the decoder is holding on to, so the
 # ``PacketDecoder`` must be ``reset()``.
-demuxer = Demuxer(video_path)
+demuxer = VideoDemuxer(video_path)
 packet_decoder = PacketDecoder(demuxer, device=device)
 color_converter = ColorConverter(device=device)
 
@@ -205,12 +205,12 @@ print(f"asked for {seconds}s, landed on {landed_on.pts_seconds:.3f}s, "
 # Scanning
 # --------
 #
-# ``Demuxer.scan()`` demuxes the whole stream once, without decoding anything,
+# ``VideoDemuxer.scan()`` demuxes the whole stream once, without decoding anything,
 # and returns a ``StreamIndex``: one entry per frame, in presentation order.
 # This is the only way to know a stream's exact frame count, timestamps and
 # keyframe positions - a container header can be wrong about all of them. It
 # costs one pass over the file, and it leaves the demuxer back at the start.
-demuxer = Demuxer(video_path)
+demuxer = VideoDemuxer(video_path)
 index = demuxer.scan()
 packet_decoder = PacketDecoder(demuxer, device=device)
 color_converter = ColorConverter(device=device)
@@ -280,7 +280,7 @@ print(f"frame {i} at {target.pts_seconds:.3f}s")
 #
 # Color conversion is optional. A ``RawFrame`` can hand out the decoder's own
 # planes as tensor views, with no copy and no conversion.
-demuxer = Demuxer(video_path)
+demuxer = VideoDemuxer(video_path)
 packet_decoder = PacketDecoder(demuxer, device=device)
 raw_frame = next(decode(packet_decoder, demux(demuxer)))
 
@@ -352,7 +352,7 @@ subprocess.run(
     capture_output=True,  # x265 logs its banner to stderr no matter what
 )
 
-hdr_demuxer = Demuxer(hdr_video_path)
+hdr_demuxer = VideoDemuxer(hdr_video_path)
 hdr_packet_decoder = PacketDecoder(hdr_demuxer, device=device)
 hdr_raw = next(decode(hdr_packet_decoder, demux(hdr_demuxer)))
 
@@ -412,7 +412,7 @@ ffmpeg.wait()
 # %%
 # The blocks just stream it, and we stop whenever we want:
 ffmpeg = start_live_stream()
-demuxer = Demuxer(fifo_path)
+demuxer = VideoDemuxer(fifo_path)
 packet_decoder = PacketDecoder(demuxer, device=device)
 color_converter = ColorConverter(device=device)
 
