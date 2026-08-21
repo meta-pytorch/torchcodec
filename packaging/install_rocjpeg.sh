@@ -17,31 +17,29 @@ set -euo pipefail
 # (ROCm >= 7.14: librocjpeg ships inside _rocm_sdk_core / _rocm_sdk_devel
 # site-packages).
 #
-# Primary check: importlib.util.find_spec queries Python's import system and
-# works in any environment (conda, venv, system Python, etc.).
-# Fallback glob: handles the case where _rocm_sdk_* is installed for a
-# different Python version than the one running this script (e.g. the script
-# runs in a Python 3.10 conda env but _rocm_sdk_devel is under Python 3.11).
-# The glob fallback uses both one- and two-level prefix patterns so it covers
-# /usr/lib/python*/ (1-level) and /opt/conda/lib/python*/ (2-level) without
-# hardcoding any specific path.
-if python3 -c "
-import importlib.util, pathlib, sys, glob
-for pkg in ('_rocm_sdk_core', '_rocm_sdk_devel'):
+# Use importlib.util.find_spec to query Python's package system — works for
+# any environment (conda, venv, system Python, etc.) without hardcoded paths.
+# Try every Python interpreter available on the system so the check succeeds
+# even when _rocm_sdk_* is installed for a different Python version than the
+# one currently active (e.g. script runs in a Python 3.10 conda env but
+# _rocm_sdk_devel is installed under Python 3.11).
+_rocjpeg_check='
+import importlib.util, pathlib, sys
+for pkg in ("_rocm_sdk_core", "_rocm_sdk_devel"):
     spec = importlib.util.find_spec(pkg)
     if spec and spec.submodule_search_locations:
-        pkg_root = pathlib.Path(list(spec.submodule_search_locations)[0])
-        if (pkg_root / 'include' / 'rocjpeg' / 'rocjpeg.h').exists():
+        root = pathlib.Path(list(spec.submodule_search_locations)[0])
+        if (root / "include" / "rocjpeg" / "rocjpeg.h").exists():
             sys.exit(0)
-suffix = '_rocm_sdk_*/include/rocjpeg/rocjpeg.h'
-if (glob.glob('/*/lib/python*/site-packages/' + suffix) or
-        glob.glob('/*/*/lib/python*/site-packages/' + suffix)):
-    sys.exit(0)
 sys.exit(1)
-" 2>/dev/null; then
-    echo "rocjpeg already installed via ROCm pip-wheel; skipping dnf install."
-    exit 0
-fi
+'
+for _py in python3 python3.13 python3.12 python3.11 python3.10 python3.9; do
+    if command -v "$_py" &>/dev/null && "$_py" -c "$_rocjpeg_check" 2>/dev/null; then
+        echo "rocjpeg already installed via ROCm pip-wheel; skipping dnf install."
+        exit 0
+    fi
+done
+unset _rocjpeg_check _py
 
 # Install from the ROCm dnf repo.
 # mesa-amdgpu-va-drivers is declared as an RPM dependency of rocjpeg but may
