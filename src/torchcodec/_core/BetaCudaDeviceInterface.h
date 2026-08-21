@@ -36,7 +36,9 @@ namespace facebook::torchcodec {
 // TODO_API_BREAKDOWN P2: the name says "standalone", but this is really about
 // owning a GPU buffer. Find one that covers both.
 struct StandAloneFrameAttachedData {
-  cudaStream_t producer_stream = nullptr;
+  // Marks the point where the copy (or upload) that filled `storage` was
+  // enqueued. A consumer on another stream must wait on it.
+  CudaEvent frame_ready;
   torch::stable::Tensor storage;
 };
 
@@ -105,14 +107,19 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   cudaStream_t nvdec_output_stream_ = nullptr;
 
+  // Marks the point in nvdec_output_stream_ where the mapping of the
+  // currently-mapped surface was enqueued. Consumers of that surface running on
+  // another stream wait on it. Re-recorded by every mapping, which is safe:
+  // NVDEC has a single output surface, so a frame is always consumed before the
+  // next one is mapped.
+  CudaEvent nvdec_surface_ready_;
+
   // NVDEC gives us a single output surface, so every mapped frame lives at the
   // same address and a new mapping overwrites whatever the previous frame's
-  // consumer is reading. These track that read so the next mapping can be
-  // ordered after it. See order_mapping_after_surface_read().
-  cudaEvent_t surface_read_done_ = nullptr;
-  cudaStream_t surface_reader_stream_ = nullptr;
+  // consumer is reading. These track that read so the next mapping, in
+  // receive_frame(), can be ordered after it.
+  CudaEvent surface_read_done_;
   void record_surface_read(cudaStream_t stream);
-  void order_mapping_after_surface_read();
 
   UniqueAVFrame convert_cuda_frame_to_av_frame(
       CUdeviceptr frame_ptr,

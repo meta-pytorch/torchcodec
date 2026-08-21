@@ -925,10 +925,6 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
   AVRational time_base = decoder_ptr->time_base();
   double pts_seconds = pts_to_seconds(get_pts_or_dts(*av_frame), time_base);
   double duration_seconds = pts_to_seconds(get_duration(*av_frame), time_base);
-  // A decoder's frames always live on the decoder's own device, including the
-  // ones a CUDA decoder had to decode on the CPU and upload.
-  // TODO_API_BREAKDOWN DESIGN P1: Not sure we need to return the device at all,
-  // the device should always match the device parameter now.
   StableDevice device = decoder_ptr->device();
   torch::stable::Tensor storage =
       decoder_ptr->get_frame_storage(*av_frame).value_or(

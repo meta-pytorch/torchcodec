@@ -528,20 +528,13 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     // What happens to those decode surfaces that haven't yet been mapped is
     // unclear.
     flush();
-    if (surface_read_done_ != nullptr) {
-      // Whoever picks this decoder up from the cache will map its output
-      // surface and overwrite it. We block the host until the last consumer is
-      // done reading.
-      cudaEventSynchronize(surface_read_done_);
-    }
+    // Whoever picks this decoder up from the cache will map its output surface
+    // and overwrite it. We block the host until the last consumer is done
+    // reading.
+    surface_read_done_.synchronize();
     unmap_previous_frame();
     NVDECCache::get_cache(device_).return_decoder(
         &video_format_, surface_format_, std::move(decoder_));
-  }
-
-  if (surface_read_done_ != nullptr) {
-    cudaEventDestroy(surface_read_done_);
-    surface_read_done_ = nullptr;
   }
 
   if (video_parser_) {
@@ -834,8 +827,8 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   //   copy), or that's a frame that was discarded in SingleStreamDecoder.
   // - With the "Blocks" APIs, the PacketDecoder forces a copy in
   //   make_frame_standalone().
-  // Those reads are asynchronous, which is what the call below accounts for.
-  order_mapping_after_surface_read();
+  // Those reads are asynchronous, so we must wait on them to finish.
+  surface_read_done_.make_stream_wait(nvdec_output_stream_);
   unmap_previous_frame();
   CUresult result = cuvidMapVideoFrame(
       *decoder_.get(),
@@ -848,6 +841,8 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   }
   previously_mapped_frame_ = frame_ptr;
 
+  nvdec_surface_ready_.record(nvdec_output_stream_);
+
   av_frame = convert_cuda_frame_to_av_frame(frame_ptr, pitch, disp_info);
 
   return AVSUCCESS;
@@ -858,34 +853,7 @@ void BetaCudaDeviceInterface::record_surface_read(cudaStream_t stream) {
   // enqueued on `stream`.
   // This sets the surface_read_done_ event that must be waited upon before
   // mapping a new frame on the surface.
-  if (surface_read_done_ == nullptr) {
-    cudaError_t err =
-        cudaEventCreateWithFlags(&surface_read_done_, cudaEventDisableTiming);
-    STD_TORCH_CHECK(
-        err == cudaSuccess,
-        "cudaEventCreateWithFlags failed: ",
-        cudaGetErrorString(err));
-  }
-  cudaError_t err = cudaEventRecord(surface_read_done_, stream);
-  STD_TORCH_CHECK(
-      err == cudaSuccess, "cudaEventRecord failed: ", cudaGetErrorString(err));
-  surface_reader_stream_ = stream;
-}
-
-void BetaCudaDeviceInterface::order_mapping_after_surface_read() {
-  // The mapping we're about to do on the NVDEC stream writes the output
-  // surface, which the previous frame's consumer may still be reading from
-  // another stream: the NVDEC stream must also wait on that consumer.
-  if (surface_read_done_ == nullptr ||
-      surface_reader_stream_ == nvdec_output_stream_) {
-    return;
-  }
-  cudaError_t err =
-      cudaStreamWaitEvent(nvdec_output_stream_, surface_read_done_, 0);
-  STD_TORCH_CHECK(
-      err == cudaSuccess,
-      "cudaStreamWaitEvent failed: ",
-      cudaGetErrorString(err));
+  surface_read_done_.record(stream);
 }
 
 void BetaCudaDeviceInterface::unmap_previous_frame() {
@@ -1002,8 +970,8 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   //   receive_frame() without losing the data.
   // - CPU-fallback frames are uploaded here too, so that a PacketDecoder always
   //   hands out frames that live on its own device.
-  // The copy of GPU frames is async, so we record the stream it runs on in the
-  // attached data: a ColorConverter on another stream must wait on it before
+  // Both are async, so we record an event in the attached data right after
+  // enqueueing them: a ColorConverter on another stream must wait on it before
   // reading the frame.
   STD_TORCH_CHECK(
       mode() == Mode::DecoderOnly,
@@ -1022,7 +990,7 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   }
 
   auto attached_data = new StandAloneFrameAttachedData();
-  attached_data->producer_stream = current_stream;
+  attached_data->frame_ready.record(current_stream);
   attached_data->storage = std::move(storage);
   av_frame->opaque_ref = av_buffer_create(
       reinterpret_cast<uint8_t*>(attached_data),
@@ -1117,11 +1085,7 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
   // The surface's content is produced by the mapping post-processing that
   // receive_frame() enqueued on nvdec_output_stream_, which isn't necessarily
   // the stream we're copying on.
-  if (current_stream != nvdec_output_stream_) {
-    sync_streams(
-        /*running_stream=*/nvdec_output_stream_,
-        /*waiting_stream=*/current_stream);
-  }
+  nvdec_surface_ready_.make_stream_wait(current_stream);
 
   cudaError_t err = cudaMemcpyAsync(
       storage.mutable_data_ptr(),
@@ -1367,14 +1331,6 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   //
   // In contrast, a PacketDecoder will always upload CPU frames before retuning
   // them because its contract is to respect its device parameter.
-  //
-  // TODO_API_BREAKDOWN UF P1: Should test mismatch between device param of
-  // PacketDecoder and ColorConversion - maybe we're fine not handling this?
-  // Should check CUDA-CPU, CPU-CUDA, and CUDA-CUDA (with different devices)
-  // cases.
-  // TODO_API_BREAKDOWN UF P1: OK but we want the ColorConverter to be
-  // standalone: can we feed it frames on CPU and then on GPU? Will it be OK
-  // with that? Does that influence the TODO just above?
   bool needs_upload = mode() == Mode::Both && decoding_on_cpu_;
 
   // `uploaded` owns the GPU buffer for as long as it's in scope, which covers
@@ -1396,7 +1352,6 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
       "Expected a pixel format we can color-convert on the GPU, got ",
       av_get_pix_fmt_name(gpu_pix_fmt));
 
-  cudaStream_t producer_stream;
   if (mode() == Mode::ColorConverterOnly) {
     STD_TORCH_CHECK(
         gpu_frame.opaque_ref != nullptr,
@@ -1404,16 +1359,19 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         "standalone ColorConverter must come from a PacketDecoder.");
     auto attached_data = reinterpret_cast<StandAloneFrameAttachedData*>(
         gpu_frame.opaque_ref->data);
-    producer_stream = static_cast<cudaStream_t>(attached_data->producer_stream);
+    attached_data->frame_ready.make_stream_wait(current_stream);
   } else {
     STD_TORCH_CHECK(
         mode() == Mode::Both,
         "Color conversion requires the interface to be initialized for color "
         "conversion.");
-    // Either the frame was just uploaded on the current stream, or it's a
-    // mapped NVDEC surface, whose content is produced by the mapping
-    // post-processing that receive_frame() enqueued on nvdec_output_stream_.
-    producer_stream = needs_upload ? current_stream : nvdec_output_stream_;
+    if (!needs_upload) {
+      // The frame is a mapped NVDEC surface, whose content is produced by the
+      // mapping post-processing that receive_frame() enqueued on
+      // nvdec_output_stream_. An uploaded frame, on the other hand, was
+      // uploaded on current_stream and needs no ordering.
+      nvdec_surface_ready_.make_stream_wait(current_stream);
+    }
   }
 
   auto convert_frame = [&](std::optional<torch::stable::Tensor> pre_alloc)
@@ -1421,7 +1379,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     return convert_yuv_frame_to_rgb(
         gpu_frame,
         device_,
-        producer_stream,
+        current_stream,
         pre_alloc,
         output_dims,
         static_cast<AVPixelFormat>(gpu_frame.format),

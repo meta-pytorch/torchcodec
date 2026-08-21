@@ -114,10 +114,13 @@ void launch_yuv444_to_rgb16_kernel(
 //
 // outputDims: desired output size; if the frame was rounded up to even
 //   dimensions, the result is cropped back to outputDims.
+// stream: the stream to run the conversion on. Ordering it after whatever
+//   produced the frame's samples is the caller's job - only the caller knows
+//   what that was.
 torch::stable::Tensor convert_yuv_frame_to_rgb(
     const AVFrame& av_frame,
     const StableDevice& device,
-    cudaStream_t producer_stream,
+    cudaStream_t stream,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor,
     const FrameDims& output_dims,
     AVPixelFormat pix_fmt,
