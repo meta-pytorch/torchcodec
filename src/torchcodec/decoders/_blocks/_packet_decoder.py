@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from typing import Generic, TypeVar
+
 import torch
 
 from torchcodec._core.ops import (
@@ -18,54 +20,80 @@ from torchcodec._core.ops import (
 )
 
 from .._decoder_utils import convert_device_to_str
-from ._demuxer import _BaseDemuxer
+from ._demuxer import AudioDemuxer, VideoDemuxer
 from ._frame import Packet, RawAudioSamples, RawFrame
 
 
 # TODO_API_BREAKDOWN DOC P1 revisit every single docstring / comments at some point.
 
+_Decoded = TypeVar("_Decoded", RawFrame, RawAudioSamples)
 
-class PacketDecoder:
-    """Decode building block: turns compressed :class:`Packet`\\ s into decoded
-    frames.
 
-    What comes out follows the demuxer it was built from: (YUV)
-    :class:`RawFrame`\\ s for a :class:`VideoDemuxer`, :class:`RawAudioSamples`
-    for an :class:`AudioDemuxer`. Decoding is the same operation either way,
-    which is why this is one block rather than two.
+class _BasePacketDecoder(Generic[_Decoded]):
+    """Shared machinery for :class:`VideoPacketDecoder` and
+    :class:`AudioPacketDecoder`.
 
-    Built from a demuxer (for its codec parameters) and stateful: it holds the
-    codec's buffered state, which is reference frames for video and
-    overlap-add state for a lossy audio codec. Passive and *not* thread-safe:
-    use one ``PacketDecoder`` per thread. FFmpeg's internal codec thread count
-    is kept at 1 for now (not exposed); parallelism comes from composing blocks
-    on your own threads.
-
-    ``device`` accepts a string or a ``torch.device``. It defaults to ``None``,
-    which means the current default device (see ``torch.set_default_device``).
-    Audio is decoded on the CPU only: passing a non-CPU ``device`` alongside an
-    :class:`AudioDemuxer` raises, and leaving it unspecified gives CPU rather
-    than picking up a non-CPU default.
+    Decoding is the same ``avcodec_send_packet`` / ``avcodec_receive_frame``
+    pair for both, so the C++ side is a single class; what differs is only what
+    a decoded frame is turned into, which is :meth:`_receive_ready_frames`.
     """
 
-    def __init__(self, demuxer: _BaseDemuxer, device: str | torch.device | None = None):
-        self._is_audio = demuxer._media_type == "audio"
-        if self._is_audio:
-            if device is not None and torch.device(device).type != "cpu":
-                raise ValueError(
-                    f"Got device={device}, but audio can only be decoded on the "
-                    "CPU. Leave device unspecified, or pass 'cpu'."
-                )
-            device_str = "cpu"
-        else:
-            device_str = convert_device_to_str(device)
-
+    def __init__(self, demuxer, device_str: str):
         self._handle = _blocks_create_packet_decoder(
             demuxer._handle, num_threads=1, device=device_str
         )
         self._drained = False
 
-    def _receive_ready_video_frames(self) -> list[RawFrame]:
+    def _receive_ready_frames(self) -> list[_Decoded]:
+        raise NotImplementedError
+
+    def decode(self, packet: Packet) -> list[_Decoded]:
+        """Send one packet and return whatever is now ready (possibly empty,
+        e.g. while the codec buffers B-frames)."""
+        if self._drained:
+            raise RuntimeError(
+                "This decoder has been drained, and a codec that has been told "
+                "the stream ended ignores any further packet. Create a new "
+                "decoder to decode another stream."
+            )
+        status = _blocks_packet_decoder_send_packet(self._handle, packet._handle)
+        if status < 0:
+            raise RuntimeError(f"Failed to send packet to decoder (status {status})")
+        return self._receive_ready_frames()
+
+    def drain(self) -> list[_Decoded]:
+        """Tell the codec the stream ended, and return the frames it was still
+        holding on to."""
+        _blocks_packet_decoder_send_eof(self._handle)
+        frames = self._receive_ready_frames()
+        self._drained = True
+        return frames
+
+    def reset(self) -> None:
+        """Drop the codec's buffered state and start over. Needed after the
+        demuxer seeked, and after ``drain()``."""
+        _blocks_packet_decoder_reset(self._handle)
+        self._drained = False
+
+
+class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
+    """Decode building block: turns compressed :class:`Packet`\\ s into decoded
+    (YUV) :class:`RawFrame`\\ s.
+
+    Built from a :class:`VideoDemuxer` (for its codec parameters) and stateful
+    (it holds the codec's reference-frame buffer). Passive and *not*
+    thread-safe: use one ``VideoPacketDecoder`` per thread. FFmpeg's internal
+    codec thread count is kept at 1 for now (not exposed); parallelism comes
+    from composing blocks on your own threads.
+
+    ``device`` accepts a string or a ``torch.device``. It defaults to ``None``,
+    which means the current default device (see ``torch.set_default_device``).
+    """
+
+    def __init__(self, demuxer: VideoDemuxer, device: str | torch.device | None = None):
+        super().__init__(demuxer, convert_device_to_str(device))
+
+    def _receive_ready_frames(self) -> list[RawFrame]:
         frames = []
         while True:
             handle, status, pts_seconds, duration_seconds, device, storage = (
@@ -84,7 +112,25 @@ class PacketDecoder:
             )
         return frames
 
-    def _receive_ready_audio_samples(self) -> list[RawAudioSamples]:
+
+class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
+    """Decode building block: turns compressed :class:`Packet`\\ s into
+    :class:`RawAudioSamples`.
+
+    Built from an :class:`AudioDemuxer` (for its codec parameters) and stateful:
+    a lossy codec's overlap-add state means the frames decoded right after a
+    seek are subtly wrong until it re-primes, so ``reset()`` is necessary but
+    not by itself sufficient - see :meth:`AudioDemuxer.seek`. Passive and *not*
+    thread-safe: use one ``AudioPacketDecoder`` per thread.
+
+    There is no ``device`` parameter: audio is always decoded on the CPU, and
+    that doesn't change with ``torch.set_default_device``.
+    """
+
+    def __init__(self, demuxer: AudioDemuxer):
+        super().__init__(demuxer, "cpu")
+
+    def _receive_ready_frames(self) -> list[RawAudioSamples]:
         samples = []
         while True:
             data, status, pts_seconds, duration_seconds, sample_rate, sample_format = (
@@ -102,32 +148,3 @@ class PacketDecoder:
                 )
             )
         return samples
-
-    def _receive_ready_frames(self) -> list[RawFrame] | list[RawAudioSamples]:
-        if self._is_audio:
-            return self._receive_ready_audio_samples()
-        return self._receive_ready_video_frames()
-
-    def decode(self, packet: Packet) -> list[RawFrame] | list[RawAudioSamples]:
-        """Send one packet and return whatever is now ready (possibly empty,
-        e.g. while the codec buffers B-frames)."""
-        if self._drained:
-            raise RuntimeError(
-                "This PacketDecoder has been drained, and a codec that has been "
-                "told the stream ended ignores any further packet. Create a new "
-                "PacketDecoder to decode another stream."
-            )
-        status = _blocks_packet_decoder_send_packet(self._handle, packet._handle)
-        if status < 0:
-            raise RuntimeError(f"Failed to send packet to decoder (status {status})")
-        return self._receive_ready_frames()
-
-    def drain(self) -> list[RawFrame] | list[RawAudioSamples]:
-        _blocks_packet_decoder_send_eof(self._handle)
-        frames = self._receive_ready_frames()
-        self._drained = True
-        return frames
-
-    def reset(self) -> None:
-        _blocks_packet_decoder_reset(self._handle)
-        self._drained = False

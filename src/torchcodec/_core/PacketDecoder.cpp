@@ -75,18 +75,19 @@ PacketDecoder::PacketDecoder(
   AVStream* stream = demuxer.active_stream();
   time_base_ = stream->time_base;
 
+  // This is a property of the container, not of the codec: an audio stream in
+  // an MPEG program stream resyncs after a seek exactly like a video one does.
+  is_mpeg_ps_ =
+      std::string_view(demuxer.format_context()->iformat->name) == "mpeg";
+
   if (is_audio) {
     // Audio codecs are hardcoded to a single FFmpeg thread, see
     // https://github.com/pytorch/torchcodec/issues/1253.
     ffmpeg_thread_count = 1;
-  } else {
-    is_mpeg_ps_ =
-        std::string_view(demuxer.format_context()->iformat->name) == "mpeg";
-    if (const int32_t* matrix = get_display_matrix_from_stream(stream)) {
-      display_matrix_.emplace();
-      std::copy(
-          matrix, matrix + display_matrix_->size(), display_matrix_->begin());
-    }
+  } else if (const int32_t* matrix = get_display_matrix_from_stream(stream)) {
+    display_matrix_.emplace();
+    std::copy(
+        matrix, matrix + display_matrix_->size(), display_matrix_->begin());
   }
 
   const AVCodec* av_codec = find_decoder(stream, device_interface_.get());
