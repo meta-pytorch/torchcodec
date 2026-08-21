@@ -159,7 +159,7 @@ sequential_time = report_stats(times, unit="s")
 ```
 
 ```
-median = 11.02s ± 0.06
+median = 10.97s ± 0.07
 ```
 
 ## Method 2: FFmpeg-based parallelism
@@ -187,7 +187,7 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} FFmpeg th
 ```
 
 ```
-median = 3.69s ± 0.05
+median = 3.68s ± 0.06
 Speedup compared to sequential: 2.98x with 16 FFmpeg threads.
 ```
 
@@ -218,7 +218,7 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} processes
 ```
 
 ```
-median = 4.38s ± 0.08
+median = 4.35s ± 0.05
 Speedup compared to sequential: 2.52x with 16 processes.
 ```
 
@@ -250,8 +250,8 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} threads."
 ```
 
 ```
-median = 1.42s ± 0.06
-Speedup compared to sequential: 7.74x with 16 threads.
+median = 1.43s ± 0.06
+Speedup compared to sequential: 7.66x with 16 threads.
 ```
 
 ## Validation and correctness check
@@ -274,7 +274,7 @@ import shutil
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (1 minutes 26.833 seconds)
+**Total running time of the script:** (1 minutes 26.642 seconds)
 
 [`Download Jupyter notebook: parallel_decoding.ipynb`](../../_downloads/1cff79ade5aa64baf192aceab5e06959/parallel_decoding.ipynb)
 
