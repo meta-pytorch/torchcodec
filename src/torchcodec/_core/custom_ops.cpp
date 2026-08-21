@@ -20,6 +20,7 @@ extern "C" {
 }
 
 #include "AVIOContextHolder.h"
+#include "AudioConverter.h"
 #include "ColorConverter.h"
 #include "Demuxer.h"
 #include "Encoder.h"
@@ -95,6 +96,12 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_audio_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, int, str)");
   m.def(
       "_blocks_create_color_converter(str device=\"cpu\", str output_dtype=\"uint8\") -> Tensor");
+  m.def(
+      "_blocks_create_audio_converter(int? sample_rate=None, int? num_channels=None) -> Tensor");
+  m.def(
+      "_blocks_audio_converter_convert(Tensor(a!) converter, Tensor samples, int sample_rate) -> Tensor");
+  m.def("_blocks_audio_converter_drain(Tensor(a!) converter) -> Tensor");
+  m.def("_blocks_audio_converter_reset(Tensor(a!) converter) -> ()");
   m.def(
       "_blocks_convert_frame(Tensor(a!) converter, Tensor frame, Device device) -> Tensor");
   m.def(
@@ -1039,6 +1046,31 @@ torch::stable::Tensor _blocks_convert_frame(
       *unwrap_tensor_to_pointer<AVFrame>(frame), device);
 }
 
+torch::stable::Tensor _blocks_create_audio_converter(
+    std::optional<int64_t> sample_rate,
+    std::optional<int64_t> num_channels) {
+  auto converter = std::make_unique<AudioConverter>(
+      to_optional_int(sample_rate), to_optional_int(num_channels));
+  return wrap_pointer_to_tensor<AudioConverter>(std::move(converter));
+}
+
+torch::stable::Tensor _blocks_audio_converter_convert(
+    torch::stable::Tensor& converter,
+    const torch::stable::Tensor& samples,
+    int64_t sample_rate) {
+  return unwrap_tensor_to_pointer<AudioConverter>(converter)->convert(
+      samples, static_cast<int>(sample_rate));
+}
+
+torch::stable::Tensor _blocks_audio_converter_drain(
+    torch::stable::Tensor& converter) {
+  return unwrap_tensor_to_pointer<AudioConverter>(converter)->drain();
+}
+
+void _blocks_audio_converter_reset(torch::stable::Tensor& converter) {
+  unwrap_tensor_to_pointer<AudioConverter>(converter)->reset();
+}
+
 using OpsFrameMetadataOutput = std::tuple<
     std::string, // pixel-format
     std::string, // colorspace
@@ -1579,6 +1611,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
       "_blocks_create_color_converter",
       TORCH_BOX(&_blocks_create_color_converter));
   m.impl(
+      "_blocks_create_audio_converter",
+      TORCH_BOX(&_blocks_create_audio_converter));
+  m.impl(
       "_get_json_ffmpeg_library_versions",
       TORCH_BOX(&_get_json_ffmpeg_library_versions));
   m.impl("create_streaming_encoder", TORCH_BOX(&create_streaming_encoder));
@@ -1659,6 +1694,15 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       "_blocks_audio_packet_decoder_receive_frame",
       TORCH_BOX(&_blocks_audio_packet_decoder_receive_frame));
   m.impl("_blocks_convert_frame", TORCH_BOX(&_blocks_convert_frame));
+  m.impl(
+      "_blocks_audio_converter_convert",
+      TORCH_BOX(&_blocks_audio_converter_convert));
+  m.impl(
+      "_blocks_audio_converter_drain",
+      TORCH_BOX(&_blocks_audio_converter_drain));
+  m.impl(
+      "_blocks_audio_converter_reset",
+      TORCH_BOX(&_blocks_audio_converter_reset));
   m.impl("_blocks_frame_metadata", TORCH_BOX(&_blocks_frame_metadata));
   m.impl("_blocks_frame_planes", TORCH_BOX(&_blocks_frame_planes));
   m.impl("_test_frame_pts_equality", TORCH_BOX(&_test_frame_pts_equality));

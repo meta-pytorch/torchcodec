@@ -128,6 +128,18 @@ _blocks_create_color_converter = (
     torch.ops.torchcodec_ns._blocks_create_color_converter.default
 )
 _blocks_convert_frame = torch.ops.torchcodec_ns._blocks_convert_frame.default
+_blocks_create_audio_converter = (
+    torch.ops.torchcodec_ns._blocks_create_audio_converter.default
+)
+_blocks_audio_converter_convert = (
+    torch.ops.torchcodec_ns._blocks_audio_converter_convert.default
+)
+_blocks_audio_converter_drain = (
+    torch.ops.torchcodec_ns._blocks_audio_converter_drain.default
+)
+_blocks_audio_converter_reset = (
+    torch.ops.torchcodec_ns._blocks_audio_converter_reset.default
+)
 _blocks_frame_metadata = torch.ops.torchcodec_ns._blocks_frame_metadata.default
 _blocks_frame_planes = torch.ops.torchcodec_ns._blocks_frame_planes.default
 
