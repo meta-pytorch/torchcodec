@@ -28,6 +28,10 @@ from ._frame import Packet
 # specific timestamps for sampling?
 
 
+# TODO_API_BREAKDOWN DESIGN P1: need to figure out the right API for this.
+# StreamIndex? the fields? The methods?
+# We'll have a big problem if/when we implement multi-stream demuxing - and
+# audio!
 @dataclass
 class StreamIndex:
     """The content of a video stream, as returned by :meth:`Demuxer.scan`.
