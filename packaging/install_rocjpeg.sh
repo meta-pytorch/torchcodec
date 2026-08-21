@@ -13,14 +13,21 @@
 
 set -euo pipefail
 
-# Skip if rocjpeg is already installed (e.g. via the ROCm pip-wheel distribution).
+# Skip if rocjpeg is already installed via the ROCm pip-wheel distribution
+# (ROCm >= 7.14: librocjpeg ships inside _rocm_sdk_core / _rocm_sdk_devel
+# site-packages). Use importlib to find the package regardless of the Python
+# environment (conda or not).
 if python3 -c "
-import glob, sys
-found = (glob.glob('/opt/rocm/include/rocjpeg/rocjpeg.h') or
-         glob.glob('/opt/conda/**/rocjpeg.h', recursive=True))
-sys.exit(0 if found else 1)
+import importlib.util, pathlib, sys
+for pkg in ('_rocm_sdk_core', '_rocm_sdk_devel'):
+    spec = importlib.util.find_spec(pkg)
+    if spec and spec.submodule_search_locations:
+        pkg_root = pathlib.Path(list(spec.submodule_search_locations)[0])
+        if (pkg_root / 'include' / 'rocjpeg' / 'rocjpeg.h').exists():
+            sys.exit(0)
+sys.exit(1)
 " 2>/dev/null; then
-    echo "rocjpeg already installed; skipping dnf install."
+    echo "rocjpeg already installed via ROCm pip-wheel; skipping dnf install."
     exit 0
 fi
 

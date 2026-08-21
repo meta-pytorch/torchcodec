@@ -133,12 +133,17 @@ def _find_nvjpeg_license():
     return None
 
 
-def _find_rocjpeg_license():
-    """Find rocjpeg's LICENSE file to document the runtime dependency."""
-    search_roots = []
+def _get_rocm_search_roots() -> list[Path]:
+    """Return candidate ROCm prefix directories in priority order.
+
+    Checks ROCM_HOME / ROCM_PATH environment variables, then torch's own
+    ROCM_HOME.  No hard-coded fallback is added so misconfigurations surface
+    as warnings rather than silently using the wrong path.
+    """
+    roots: list[Path] = []
     for var in ("ROCM_HOME", "ROCM_PATH"):
         if v := os.environ.get(var):
-            search_roots.append(Path(v))
+            roots.append(Path(v))
     try:
         result = subprocess.run(
             [
@@ -151,10 +156,15 @@ def _find_rocjpeg_license():
             check=False,
         )
         if result.returncode == 0 and result.stdout.strip():
-            search_roots.append(Path(result.stdout.strip()))
+            roots.append(Path(result.stdout.strip()))
     except Exception:
         pass
-    for root in search_roots:
+    return roots
+
+
+def _find_rocjpeg_license():
+    """Find rocjpeg's LICENSE file to document the runtime dependency."""
+    for root in _get_rocm_search_roots():
         candidate = root / "share" / "doc" / "rocjpeg" / "LICENSE"
         if candidate.is_file():
             return candidate
@@ -169,46 +179,21 @@ def _find_rocjpeg_lib():
     in the user's ROCm install). This function returns the directory to add to
     LD_LIBRARY_PATH before calling auditwheel.
 
-    Searches ROCM_HOME / ROCM_PATH env vars, torch's ROCM_HOME, the standard
-    /opt/rocm fallback, and (for ROCm >= 7.14) the _rocm_sdk_* pip-wheel
-    site-packages layout where librocjpeg lives inside _rocm_sdk_core/lib.
+    Searches ROCM_HOME / ROCM_PATH env vars and torch's ROCM_HOME first, then
+    (for ROCm >= 7.14) the _rocm_sdk_* pip-wheel site-packages layout where
+    librocjpeg lives inside _rocm_sdk_core/lib.
     """
-    search_roots = []
-    for var in ("ROCM_HOME", "ROCM_PATH"):
-        if v := os.environ.get(var):
-            search_roots.append(Path(v))
-    # Ask torch where it found ROCm at its own build time.
-    try:
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "from torch.utils.cpp_extension import ROCM_HOME; print(ROCM_HOME or '')",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            search_roots.append(Path(result.stdout.strip()))
-    except Exception:
-        pass
-    search_roots.append(Path("/opt/rocm"))
+    import glob as _glob
+    import site as _site
 
-    for root in search_roots:
+    for root in _get_rocm_search_roots():
         for lib_dir in (root / "lib", root / "lib64"):
-            candidate = lib_dir / "librocjpeg.so.1"
-            if not candidate.exists():
-                # Try unversioned symlink
-                candidate = lib_dir / "librocjpeg.so"
-            if candidate.exists():
+            if _glob.glob(str(lib_dir / "librocjpeg.so.*")):
                 return lib_dir
 
     # ROCm >= 7.14 pip-wheel fallback: librocjpeg lives in _rocm_sdk_core/lib
     # (or _rocm_sdk_devel/lib) inside site-packages rather than in a system
     # prefix like /opt/rocm.  Use the same glob strategy as install_rocjpeg.sh.
-    import glob as _glob
-    import site as _site
     # Search the current interpreter's site-packages first (avoids crossing
     # conda env boundaries), then fall back to the broader /opt/conda tree.
     candidate_dirs: list[str] = []
@@ -223,14 +208,12 @@ def _find_rocjpeg_lib():
     for site_dir in candidate_dirs:
         for pkg in ("_rocm_sdk_core", "_rocm_sdk_devel"):
             lib_dir = Path(site_dir) / pkg / "lib"
-            for lib_name in ("librocjpeg.so.1", "librocjpeg.so"):
-                if (lib_dir / lib_name).exists():
-                    return lib_dir
+            if _glob.glob(str(lib_dir / "librocjpeg.so.*")):
+                return lib_dir
     # Last-resort broad glob (covers non-standard conda prefixes).
-    for pattern in ("/opt/conda/**/librocjpeg.so.1", "/opt/conda/**/librocjpeg.so"):
-        hits = sorted(_glob.glob(pattern, recursive=True))
-        if hits:
-            return Path(hits[0]).parent
+    hits = sorted(_glob.glob("/opt/conda/**/librocjpeg.so.*", recursive=True))
+    if hits:
+        return Path(hits[0]).parent
     return None
 
 
