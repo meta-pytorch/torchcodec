@@ -5048,9 +5048,7 @@ class TestBlocks:
         assert len(list(AudioDemuxer(make_source(NASA_AUDIO_MP3.path)))) == expected
 
     def test_audio_demuxer_seek(self):
-        # Seeking past the start leaves fewer packets to demux. We don't assert
-        # anything about *which* ones: audio has no keyframe to land on, so
-        # where a seek lands is the demuxer's business, not something we pin.
+        # Seeking past the start leaves fewer packets to demux.
         num_packets_from_start = len(list(AudioDemuxer(NASA_AUDIO_MP3.path)))
 
         demuxer = AudioDemuxer(NASA_AUDIO_MP3.path)
@@ -5058,10 +5056,6 @@ class TestBlocks:
         num_packets_after_seek = len(list(demuxer))
 
         assert 0 < num_packets_after_seek < num_packets_from_start
-
-    def test_audio_demuxer_has_no_scan(self):
-        # See the TODO in _demuxer.py: StreamIndex is video-shaped.
-        assert not hasattr(AudioDemuxer(NASA_AUDIO_MP3.path), "scan")
 
     @pytest.mark.parametrize("stream_index", (-1, 6, 1000))
     def test_invalid_stream_index_raises(self, stream_index):

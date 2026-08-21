@@ -261,10 +261,6 @@ class VideoDemuxer(_BaseDemuxer):
         )
 
 
-# TODO_API_BREAKDOWN FEAT P1 no scan() here: StreamIndex is video-shaped
-# (keyframes, frame indices, fps), and audio has none of those notions. What an
-# audio scan should return - exact duration, total sample count - is part of the
-# StreamIndex redesign above.
 class AudioDemuxer(_BaseDemuxer):
     """Demux building block: opens a container and yields the compressed
     :class:`Packet`\\ s for one audio stream. Does no decoding.
