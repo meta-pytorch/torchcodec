@@ -93,6 +93,7 @@ from .utils import (
     H265_VIDEO,
     HEAPBOF_PNG,
     in_fbcode,
+    IS_WINDOWS,
     make_video_decoder,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
@@ -4714,6 +4715,7 @@ class TestBlocks:
         assert_frames_equal(got.data, expected.data)
 
     @needs_ffmpeg_cli
+    @pytest.mark.skipif(IS_WINDOWS, reason="os.mkfifo isn't available on Windows")
     def test_seek_on_non_seekable_source_raises(self, tmp_path):
         # A named pipe fed by a live stream: there's nothing to seek in, and
         # FFmpeg reports that as a bare EPERM, which we turn into something
