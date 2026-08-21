@@ -5062,9 +5062,12 @@ class TestBlocks:
     # ===== Audio decoding: RawAudioSamples =====
 
     @staticmethod
-    def _decode_audio(asset, stream_index=None):
+    def _decode_audio(asset, stream_index=None, seek_seconds=None):
         demuxer = AudioDemuxer(asset.path, stream_index=stream_index)
         decoder = AudioPacketDecoder(demuxer)
+        if seek_seconds is not None:
+            demuxer.seek(seek_seconds)
+            decoder.reset()
         chunks = []
         for packet in demuxer:
             chunks += decoder.decode(packet)
@@ -5117,11 +5120,39 @@ class TestBlocks:
             NASA_AUDIO,
         ),
     )
-    def test_audio_raw_samples_match_audio_decoder(self, asset):
+    @pytest.mark.parametrize("seek_fraction", (None, 1 / 3, 2 / 3))
+    def test_audio_raw_samples_match_audio_decoder(self, asset, seek_fraction):
         # We hand out the true source samples: normalizing them the way FFmpeg
         # does reproduces AudioDecoder's output bit for bit. This is also what
         # pins the de-interleaving, most visibly on the 16-channel asset.
-        raw = torch.cat([chunk.data for chunk in self._decode_audio(asset)], dim=1)
+        #
+        # It holds after a seek too, but only once the caller has done the
+        # pre-roll these blocks don't do: a lossy codec decodes its first frames
+        # after a seek from a flushed state, so they come out subtly wrong -
+        # plausible, but not what whole-file decoding gives - until it
+        # re-primes. Dropping those frames is exactly what pre-rolling means,
+        # and everything from there on is bit exact again. Without the drop,
+        # mp3 and aac diverge over their first ~1000-1600 samples and match
+        # perfectly after that.
+        if seek_fraction is not None and asset is SINE_STEREO_MP2_MPEG_PS:
+            pytest.skip(
+                "MPEG-PS resync after a seek is unreliable for both the blocks "
+                "and AudioDecoder (which raises seeking this file to 2.8s), so "
+                "it can't tell us anything here. See "
+                "test_audio_decoder_mpeg_ps_resync_after_seek."
+            )
+
+        seek_seconds = (
+            None if seek_fraction is None else asset.duration_seconds * seek_fraction
+        )
+        chunks = self._decode_audio(asset, seek_seconds=seek_seconds)
+        if seek_seconds is not None:
+            # Same number of frames SingleStreamDecoder pre-rolls by, see
+            # Note [Audio pre-roll and post-roll].
+            chunks = chunks[4:]
+        assert len(chunks) > 0
+
+        raw = torch.cat([chunk.data for chunk in chunks], dim=1)
 
         if raw.dtype == torch.uint8:
             got = (raw.to(torch.float32) - 128) / 128
@@ -5130,7 +5161,15 @@ class TestBlocks:
         else:
             got = raw.to(torch.float32)
 
-        expected = AudioDecoder(asset.path).get_all_samples().data
+        decoder = AudioDecoder(asset.path)
+        if seek_seconds is None:
+            expected = decoder.get_all_samples().data
+        else:
+            # Re-anchor on the first frame we kept, so both sides start on the
+            # same sample.
+            expected = decoder.get_samples_played_in_range(
+                start_seconds=chunks[0].pts_seconds
+            ).data
         torch.testing.assert_close(got, expected, atol=0, rtol=0)
 
     def test_audio_raw_samples_pts(self):
