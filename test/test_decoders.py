@@ -5180,19 +5180,25 @@ class TestBlocks:
         num_samples = sum(chunk.num_samples for chunk in chunks)
         assert 0 < num_samples < asset.duration_seconds * asset.sample_rate
 
+    @pytest.mark.parametrize(
+        "demuxer_class", (VideoDemuxer, AudioDemuxer), ids=("video", "audio")
+    )
     @pytest.mark.parametrize("stream_index", (-1, 6, 1000))
-    def test_invalid_stream_index_raises(self, stream_index):
+    def test_invalid_stream_index_raises(self, demuxer_class, stream_index):
         with pytest.raises(RuntimeError, match="is not a valid stream"):
-            VideoDemuxer(NASA_VIDEO.path, stream_index=stream_index)
+            demuxer_class(NASA_VIDEO.path, stream_index=stream_index)
 
-    def test_bad_source_type_raises(self):
+    @pytest.mark.parametrize(
+        "demuxer_class", (VideoDemuxer, AudioDemuxer), ids=("video", "audio")
+    )
+    def test_bad_source_type_raises(self, demuxer_class):
         with pytest.raises(TypeError, match="Unknown source type"):
-            VideoDemuxer(123)
+            demuxer_class(123)
 
         # user mistakenly forgets to specify binary reading when creating a
         # file-like object from open()
         with pytest.raises(TypeError, match="binary reading?"):
-            VideoDemuxer(open(NASA_VIDEO.path))
+            demuxer_class(open(NASA_VIDEO.path))
 
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn
