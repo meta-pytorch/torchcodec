@@ -20,6 +20,8 @@
 #include "StableABICompat.h"
 
 extern "C" {
+#include <libavutil/dict.h>
+#include <libavutil/parseutils.h>
 #include <libavutil/pixdesc.h>
 }
 
@@ -136,6 +138,15 @@ void SingleStreamDecoder::initialize_decoder() {
     if (av_stream->duration > 0 && av_stream->time_base.den > 0) {
       stream_metadata.duration_seconds_from_header =
           pts_to_seconds(av_stream->duration, av_stream->time_base);
+    } else if (const AVDictionaryEntry* duration_tag =
+                   av_dict_get(av_stream->metadata, "DURATION", nullptr, 0);
+               duration_tag != nullptr && duration_tag->value != nullptr) {
+      int64_t duration_us = 0;
+      if (av_parse_time(&duration_us, duration_tag->value, 1) >= 0 &&
+          duration_us > 0) {
+        stream_metadata.duration_seconds_from_header =
+            static_cast<double>(duration_us) / AV_TIME_BASE;
+      }
     }
     if (av_stream->start_time != AV_NOPTS_VALUE) {
       stream_metadata.begin_stream_seconds_from_header =
