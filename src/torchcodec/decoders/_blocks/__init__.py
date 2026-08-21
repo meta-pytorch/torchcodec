@@ -21,7 +21,7 @@ API_breakdown_claude_plan.md for the design and rationale.
 
 from ._color_converter import ColorConverter
 from ._demuxer import AudioDemuxer, StreamIndex, VideoDemuxer
-from ._frame import Packet, RawFrame
+from ._frame import Packet, RawAudioSamples, RawFrame
 from ._packet_decoder import PacketDecoder
 
 __all__ = [
@@ -31,6 +31,7 @@ __all__ = [
     "ColorConverter",
     "Packet",
     "RawFrame",
+    "RawAudioSamples",
     "StreamIndex",
 ]
 

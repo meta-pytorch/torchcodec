@@ -46,6 +46,7 @@ from torchcodec.decoders._blocks import (
     ColorConverter,
     Packet,
     PacketDecoder,
+    RawAudioSamples,
     RawFrame,
     VideoDemuxer,
 )
@@ -5056,6 +5057,130 @@ class TestBlocks:
         num_packets_after_seek = len(list(demuxer))
 
         assert 0 < num_packets_after_seek < num_packets_from_start
+
+    # ===== Audio decoding: RawAudioSamples =====
+
+    @staticmethod
+    def _decode_audio(asset, stream_index=None):
+        demuxer = AudioDemuxer(asset.path, stream_index=stream_index)
+        decoder = PacketDecoder(demuxer)
+        chunks = []
+        for packet in demuxer:
+            chunks += decoder.decode(packet)
+        chunks += decoder.drain()
+        return chunks
+
+    @pytest.mark.parametrize(
+        "asset, sample_format, dtype",
+        (
+            (SINE_MONO_U8, "u8", torch.uint8),
+            (SINE_MONO_S16, "s16", torch.int16),
+            (SINE_MONO_S32, "s32", torch.int32),
+            # FFmpeg has no 24-bit sample format, so a 24-bit source is s32.
+            (SINE_MONO_S24, "s32", torch.int32),
+            (SINE_MONO_F32, "flt", torch.float32),
+            (SINE_MONO_F64, "dbl", torch.float64),
+            (SINE_STEREO_MP2_MPEG_PS, "s16p", torch.int16),
+            (SINE_16_CHANNEL_S16, "s16", torch.int16),
+            (NASA_AUDIO_MP3, "fltp", torch.float32),
+        ),
+    )
+    def test_audio_raw_samples_dtype_and_shape(self, asset, sample_format, dtype):
+        # The decoder hands out the codec's own sample type, always as
+        # [num_channels, num_samples]. The packed formats above (no trailing
+        # 'p') are the ones exercising the de-interleaving path.
+        chunks = self._decode_audio(asset)
+        assert len(chunks) > 0
+
+        for chunk in chunks:
+            assert isinstance(chunk, RawAudioSamples)
+            assert chunk.sample_format == sample_format
+            assert chunk.data.dtype == dtype
+            assert chunk.data.ndim == 2
+            assert chunk.data.is_contiguous()
+            assert chunk.num_channels == asset.num_channels
+            assert chunk.sample_rate == asset.sample_rate
+            assert chunk.duration_seconds >= 0
+
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            SINE_MONO_U8,
+            SINE_MONO_S16,
+            SINE_MONO_S32,
+            SINE_MONO_F32,
+            SINE_MONO_F64,
+            SINE_STEREO_MP2_MPEG_PS,
+            SINE_16_CHANNEL_S16,
+            NASA_AUDIO_MP3,
+            NASA_AUDIO,
+        ),
+    )
+    def test_audio_raw_samples_match_audio_decoder(self, asset):
+        # We hand out the true source samples: normalizing them the way FFmpeg
+        # does reproduces AudioDecoder's output bit for bit. This is also what
+        # pins the de-interleaving, most visibly on the 16-channel asset.
+        raw = torch.cat([chunk.data for chunk in self._decode_audio(asset)], dim=1)
+
+        if raw.dtype == torch.uint8:
+            got = (raw.to(torch.float32) - 128) / 128
+        elif raw.dtype in (torch.int16, torch.int32):
+            got = raw.to(torch.float32) / -float(torch.iinfo(raw.dtype).min)
+        else:
+            got = raw.to(torch.float32)
+
+        expected = AudioDecoder(asset.path).get_all_samples().data
+        torch.testing.assert_close(got, expected, atol=0, rtol=0)
+
+    def test_audio_raw_samples_pts(self):
+        chunks = self._decode_audio(SINE_MONO_S16)
+        pts = [chunk.pts_seconds for chunk in chunks]
+        assert pts == sorted(pts)
+        assert pts[0] == pytest.approx(0, abs=1e-6)
+
+    def test_audio_decoder_output_type_follows_the_demuxer(self):
+        # Same PacketDecoder class, different output type: that's the whole
+        # reason it isn't split in two.
+        for demuxer_class, expected_type in (
+            (AudioDemuxer, RawAudioSamples),
+            (VideoDemuxer, RawFrame),
+        ):
+            demuxer = demuxer_class(NASA_VIDEO.path)
+            decoder = PacketDecoder(demuxer)
+            # A codec needs more than one packet before it outputs anything.
+            decoded = []
+            while not decoded:
+                decoded = decoder.decode(demuxer.next_packet())
+            assert isinstance(decoded[0], expected_type)
+
+    @pytest.mark.parametrize("device", ("cuda", "cuda:0", torch.device("cuda")))
+    def test_audio_decoder_non_cpu_device_raises(self, device):
+        # Not gated on CUDA being available: we reject the request before ever
+        # touching a device.
+        demuxer = AudioDemuxer(NASA_AUDIO_MP3.path)
+        with pytest.raises(ValueError, match="audio can only be decoded on the CPU"):
+            PacketDecoder(demuxer, device=device)
+
+    @needs_cuda
+    def test_audio_decoder_ignores_non_cpu_default_device(self):
+        # An unspecified device means CPU for audio, not whatever
+        # torch.get_default_device() happens to be. Compare against a plain
+        # run, so this also catches us silently decoding something else.
+        expected = self._decode_audio(NASA_AUDIO_MP3)[0].data
+
+        with torch.device("cuda"):
+            got = self._decode_audio(NASA_AUDIO_MP3)[0].data
+        assert got.device.type == "cpu"
+        torch.testing.assert_close(got, expected, atol=0, rtol=0)
+
+        original_device = torch.get_default_device()
+        try:
+            torch.set_default_device("cuda")
+            got = self._decode_audio(NASA_AUDIO_MP3)[0].data
+        finally:
+            torch.set_default_device(original_device)
+        assert got.device.type == "cpu"
+        torch.testing.assert_close(got, expected, atol=0, rtol=0)
 
     @pytest.mark.parametrize("stream_index", (-1, 6, 1000))
     def test_invalid_stream_index_raises(self, stream_index):

@@ -6,7 +6,10 @@
 
 #include "PacketDecoder.h"
 
+#include "AudioCommon.h"
+
 #include <algorithm>
+#include <cstring>
 
 namespace facebook::torchcodec {
 
@@ -57,7 +60,13 @@ const AVCodec* find_decoder(
 PacketDecoder::PacketDecoder(
     const Demuxer& demuxer,
     const StableDevice& device,
-    std::optional<int> ffmpeg_thread_count) {
+    std::optional<int> ffmpeg_thread_count)
+    : media_type_(demuxer.media_type()) {
+  bool is_audio = media_type_ == AVMEDIA_TYPE_AUDIO;
+  STD_TORCH_CHECK(
+      !is_audio || device.type() == kStableCPU,
+      "Audio can only be decoded on the CPU.");
+
   device_interface_ = create_device_interface(device);
   STD_TORCH_CHECK(
       device_interface_ != nullptr,
@@ -65,17 +74,34 @@ PacketDecoder::PacketDecoder(
 
   AVStream* stream = demuxer.active_stream();
   time_base_ = stream->time_base;
-  is_mpeg_ps_ =
-      std::string_view(demuxer.format_context()->iformat->name) == "mpeg";
-  if (const int32_t* matrix = get_display_matrix_from_stream(stream)) {
-    display_matrix_.emplace();
-    std::copy(
-        matrix, matrix + display_matrix_->size(), display_matrix_->begin());
+
+  if (is_audio) {
+    // Audio codecs are hardcoded to a single FFmpeg thread, see
+    // https://github.com/pytorch/torchcodec/issues/1253.
+    ffmpeg_thread_count = 1;
+  } else {
+    is_mpeg_ps_ =
+        std::string_view(demuxer.format_context()->iformat->name) == "mpeg";
+    if (const int32_t* matrix = get_display_matrix_from_stream(stream)) {
+      display_matrix_.emplace();
+      std::copy(
+          matrix, matrix + display_matrix_->size(), display_matrix_->begin());
+    }
   }
+
   const AVCodec* av_codec = find_decoder(stream, device_interface_.get());
   codec_context_ = create_and_open_codec_context(
       stream, av_codec, device_interface_.get(), ffmpeg_thread_count);
   device_interface_->initialize(codec_context_);
+
+  if (is_audio) {
+    // Nothing else to set up: unlike video, we hand out the samples in the
+    // codec's own format, so no conversion state is needed here. Note we
+    // deliberately do NOT set request_sample_fmt: what SingleStreamDecoder
+    // asks for (FLTP) is an optimization for its own conversion, and here it
+    // would hide what the codec natively produces.
+    return;
+  }
 
   const AVPixFmtDescriptor* stream_desc =
       av_pix_fmt_desc_get(codec_context_->pix_fmt);
@@ -133,10 +159,12 @@ int PacketDecoder::receive_frame(UniqueAVFrame& av_frame) {
   int status = device_interface_->receive_frame(av_frame);
   if (status == AVSUCCESS) {
     device_interface_->make_frame_standalone(av_frame);
-    // Attach a copy of the display matrix to the frame, so the ColorConverter
-    // can use it.
-    set_display_matrix_on_frame(
-        *av_frame, display_matrix_ ? display_matrix_->data() : nullptr);
+    if (media_type_ == AVMEDIA_TYPE_VIDEO) {
+      // Attach a copy of the display matrix to the frame, so the ColorConverter
+      // can use it.
+      set_display_matrix_on_frame(
+          *av_frame, display_matrix_ ? display_matrix_->data() : nullptr);
+    }
   }
   return status;
 }
@@ -238,6 +266,76 @@ std::vector<torch::stable::Tensor> frame_planes(
   }
 
   return planes;
+}
+
+namespace {
+// Scatters `num_channels`-interleaved samples into one contiguous row per
+// channel. Templated on an integer of the right width rather than the actual
+// sample type: we're only moving bytes around, so all that matters is size.
+template <typename T>
+void deinterleave(
+    const uint8_t* src,
+    uint8_t* dst,
+    int num_channels,
+    int num_samples) {
+  const T* in = reinterpret_cast<const T*>(src);
+  T* out = reinterpret_cast<T*>(dst);
+  for (int channel = 0; channel < num_channels; ++channel) {
+    T* row = out + static_cast<int64_t>(channel) * num_samples;
+    for (int sample = 0; sample < num_samples; ++sample) {
+      row[sample] = in[static_cast<int64_t>(sample) * num_channels + channel];
+    }
+  }
+}
+} // namespace
+
+torch::stable::Tensor audio_samples(const AVFrame& av_frame) {
+  auto sample_format = static_cast<AVSampleFormat>(av_frame.format);
+  int num_channels = get_num_channels(av_frame);
+  int64_t num_samples = av_frame.nb_samples;
+
+  torch::stable::Tensor samples = torch::stable::empty(
+      {num_channels, num_samples}, sample_format_dtype(sample_format));
+  if (num_samples == 0) {
+    return samples;
+  }
+
+  int bytes_per_sample = av_get_bytes_per_sample(sample_format);
+  auto* dst = static_cast<uint8_t*>(samples.mutable_data_ptr());
+  int64_t bytes_per_channel = num_samples * bytes_per_sample;
+
+  if (av_sample_fmt_is_planar(sample_format)) {
+    for (int channel = 0; channel < num_channels; ++channel) {
+      // extended_data rather than data: the latter only holds
+      // AV_NUM_DATA_POINTERS (8) pointers, and we support more channels.
+      std::memcpy(
+          dst + channel * bytes_per_channel,
+          av_frame.extended_data[channel],
+          bytes_per_channel);
+    }
+    return samples;
+  }
+
+  const uint8_t* src = av_frame.extended_data[0];
+  int num_samples_int = static_cast<int>(num_samples);
+  switch (bytes_per_sample) {
+    case 1:
+      deinterleave<uint8_t>(src, dst, num_channels, num_samples_int);
+      break;
+    case 2:
+      deinterleave<uint16_t>(src, dst, num_channels, num_samples_int);
+      break;
+    case 4:
+      deinterleave<uint32_t>(src, dst, num_channels, num_samples_int);
+      break;
+    case 8:
+      deinterleave<uint64_t>(src, dst, num_channels, num_samples_int);
+      break;
+    default:
+      STD_TORCH_CHECK(
+          false, "Unexpected sample width: ", bytes_per_sample, " bytes.");
+  }
+  return samples;
 }
 
 } // namespace facebook::torchcodec
