@@ -121,6 +121,9 @@ _blocks_packet_decoder_reset = (
 _blocks_packet_decoder_receive_frame = (
     torch.ops.torchcodec_ns._blocks_packet_decoder_receive_frame.default
 )
+_blocks_audio_packet_decoder_receive_frame = (
+    torch.ops.torchcodec_ns._blocks_audio_packet_decoder_receive_frame.default
+)
 _blocks_create_color_converter = (
     torch.ops.torchcodec_ns._blocks_create_color_converter.default
 )

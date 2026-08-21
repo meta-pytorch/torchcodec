@@ -7,13 +7,14 @@
 """Private, experimental building-block decode API.
 
 Exposes the three decode stages -- :class:`VideoDemuxer`,
-:class:`PacketDecoder`, :class:`ColorConverter` -- as passive, composable,
+:class:`VideoPacketDecoder`, :class:`ColorConverter` -- as passive, composable,
 GIL-releasing units, so a caller can build its own (threaded) decode pipeline
 and tune how the stages overlap. The blocks do no threading themselves.
 
-:class:`AudioDemuxer` is the audio counterpart of :class:`VideoDemuxer`;
-:class:`PacketDecoder` is shared, since decoding is the same operation either
-way.
+Audio has the same three stages: :class:`AudioDemuxer` and
+:class:`AudioPacketDecoder`. The two decoders are a single class in C++, since
+decoding is the same operation either way; they are separate here because what
+they hand out, and how they are configured, isn't.
 
 This is experimental and private; the API may change. See
 API_breakdown_claude_plan.md for the design and rationale.
@@ -21,16 +22,18 @@ API_breakdown_claude_plan.md for the design and rationale.
 
 from ._color_converter import ColorConverter
 from ._demuxer import AudioDemuxer, StreamIndex, VideoDemuxer
-from ._frame import Packet, RawFrame
-from ._packet_decoder import PacketDecoder
+from ._frame import Packet, RawAudioSamples, RawFrame
+from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
 
 __all__ = [
     "VideoDemuxer",
     "AudioDemuxer",
-    "PacketDecoder",
+    "VideoPacketDecoder",
+    "AudioPacketDecoder",
     "ColorConverter",
     "Packet",
     "RawFrame",
+    "RawAudioSamples",
     "StreamIndex",
 ]
 

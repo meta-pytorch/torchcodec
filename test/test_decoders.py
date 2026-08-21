@@ -43,11 +43,13 @@ from torchcodec.decoders import (
 )
 from torchcodec.decoders._blocks import (
     AudioDemuxer,
+    AudioPacketDecoder,
     ColorConverter,
     Packet,
-    PacketDecoder,
+    RawAudioSamples,
     RawFrame,
     VideoDemuxer,
+    VideoPacketDecoder,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.decoders._image_decoders import _source_to_tensor
@@ -3635,7 +3637,7 @@ class TestBlocks:
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_block_output_types(self, device):
-        # VideoDemuxer yields Packets, PacketDecoder yields RawFrames, and
+        # VideoDemuxer yields Packets, VideoPacketDecoder yields RawFrames, and
         # ColorConverter yields Frames with the expected shape/dtype.
         demuxer, decoder, converter = self._make_blocks(NASA_VIDEO.path, device)
 
@@ -3710,7 +3712,7 @@ class TestBlocks:
     @staticmethod
     def _make_blocks(path, device):
         demuxer = VideoDemuxer(path)
-        decoder = PacketDecoder(demuxer, device=device)
+        decoder = VideoPacketDecoder(demuxer, device=device)
         converter = ColorConverter(device=device)
         return demuxer, decoder, converter
 
@@ -3761,7 +3763,7 @@ class TestBlocks:
     def _assert_matches_video_decoder(got, ref, video):
         # We typically want exact equality but cannot achieve it on CUDA for HDR
         # videos that are downscaled to uint8: the VideoDecoder will ask NVDEC
-        # to output an 8bit surface while the PacketDecoder will decode on the
+        # to output an 8bit surface while the VideoPacketDecoder will decode on the
         # 16bit surface (by contract), so there are minor differences.
         if got.is_cuda and got.dtype == torch.uint8 and video in _HDR_VIDEOS:
             assert_tensor_close_on_at_least(got, ref, percentage=99, atol=2)
@@ -3967,14 +3969,14 @@ class TestBlocks:
 
     @pytest.mark.parametrize("device_str", _block_devices())
     def test_device_none_default_device(self, device_str):
-        # PacketDecoder and ColorConverter default to device=None, which should
+        # VideoPacketDecoder and ColorConverter default to device=None, which should
         # respect both the torch.device() context manager and
         # torch.set_default_device().
 
         def assert_first_frame_is_on_default_device():
             # Note the absence of any device parameter.
             demuxer = VideoDemuxer(NASA_VIDEO.path)
-            decoder = PacketDecoder(demuxer)
+            decoder = VideoPacketDecoder(demuxer)
             converter = ColorConverter()
             decoded = next(self._decode(decoder, self._demux(demuxer)))
             assert decoded.planes[0].device.type == device_str
@@ -4078,7 +4080,7 @@ class TestBlocks:
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize("record_stream", (True, False))
     def test_storage_record_stream(self, record_stream):
-        # Using PacketDecoder on one stream and consuming the frames on a
+        # Using VideoPacketDecoder on one stream and consuming the frames on a
         # different stream requires the user to call record_stream() on the
         # frame storage.
         # Without the record_stream() call the decoder's next frame may be
@@ -4281,7 +4283,7 @@ class TestBlocks:
         ),
     )
     def test_cpu_fallback_is_on_cuda(self, video, expected_pix_fmt):
-        # A CUDA PacketDecoder hands out CUDA frames even for the streams it has
+        # A CUDA VideoPacketDecoder hands out CUDA frames even for the streams it has
         # to decode on the CPU, and they're in an NVDEC surface format like any
         # other CUDA frame.
         assert VideoDecoder(video.path, device="cuda").cpu_fallback
@@ -4478,7 +4480,7 @@ class TestBlocks:
         seconds = video_decoder.get_frame_at(keyframe_index).pts_seconds
 
         demuxer = VideoDemuxer(NASA_VIDEO.path)
-        decoder = PacketDecoder(demuxer, device=device)
+        decoder = VideoPacketDecoder(demuxer, device=device)
         num_decoded = 0
         for packet in demuxer:  # decode a bit, so frames pile up in the codec
             num_decoded += len(decoder.decode(packet))
@@ -4743,7 +4745,7 @@ class TestBlocks:
         )
         try:
             demuxer = VideoDemuxer(fifo_path)
-            decoder = PacketDecoder(demuxer)
+            decoder = VideoPacketDecoder(demuxer)
             num_decoded = 0
             for packet in demuxer:  # make sure the stream is really flowing
                 num_decoded += len(decoder.decode(packet))
@@ -4764,7 +4766,7 @@ class TestBlocks:
         # ignores anything sent afterwards. Rather than silently decoding
         # nothing, say so.
         demuxer = VideoDemuxer(H265_VIDEO.path)
-        decoder = PacketDecoder(demuxer, device=device)
+        decoder = VideoPacketDecoder(demuxer, device=device)
         packet = demuxer.next_packet()
         decoder.decode(packet)
         decoder.drain()
@@ -4926,7 +4928,7 @@ class TestBlocks:
         demuxer = VideoDemuxer(video.path)
         index = demuxer.scan()
 
-        decoder = PacketDecoder(demuxer, device=device)
+        decoder = VideoPacketDecoder(demuxer, device=device)
         converter = ColorConverter(device=device)
         frames = list(
             self._convert(converter, self._decode(decoder, self._demux(demuxer)))
@@ -4980,7 +4982,7 @@ class TestBlocks:
         # nasa_13013.mp4 has two video streams, 0 and 3, of different sizes,
         # and 3 is the best one, i.e. the one used when nothing is requested.
         demuxer = VideoDemuxer(NASA_VIDEO.path, stream_index=stream_index)
-        decoder = PacketDecoder(demuxer)
+        decoder = VideoPacketDecoder(demuxer)
         converter = ColorConverter()
         got = [
             converter.convert(raw_frame)
@@ -5057,19 +5059,185 @@ class TestBlocks:
 
         assert 0 < num_packets_after_seek < num_packets_from_start
 
-    @pytest.mark.parametrize("stream_index", (-1, 6, 1000))
-    def test_invalid_stream_index_raises(self, stream_index):
-        with pytest.raises(RuntimeError, match="is not a valid stream"):
-            VideoDemuxer(NASA_VIDEO.path, stream_index=stream_index)
+    # ===== Audio decoding: RawAudioSamples =====
 
-    def test_bad_source_type_raises(self):
+    @staticmethod
+    def _decode_audio(asset, stream_index=None, seek_seconds=None):
+        demuxer = AudioDemuxer(asset.path, stream_index=stream_index)
+        decoder = AudioPacketDecoder(demuxer)
+        if seek_seconds is not None:
+            demuxer.seek(seek_seconds)
+            decoder.reset()
+        chunks = []
+        for packet in demuxer:
+            chunks += decoder.decode(packet)
+        chunks += decoder.drain()
+        return chunks
+
+    @pytest.mark.parametrize(
+        "asset, sample_format, dtype",
+        (
+            (SINE_MONO_U8, "u8", torch.uint8),
+            (SINE_MONO_S16, "s16", torch.int16),
+            (SINE_MONO_S32, "s32", torch.int32),
+            # FFmpeg has no 24-bit sample format, so a 24-bit source is s32.
+            (SINE_MONO_S24, "s32", torch.int32),
+            (SINE_MONO_F32, "flt", torch.float32),
+            (SINE_MONO_F64, "dbl", torch.float64),
+            (SINE_STEREO_MP2_MPEG_PS, "s16p", torch.int16),
+            (SINE_16_CHANNEL_S16, "s16", torch.int16),
+            (NASA_AUDIO_MP3, "fltp", torch.float32),
+        ),
+    )
+    def test_audio_raw_samples_dtype_and_shape(self, asset, sample_format, dtype):
+        # The decoder hands out the codec's own sample type, always as
+        # [num_channels, num_samples]. The packed formats above (no trailing
+        # 'p') are the ones exercising the de-interleaving path.
+        chunks = self._decode_audio(asset)
+        assert len(chunks) > 0
+
+        for chunk in chunks:
+            assert isinstance(chunk, RawAudioSamples)
+            assert chunk.sample_format == sample_format
+            assert chunk.data.dtype == dtype
+            assert chunk.data.ndim == 2
+            assert chunk.data.is_contiguous()
+            assert chunk.num_channels == asset.num_channels
+            assert chunk.sample_rate == asset.sample_rate
+            assert chunk.duration_seconds >= 0
+
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            SINE_MONO_U8,
+            SINE_MONO_S16,
+            SINE_MONO_S32,
+            SINE_MONO_F32,
+            SINE_MONO_F64,
+            SINE_STEREO_MP2_MPEG_PS,
+            SINE_16_CHANNEL_S16,
+            NASA_AUDIO_MP3,
+            NASA_AUDIO,
+        ),
+    )
+    @pytest.mark.parametrize("seek_fraction", (None, 1 / 3, 2 / 3))
+    def test_audio_raw_samples_match_audio_decoder(self, asset, seek_fraction):
+        # We hand out the true source samples: normalizing them the way FFmpeg
+        # does reproduces AudioDecoder's output bit for bit. This is also what
+        # pins the de-interleaving, most visibly on the 16-channel asset.
+        #
+        # It holds after a seek too, but only once the caller has done the
+        # pre-roll these blocks don't do: a lossy codec decodes its first frames
+        # after a seek from a flushed state, so they come out subtly wrong -
+        # plausible, but not what whole-file decoding gives - until it
+        # re-primes. Dropping those frames is exactly what pre-rolling means,
+        # and everything from there on is bit exact again. Without the drop,
+        # mp3 and aac diverge over their first ~1000-1600 samples and match
+        # perfectly after that.
+        if seek_fraction is not None and asset is SINE_STEREO_MP2_MPEG_PS:
+            pytest.skip(
+                "MPEG-PS resync after a seek is unreliable for both the blocks "
+                "and AudioDecoder (which raises seeking this file to 2.8s), so "
+                "it can't tell us anything here. See "
+                "test_audio_decoder_mpeg_ps_resync_after_seek."
+            )
+
+        seek_seconds = (
+            None if seek_fraction is None else asset.duration_seconds * seek_fraction
+        )
+        chunks = self._decode_audio(asset, seek_seconds=seek_seconds)
+        if seek_seconds is not None:
+            # Same number of frames SingleStreamDecoder pre-rolls by, see
+            # Note [Audio pre-roll and post-roll].
+            chunks = chunks[4:]
+        assert len(chunks) > 0
+
+        raw = torch.cat([chunk.data for chunk in chunks], dim=1)
+
+        if raw.dtype == torch.uint8:
+            got = (raw.to(torch.float32) - 128) / 128
+        elif raw.dtype in (torch.int16, torch.int32):
+            got = raw.to(torch.float32) / -float(torch.iinfo(raw.dtype).min)
+        else:
+            got = raw.to(torch.float32)
+
+        decoder = AudioDecoder(asset.path)
+        if seek_seconds is None:
+            expected = decoder.get_all_samples().data
+        else:
+            # Re-anchor on the first frame we kept, so both sides start on the
+            # same sample.
+            expected = decoder.get_samples_played_in_range(
+                start_seconds=chunks[0].pts_seconds
+            ).data
+        torch.testing.assert_close(got, expected, atol=0, rtol=0)
+
+    def test_audio_raw_samples_pts(self):
+        chunks = self._decode_audio(SINE_MONO_S16)
+        pts = [chunk.pts_seconds for chunk in chunks]
+        assert pts == sorted(pts)
+        assert pts[0] == pytest.approx(0, abs=1e-6)
+
+    def test_decoder_output_type_follows_the_demuxer(self):
+        # The two decoders are one class in C++; the split is a Python-level
+        # one, so that each has an exact output type and its own arguments.
+        for demuxer_class, decoder_class, expected_type in (
+            (AudioDemuxer, AudioPacketDecoder, RawAudioSamples),
+            (VideoDemuxer, VideoPacketDecoder, RawFrame),
+        ):
+            demuxer = demuxer_class(NASA_VIDEO.path)
+            decoder = decoder_class(demuxer)
+            # A codec needs more than one packet before it outputs anything.
+            decoded = []
+            while not decoded:
+                decoded = decoder.decode(demuxer.next_packet())
+            assert isinstance(decoded[0], expected_type)
+
+    def test_audio_decoder_takes_no_device(self):
+        with pytest.raises(TypeError, match="device"):
+            AudioPacketDecoder(AudioDemuxer(NASA_AUDIO_MP3.path), device="cuda")
+
+    def test_audio_decoder_mpeg_ps_resync_after_seek(self):
+        # Seeking an MPEG program stream lands on a container-level byte
+        # offset, so the parser resumes mid-frame and the packets it rebuilds
+        # are AVERROR_INVALIDDATA until it resyncs. That's a property of the
+        # container, not of the codec: it applies to this file's audio stream
+        # exactly as it does to a video one. Without the resync handling this
+        # raises "Failed to send packet to decoder" on the very first packet.
+        asset = SINE_STEREO_MP2_MPEG_PS
+        demuxer = AudioDemuxer(asset.path)
+        decoder = AudioPacketDecoder(demuxer)
+        demuxer.seek(asset.duration_seconds / 2)
+        decoder.reset()
+
+        chunks = []
+        for packet in demuxer:
+            chunks += decoder.decode(packet)
+        chunks += decoder.drain()
+
+        assert len(chunks) > 0
+        num_samples = sum(chunk.num_samples for chunk in chunks)
+        assert 0 < num_samples < asset.duration_seconds * asset.sample_rate
+
+    @pytest.mark.parametrize(
+        "demuxer_class", (VideoDemuxer, AudioDemuxer), ids=("video", "audio")
+    )
+    @pytest.mark.parametrize("stream_index", (-1, 6, 1000))
+    def test_invalid_stream_index_raises(self, demuxer_class, stream_index):
+        with pytest.raises(RuntimeError, match="is not a valid stream"):
+            demuxer_class(NASA_VIDEO.path, stream_index=stream_index)
+
+    @pytest.mark.parametrize(
+        "demuxer_class", (VideoDemuxer, AudioDemuxer), ids=("video", "audio")
+    )
+    def test_bad_source_type_raises(self, demuxer_class):
         with pytest.raises(TypeError, match="Unknown source type"):
-            VideoDemuxer(123)
+            demuxer_class(123)
 
         # user mistakenly forgets to specify binary reading when creating a
         # file-like object from open()
         with pytest.raises(TypeError, match="binary reading?"):
-            VideoDemuxer(open(NASA_VIDEO.path))
+            demuxer_class(open(NASA_VIDEO.path))
 
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn

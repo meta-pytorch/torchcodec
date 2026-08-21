@@ -182,7 +182,7 @@ class _BaseDemuxer:
         """Move the demuxer to ``seconds``.
 
         A seek invalidates whatever the decoder is holding on to, so the
-        :class:`PacketDecoder` must be ``reset()`` afterwards.
+        packet decoder must be ``reset()`` afterwards.
 
         Where you land, and what comes out first, depends on the medium. For
         video, a decoder can only start on a :term:`keyframe`, so this lands on
@@ -212,8 +212,8 @@ class VideoDemuxer(_BaseDemuxer):
     of the file, or from wherever :meth:`seek` left it.
 
     A :class:`VideoDemuxer` also carries the stream configuration used to build a
-    :class:`PacketDecoder`, so that is constructed from a demuxer and no extra
-    container is opened.
+    :class:`VideoPacketDecoder`, so that is constructed from a demuxer and no
+    extra container is opened.
 
     Args:
         source (str, ``Pathlib.path``, bytes, ``torch.Tensor`` or file-like object): The source of the video:
@@ -246,7 +246,7 @@ class VideoDemuxer(_BaseDemuxer):
 
         The index always covers the entire stream, wherever the demuxer
         currently is, and the demuxer is left back at the start - so a
-        :class:`PacketDecoder` built from it must be ``reset()``, as after a
+        :class:`VideoPacketDecoder` built from it must be ``reset()``, as after a
         ``seek()``. Nothing is cached: calling this twice scans twice.
         """
         pts, duration, is_key_frame, time_base_num, time_base_den = (
@@ -270,8 +270,8 @@ class AudioDemuxer(_BaseDemuxer):
     of the file, or from wherever :meth:`seek` left it.
 
     An :class:`AudioDemuxer` also carries the stream configuration used to build
-    a :class:`PacketDecoder`, so that is constructed from a demuxer and no extra
-    container is opened.
+    an :class:`AudioPacketDecoder`, so that is constructed from a demuxer and
+    no extra container is opened.
 
     Unlike :class:`VideoDemuxer` there is no ``scan()``: a :class:`StreamIndex`
     describes keyframes and frame indices, and audio has neither.

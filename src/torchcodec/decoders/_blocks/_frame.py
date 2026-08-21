@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import NamedTuple
 
 import torch
@@ -28,7 +29,7 @@ class _Metadata(NamedTuple):
 class Packet:
     """Opaque, thread-movable handle to a demuxed (compressed) packet.
 
-    Produced by :class:`VideoDemuxer`, consumed by :class:`PacketDecoder`. It wraps a raw
+    Produced by :class:`VideoDemuxer`, consumed by :class:`VideoPacketDecoder`. It wraps a raw
     pointer, so it is only valid within the process that created it (it cannot
     cross a process boundary).
     """
@@ -43,7 +44,7 @@ class RawFrame:
     """A decoded (YUV) frame, as the decoder produced it: an opaque,
     thread-movable handle to the frame plus everything describing it.
 
-    Produced by :class:`PacketDecoder`, consumed by :class:`ColorConverter`. The
+    Produced by :class:`VideoPacketDecoder`, consumed by :class:`ColorConverter`. The
     handle wraps a raw pointer and is process-local. ``pts_seconds`` and
     ``duration_seconds`` are stamped by the decoder (which knows the stream time
     base) and carried here so the :class:`ColorConverter` need not be bound to
@@ -162,3 +163,51 @@ class RawFrame:
             # views.
             self._planes = tuple(p for p in planes if p.numel() > 0)
         return self._planes
+
+
+# TODO_API_BREAKDOWN DESIGN P1: API design - the class name, and whether
+# sample_format is worth carrying now that the layout it describes has been
+# normalized away.
+@dataclass
+class RawAudioSamples:
+    """One decoded audio frame's samples, as the decoder produced them.
+
+    Produced by :class:`VideoPacketDecoder` for an :class:`AudioDemuxer`'s stream,
+    consumed by :class:`AudioConverter`. This is the audio counterpart of
+    :class:`RawFrame`, and like it, nothing has been converted: the samples are
+    in the codec's own sample type.
+
+    It is not a handle, unlike :class:`RawFrame`. Audio frames are a few kB, so
+    the samples are copied out of the ``AVFrame`` rather than viewed, which
+    also lets ``[num_channels, num_samples]`` be the layout for every format:
+    planar ones store each channel in its own allocation and packed ones
+    interleave them, so neither is that shape as it stands.
+
+    Attributes:
+        data (torch.Tensor): ``[num_channels, num_samples]``, in the dtype that
+            holds the source's samples exactly: ``uint8`` for ``u8``, ``int16``
+            for ``s16``, ``int32`` for ``s32``, ``float32`` for ``flt``,
+            ``float64`` for ``dbl``. Note the integer ones are *not* normalized
+            to ``[-1, 1]``; :class:`AudioConverter` is what does that.
+        sample_rate (int): The source's sample rate, in Hz.
+        sample_format (str): FFmpeg sample-format name, e.g. ``"s16p"`` or
+            ``"fltp"``. This is the format the samples were decoded in, kept
+            for provenance: the trailing ``p`` (planar) no longer describes
+            :attr:`data`, whose layout is always the same.
+        pts_seconds (float): Presentation timestamp of the first sample.
+        duration_seconds (float): How long these samples last.
+    """
+
+    data: torch.Tensor
+    sample_rate: int
+    sample_format: str
+    pts_seconds: float
+    duration_seconds: float
+
+    @property
+    def num_channels(self) -> int:
+        return self.data.shape[0]
+
+    @property
+    def num_samples(self) -> int:
+        return self.data.shape[1]
