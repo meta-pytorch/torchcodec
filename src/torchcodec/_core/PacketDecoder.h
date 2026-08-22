@@ -29,8 +29,9 @@ SharedAVCodecContext create_and_open_codec_context(
     DeviceInterface* device_interface,
     std::optional<int> thread_count);
 
-// Decode building block: turns compressed packets into decoded (YUV) frames.
-// Configured from a Demuxer's active stream; stateful. Not thread-safe.
+// Decode building block: turns compressed packets into decoded frames - (YUV)
+// pictures for a video stream, samples in the codec's own format for an audio
+// one. Configured from a Demuxer's active stream; stateful. Not thread-safe.
 class FORCE_PUBLIC_VISIBILITY PacketDecoder {
  public:
   explicit PacketDecoder(
@@ -67,10 +68,15 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
     return time_base_;
   }
 
+  AVMediaType media_type() const {
+    return media_type_;
+  }
+
  private:
   std::unique_ptr<DeviceInterface> device_interface_;
   SharedAVCodecContext codec_context_;
   AVRational time_base_ = {};
+  AVMediaType media_type_ = AVMEDIA_TYPE_VIDEO;
   // Stamped onto every frame we hand out, so downstream blocks can read the
   // rotation off the frame itself instead of knowing about the stream. Held by
   // value: we're only handed the Demuxer at construction and it may well be
@@ -97,6 +103,8 @@ struct FrameMetadata {
   double rotation_degrees = 0;
 };
 
+// TODO_API_BREAKDOWN CC P1 these should bet get_*
+
 // Describes `av_frame` without touching its samples. Unlike frame_planes(),
 // this works for every pixel format, so callers can ask what a frame is before
 // asking for views they may not be able to get.
@@ -110,5 +118,17 @@ FORCE_PUBLIC_VISIBILITY std::vector<torch::stable::Tensor> frame_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
     const torch::stable::Tensor& tensor_handle);
+
+// A decoded audio frame's samples as a contiguous [num_channels, num_samples]
+// tensor whose dtype is the frame's own sample type: uint8 for u8, int16 for
+// s16, float32 for flt, and so on, planar or not. This is a copy rather than a
+// view: planar formats put each channel in its own allocation and packed ones
+// interleave them, so neither is a [C, N] tensor as it stands. An audio frame
+// is a few kB, so normalizing here buys a uniform layout for the price of a
+// memcpy - and it means a converter can treat the result as planar-of-dtype.
+// TODO_API_BREAKDOWN DESIGN P1: do we want to copy? Should we just keep the
+// original layout?
+FORCE_PUBLIC_VISIBILITY torch::stable::Tensor audio_samples(
+    const AVFrame& av_frame);
 
 } // namespace facebook::torchcodec

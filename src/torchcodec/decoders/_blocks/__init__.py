@@ -6,27 +6,39 @@
 
 """Private, experimental building-block decode API.
 
-Exposes the three decode stages -- :class:`Demuxer`, :class:`PacketDecoder`,
-:class:`ColorConverter` -- as passive, composable, GIL-releasing units, so a
-caller can build its own (threaded) decode pipeline and tune how the stages
-overlap. The blocks do no threading themselves.
+Exposes the three decode stages -- :class:`VideoDemuxer`,
+:class:`VideoPacketDecoder`, :class:`ColorConverter` -- as passive, composable,
+GIL-releasing units, so a caller can build its own (threaded) decode pipeline
+and tune how the stages overlap. The blocks do no threading themselves.
+
+Audio has the same three stages: :class:`AudioDemuxer` and
+:class:`AudioPacketDecoder`. The two decoders are a single class in C++, since
+decoding is the same operation either way; they are separate here because what
+they hand out, and how they are configured, isn't.
 
 This is experimental and private; the API may change. See
 API_breakdown_claude_plan.md for the design and rationale.
 """
 
 from ._color_converter import ColorConverter
-from ._demuxer import Demuxer
-from ._frame import Packet, RawFrame
-from ._packet_decoder import PacketDecoder
+from ._demuxer import AudioDemuxer, StreamIndex, VideoDemuxer
+from ._frame import Packet, RawAudioSamples, RawFrame
+from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
 
 __all__ = [
-    "Demuxer",
-    "PacketDecoder",
+    "VideoDemuxer",
+    "AudioDemuxer",
+    "VideoPacketDecoder",
+    "AudioPacketDecoder",
     "ColorConverter",
     "Packet",
     "RawFrame",
+    "RawAudioSamples",
+    "StreamIndex",
 ]
 
-# TODO_API_BREAKDOWN FEAT P1 we probably need a way to expose metadata -
-# something that would avoid using VideoDecoder?
+# TODO_API_BREAKDOWN FEAT P1 we probably need a way to expose the *header*
+# metadata - something that would avoid using VideoDecoder? VideoDemuxer.scan()
+# covers the content-derived half of that. Audio makes this more pressing:
+# there is no scan() there, so sample_rate / num_channels / sample_format are
+# only reachable through AudioDecoder today.

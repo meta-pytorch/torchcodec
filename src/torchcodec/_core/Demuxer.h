@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "AVIOContextHolder.h"
 #include "FFMPEGCommon.h"
@@ -30,17 +31,30 @@ std::string get_seek_error_message(
     int64_t desired_pts,
     int status);
 
-// Demux building block: owns an AVFormatContext, selects one video stream, and
-// yields its (compressed) packets. Does no decoding. Not thread-safe.
+// The frames of the active stream, in presentation order: three parallel
+// tensors of length N, plus the time base `pts` and `duration` are expressed
+// in.
+struct StreamIndex {
+  torch::stable::Tensor pts; // int64 [N]
+  torch::stable::Tensor duration; // int64 [N]
+  torch::stable::Tensor is_key_frame; // bool [N]
+  AVRational time_base;
+};
+
+// Demux building block: owns an AVFormatContext, selects one stream of the
+// requested media type, and yields its (compressed) packets. Does no decoding.
+// Not thread-safe.
 class FORCE_PUBLIC_VISIBILITY Demuxer {
  public:
   explicit Demuxer(
       const std::string& file_path,
-      std::optional<int> stream_index = std::nullopt);
+      std::optional<int> stream_index = std::nullopt,
+      AVMediaType media_type = AVMEDIA_TYPE_VIDEO);
 
   explicit Demuxer(
       std::unique_ptr<AVIOContextHolder> avio_context_holder,
-      std::optional<int> stream_index = std::nullopt);
+      std::optional<int> stream_index = std::nullopt,
+      AVMediaType media_type = AVMEDIA_TYPE_VIDEO);
 
   // Returns the next packet for the active stream as a freshly-allocated
   // packet, or a null packet at end of stream.
@@ -48,12 +62,21 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
 
   void seek(double seconds);
 
+  // Demuxes the entire stream, without decoding, and returns one entry per
+  // frame sorted by pts. Leaves the demuxer back at the start of the stream,
+  // and keeps no state of its own.
+  StreamIndex scan();
+
   AVStream* active_stream() const {
     return stream_;
   }
 
   int active_stream_index() const {
     return active_stream_index_;
+  }
+
+  AVMediaType media_type() const {
+    return media_type_;
   }
 
   const UniqueDecodingAVFormatContext& format_context() const {
@@ -70,6 +93,7 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
   UniqueDecodingAVFormatContext format_context_;
   int active_stream_index_ = -1;
   AVStream* stream_ = nullptr;
+  AVMediaType media_type_ = AVMEDIA_TYPE_VIDEO;
   AutoAVPacket auto_packet_;
 };
 
