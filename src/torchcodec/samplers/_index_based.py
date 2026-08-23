@@ -31,6 +31,12 @@ def _validate_sampling_range_index_based(
     sampling_range_end,
     num_frames_in_video,
 ):
+    if sampling_range_start < -num_frames_in_video:
+        raise ValueError(
+            f"sampling_range_start ({sampling_range_start}) must be greater than "
+            f"or equal to {-num_frames_in_video}."
+        )
+
     if sampling_range_start < 0:
         sampling_range_start = num_frames_in_video + sampling_range_start
 

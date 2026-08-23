@@ -536,6 +536,20 @@ def test_index_based_samplers_errors(sampler):
     ):
         sampler(decoder, sampling_range_start=-100, sampling_range_end=-100)
 
+    sampling_range_start = -len(decoder) - 1
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            f"sampling_range_start ({sampling_range_start}) must be greater than "
+            f"or equal to {-len(decoder)}"
+        ),
+    ):
+        sampler(
+            decoder,
+            sampling_range_start=sampling_range_start,
+            sampling_range_end=-len(decoder),
+        )
+
     with pytest.raises(
         ValueError, match="We determined that sampling_range_end should"
     ):
