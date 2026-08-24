@@ -576,6 +576,26 @@ AVFilterContext* create_av_filter_context_with_options(
   return av_filter_context;
 }
 
+int64_t get_swr_output_num_samples_bound(
+    const UniqueSwrContext& swr_context,
+    int num_src_samples,
+    int src_sample_rate,
+    int out_sample_rate) {
+  if (src_sample_rate == out_sample_rate) {
+    return num_src_samples;
+  }
+  // `swr_convert()` will likely not produce this many samples: it buffers the
+  // last few, because those require future input. That's why callers must
+  // narrow to what it actually returned. We could also use
+  // `swr_get_out_samples()`, but empirically `av_rescale_rnd()` gives a
+  // tighter bound.
+  return av_rescale_rnd(
+      swr_get_delay(swr_context.get(), src_sample_rate) + num_src_samples,
+      out_sample_rate,
+      src_sample_rate,
+      AV_ROUND_UP);
+}
+
 UniqueAVFrame convert_audio_av_frame_samples(
     const UniqueSwrContext& swr_context,
     const AVFrame& src_av_frame,
@@ -599,24 +619,11 @@ UniqueAVFrame convert_audio_av_frame_samples(
       maybe_skip_samples(src_av_frame, num_samples_to_skip);
 
   converted_av_frame->sample_rate = out_sample_rate;
-  int src_sample_rate = src_av_frame.sample_rate;
-  if (src_sample_rate != out_sample_rate) {
-    // Note that this is an upper bound on the number of output samples.
-    // `swr_convert()` will likely not fill convertedAVFrame with that many
-    // samples if sample rate conversion is needed. It will buffer the last few
-    // ones because those require future samples. That's also why we reset
-    // nb_samples after the call to `swr_convert()`.
-    // We could also use `swr_get_out_samples()` to determine the number of
-    // output samples, but empirically `av_rescale_rnd()` seems to provide a
-    // tighter bound.
-    converted_av_frame->nb_samples = av_rescale_rnd(
-        swr_get_delay(swr_context.get(), src_sample_rate) + num_src_samples,
-        out_sample_rate,
-        src_sample_rate,
-        AV_ROUND_UP);
-  } else {
-    converted_av_frame->nb_samples = num_src_samples;
-  }
+  // A bound, not the real count, which is why we reset nb_samples after the
+  // call to swr_convert() below.
+  converted_av_frame
+      ->nb_samples = static_cast<int>(get_swr_output_num_samples_bound(
+      swr_context, num_src_samples, src_av_frame.sample_rate, out_sample_rate));
 
   set_channel_layout(*converted_av_frame, src_av_frame, out_num_channels);
 
