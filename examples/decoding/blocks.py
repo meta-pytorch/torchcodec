@@ -22,7 +22,7 @@ stages separately:
 .. code-block::
 
    VideoDemuxer  ->  VideoPacketDecoder  ->  ColorConverter
-    Packet         RawFrame          RGB Frame
+     Packet            RawFrame               RGB Frame
 
 The blocks are passive: they never create threads, and they release the GIL.
 You decide how they are composed, on which threads, and where to stop. Below
@@ -30,8 +30,8 @@ we illustrate a few things this enables: overlapping stages on multiple
 threads, accessing raw (YUV) frames, and decoding streams of unknown -
 possibly infinite - length.
 
-Audio works the same way, through ``AudioDemuxer`` and ``AudioConverter``; we
-come back to it at the end.
+Audio works the same way, through ``AudioDemuxer``, ``AudioPacketDecoder`` and
+``AudioConverter``; we come back to it at the end.
 """
 
 # %%
@@ -435,17 +435,22 @@ ffmpeg.wait()
 # Audio
 # -----
 #
-# Audio has the same three stages, and ``PacketDecoder`` is the same block:
+# Audio has the same three stages:
 #
 # .. code-block::
 #
-#    AudioDemuxer  ->  PacketDecoder   ->  AudioConverter
-#      Packet         RawAudioSamples       AudioSamples
+#    AudioDemuxer  ->  AudioPacketDecoder  ->  AudioConverter
+#      Packet           RawAudioSamples          AudioSamples
 #
-# What ``PacketDecoder`` hands out follows the demuxer it was built from, so
-# audio comes out as ``RawAudioSamples``: the codec's own samples, in the codec's
-# own sample type, as a ``[num_channels, num_samples]`` tensor.
-from torchcodec.decoders._blocks import AudioConverter, AudioDemuxer
+# Decoding is the same operation either way, so the two packet decoders are a
+# single class in C++; they are separate in Python because what they hand out
+# isn't. Audio comes out as ``RawAudioSamples``: the codec's own samples, in
+# the codec's own sample type, as a ``[num_channels, num_samples]`` tensor.
+from torchcodec.decoders._blocks import (
+    AudioConverter,
+    AudioDemuxer,
+    AudioPacketDecoder,
+)
 
 audio_path = temp_dir / "audio.wav"
 subprocess.run(
@@ -458,7 +463,7 @@ subprocess.run(
 )
 
 demuxer = AudioDemuxer(audio_path)
-packet_decoder = PacketDecoder(demuxer)
+packet_decoder = AudioPacketDecoder(demuxer)
 raw = next(iter(packet_decoder.decode(next(iter(demuxer)))))
 print(f"{raw.sample_format = }, {raw.data.dtype = }, {raw.data.shape = }, "
       f"{raw.sample_rate = }")
@@ -475,7 +480,7 @@ print(f"{raw.sample_format = }, {raw.data.dtype = }, {raw.data.shape = }, "
 # can return fewer samples than it was given, and why the pipeline ends with
 # ``drain()``. Leave that call out and you lose the end of the stream.
 demuxer = AudioDemuxer(audio_path)
-packet_decoder = PacketDecoder(demuxer)
+packet_decoder = AudioPacketDecoder(demuxer)
 audio_converter = AudioConverter(sample_rate=16_000, num_channels=1)
 
 chunks = []
