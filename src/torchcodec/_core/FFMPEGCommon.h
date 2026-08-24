@@ -349,15 +349,6 @@ UniqueAVFrame convert_audio_av_frame_samples(
     int desired_num_channels,
     int num_samples_to_skip = 0);
 
-// Upper bound on the number of samples swr_convert() can emit for
-// num_src_samples of input, including whatever it still holds buffered. It is
-// only a bound: narrow the output down to what swr_convert() returned.
-int64_t get_swr_output_num_samples_bound(
-    const UniqueSwrContext& swr_context,
-    int num_src_samples,
-    int src_sample_rate,
-    int out_sample_rate);
-
 // Returns true if sws_scale can handle unaligned data.
 bool can_sws_scale_handle_unaligned_data();
 

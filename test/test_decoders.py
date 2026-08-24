@@ -5231,7 +5231,7 @@ class TestBlocks:
     @staticmethod
     def _convert_audio(asset, drain=True, **converter_kwargs):
         demuxer = AudioDemuxer(asset.path)
-        decoder = PacketDecoder(demuxer)
+        decoder = AudioPacketDecoder(demuxer)
         converter = AudioConverter(**converter_kwargs)
 
         chunks = []
@@ -5345,7 +5345,7 @@ class TestBlocks:
 
         def convert_all(asset):
             demuxer = AudioDemuxer(asset.path)
-            decoder = PacketDecoder(demuxer)
+            decoder = AudioPacketDecoder(demuxer)
             chunks = []
             for packet in demuxer:
                 chunks += [converter.convert(raw) for raw in decoder.decode(packet)]
@@ -5402,7 +5402,7 @@ class TestBlocks:
         ).shape[1]
 
         demuxer = AudioDemuxer(NASA_AUDIO_MP3.path)
-        decoder = PacketDecoder(demuxer)
+        decoder = AudioPacketDecoder(demuxer)
         converter = AudioConverter(sample_rate=16_000)
         demuxer.seek(seek_seconds)
         decoder.reset()
