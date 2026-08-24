@@ -83,7 +83,8 @@ class AudioConverter:
         # immediately, they may be emitted with the next frame. Without this,
         # we'd fail the test_audio_converter_pts_is_contiguous() test.
         pts_seconds = (
-            self._first_frame_pts_seconds + self._num_emitted_samples / self._out_sample_rate
+            self._first_frame_pts_seconds
+            + self._num_emitted_samples / self._out_sample_rate
         )
         self._num_emitted_samples += data.shape[1]
         return AudioSamples(
