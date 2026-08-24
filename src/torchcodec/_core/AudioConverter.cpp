@@ -99,6 +99,9 @@ torch::stable::Tensor AudioConverter::convert(
     src_planes[channel] = base + channel * bytes_per_channel;
   }
 
+  // TODO_API_BREAKDOWN CC P2: the CPUDeviceInterface relies on
+  // swr_convert_to_tensor but only for flushing. We effectively have two
+  // code-paths doing libswresample conversion. Worth aligning.
   return swr_convert_to_tensor(
       swr_context_,
       src_planes.data(),

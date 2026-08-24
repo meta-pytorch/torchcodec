@@ -557,6 +557,7 @@ SwrContext* create_swr_context(
       out_layout);
 }
 
+// TODO Other places use the built-in swr_get_out_samples. We should align.
 int64_t get_swr_output_num_samples_bound(
     const UniqueSwrContext& swr_context,
     int num_src_samples,
