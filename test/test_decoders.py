@@ -5223,15 +5223,25 @@ class TestBlocks:
     # ===== AudioConverter =====
 
     @staticmethod
-    def _convert_audio(asset, drain=True, **converter_kwargs):
+    def _convert_audio(asset, drain=True, seek_seconds=None, **converter_kwargs):
         demuxer = AudioDemuxer(asset.path)
         decoder = AudioPacketDecoder(demuxer)
         converter = AudioConverter(**converter_kwargs)
 
-        chunks = []
+        raw_chunks = []
+        if seek_seconds is not None:
+            demuxer.seek(seek_seconds)
+            decoder.reset()
+            converter.reset()
         for packet in demuxer:
-            chunks += [converter.convert(raw) for raw in decoder.decode(packet)]
-        chunks += [converter.convert(raw) for raw in decoder.drain()]
+            raw_chunks += decoder.decode(packet)
+        raw_chunks += decoder.drain()
+        if seek_seconds is not None:
+            # The caller's pre-roll, see
+            # test_audio_raw_samples_match_audio_decoder.
+            raw_chunks = raw_chunks[4:]
+
+        chunks = [converter.convert(raw) for raw in raw_chunks]
         if drain:
             chunks.append(converter.drain())
         return chunks
@@ -5239,6 +5249,26 @@ class TestBlocks:
     @staticmethod
     def _cat(chunks):
         return torch.cat([chunk.data for chunk in chunks], dim=1)
+
+    def _converted_and_expected(self, asset, seek_fraction, **converter_kwargs):
+        # Runs the blocks pipeline, seeking first when asked, and returns it
+        # alongside the AudioDecoder output covering the same region.
+        seek_seconds = (
+            None if seek_fraction is None else asset.duration_seconds * seek_fraction
+        )
+        chunks = self._convert_audio(
+            asset, seek_seconds=seek_seconds, **converter_kwargs
+        )
+        decoder = AudioDecoder(asset.path, **converter_kwargs)
+        if seek_seconds is None:
+            expected = decoder.get_all_samples().data
+        else:
+            # Re-anchor on the first chunk we produced, so both sides start on
+            # the same sample.
+            expected = decoder.get_samples_played_in_range(
+                start_seconds=chunks[0].pts_seconds
+            ).data
+        return self._cat(chunks), expected
 
     @pytest.mark.parametrize(
         "asset",
@@ -5254,11 +5284,14 @@ class TestBlocks:
             NASA_AUDIO,
         ),
     )
-    def test_audio_converter_matches_audio_decoder(self, asset):
+    @pytest.mark.parametrize("seek_fraction", (None, 1 / 3, 2 / 3))
+    def test_audio_converter_matches_audio_decoder(self, asset, seek_fraction):
         # No resampling, no remix: the converter only normalizes the sample
-        # type, which is frame-local, so this is bit exact.
-        got = self._cat(self._convert_audio(asset))
-        expected = AudioDecoder(asset.path).get_all_samples().data
+        # type, which is frame-local, so this is bit exact - after a seek too,
+        # once the caller has pre-rolled the codec.
+        if seek_fraction is not None and asset is SINE_STEREO_MP2_MPEG_PS:
+            pytest.skip("MPEG-PS seek resync, see the raw-samples test.")
+        got, expected = self._converted_and_expected(asset, seek_fraction)
         torch.testing.assert_close(got, expected, atol=0, rtol=0)
 
     @pytest.mark.parametrize(
@@ -5271,11 +5304,14 @@ class TestBlocks:
             (SINE_16_CHANNEL_S16, 2),
         ),
     )
-    def test_audio_converter_num_channels(self, asset, num_channels):
-        # Remixing is a matrix over one frame's samples, so it is bit exact too.
-        got = self._cat(self._convert_audio(asset, num_channels=num_channels))
-        expected = (
-            AudioDecoder(asset.path, num_channels=num_channels).get_all_samples().data
+    @pytest.mark.parametrize("seek_fraction", (None, 1 / 3, 2 / 3))
+    def test_audio_converter_num_channels(self, asset, num_channels, seek_fraction):
+        # Remixing is a matrix over one frame's samples, so it is bit exact
+        # too, seek or no seek.
+        if seek_fraction is not None and asset is SINE_STEREO_MP2_MPEG_PS:
+            pytest.skip("MPEG-PS seek resync, see the raw-samples test.")
+        got, expected = self._converted_and_expected(
+            asset, seek_fraction, num_channels=num_channels
         )
         assert got.shape[0] == num_channels
         torch.testing.assert_close(got, expected, atol=0, rtol=0)
@@ -5291,14 +5327,38 @@ class TestBlocks:
             (SINE_STEREO_MP2_MPEG_PS, 16_000),
         ),
     )
-    def test_audio_converter_sample_rate(self, asset, sample_rate):
+    @pytest.mark.parametrize("seek_fraction", (None, 1 / 3, 2 / 3))
+    def test_audio_converter_sample_rate(self, asset, sample_rate, seek_fraction):
         # Resampling the whole stream from its start is bit exact against
-        # AudioDecoder.
-        got = self._cat(self._convert_audio(asset, sample_rate=sample_rate))
-        expected = (
-            AudioDecoder(asset.path, sample_rate=sample_rate).get_all_samples().data
+        # AudioDecoder. After a seek it is only *close*, and that is by design:
+        # resampling is the one conversion that isn't frame-local, and we don't
+        # implement SingleStreamDecoder's alignment grid, so where the seek
+        # lands decides whether our output grid coincides with AudioDecoder's.
+        #
+        # Sweeping the offset on sine_mono_s32.wav at 16000 -> 8000 shows both
+        # regimes: most offsets differ only over the resampler's first ~16
+        # output samples and are bit exact after that, while duration/3 and
+        # duration*2/3 land off-grid and every sample is shifted by a fraction
+        # of a sample. Measured across these cases at the two offsets below,
+        # that costs at most 6.7e-2 elementwise and 3.3e-2 on average, on
+        # samples in [-1, 1]; the bounds are ~3x and ~2x that.
+        if seek_fraction is not None and asset is SINE_STEREO_MP2_MPEG_PS:
+            pytest.skip("MPEG-PS seek resync, see the raw-samples test.")
+
+        got, expected = self._converted_and_expected(
+            asset, seek_fraction, sample_rate=sample_rate
         )
-        torch.testing.assert_close(got, expected, atol=0, rtol=0)
+        if seek_fraction is None:
+            torch.testing.assert_close(got, expected, atol=0, rtol=0)
+            return
+
+        # The resampler can end up one output sample ahead of AudioDecoder's
+        # trimming (16000 -> 44100 does, at both offsets).
+        assert abs(got.shape[1] - expected.shape[1]) <= 1
+        num_samples = min(got.shape[1], expected.shape[1])
+        difference = (got[:, :num_samples] - expected[:, :num_samples]).abs()
+        assert difference.max() < 0.2
+        assert difference.mean() < 0.07
 
     def test_audio_converter_without_drain_loses_samples_when_resampling(self):
         with_drain = self._cat(self._convert_audio(NASA_AUDIO_MP3, sample_rate=16_000))
