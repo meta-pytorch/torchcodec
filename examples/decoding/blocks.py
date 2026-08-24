@@ -5,9 +5,9 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-===============================================
+========================================
 Blocks: build your own decoding pipeline
-===============================================
+========================================
 
 .. warning::
 
@@ -22,13 +22,16 @@ stages separately:
 .. code-block::
 
    VideoDemuxer  ->  VideoPacketDecoder  ->  ColorConverter
-    Packet         RawFrame          RGB Frame
+     Packet            RawFrame               RGB Frame
 
 The blocks are passive: they never create threads, and they release the GIL.
 You decide how they are composed, on which threads, and where to stop. Below
 we illustrate a few things this enables: overlapping stages on multiple
 threads, accessing raw (YUV) frames, and decoding streams of unknown -
 possibly infinite - length.
+
+Audio works the same way, through ``AudioDemuxer``, ``AudioPacketDecoder`` and
+``AudioConverter``; we come back to it at the end.
 """
 
 # %%
@@ -333,7 +336,7 @@ print(f"{ours.shape = }, mean abs diff vs ColorConverter: "
 
 # %%
 # Raw HDR frames
-# ~~~~~~~~~~~~~~
+# --------------
 #
 # Raw planes come at the source's own precision, so a 10-bit HDR video gives
 # ``uint16`` planes with all 10 bits intact - no clipping to 8 bits, and no
@@ -427,3 +430,76 @@ print(f"{len(frames)} frames, from pts {frames[0].pts_seconds:.2f}s to "
 
 ffmpeg.kill()
 ffmpeg.wait()
+
+# %%
+# Audio
+# -----
+#
+# Audio has the same three stages:
+#
+# .. code-block::
+#
+#    AudioDemuxer  ->  AudioPacketDecoder  ->  AudioConverter
+#      Packet           RawAudioSamples          AudioSamples
+#
+# Decoding is the same operation either way, so the two packet decoders are a
+# single class in C++; they are separate in Python because what they hand out
+# isn't. Audio comes out as ``RawAudioSamples``: the codec's own samples, in
+# the codec's own sample type, as a ``[num_channels, num_samples]`` tensor.
+from torchcodec.decoders._blocks import (
+    AudioConverter,
+    AudioDemuxer,
+    AudioPacketDecoder,
+)
+
+audio_path = temp_dir / "audio.wav"
+subprocess.run(
+    [
+        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=5",
+        "-c:a", "pcm_s16le", str(audio_path),
+    ],
+    check=True,
+)
+
+demuxer = AudioDemuxer(audio_path)
+packet_decoder = AudioPacketDecoder(demuxer)
+raw = next(iter(packet_decoder.decode(next(iter(demuxer)))))
+print(f"{raw.sample_format = }, {raw.data.dtype = }, {raw.data.shape = }, "
+      f"{raw.sample_rate = }")
+
+# %%
+# Those are the true source samples - 16-bit integers here, not floats in
+# ``[-1, 1]``. ``AudioConverter`` is what normalizes them, and it can resample
+# and change the channel count on the way.
+#
+# It differs from ``ColorConverter`` in one important way: resampling is an
+# interpolation filter, so the sample it emits at a given instant depends on
+# input samples on *both* sides of it. The converter therefore holds the tail
+# of each frame back until the next one arrives - which is why ``convert()``
+# can return fewer samples than it was given, and why the pipeline ends with
+# ``drain()``. Leave that call out and you lose the end of the stream.
+demuxer = AudioDemuxer(audio_path)
+packet_decoder = AudioPacketDecoder(demuxer)
+audio_converter = AudioConverter(sample_rate=16_000, num_channels=1)
+
+chunks = []
+for packet in demuxer:
+    chunks += [audio_converter.convert(raw) for raw in packet_decoder.decode(packet)]
+chunks += [audio_converter.convert(raw) for raw in packet_decoder.drain()]
+chunks.append(audio_converter.drain())  # don't forget me
+
+samples = torch.cat([chunk.data for chunk in chunks], dim=1)
+print(f"{samples.shape = }, {samples.dtype = }, "
+      f"{chunks[-1].data.shape[1]} samples came out of drain()")
+
+# %%
+# .. warning::
+#
+#    These blocks do no pre-roll. A lossy codec's first frames after a seek are
+#    subtly wrong until it re-primes, and a resampler started mid-stream emits
+#    samples on a grid of its own, so samples decoded after a
+#    ``demuxer.seek()`` do not line up bit-for-bit with the same region of a
+#    whole-file decode. Decoding a margin before your target and discarding it
+#    is up to you. :class:`~torchcodec.decoders.AudioDecoder` does all of this
+#    for you.
