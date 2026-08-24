@@ -83,6 +83,11 @@ Examples using `AudioDecoder`:
 [Decoding audio streams with AudioDecoder](../generated_examples/decoding/audio_decoding.html)
 
 Decoding audio streams with AudioDecoder
+![](../_images/sphx_glr_blocks_thumb.png)
+
+[Blocks: build your own decoding pipeline](../generated_examples/decoding/blocks.html)
+
+Blocks: build your own decoding pipeline
 ![](../_images/sphx_glr_file_like_thumb.jpg)
 
 [Streaming data through file-like support](../generated_examples/decoding/file_like.html)

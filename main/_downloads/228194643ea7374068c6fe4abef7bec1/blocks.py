@@ -5,9 +5,9 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-===============================================
+========================================
 Blocks: build your own decoding pipeline
-===============================================
+========================================
 
 .. warning::
 
@@ -21,14 +21,17 @@ stages separately:
 
 .. code-block::
 
-   Demuxer  ->  PacketDecoder  ->  ColorConverter
-    Packet         RawFrame          RGB Frame
+   VideoDemuxer  ->  VideoPacketDecoder  ->  ColorConverter
+     Packet            RawFrame               RGB Frame
 
 The blocks are passive: they never create threads, and they release the GIL.
 You decide how they are composed, on which threads, and where to stop. Below
 we illustrate a few things this enables: overlapping stages on multiple
 threads, accessing raw (YUV) frames, and decoding streams of unknown -
 possibly infinite - length.
+
+Audio works the same way, through ``AudioDemuxer``, ``AudioPacketDecoder`` and
+``AudioConverter``; we come back to it at the end.
 """
 
 # %%
@@ -63,14 +66,14 @@ subprocess.run(
 # it can output a frame, and it buffers a few frames that ``drain()`` returns
 # at the end.
 #
-# ``PacketDecoder`` and ``ColorConverter`` both accept ``device="cuda"``:
+# ``VideoPacketDecoder`` and ``ColorConverter`` both accept ``device="cuda"``:
 # decoding then runs on NVDEC and the color conversion on the GPU, and the
 # frames never leave the device. Demuxing always happens on the CPU. Left
 # unspecified, ``device`` is the current default device.
-from torchcodec.decoders._blocks import ColorConverter, Demuxer, PacketDecoder
+from torchcodec.decoders._blocks import ColorConverter, VideoDemuxer, VideoPacketDecoder
 
-demuxer = Demuxer(video_path)
-packet_decoder = PacketDecoder(demuxer, device=device)
+demuxer = VideoDemuxer(video_path)
+packet_decoder = VideoPacketDecoder(demuxer, device=device)
 color_converter = ColorConverter(device=device)
 
 frames = []
@@ -133,16 +136,16 @@ def prefetch(upstream, buffer_size=8):
 
 def sequential():
     # demux -> decode -> color-convert, all on the calling thread.
-    demuxer = Demuxer(video_path)
-    packet_decoder = PacketDecoder(demuxer, device=device)
+    demuxer = VideoDemuxer(video_path)
+    packet_decoder = VideoPacketDecoder(demuxer, device=device)
     color_converter = ColorConverter(device=device)
     return color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
 
 
 def convert_on_own_thread():
     # [demux + decode] on one thread || [color-convert] on another.
-    demuxer = Demuxer(video_path)
-    packet_decoder = PacketDecoder(demuxer, device=device)
+    demuxer = VideoDemuxer(video_path)
+    packet_decoder = VideoPacketDecoder(demuxer, device=device)
     color_converter = ColorConverter(device=device)
     raw_frames = prefetch(decode(packet_decoder, demux(demuxer)))
     return color_convert(color_converter, raw_frames)
@@ -152,8 +155,8 @@ def demux_on_own_thread():
     # [demux] on one thread || [decode + color-convert] on another. This is the
     # natural split on CUDA: demuxing is CPU and I/O work, while decoding and
     # color conversion both happen on the GPU, so they belong together.
-    demuxer = Demuxer(video_path)
-    packet_decoder = PacketDecoder(demuxer, device=device)
+    demuxer = VideoDemuxer(video_path)
+    packet_decoder = VideoPacketDecoder(demuxer, device=device)
     color_converter = ColorConverter(device=device)
     packets = prefetch(demux(demuxer))
     return color_convert(color_converter, decode(packet_decoder, packets))
@@ -173,15 +176,15 @@ for pipeline in (sequential, convert_on_own_thread, demux_on_own_thread):
 # Seeking
 # -------
 #
-# ``Demuxer.seek()`` moves the demuxer to a timestamp. A decoder can only start
+# ``VideoDemuxer.seek()`` moves the demuxer to a timestamp. A decoder can only start
 # on a keyframe, so the seek lands on the keyframe at or before the target, and
 # the first frames that come out usually precede it: keep decoding forward and
 # drop them until you reach the timestamp you asked for.
 #
 # The seek also invalidates the frames the decoder is holding on to, so the
-# ``PacketDecoder`` must be ``reset()``.
-demuxer = Demuxer(video_path)
-packet_decoder = PacketDecoder(demuxer, device=device)
+# ``VideoPacketDecoder`` must be ``reset()``.
+demuxer = VideoDemuxer(video_path)
+packet_decoder = VideoPacketDecoder(demuxer, device=device)
 color_converter = ColorConverter(device=device)
 
 seconds = 2.5
@@ -190,9 +193,89 @@ packet_decoder.reset()
 
 frames = color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
 landed_on = next(frames)
-target = next(frame for frame in frames if frame.pts_seconds >= seconds)
+# The frame *playing* at a timestamp is the first one that hasn't finished
+# playing by then. Not `pts_seconds >= seconds`, which skips it whenever the
+# timestamp falls inside a frame rather than on its boundary.
+target = next(
+    frame
+    for frame in frames
+    if frame.pts_seconds + frame.duration_seconds > seconds
+)
 print(f"asked for {seconds}s, landed on {landed_on.pts_seconds:.3f}s, "
       f"target frame at {target.pts_seconds:.3f}s")
+
+# %%
+# Scanning
+# --------
+#
+# ``VideoDemuxer.scan()`` demuxes the whole stream once, without decoding anything,
+# and returns a ``StreamIndex``: one entry per frame, in presentation order.
+# This is the only way to know a stream's exact frame count, timestamps and
+# keyframe positions - a container header can be wrong about all of them. It
+# costs one pass over the file, and it leaves the demuxer back at the start.
+demuxer = VideoDemuxer(video_path)
+index = demuxer.scan()
+packet_decoder = VideoPacketDecoder(demuxer, device=device)
+color_converter = ColorConverter(device=device)
+
+print(f"{len(index)} frames at {index.average_fps} fps, "
+      f"from {index.begin_stream_seconds}s to {index.end_stream_seconds}s")
+
+# %%
+# The index is also what gives the blocks frame *indices*, which they otherwise
+# don't have at all: ``index_at()`` maps a timestamp to the frame on screen
+# then, and ``pts_seconds`` maps back. That's enough to build ``get_frame_at``,
+# or a clip sampler, on top of the blocks.
+i = index.index_at(seconds)
+print(f"frame {i} is on screen at {seconds}s, and starts at {index.pts_seconds[i]}s")
+
+# %%
+# Keyframes
+# ^^^^^^^^^
+#
+# ``is_key_frame`` is a mask over all the frames, and ``key_frame_indices`` the
+# same thing as a list of indices. Keyframes are the frames that decode on
+# their own, which makes them the cheap ones to reach: seeking to a keyframe's
+# timestamp lands exactly on it, and the very next frame out of the decoder is
+# the one you asked for - no decoding forward, nothing to drop.
+#
+# That makes a keyframe-only sampler about as cheap as video decoding gets,
+# which is what you want for thumbnails or coarse previews.
+key_frames = index.key_frame_indices
+print(f"{len(key_frames)} keyframes out of {len(index)} frames, "
+      f"at {index.pts_seconds[key_frames].tolist()}")
+
+thumbnails = []
+for k in key_frames.tolist():
+    demuxer.seek(index.pts_seconds[k])
+    packet_decoder.reset()
+    raw_frame = next(decode(packet_decoder, demux(demuxer)))
+    thumbnails.append(color_converter.convert(raw_frame))
+
+print(f"{len(thumbnails)} thumbnails at "
+      f"{[round(f.pts_seconds, 3) for f in thumbnails]}")
+
+# %%
+# Exact seeking
+# ^^^^^^^^^^^^^
+#
+# One last thing the index buys you, which most files never need.
+# ``seek(seconds)`` already lands on the keyframe at or before the target - but
+# FFmpeg resolves a seek against *decode* timestamps, so on a file whose
+# keyframes are reordered it can land on one that is *displayed after* the
+# target, leaving the frames in between unreachable however far forward you
+# decode. ``key_frame_seconds_for()`` gives you that keyframe's own timestamp
+# instead, which always lands where you meant.
+#
+# The two are the same call on the overwhelming majority of files; this is the
+# whole of what separates :class:`~torchcodec.decoders.VideoDecoder`'s
+# ``seek_mode="exact"`` from ``"approximate"`` for a timestamp lookup.
+demuxer.seek(index.key_frame_seconds_for(seconds))
+packet_decoder.reset()
+
+frames = color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
+target = next(f for f in frames if f.pts_seconds >= index.pts_seconds[i])
+print(f"frame {i} at {target.pts_seconds:.3f}s")
 
 # %%
 # Raw frames
@@ -200,8 +283,8 @@ print(f"asked for {seconds}s, landed on {landed_on.pts_seconds:.3f}s, "
 #
 # Color conversion is optional. A ``RawFrame`` can hand out the decoder's own
 # planes as tensor views, with no copy and no conversion.
-demuxer = Demuxer(video_path)
-packet_decoder = PacketDecoder(demuxer, device=device)
+demuxer = VideoDemuxer(video_path)
+packet_decoder = VideoPacketDecoder(demuxer, device=device)
 raw_frame = next(decode(packet_decoder, demux(demuxer)))
 
 Y, U, V = raw_frame.planes
@@ -253,7 +336,7 @@ print(f"{ours.shape = }, mean abs diff vs ColorConverter: "
 
 # %%
 # Raw HDR frames
-# ~~~~~~~~~~~~~~
+# --------------
 #
 # Raw planes come at the source's own precision, so a 10-bit HDR video gives
 # ``uint16`` planes with all 10 bits intact - no clipping to 8 bits, and no
@@ -272,8 +355,8 @@ subprocess.run(
     capture_output=True,  # x265 logs its banner to stderr no matter what
 )
 
-hdr_demuxer = Demuxer(hdr_video_path)
-hdr_packet_decoder = PacketDecoder(hdr_demuxer, device=device)
+hdr_demuxer = VideoDemuxer(hdr_video_path)
+hdr_packet_decoder = VideoPacketDecoder(hdr_demuxer, device=device)
 hdr_raw = next(decode(hdr_packet_decoder, demux(hdr_demuxer)))
 
 hdr_Y = hdr_raw.planes[0]
@@ -332,8 +415,8 @@ ffmpeg.wait()
 # %%
 # The blocks just stream it, and we stop whenever we want:
 ffmpeg = start_live_stream()
-demuxer = Demuxer(fifo_path)
-packet_decoder = PacketDecoder(demuxer, device=device)
+demuxer = VideoDemuxer(fifo_path)
+packet_decoder = VideoPacketDecoder(demuxer, device=device)
 color_converter = ColorConverter(device=device)
 
 frames = []
@@ -347,3 +430,76 @@ print(f"{len(frames)} frames, from pts {frames[0].pts_seconds:.2f}s to "
 
 ffmpeg.kill()
 ffmpeg.wait()
+
+# %%
+# Audio
+# -----
+#
+# Audio has the same three stages:
+#
+# .. code-block::
+#
+#    AudioDemuxer  ->  AudioPacketDecoder  ->  AudioConverter
+#      Packet           RawAudioSamples          AudioSamples
+#
+# Decoding is the same operation either way, so the two packet decoders are a
+# single class in C++; they are separate in Python because what they hand out
+# isn't. Audio comes out as ``RawAudioSamples``: the codec's own samples, in
+# the codec's own sample type, as a ``[num_channels, num_samples]`` tensor.
+from torchcodec.decoders._blocks import (
+    AudioConverter,
+    AudioDemuxer,
+    AudioPacketDecoder,
+)
+
+audio_path = temp_dir / "audio.wav"
+subprocess.run(
+    [
+        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+        "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=5",
+        "-c:a", "pcm_s16le", str(audio_path),
+    ],
+    check=True,
+)
+
+demuxer = AudioDemuxer(audio_path)
+packet_decoder = AudioPacketDecoder(demuxer)
+raw = next(iter(packet_decoder.decode(next(iter(demuxer)))))
+print(f"{raw.sample_format = }, {raw.data.dtype = }, {raw.data.shape = }, "
+      f"{raw.sample_rate = }")
+
+# %%
+# Those are the true source samples - 16-bit integers here, not floats in
+# ``[-1, 1]``. ``AudioConverter`` is what normalizes them, and it can resample
+# and change the channel count on the way.
+#
+# It differs from ``ColorConverter`` in one important way: resampling is an
+# interpolation filter, so the sample it emits at a given instant depends on
+# input samples on *both* sides of it. The converter therefore holds the tail
+# of each frame back until the next one arrives - which is why ``convert()``
+# can return fewer samples than it was given, and why the pipeline ends with
+# ``drain()``. Leave that call out and you lose the end of the stream.
+demuxer = AudioDemuxer(audio_path)
+packet_decoder = AudioPacketDecoder(demuxer)
+audio_converter = AudioConverter(sample_rate=16_000, num_channels=1)
+
+chunks = []
+for packet in demuxer:
+    chunks += [audio_converter.convert(raw) for raw in packet_decoder.decode(packet)]
+chunks += [audio_converter.convert(raw) for raw in packet_decoder.drain()]
+chunks.append(audio_converter.drain())  # don't forget me
+
+samples = torch.cat([chunk.data for chunk in chunks], dim=1)
+print(f"{samples.shape = }, {samples.dtype = }, "
+      f"{chunks[-1].data.shape[1]} samples came out of drain()")
+
+# %%
+# .. warning::
+#
+#    These blocks do no pre-roll. A lossy codec's first frames after a seek are
+#    subtly wrong until it re-primes, and a resampler started mid-stream emits
+#    samples on a grid of its own, so samples decoded after a
+#    ``demuxer.seek()`` do not line up bit-for-bit with the same region of a
+#    whole-file decode. Decoding a margin before your target and discarding it
+#    is up to you. :class:`~torchcodec.decoders.AudioDecoder` does all of this
+#    for you.
