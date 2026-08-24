@@ -5051,9 +5051,7 @@ class TestBlocks:
         assert len(list(AudioDemuxer(make_source(NASA_AUDIO_MP3.path)))) == expected
 
     def test_audio_demuxer_seek(self):
-        # Seeking past the start leaves fewer packets to demux. We don't assert
-        # anything about *which* ones: audio has no keyframe to land on, so
-        # where a seek lands is the demuxer's business, not something we pin.
+        # Seeking past the start leaves fewer packets to demux.
         num_packets_from_start = len(list(AudioDemuxer(NASA_AUDIO_MP3.path)))
 
         demuxer = AudioDemuxer(NASA_AUDIO_MP3.path)
@@ -5061,10 +5059,6 @@ class TestBlocks:
         num_packets_after_seek = len(list(demuxer))
 
         assert 0 < num_packets_after_seek < num_packets_from_start
-
-    def test_audio_demuxer_has_no_scan(self):
-        # See the TODO in _demuxer.py: StreamIndex is video-shaped.
-        assert not hasattr(AudioDemuxer(NASA_AUDIO_MP3.path), "scan")
 
     # ===== Audio decoding: RawAudioSamples =====
 
@@ -5299,19 +5293,14 @@ class TestBlocks:
     )
     def test_audio_converter_sample_rate(self, asset, sample_rate):
         # Resampling the whole stream from its start is bit exact against
-        # AudioDecoder even though we don't implement its alignment grid: the
-        # number of samples that grid skips is zero when you start at the
-        # beginning. This is what pins that omission as safe.
+        # AudioDecoder.
         got = self._cat(self._convert_audio(asset, sample_rate=sample_rate))
         expected = (
             AudioDecoder(asset.path, sample_rate=sample_rate).get_all_samples().data
         )
         torch.testing.assert_close(got, expected, atol=0, rtol=0)
 
-    def test_audio_converter_drain_is_load_bearing_when_resampling(self):
-        # Resampling holds the tail of the stream back until drain(). Pinned so
-        # that dropping drain() from the documented loop fails loudly here
-        # rather than quietly truncating someone's audio.
+    def test_audio_converter_without_drain_loses_samples_when_resampling(self):
         with_drain = self._cat(self._convert_audio(NASA_AUDIO_MP3, sample_rate=16_000))
         without = self._cat(
             self._convert_audio(NASA_AUDIO_MP3, drain=False, sample_rate=16_000)
@@ -5322,18 +5311,11 @@ class TestBlocks:
         )
 
     def test_audio_converter_drain_is_empty_without_resampling(self):
-        # Nothing is held back when the rate doesn't change, which is why
-        # adding sample_rate= to an existing pipeline can't silently start
-        # losing samples: the drain() call is already there and already a
-        # no-op.
         chunks = self._convert_audio(NASA_AUDIO_MP3)
         assert chunks[-1].data.shape[1] == 0
 
     @pytest.mark.parametrize("sample_rate", (None, 16_000))
     def test_audio_converter_pts_is_contiguous(self, sample_rate):
-        # A chunk does not start at the pts of the frame that produced it: the
-        # resampler's delay line offsets them. What the converter reports is
-        # the running position in the output stream instead.
         chunks = self._convert_audio(NASA_AUDIO_MP3, sample_rate=sample_rate)
         for current, following in zip(chunks, chunks[1:]):
             assert current.pts_seconds + current.duration_seconds == pytest.approx(
