@@ -69,19 +69,21 @@ class AudioConverter:
         )
         self._requested_sample_rate = sample_rate
         self._drained = False
-        # Where the output stream starts, and how far into it we are. The
-        # resampler's delay line means a chunk does not begin at the pts of the
-        # frame that produced it, so we count emitted samples instead of
-        # forwarding the input's timestamp.
-        self._origin_seconds: float | None = None
+
+        self._first_frame_pts_seconds: float | None = None
         self._out_sample_rate: int | None = None
         self._num_emitted_samples = 0
 
     def _wrap(self, data) -> AudioSamples:
         assert self._out_sample_rate is not None  # mypy
-        assert self._origin_seconds is not None  # mypy
+        assert self._first_frame_pts_seconds is not None  # mypy
+        # We manually compute the pts of all frames but the first one: when
+        # resampling happens, libswresample buffers samples and emits them
+        # later. Not all the samples of the first frame are necessarily emitted
+        # immediately, they may be emitted with the next frame. Without this,
+        # we'd fail the test_audio_converter_pts_is_contiguous() test.
         pts_seconds = (
-            self._origin_seconds + self._num_emitted_samples / self._out_sample_rate
+            self._first_frame_pts_seconds + self._num_emitted_samples / self._out_sample_rate
         )
         self._num_emitted_samples += data.shape[1]
         return AudioSamples(
@@ -102,8 +104,8 @@ class AudioConverter:
                 "This AudioConverter has been drained. Call reset() to convert "
                 "more samples."
             )
-        if self._origin_seconds is None:
-            self._origin_seconds = raw_samples.pts_seconds
+        if self._first_frame_pts_seconds is None:
+            self._first_frame_pts_seconds = raw_samples.pts_seconds
             self._out_sample_rate = (
                 self._requested_sample_rate
                 if self._requested_sample_rate is not None
@@ -120,7 +122,7 @@ class AudioConverter:
         Skipping this loses the end of the stream. It returns an empty result
         when no resampling is being done, since nothing is held back then.
         """
-        if self._origin_seconds is None:
+        if self._first_frame_pts_seconds is None:
             raise RuntimeError(
                 "This AudioConverter hasn't converted any samples, so there is "
                 "nothing to drain."
@@ -134,6 +136,6 @@ class AudioConverter:
         demuxer seeked, and after ``drain()``."""
         _blocks_audio_converter_reset(self._handle)
         self._drained = False
-        self._origin_seconds = None
+        self._first_frame_pts_seconds = None
         self._out_sample_rate = None
         self._num_emitted_samples = 0
