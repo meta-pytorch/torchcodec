@@ -5,9 +5,9 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-===============================================
+========================================
 Blocks: build your own decoding pipeline
-===============================================
+========================================
 
 .. warning::
 
@@ -336,7 +336,7 @@ print(f"{ours.shape = }, mean abs diff vs ColorConverter: "
 
 # %%
 # Raw HDR frames
-# ~~~~~~~~~~~~~~
+# --------------
 #
 # Raw planes come at the source's own precision, so a 10-bit HDR video gives
 # ``uint16`` planes with all 10 bits intact - no clipping to 8 bits, and no
