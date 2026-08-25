@@ -205,6 +205,7 @@ jobs:
         LIBVA_DRIVERS_PATH="${ROCM_PATH:-/opt/rocm}/lib/dri" vainfo 2>&1 || echo "vainfo failed with ROCM_PATH/lib/dri"
         echo '::endgroup::'
         FAIL_WITHOUT_CUDA=1 FAIL_WITHOUT_IMAGE_CODECS=1 FAIL_WITHOUT_HEIC=0 \
+        ROCJPEG_LOG_LEVEL=3 \
           pytest --override-ini="addopts=-v" \
           test/test_ffmpeg_optional.py test/test_decoders.py::TestImageDecoder --tb=short
         echo '::endgroup::'
