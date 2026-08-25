@@ -176,7 +176,18 @@ RocJpegDecoder::RocJpegDecoder(const torch::stable::Device& target_device)
       rocJpegCreate(ROCJPEG_BACKEND_HARDWARE, device_index_, &handle_hw_);
   if (status == ROCJPEG_STATUS_SUCCESS) {
     hw_decode_available_ = true;
+    fprintf(
+        stderr,
+        "[torchcodec] rocJpegCreate(HARDWARE) succeeded on device %d"
+        " -- VCN JPEG engine is available and will be used\n",
+        device_index_);
   } else {
+    fprintf(
+        stderr,
+        "[torchcodec] rocJpegCreate(HARDWARE) failed on device %d: %s"
+        " -- falling back to HYBRID\n",
+        device_index_,
+        rocJpegGetErrorName(status));
     // No usable HW JPEG engine on this GPU: fall back to the hybrid backend for
     // everything. Create it eagerly here so base_handle() always has a handle.
     handle_hw_ = nullptr;
@@ -316,6 +327,10 @@ RocJpegDecoder::split_images_by_backend(
 void RocJpegDecoder::decode_batched_hardware(
     std::vector<ImagePlan>& plans,
     const std::vector<size_t>& indices) {
+  fprintf(
+      stderr,
+      "[torchcodec] decoding %zu image(s) using HARDWARE (VCN) backend\n",
+      indices.size());
   // rocJpegDecodeBatched takes a single output format for the whole batch, but
   // the batch may mix grayscale (Y) and RGB images, so we split into per-format
   // sub-batches, same as the nvJPEG HW path.
