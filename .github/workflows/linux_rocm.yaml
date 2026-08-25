@@ -199,6 +199,8 @@ jobs:
         fi
         echo "--- VA-API driver files inside ROCM_PATH ---"
         find "${ROCM_PATH:-/opt/rocm}" -name "*drv_video*.so*" 2>/dev/null || echo "no VA-API driver .so found under ROCM_PATH"
+        echo "--- contents of ROCM_PATH/lib/rocm_sysdeps/lib ---"
+        ls -la "${ROCM_PATH:-/opt/rocm}/lib/rocm_sysdeps/lib/" 2>&1 || echo "directory not found: ${ROCM_PATH:-/opt/rocm}/lib/rocm_sysdeps/lib/"
         echo "--- vainfo (default) ---"
         vainfo 2>&1 || echo "vainfo failed or not installed"
         echo "--- vainfo (with ROCM_PATH/lib/dri as driver path) ---"
