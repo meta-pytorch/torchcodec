@@ -231,8 +231,8 @@ def _patch_image_so_rpath_in_wheel(wheel_path: Path) -> None:
           <site-packages>/torchcodec/libtorchcodec_image.so
           (one ../ goes from torchcodec/ up to site-packages/).
       - ROCm <= 7.2 (system install):
-          /opt/rocm/lib is the standard path; the AMD installer always
-          creates the /opt/rocm symlink even for versioned installs.
+          librocjpeg is found via _find_rocjpeg_lib() which searches
+          ROCM_HOME / ROCM_PATH env vars and torch's ROCM_HOME.
     """
     patchelf = shutil.which("patchelf")
     if not patchelf:
@@ -241,7 +241,9 @@ def _patch_image_so_rpath_in_wheel(wheel_path: Path) -> None:
             "repairing ROCm wheels."
         )
 
-    import hashlib, base64
+    import hashlib
+    import base64
+
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         with zipfile.ZipFile(wheel_path, "r") as zf:
@@ -256,24 +258,28 @@ def _patch_image_so_rpath_in_wheel(wheel_path: Path) -> None:
             )
             return
 
+        # Build the list of RPATH entries to add.
+        # $ORIGIN/../_rocm_sdk_core/lib covers ROCm >= 7.14 pip-wheel layout
+        # regardless of where site-packages lives on the user's machine.
+        rpath_entries = ["$ORIGIN/../_rocm_sdk_core/lib"]
+        # For system ROCm installs (ROCm <= 7.2), add the path discovered at
+        # repair time via ROCM_HOME / ROCM_PATH / torch's ROCM_HOME.
+        # If librocjpeg is not found, skip rather than baking in a guess that
+        # may not match the user's machine; users can set ROCM_HOME or ROCM_PATH.
+        if rocjpeg_lib_dir := _find_rocjpeg_lib():
+            rpath_entries.append(str(rocjpeg_lib_dir))
+
         for lib in image_libs:
             # Read the RPATH auditwheel already set (e.g. $ORIGIN/../torchcodec.libs)
             # and append the ROCm search dirs without clobbering them.
             result = subprocess.run(
                 [patchelf, "--print-rpath", str(lib)],
-                capture_output=True, text=True, check=True,
+                capture_output=True,
+                text=True,
+                check=True,
             )
             existing = result.stdout.strip()
-            extra = ":".join([
-                # ROCm >= 7.14: librocjpeg lives in _rocm_sdk_core/lib alongside
-                # the other ROCm libraries shipped as a pip wheel.
-                # libtorchcodec_image.so is in site-packages/torchcodec/, so
-                # $ORIGIN/.. reaches site-packages/ (same as auditwheel uses for
-                # $ORIGIN/../torchcodec.libs).
-                "$ORIGIN/../_rocm_sdk_core/lib",
-                # ROCm <= 7.2: standard system install (always symlinked to /opt/rocm).
-                "/opt/rocm/lib",
-            ])
+            extra = ":".join(rpath_entries)
             new_rpath = f"{existing}:{extra}" if existing else extra
             print(f"Setting RPATH on {lib.name}: {new_rpath}", flush=True)
             subprocess.run([patchelf, "--set-rpath", new_rpath, str(lib)], check=True)
@@ -289,9 +295,11 @@ def _patch_image_so_rpath_in_wheel(wheel_path: Path) -> None:
                 parts = line.split(",")
                 if len(parts) >= 3 and parts[0] in patched_rel_names:
                     data = (tmp_path / parts[0]).read_bytes()
-                    h = base64.urlsafe_b64encode(
-                        hashlib.sha256(data).digest()
-                    ).rstrip(b"=").decode()
+                    h = (
+                        base64.urlsafe_b64encode(hashlib.sha256(data).digest())
+                        .rstrip(b"=")
+                        .decode()
+                    )
                     new_lines.append(f"{parts[0]},sha256={h},{len(data)}")
                 else:
                     new_lines.append(line)
@@ -299,8 +307,12 @@ def _patch_image_so_rpath_in_wheel(wheel_path: Path) -> None:
 
         # Repack wheel preserving zip metadata.
         patched_path = wheel_path.with_suffix(".patched.whl")
-        with zipfile.ZipFile(wheel_path, "r") as src_zf, \
-             zipfile.ZipFile(patched_path, "w", compression=zipfile.ZIP_DEFLATED) as dst_zf:
+        with (
+            zipfile.ZipFile(wheel_path, "r") as src_zf,
+            zipfile.ZipFile(
+                patched_path, "w", compression=zipfile.ZIP_DEFLATED
+            ) as dst_zf,
+        ):
             for item in src_zf.infolist():
                 patched_file = tmp_path / item.filename
                 if patched_file.is_file():
@@ -334,8 +346,9 @@ def repair_linux(wheels):
                 "WARNING: librocjpeg not found; auditwheel cannot resolve the "
                 "DT_NEEDED entry for librocjpeg. The wheel will still be built "
                 "but ROCm JPEG decoding will fail at runtime unless librocjpeg "
-                "is reachable via /opt/rocm/lib or _rocm_sdk_core/lib. "
-                "Set ROCM_HOME or ROCM_PATH if ROCm is in a non-standard location.",
+                "is reachable via _rocm_sdk_core/lib or a path discoverable "
+                "via ROCM_HOME / ROCM_PATH. "
+                "Set ROCM_HOME or ROCM_PATH to the ROCm install root.",
                 flush=True,
             )
     env["LD_LIBRARY_PATH"] = os.pathsep.join(
@@ -368,8 +381,8 @@ def repair_linux(wheels):
         "libnvfatbin*",
         "libnvcuvid*",
         # librocjpeg is NOT bundled. Instead, libtorchcodec_image.so gets an RPATH
-        # entry pointing to _rocm_sdk_core/lib (ROCm >= 7.14) and /opt/rocm/lib
-        # (ROCm <= 7.2), so the linker finds librocjpeg in its original location.
+        # entry pointing to _rocm_sdk_core/lib (ROCm >= 7.14) and the path
+        # discovered via ROCM_HOME/ROCM_PATH at repair time (ROCm <= 7.2),
         # This is intentional: AMD already set correct RPATHs inside their
         # librocjpeg to find librocm_sysdeps_* and other transitive deps relative
         # to _rocm_sdk_core/lib. Moving it (bundling) breaks those relative paths
@@ -401,13 +414,13 @@ def repair_linux(wheels):
         "librccl*",
         "libnuma*",
         "libdrm*",
-        "libva*",  # VA-API libs pulled in by librocjpeg's HYBRID backend; system-provided alongside libdrm
+        "libva*",  # VA-API libs; system-provided alongside libdrm
         "libelf*",
         "libbz2*",
         "liblzma*",
         # rocm_sysdeps_* are vendored system libs bundled inside rocm-sdk-core;
         # librocm_kpack, libLLVM, libclang-cpp are pulled in transitively by
-        # libamd_comgr. All resolved at runtime via _rocm_sdk_core or /opt/rocm.
+        # libamd_comgr. All resolved at runtime via _rocm_sdk_core or ROCM_HOME/ROCM_PATH.
         "librocm_sysdeps_*",
         "librocm_kpack*",
         "libLLVM*",
@@ -421,8 +434,8 @@ def repair_linux(wheels):
         )
 
     # After auditwheel repair, patch libtorchcodec_image.so's RPATH to include
-    # _rocm_sdk_core/lib (ROCm >= 7.14) and /opt/rocm/lib (ROCm <= 7.2) so the
-    # dynamic linker can find librocjpeg at runtime without LD_LIBRARY_PATH.
+    # _rocm_sdk_core/lib (ROCm >= 7.14) and the path found via ROCM_HOME/ROCM_PATH
+    # (ROCm <= 7.2) so the dynamic linker can find librocjpeg at runtime.
     # librocjpeg itself is NOT bundled; it stays in the ROCm install so AMD's
     # own RPATH inside it correctly resolves all transitive deps.
     if any(_is_rocm_wheel(w) for w in wheels):
@@ -940,22 +953,30 @@ def check_bundling():
                 # RPATH so the dynamic linker finds AMD's own librocjpeg at
                 # runtime (AMD's RPATH inside it then handles its transitive
                 # deps). Verify the RPATH was patched by _patch_image_so_rpath_in_wheel.
-                image_names = [n for n in zf.namelist() if "libtorchcodec_image" in n and n.endswith(".so")]
+                image_names = [
+                    n
+                    for n in zf.namelist()
+                    if "libtorchcodec_image" in n and n.endswith(".so")
+                ]
                 if not image_names:
-                    raise RuntimeError(f"{wheel.name} does not contain libtorchcodec_image.so")
+                    raise RuntimeError(
+                        f"{wheel.name} does not contain libtorchcodec_image.so"
+                    )
                 with tempfile.TemporaryDirectory() as tmp:
                     zf.extract(image_names[0], tmp)
                     image_so = Path(tmp) / image_names[0]
                     result = subprocess.run(
                         ["patchelf", "--print-rpath", str(image_so)],
-                        capture_output=True, text=True, check=True,
+                        capture_output=True,
+                        text=True,
+                        check=True,
                     )
                     rpath = result.stdout.strip()
-                    if "_rocm_sdk_core/lib" not in rpath and "/opt/rocm/lib" not in rpath:
+                    if "_rocm_sdk_core/lib" not in rpath:
                         raise RuntimeError(
                             f"{wheel.name}: libtorchcodec_image.so RPATH ({rpath!r}) "
-                            "does not contain _rocm_sdk_core/lib or /opt/rocm/lib. "
-                            "librocjpeg will not be found at runtime. "
+                            "does not contain _rocm_sdk_core/lib. "
+                            "librocjpeg will not be found at runtime on ROCm >= 7.14. "
                             "Check that _patch_image_so_rpath_in_wheel ran correctly."
                         )
                     print(f"  libtorchcodec_image.so RPATH: {rpath}")
