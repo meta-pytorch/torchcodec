@@ -205,6 +205,12 @@ jobs:
         vainfo 2>&1 || echo "vainfo failed or not installed"
         echo "--- vainfo (with ROCM_PATH/lib/dri as driver path) ---"
         LIBVA_DRIVERS_PATH="${ROCM_PATH:-/opt/rocm}/lib/dri" vainfo 2>&1 || echo "vainfo failed with ROCM_PATH/lib/dri"
+        echo "--- vainfo (with rocm_sysdeps/lib driver path) ---"
+        LIBVA_DRIVERS_PATH="${ROCM_PATH:-/opt/rocm}/lib/rocm_sysdeps/lib" LIBVA_DRIVER_NAME="librocm_sysdeps_gallium" vainfo 2>&1 || echo "vainfo failed with rocm_sysdeps/lib"
+        echo "--- vainfo (drm display on renderD128) ---"
+        vainfo --display drm --device /dev/dri/renderD128 2>&1 || echo "vainfo --display drm failed"
+        echo "--- GPU UUID from DRM sysfs ---"
+        cat /sys/class/drm/renderD128/device/unique_id 2>/dev/null || echo "unique_id not found at /sys/class/drm/renderD128/device/unique_id"
         echo '::endgroup::'
         FAIL_WITHOUT_CUDA=1 FAIL_WITHOUT_IMAGE_CODECS=1 FAIL_WITHOUT_HEIC=0 \
         ROCJPEG_LOG_LEVEL=3 \
