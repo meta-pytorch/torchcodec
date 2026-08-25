@@ -178,6 +178,32 @@ jobs:
         # FAIL_WITHOUT_IMAGE_CODECS=1 is the catch-all requiring every image codec
         # to be present; FAIL_WITHOUT_HEIC=0 opts out of HEIC (libheif isn't
         # installed here), so HEIC tests skip instead of failing.
+        echo '::group::VA-API / DRM diagnostics'
+        echo "ROCM_PATH=${ROCM_PATH:-<not set>}"
+        echo "LIBVA_DRIVERS_PATH=${LIBVA_DRIVERS_PATH:-<not set>}"
+        echo "LIBVA_DRIVER_NAME=${LIBVA_DRIVER_NAME:-<not set>}"
+        echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-<not set>}"
+        echo "--- /dev/dri/ device nodes ---"
+        ls -la /dev/dri/ 2>&1 || echo "/dev/dri/ not found"
+        echo "--- GPU visibility (rocm-smi) ---"
+        rocm-smi 2>&1 || echo "rocm-smi failed or not installed"
+        echo "--- GPU visibility (PyTorch/HIP) ---"
+        python -c "import torch; print('cuda available:', torch.cuda.is_available()); print('device:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')" 2>&1 || true
+        echo "--- libva loaded by librocjpeg ---"
+        rocjpeg_lib=$(find "${ROCM_PATH:-/opt/rocm}" -name "librocjpeg.so*" 2>/dev/null | head -1)
+        if [ -n "${rocjpeg_lib}" ]; then
+          echo "librocjpeg path: ${rocjpeg_lib}"
+          ldd "${rocjpeg_lib}" 2>&1 | grep -i va || echo "no libva dependency found in ldd output"
+        else
+          echo "librocjpeg.so not found under ROCM_PATH"
+        fi
+        echo "--- VA-API driver files inside ROCM_PATH ---"
+        find "${ROCM_PATH:-/opt/rocm}" -name "*drv_video*.so*" 2>/dev/null || echo "no VA-API driver .so found under ROCM_PATH"
+        echo "--- vainfo (default) ---"
+        vainfo 2>&1 || echo "vainfo failed or not installed"
+        echo "--- vainfo (with ROCM_PATH/lib/dri as driver path) ---"
+        LIBVA_DRIVERS_PATH="${ROCM_PATH:-/opt/rocm}/lib/dri" vainfo 2>&1 || echo "vainfo failed with ROCM_PATH/lib/dri"
+        echo '::endgroup::'
         FAIL_WITHOUT_CUDA=1 FAIL_WITHOUT_IMAGE_CODECS=1 FAIL_WITHOUT_HEIC=0 \
           pytest --override-ini="addopts=-v" \
           test/test_ffmpeg_optional.py test/test_decoders.py::TestImageDecoder --tb=short
