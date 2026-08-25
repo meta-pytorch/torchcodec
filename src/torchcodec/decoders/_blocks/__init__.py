@@ -11,15 +11,11 @@ Exposes the three decode stages -- :class:`VideoDemuxer`,
 GIL-releasing units, so a caller can build its own (threaded) decode pipeline
 and tune how the stages overlap. The blocks do no threading themselves.
 
-Audio has the same three stages: :class:`AudioDemuxer` and
-:class:`AudioPacketDecoder`. The two decoders are a single class in C++, since
-decoding is the same operation either way; they are separate here because what
-they hand out, and how they are configured, isn't.
-
 This is experimental and private; the API may change. See
 API_breakdown_claude_plan.md for the design and rationale.
 """
 
+from ._audio_converter import AudioConverter
 from ._color_converter import ColorConverter
 from ._demuxer import AudioDemuxer, StreamIndex, VideoDemuxer
 from ._frame import Packet, RawAudioSamples, RawFrame
@@ -31,6 +27,7 @@ __all__ = [
     "VideoPacketDecoder",
     "AudioPacketDecoder",
     "ColorConverter",
+    "AudioConverter",
     "Packet",
     "RawFrame",
     "RawAudioSamples",

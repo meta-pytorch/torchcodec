@@ -19,7 +19,8 @@ namespace facebook::torchcodec {
 torch::stable::Tensor decode_avif(
     [[maybe_unused]] const torch::stable::Tensor& input,
     [[maybe_unused]] int64_t mode,
-    [[maybe_unused]] int64_t output_dtype) {
+    [[maybe_unused]] int64_t output_dtype,
+    [[maybe_unused]] int64_t num_threads) {
   STD_TORCH_CHECK(
       false,
       "decode_avif: torchcodec was not compiled with libavif support. Rebuild "
