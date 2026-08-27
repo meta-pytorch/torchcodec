@@ -72,7 +72,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ['3.10']
-        rocm-version: ['7.14']
+        rocm-version: ['10.0']
     uses: pytorch/test-infra/.github/workflows/linux_job_v2.yml@main
     permissions:
       id-token: write
@@ -140,7 +140,7 @@ jobs:
 
         echo '::group::Install rocJPEG runtime'
         # librocjpeg is NOT bundled into the wheel.  Instead, libtorchcodec_image.so
-        # has an RPATH entry pointing to _rocm_sdk_core/lib (ROCm 7.14 pip-wheel) and
+        # has an RPATH entry pointing to _rocm_sdk_core/lib (ROCm 10.0 pip-wheel) and
         # /opt/rocm/lib (ROCm <= 7.2 system install).  install_rocjpeg.sh ensures the
         # runtime side-deps (libva) are present regardless of layout.
         bash packaging/install_rocjpeg.sh

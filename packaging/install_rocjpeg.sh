@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # Skip if rocjpeg is already installed via the ROCm pip-wheel distribution
-# (ROCm >= 7.14: librocjpeg ships inside _rocm_sdk_core / _rocm_sdk_devel
+# (TheRock/pip-wheel layout: librocjpeg ships inside _rocm_sdk_core / _rocm_sdk_devel
 # site-packages).
 #
 # Use importlib.util.find_spec to query Python's package system — works for
