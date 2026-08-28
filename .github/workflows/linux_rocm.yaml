@@ -40,7 +40,7 @@ jobs:
 
   filter-matrix:
     # torchcodec only supports the TheRock/pip-wheel layout (ROCm 10.0+).
-    # Strip older ROCm versions (e.g. 7.14) that the upstream matrix may include.
+    # Strip legacy ROCm versions that the upstream matrix may include.
     needs: generate-matrix
     runs-on: ubuntu-latest
     outputs:
@@ -49,7 +49,7 @@ jobs:
       - id: filter
         run: |
           echo '${{ needs.generate-matrix.outputs.matrix }}' \
-            | jq 'del(.include[] | select(.gpu_arch_version != "10.0"))' \
+            | jq 'del(.include[] | select(.gpu_arch_version == "7.14"))' \
             | jq -c '.' \
             | xargs -I{} echo "matrix={}" >> "$GITHUB_OUTPUT"
 
