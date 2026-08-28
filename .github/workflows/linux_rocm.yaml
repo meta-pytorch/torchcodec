@@ -138,13 +138,6 @@ jobs:
         # Prevent the checked-out src/ tree from shadowing the installed wheel.
         bash packaging/remove_src.sh
 
-        echo '::group::Install rocJPEG runtime'
-        # librocjpeg is NOT bundled into the wheel.  Instead, libtorchcodec_image.so
-        # has an RPATH entry pointing to _rocm_sdk_core/lib (TheRock/pip-wheel layout).
-        # install_rocjpeg.sh ensures the runtime side-deps (libva) are present.
-        bash packaging/install_rocjpeg.sh
-        echo '::endgroup::'
-
         echo '::group::Install torchcodec from the wheel'
         python -m pip install "${RUNNER_ARTIFACT_DIR}"/*.whl -vvv
         echo '::endgroup::'
