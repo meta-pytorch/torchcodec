@@ -48,10 +48,9 @@ jobs:
     steps:
       - id: filter
         run: |
-          echo '${{ needs.generate-matrix.outputs.matrix }}' \
-            | jq 'del(.include[] | select(.gpu_arch_version == "7.14"))' \
-            | jq -c '.' \
-            | xargs -I{} echo "matrix={}" >> "$GITHUB_OUTPUT"
+          matrix=$(echo '${{ needs.generate-matrix.outputs.matrix }}' \
+            | jq -c 'del(.include[] | select(.gpu_arch_version == "7.14"))')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   build:
     needs: filter-matrix
