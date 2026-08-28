@@ -183,10 +183,6 @@ def _find_rocjpeg_lib():
             lib_dir = Path(site_dir) / pkg / "lib"
             if _glob.glob(str(lib_dir / "librocjpeg.so.*")):
                 return lib_dir
-    # Last-resort broad glob (covers non-standard conda prefixes).
-    hits = sorted(_glob.glob("/opt/conda/**/librocjpeg.so.*", recursive=True))
-    if hits:
-        return Path(hits[0]).parent
     return None
 
 
