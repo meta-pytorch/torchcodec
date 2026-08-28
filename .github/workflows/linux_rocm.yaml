@@ -140,9 +140,8 @@ jobs:
 
         echo '::group::Install rocJPEG runtime'
         # librocjpeg is NOT bundled into the wheel.  Instead, libtorchcodec_image.so
-        # has an RPATH entry pointing to _rocm_sdk_core/lib (ROCm 10.0 pip-wheel) and
-        # /opt/rocm/lib (ROCm <= 7.2 system install).  install_rocjpeg.sh ensures the
-        # runtime side-deps (libva) are present regardless of layout.
+        # has an RPATH entry pointing to _rocm_sdk_core/lib (TheRock/pip-wheel layout).
+        # install_rocjpeg.sh ensures the runtime side-deps (libva) are present.
         bash packaging/install_rocjpeg.sh
         echo '::endgroup::'
 

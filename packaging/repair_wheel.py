@@ -133,41 +133,25 @@ def _find_nvjpeg_license():
     return None
 
 
-def _get_rocm_search_roots() -> list[Path]:
-    """Return candidate ROCm prefix directories in priority order.
-
-    Checks ROCM_HOME / ROCM_PATH environment variables, then torch's own
-    ROCM_HOME.  No hard-coded fallback is added so misconfigurations surface
-    as warnings rather than silently using the wrong path.
-    """
-    roots: list[Path] = []
-    for var in ("ROCM_HOME", "ROCM_PATH"):
-        if v := os.environ.get(var):
-            roots.append(Path(v))
-    try:
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "from torch.utils.cpp_extension import ROCM_HOME; print(ROCM_HOME or '')",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            roots.append(Path(result.stdout.strip()))
-    except Exception:
-        pass
-    return roots
-
-
 def _find_rocjpeg_license():
     """Find rocjpeg's LICENSE file to document the runtime dependency."""
-    for root in _get_rocm_search_roots():
-        candidate = root / "share" / "doc" / "rocjpeg" / "LICENSE"
-        if candidate.is_file():
-            return candidate
+    import glob as _glob
+    import site as _site
+
+    candidate_dirs: list[str] = []
+    try:
+        candidate_dirs.extend(_site.getsitepackages())
+    except AttributeError:
+        pass
+    try:
+        candidate_dirs.append(_site.getusersitepackages())
+    except AttributeError:
+        pass
+    for site_dir in candidate_dirs:
+        for pkg in ("_rocm_sdk_core", "_rocm_sdk_devel"):
+            candidate = Path(site_dir) / pkg / "share" / "doc" / "rocjpeg" / "LICENSE"
+            if candidate.is_file():
+                return candidate
     return None
 
 
@@ -179,23 +163,12 @@ def _find_rocjpeg_lib():
     in the user's ROCm install). This function returns the directory to add to
     LD_LIBRARY_PATH before calling auditwheel.
 
-    Searches ROCM_HOME / ROCM_PATH env vars and torch's ROCM_HOME first, then
-    (for the TheRock/pip-wheel layout) the _rocm_sdk_* pip-wheel site-packages layout where
-    librocjpeg lives inside _rocm_sdk_core/lib.
+    Searches the _rocm_sdk_* pip-wheel site-packages layout where librocjpeg
+    lives inside _rocm_sdk_core/lib.
     """
     import glob as _glob
     import site as _site
 
-    for root in _get_rocm_search_roots():
-        for lib_dir in (root / "lib", root / "lib64"):
-            if _glob.glob(str(lib_dir / "librocjpeg.so.*")):
-                return lib_dir
-
-    # TheRock/pip-wheel fallback: librocjpeg lives in _rocm_sdk_core/lib
-    # (or _rocm_sdk_devel/lib) inside site-packages rather than in a system
-    # prefix like /opt/rocm.  Use the same glob strategy as install_rocjpeg.sh.
-    # Search the current interpreter's site-packages first (avoids crossing
-    # conda env boundaries), then fall back to the broader /opt/conda tree.
     candidate_dirs: list[str] = []
     try:
         candidate_dirs.extend(_site.getsitepackages())
@@ -224,15 +197,10 @@ def _patch_image_so_rpath_in_wheel(wheel_path: Path) -> None:
     it stays in the user's ROCm install). At runtime the dynamic linker must
     find librocjpeg via RPATH on libtorchcodec_image.so itself.
 
-    Two layouts are covered:
-      - TheRock/pip-wheel layout (rocm-sdk-* Python wheels):
-          librocjpeg lives in <site-packages>/_rocm_sdk_core/lib/.
-          $ORIGIN/../_rocm_sdk_core/lib reaches that dir from
-          <site-packages>/torchcodec/libtorchcodec_image.so
-          (one ../ goes from torchcodec/ up to site-packages/).
-      - Legacy ROCm system install:
-          librocjpeg is found via _find_rocjpeg_lib() which searches
-          ROCM_HOME / ROCM_PATH env vars and torch's ROCM_HOME.
+    Uses the TheRock/pip-wheel layout: librocjpeg lives in
+    <site-packages>/_rocm_sdk_core/lib/. $ORIGIN/../_rocm_sdk_core/lib
+    reaches that dir from <site-packages>/torchcodec/libtorchcodec_image.so
+    (one ../ goes from torchcodec/ up to site-packages/).
     """
     patchelf = shutil.which("patchelf")
     if not patchelf:
@@ -262,12 +230,6 @@ def _patch_image_so_rpath_in_wheel(wheel_path: Path) -> None:
         # $ORIGIN/../_rocm_sdk_core/lib covers the TheRock/pip-wheel layout
         # regardless of where site-packages lives on the user's machine.
         rpath_entries = ["$ORIGIN/../_rocm_sdk_core/lib"]
-        # For legacy ROCm system installs, add the path discovered at
-        # repair time via ROCM_HOME / ROCM_PATH / torch's ROCM_HOME.
-        # If librocjpeg is not found, skip rather than baking in a guess that
-        # may not match the user's machine; users can set ROCM_HOME or ROCM_PATH.
-        if rocjpeg_lib_dir := _find_rocjpeg_lib():
-            rpath_entries.append(str(rocjpeg_lib_dir))
 
         for lib in image_libs:
             # Read the RPATH auditwheel already set (e.g. $ORIGIN/../torchcodec.libs)
@@ -346,9 +308,7 @@ def repair_linux(wheels):
                 "WARNING: librocjpeg not found; auditwheel cannot resolve the "
                 "DT_NEEDED entry for librocjpeg. The wheel will still be built "
                 "but ROCm JPEG decoding will fail at runtime unless librocjpeg "
-                "is reachable via _rocm_sdk_core/lib or a path discoverable "
-                "via ROCM_HOME / ROCM_PATH. "
-                "Set ROCM_HOME or ROCM_PATH to the ROCm install root.",
+                "is reachable via _rocm_sdk_core/lib.",
                 flush=True,
             )
     env["LD_LIBRARY_PATH"] = os.pathsep.join(
@@ -381,8 +341,7 @@ def repair_linux(wheels):
         "libnvfatbin*",
         "libnvcuvid*",
         # librocjpeg is NOT bundled. Instead, libtorchcodec_image.so gets an RPATH
-        # entry pointing to _rocm_sdk_core/lib (TheRock/pip-wheel layout) and the path
-        # discovered via ROCM_HOME/ROCM_PATH at repair time (legacy ROCm system install),
+        # entry pointing to _rocm_sdk_core/lib (TheRock/pip-wheel layout).
         # This is intentional: AMD already set correct RPATHs inside their
         # librocjpeg to find librocm_sysdeps_* and other transitive deps relative
         # to _rocm_sdk_core/lib. Moving it (bundling) breaks those relative paths
@@ -420,7 +379,7 @@ def repair_linux(wheels):
         "liblzma*",
         # rocm_sysdeps_* are vendored system libs bundled inside rocm-sdk-core;
         # librocm_kpack, libLLVM, libclang-cpp are pulled in transitively by
-        # libamd_comgr. All resolved at runtime via _rocm_sdk_core or ROCM_HOME/ROCM_PATH.
+        # libamd_comgr. All resolved at runtime via _rocm_sdk_core.
         "librocm_sysdeps_*",
         "librocm_kpack*",
         "libLLVM*",
@@ -434,8 +393,8 @@ def repair_linux(wheels):
         )
 
     # After auditwheel repair, patch libtorchcodec_image.so's RPATH to include
-    # _rocm_sdk_core/lib (TheRock/pip-wheel layout) and the path found via ROCM_HOME/ROCM_PATH
-    # (legacy ROCm system install) so the dynamic linker can find librocjpeg at runtime.
+    # _rocm_sdk_core/lib (TheRock/pip-wheel layout) so the dynamic linker can
+    # find librocjpeg at runtime.
     # librocjpeg itself is NOT bundled; it stays in the ROCm install so AMD's
     # own RPATH inside it correctly resolves all transitive deps.
     if any(_is_rocm_wheel(w) for w in wheels):
@@ -667,8 +626,7 @@ def bundle_third_party_licenses():
             if (rocjpeg_license := _find_rocjpeg_license()) is None:
                 print(
                     f"WARNING: {wheel.name}: rocjpeg LICENSE not found; "
-                    "skipping LICENSE.librocjpeg-MIT.txt. "
-                    "Set ROCM_HOME or ROCM_PATH to the ROCm install root.",
+                    "skipping LICENSE.librocjpeg-MIT.txt.",
                     flush=True,
                 )
             else:
@@ -977,7 +935,6 @@ def check_bundling():
                             f"{wheel.name}: libtorchcodec_image.so RPATH ({rpath!r}) "
                             "does not contain _rocm_sdk_core/lib. "
                             "librocjpeg will not be found at runtime with the TheRock/pip-wheel layout. "
-                            "Check that _patch_image_so_rpath_in_wheel ran correctly."
                         )
                     print(f"  libtorchcodec_image.so RPATH: {rpath}")
             if bundles_rocjpeg:
