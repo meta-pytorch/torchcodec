@@ -26,16 +26,17 @@ defaults:
 
 jobs:
   generate-matrix:
-    # The upstream generate_binary_build_matrix.yml only knows about ROCm 7.2
-    # and 7.14. We only support the TheRock/pip-wheel layout (ROCm >= 10.0), so
-    # we emit the matrix directly instead of delegating to the upstream tool.
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set.outputs.matrix }}
-    steps:
-      - id: set
-        run: |
-          echo 'matrix={"include":[{"python_version":"3.10","gpu_arch_type":"rocm","gpu_arch_version":"10.0","desired_cuda":"rocm10.0","container_image":"pytorch/manylinux2_28-builder:rocm10.0","package_type":"manywheel","build_name":"manywheel-py3_10-rocm10_0","validation_runner":"linux.2xlarge","upload_to_base_bucket":"yes","stable_version":""}]}' >> "$GITHUB_OUTPUT"
+    uses: pytorch/test-infra/.github/workflows/generate_binary_build_matrix.yml@main
+    with:
+      package-type: wheel
+      os: linux
+      test-infra-repository: pytorch/test-infra
+      test-infra-ref: main
+      with-cpu: disable
+      with-xpu: disable
+      with-cuda: disable
+      with-rocm: enable
+      build-python-only: "disable"
 
   build:
     needs: generate-matrix
