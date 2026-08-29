@@ -369,7 +369,7 @@ def repair_linux(wheels):
         "librccl*",
         "libnuma*",
         "libdrm*",
-        "libva*",  # VA-API libs; system-provided alongside libdrm
+        "libva*",  # VA-API libs; live in _rocm_sdk_core alongside libdrm
         "libelf*",
         "libbz2*",
         "liblzma*",
