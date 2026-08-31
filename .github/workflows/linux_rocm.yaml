@@ -175,6 +175,21 @@ jobs:
         rocm_path=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('_rocm_sdk_core'); print(str(pathlib.Path(spec.submodule_search_locations[0]))) if spec else ''" 2>/dev/null || true)
         if [ -n "${rocm_path}" ]; then
           export ROCM_PATH="${rocm_path}"
+          sysdeps="${ROCM_PATH}/lib/rocm_sysdeps/lib"
+          # The _rocm_sdk_core pip wheel ships librocm_sysdeps_gallium_drv_video.so
+          # but may be missing the radeonsi_drv_video.so symlink that VA-API needs
+          # to locate the driver. Create it if absent.
+          if [ -f "${sysdeps}/librocm_sysdeps_gallium_drv_video.so" ] && \
+             [ ! -e "${sysdeps}/radeonsi_drv_video.so" ]; then
+            ln -sf librocm_sysdeps_gallium_drv_video.so "${sysdeps}/radeonsi_drv_video.so"
+          fi
+          # Preload bundled libva so rocJPEG uses _rocm_sdk_core's VA-API
+          # implementation rather than any system-installed libva. This, combined
+          # with LIBVA_DRIVERS_PATH and LIBVA_DRIVER_NAME, fixes vaInitialize on
+          # VF GPU environments where the system VA stack is incomplete.
+          export LD_PRELOAD="${sysdeps}/librocm_sysdeps_va.so.2:${sysdeps}/librocm_sysdeps_va-drm.so.2${LD_PRELOAD:+:${LD_PRELOAD}}"
+          export LIBVA_DRIVERS_PATH="${sysdeps}"
+          export LIBVA_DRIVER_NAME="radeonsi"
         fi
         # torch.cuda.is_available() is True on ROCm (HIP masquerades as CUDA), so
         # the needs_cuda image tests run here and exercise the GPU JPEG decoder,
