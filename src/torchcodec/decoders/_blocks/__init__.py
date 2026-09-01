@@ -6,13 +6,21 @@
 
 """Private, experimental building-block decode API.
 
-Exposes the three decode stages -- :class:`VideoDemuxer`,
+Exposes the three decode stages -- :class:`Demuxer`,
 :class:`VideoPacketDecoder`, :class:`ColorConverter` -- as passive, composable,
 GIL-releasing units, so a caller can build its own (threaded) decode pipeline
 and tune how the stages overlap. The blocks do no threading themselves.
 
+A :class:`Demuxer` follows one or more streams of a container, so the video and
+the audio of a file come out of a single pass over it. Metadata is exposed in
+tiers that are never merged: :attr:`Demuxer.metadata` for the container,
+``stream.metadata`` for what the header says about a stream, and
+:meth:`VideoStream.scan` for what its packets actually say. That is the whole
+point of this layer -- it shows you the machinery instead of deciding for you.
+
 This is experimental and private; the API may change. See
-API_breakdown_claude_plan.md for the design and rationale.
+API_breakdown_claude_plan.md and multi_stream_demuxer_design.md for the design
+and rationale.
 """
 
 from ._audio_converter import AudioConverter
