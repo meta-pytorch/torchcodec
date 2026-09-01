@@ -23,7 +23,11 @@ import torch
 from PIL import Image, ImageOps
 from torchcodec import _core, ffmpeg_major_version, FrameBatch
 from torchcodec._core._decoder_utils import create_demuxer
-from torchcodec._core.ops import _blocks_demuxer_add_stream, _blocks_demuxer_next_packet
+from torchcodec._core.ops import (
+    _blocks_demuxer_add_stream,
+    _blocks_demuxer_next_packet,
+    _blocks_demuxer_scan,
+)
 from torchcodec._frame import Frame
 from torchcodec.decoders import (
     AudioDecoder,
@@ -4985,8 +4989,9 @@ class TestBlocks:
     @pytest.mark.parametrize("device", _block_devices())
     def test_scan_leaves_demuxer_at_the_start(self, video, device):
         # A scan reads the file all the way to the end and then rewinds, so a
-        # pipeline built on that same demuxer still decodes the whole stream -
-        # and a scan started from somewhere else gives the very same index.
+        # pipeline built on that same demuxer still decodes the whole stream.
+        # The decoder needs no reset(): the scan happened before it was fed
+        # anything.
         demuxer = VideoDemuxer(video.path)
         index = demuxer.scan()
 
@@ -5000,10 +5005,81 @@ class TestBlocks:
         for frame, expected_pts in zip(frames, index.pts_seconds):
             assert frame.pts_seconds == expected_pts
 
-        demuxer.seek(index.end_stream_seconds_from_content / 2)
-        torch.testing.assert_close(
-            demuxer.scan().pts_seconds, index.pts_seconds, atol=0, rtol=0
-        )
+    def test_scan_after_demuxing_raises(self):
+        # The scan rewinds the container, which would silently desynchronise
+        # every decoder already being fed from it.
+        demuxer = VideoDemuxer(NASA_VIDEO.path)
+        demuxer.next_packet()
+
+        with pytest.raises(RuntimeError, match="before any packet is demuxed"):
+            demuxer.scan()
+
+    def test_scan_is_cached(self):
+        demuxer = VideoDemuxer(NASA_VIDEO.path)
+        assert demuxer.scan() is demuxer.scan()
+
+    def test_scan_rewind_matches_a_fresh_demuxer(self):
+        # scan() rewinds with a seek to 0 rather than reopening the container,
+        # and on a file whose edit list discards the first packets those are not
+        # obviously the same thing. What comes out after a scan has to be
+        # exactly what a demuxer that never scanned gives.
+        video = DISCARD_FIRST_KEYFRAME_VIDEO
+
+        scanned = VideoDemuxer(video.path)
+        scanned.scan()
+        after_scan = [
+            frame.pts_seconds
+            for frame in self._decode(VideoPacketDecoder(scanned), scanned)
+        ]
+
+        fresh = VideoDemuxer(video.path)
+        never_scanned = [
+            frame.pts_seconds
+            for frame in self._decode(VideoPacketDecoder(fresh), fresh)
+        ]
+
+        assert after_scan == never_scanned
+        assert len(after_scan) == 25
+
+    def test_scanning_several_video_streams_reads_the_file_once(self):
+        # Sorting and building tensors is per-stream, but the I/O - which is
+        # what a scan actually costs - is shared.
+        class CountingFileLike:
+            def __init__(self, path):
+                self._file = open(path, "rb")
+                self.bytes_read = 0
+
+            def read(self, size):
+                data = self._file.read(size)
+                self.bytes_read += len(data)
+                return data
+
+            def seek(self, offset, whence):
+                return self._file.seek(offset, whence)
+
+        one_stream = CountingFileLike(NASA_VIDEO.path)
+        handle = create_demuxer(source=one_stream)
+        _blocks_demuxer_add_stream(handle, 0, "video")
+        _blocks_demuxer_scan(handle, 0)
+
+        two_streams = CountingFileLike(NASA_VIDEO.path)
+        handle = create_demuxer(source=two_streams)
+        _blocks_demuxer_add_stream(handle, 0, "video")
+        _blocks_demuxer_add_stream(handle, 3, "video")
+        first = _blocks_demuxer_scan(handle, 0)
+        after_first_scan = two_streams.bytes_read
+        second = _blocks_demuxer_scan(handle, 3)
+
+        assert two_streams.bytes_read == after_first_scan  # no further I/O
+        assert two_streams.bytes_read == pytest.approx(one_stream.bytes_read, rel=0.01)
+        assert len(first[0]) > 0 and len(second[0]) > 0
+
+    def test_scanning_a_non_video_stream_raises(self):
+        handle = create_demuxer(source=NASA_VIDEO.path)
+        _blocks_demuxer_add_stream(handle, 4, "audio")
+
+        with pytest.raises(RuntimeError, match="Only a video stream can be scanned"):
+            _blocks_demuxer_scan(handle, 4)
 
     # ===== source kinds =====
 
