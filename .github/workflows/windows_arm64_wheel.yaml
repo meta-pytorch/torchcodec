@@ -68,12 +68,9 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v6
 
-      - name: Setup conda env
-        uses: conda-incubator/setup-miniconda@v3
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          auto-update-conda: true
-          miniforge-version: latest
-          activate-environment: build
           python-version: '3.10'
 
       - name: Update pip
