@@ -199,14 +199,9 @@ def test_repr():
   bit_rate: 128783
   codec: h264
   stream_index: 3
-  duration_seconds: 13.013
-  begin_stream_seconds: 0
-  begin_stream_seconds_from_content: 0
-  end_stream_seconds_from_content: 13.013
   width: 480
   height: 270
   num_frames_from_header: 390
-  num_frames_from_content: 390
   average_fps_from_header: 29.97002997002997
   pixel_aspect_ratio: 1
   rotation: None
@@ -214,6 +209,11 @@ def test_repr():
   color_space: bt709
   color_transfer_characteristic: bt709
   pixel_format: yuv420p
+  begin_stream_seconds_from_content: 0
+  end_stream_seconds_from_content: 13.013
+  num_frames_from_content: 390
+  duration_seconds: 13.013
+  begin_stream_seconds: 0
   end_stream_seconds: 13.013
   num_frames: 390
   average_fps: 29.97002997002997
@@ -231,10 +231,10 @@ def test_repr():
   bit_rate: 64000
   codec: mp3
   stream_index: 0
-  duration_seconds: {expected_duration_seconds_from_header}
-  begin_stream_seconds: 0.138125
   sample_rate: 8000
   num_channels: 2
   sample_format: fltp
+  duration_seconds: {expected_duration_seconds_from_header}
+  begin_stream_seconds: 0.138125
 """
     )
