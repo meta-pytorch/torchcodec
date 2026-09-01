@@ -102,14 +102,22 @@ jobs:
             set FFMPEG_ROOT=%CD%\ffmpeg ^&^& ^
             set LIBAVIF_ROOT=%CD%\libavif ^&^& ^
             set TORCHCODEC_BUILD_HEIC=0 ^&^& ^
-            python -m build --wheel -vvv --no-isolation ^&^& ^
-            bash packaging/post_build_script.sh
+            python -m build --wheel -vvv --no-isolation
+
+      - name: Repair and inspect wheel
+        run: |
+          bash packaging/post_build_script.sh
+          ls -R
+          ls -R dist || true
+          ls -R wheelhouse || true
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
         with:
           name: torchcodec-windows-arm64-py311
-          path: dist/*.whl
+          path: |
+            dist/*.whl
+            wheelhouse/*.whl
           if-no-files-found: error
           retention-days: 14
 
