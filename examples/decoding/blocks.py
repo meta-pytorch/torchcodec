@@ -78,10 +78,12 @@ color_converter = ColorConverter(device=device)
 
 frames = []
 for packet in demuxer:
-    for raw_frame in packet_decoder.decode(packet):
+    # The demuxer signals the end of the stream with a packet that carries no
+    # data, and that is the cue to drain the frames the codec is still holding.
+    raw_frames = (packet_decoder.drain() if packet.is_eof
+                  else packet_decoder.decode(packet))
+    for raw_frame in raw_frames:
         frames.append(color_converter.convert(raw_frame))
-for raw_frame in packet_decoder.drain():
-    frames.append(color_converter.convert(raw_frame))
 
 print(f"{len(frames)} frames, {frames[0].data.shape = }, "
       f"{frames[0].pts_seconds = }, {frames[0].data.device = }")
@@ -104,8 +106,8 @@ def demux(demuxer):
 
 def decode(packet_decoder, packets):
     for packet in packets:
-        yield from packet_decoder.decode(packet)
-    yield from packet_decoder.drain()
+        yield from (packet_decoder.drain() if packet.is_eof
+                    else packet_decoder.decode(packet))
 
 
 def color_convert(color_converter, raw_frames):
@@ -490,8 +492,9 @@ audio_converter = AudioConverter(sample_rate=16_000, num_channels=1)
 
 chunks = []
 for packet in demuxer:
-    chunks += [audio_converter.convert(raw) for raw in packet_decoder.decode(packet)]
-chunks += [audio_converter.convert(raw) for raw in packet_decoder.drain()]
+    raw_samples = (packet_decoder.drain() if packet.is_eof
+                   else packet_decoder.decode(packet))
+    chunks += [audio_converter.convert(raw) for raw in raw_samples]
 chunks.append(audio_converter.drain())  # don't forget me
 
 samples = torch.cat([chunk.data for chunk in chunks], dim=1)

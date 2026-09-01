@@ -182,11 +182,33 @@ class _BaseDemuxer:
         self._handle = create_demuxer(
             source=source, stream_index=stream_index, media_type=self._media_type
         )
+        self._pending_eof: list[Packet] | None = None
+
+    def _eof_packets(self) -> list[Packet]:
+        """One end-of-stream marker per stream being followed."""
+        return [Packet(None, is_eof=True)]
 
     def next_packet(self) -> Packet | None:
-        """Return the next :class:`Packet`, or ``None`` at end of stream."""
-        handle, is_eof = _blocks_demuxer_next_packet(self._handle)
-        return None if is_eof else Packet(handle)
+        """Return the next :class:`Packet`, or ``None`` once there is nothing
+        left at all.
+
+        When the container is exhausted this first hands out one end-of-stream
+        marker per stream being followed - a :class:`Packet` whose ``is_eof`` is
+        set and which carries no data. Routing those to their decoder the same
+        way as any other packet is what lets a decode loop drain itself::
+
+            for packet in demuxer:
+                raws = decoder.drain() if packet.is_eof else decoder.decode(packet)
+
+        Note this is not an early warning: FFmpeg reports no per-stream end, so
+        every marker arrives together, once the whole container is done.
+        """
+        if self._pending_eof is None:
+            handle, is_eof = _blocks_demuxer_next_packet(self._handle)
+            if not is_eof:
+                return Packet(handle)
+            self._pending_eof = self._eof_packets()
+        return self._pending_eof.pop(0) if self._pending_eof else None
 
     def seek(self, seconds: float) -> None:
         """Move the demuxer to ``seconds``.
@@ -204,6 +226,9 @@ class _BaseDemuxer:
         target and discarding it is the caller's responsibility.
         """
         _blocks_demuxer_seek(self._handle, float(seconds))
+        # There are packets ahead of us again, so the end-of-stream markers this
+        # demuxer may already have handed out no longer apply.
+        self._pending_eof = None
 
     def __iter__(self):
         while True:
@@ -262,6 +287,8 @@ class VideoDemuxer(_BaseDemuxer):
         pts, duration, is_key_frame, time_base_num, time_base_den = (
             _blocks_demuxer_scan(self._handle)
         )
+        # A scan rewinds, so as after a seek there are packets ahead of us again.
+        self._pending_eof = None
         return FrameIndex(
             is_key_frame=is_key_frame,
             _pts=pts,

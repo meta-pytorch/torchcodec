@@ -50,6 +50,12 @@ class _BasePacketDecoder(Generic[_Decoded]):
     def decode(self, packet: Packet) -> list[_Decoded]:
         """Send one packet and return whatever is now ready (possibly empty,
         e.g. while the codec buffers B-frames)."""
+        if packet.is_eof:
+            raise ValueError(
+                "This is an end-of-stream marker, not a packet: it carries no "
+                "data to decode. Call drain() instead, to get the frames the "
+                "codec is still holding on to."
+            )
         if self._drained:
             raise RuntimeError(
                 "This decoder has been drained, and a codec that has been told "

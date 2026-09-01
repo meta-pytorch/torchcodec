@@ -32,10 +32,17 @@ class Packet:
     Produced by :class:`VideoDemuxer`, consumed by :class:`VideoPacketDecoder`. It wraps a raw
     pointer, so it is only valid within the process that created it (it cannot
     cross a process boundary).
+
+    Attributes:
+        is_eof (bool): Whether this is an end-of-stream marker rather than a
+            packet. A demuxer emits one of these once its stream is exhausted;
+            it carries no data, and it is the cue to ``drain()`` the decoder
+            that stream feeds. See :meth:`VideoDemuxer.next_packet`.
     """
 
-    def __init__(self, handle: torch.Tensor):
+    def __init__(self, handle: torch.Tensor | None, *, is_eof: bool = False):
         self._handle = handle
+        self.is_eof = is_eof
 
 
 # TODO_API_BREAKDOWN DESIGN P1: API design - the public fields, the class name,

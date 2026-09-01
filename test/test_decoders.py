@@ -3645,6 +3645,8 @@ class TestBlocks:
         num_packets = 0
         for packet in demuxer:
             assert isinstance(packet, Packet)
+            if packet.is_eof:
+                continue
             num_packets += 1
             for decoded in decoder.decode(packet):
                 assert isinstance(decoded, RawFrame)
@@ -3658,6 +3660,38 @@ class TestBlocks:
 
         assert num_packets > 0
 
+    @pytest.mark.parametrize("demuxer_class", (VideoDemuxer, AudioDemuxer))
+    def test_eof_marker(self, demuxer_class):
+        demuxer = demuxer_class(NASA_VIDEO.path)
+        packets = list(demuxer)
+
+        assert not any(packet.is_eof for packet in packets[:-1])
+        assert packets[-1].is_eof
+        # And once the markers are out, there is nothing left, for good.
+        assert demuxer.next_packet() is None
+        assert demuxer.next_packet() is None
+        assert list(demuxer) == []
+
+    def test_decoding_an_eof_marker_raises(self):
+        demuxer = VideoDemuxer(NASA_VIDEO.path)
+        decoder = VideoPacketDecoder(demuxer)
+        *_, eof = list(demuxer)
+
+        with pytest.raises(ValueError, match="end-of-stream marker"):
+            decoder.decode(eof)
+
+    def test_seeking_past_eof_resumes(self):
+        # A seek puts packets ahead of us again, so the demuxer that just said
+        # it was done has to start answering.
+        demuxer = VideoDemuxer(NASA_VIDEO.path)
+        assert list(demuxer)[-1].is_eof
+        assert demuxer.next_packet() is None
+
+        demuxer.seek(0)
+        packets = list(demuxer)
+        assert len(packets) > 1
+        assert packets[-1].is_eof
+
     # The three decode stages, each expressed as a generator that transforms an
     # iterator of inputs into an iterator of outputs. They compose directly (the
     # sequential pipeline is just convert(decode(demux()))), and a thread
@@ -3670,8 +3704,10 @@ class TestBlocks:
     @staticmethod
     def _decode(decoder, packets):
         for packet in packets:
-            yield from decoder.decode(packet)
-        yield from decoder.drain()
+            if packet.is_eof:
+                yield from decoder.drain()
+            else:
+                yield from decoder.decode(packet)
 
     @staticmethod
     def _convert(converter, frames):
@@ -4095,10 +4131,10 @@ class TestBlocks:
         def run(separate_stream):
             demuxer, decoder, _ = self._make_blocks(video, "cuda")
             reads = []
-            for packet in itertools.chain(demuxer, [None]):
+            for packet in demuxer:
                 with torch.cuda.stream(decode_stream):
                     decoded = (
-                        decoder.drain() if packet is None else decoder.decode(packet)
+                        decoder.drain() if packet.is_eof else decoder.decode(packet)
                     )
                 with torch.cuda.stream(
                     read_stream if separate_stream else decode_stream
@@ -4134,9 +4170,9 @@ class TestBlocks:
         convert_stream = torch.cuda.Stream()
 
         frames = []
-        for packet in itertools.chain(demuxer, [None]):
+        for packet in demuxer:
             with torch.cuda.stream(decode_stream):
-                decoded = decoder.drain() if packet is None else decoder.decode(packet)
+                decoded = decoder.drain() if packet.is_eof else decoder.decode(packet)
             with torch.cuda.stream(convert_stream):
                 while decoded:
                     torch.cuda._sleep(20_000_000)  # ~10ms
@@ -4334,12 +4370,11 @@ class TestBlocks:
         demuxer.seek(seconds)
         decoder.reset()
         for packet in demuxer:
-            for raw_frame in decoder.decode(packet):
+            # Seeking into the last GOP can leave the codec holding frames until
+            # it's told the stream ended.
+            raws = decoder.drain() if packet.is_eof else decoder.decode(packet)
+            for raw_frame in raws:
                 yield converter.convert(raw_frame)
-        # Seeking into the last GOP can leave the codec holding frames until
-        # it's told the stream ended.
-        for decoded_frame in decoder.drain():
-            yield converter.convert(decoded_frame)
 
     def _first_frame_after_seek(self, blocks, seconds):
         return next(self._frames_after_seek(blocks, seconds))
@@ -4868,7 +4903,8 @@ class TestBlocks:
         video = DISCARD_FIRST_KEYFRAME_VIDEO
         index = VideoDemuxer(video.path).scan()
 
-        assert len(list(VideoDemuxer(video.path))) == 30  # number of packets
+        packets = [p for p in VideoDemuxer(video.path) if not p.is_eof]
+        assert len(packets) == 30  # number of packets
         assert len(index) == 25  # number of frames
         assert VideoDecoder(video.path, seek_mode="exact").metadata.num_frames == 25
 
@@ -5089,8 +5125,7 @@ class TestBlocks:
             decoder.reset()
         chunks = []
         for packet in demuxer:
-            chunks += decoder.decode(packet)
-        chunks += decoder.drain()
+            chunks += decoder.drain() if packet.is_eof else decoder.decode(packet)
         return chunks
 
     @pytest.mark.parametrize(
@@ -5231,8 +5266,7 @@ class TestBlocks:
 
         chunks = []
         for packet in demuxer:
-            chunks += decoder.decode(packet)
-        chunks += decoder.drain()
+            chunks += decoder.drain() if packet.is_eof else decoder.decode(packet)
 
         assert len(chunks) > 0
         num_samples = sum(chunk.num_samples for chunk in chunks)
@@ -5252,8 +5286,7 @@ class TestBlocks:
             decoder.reset()
             converter.reset()
         for packet in demuxer:
-            raw_chunks += decoder.decode(packet)
-        raw_chunks += decoder.drain()
+            raw_chunks += decoder.drain() if packet.is_eof else decoder.decode(packet)
         if seek_seconds is not None:
             # The caller's pre-roll, see
             # test_audio_raw_samples_match_audio_decoder.
@@ -5408,8 +5441,8 @@ class TestBlocks:
             decoder = AudioPacketDecoder(demuxer)
             chunks = []
             for packet in demuxer:
-                chunks += [converter.convert(raw) for raw in decoder.decode(packet)]
-            chunks += [converter.convert(raw) for raw in decoder.drain()]
+                raws = decoder.drain() if packet.is_eof else decoder.decode(packet)
+                chunks += [converter.convert(raw) for raw in raws]
             chunks.append(converter.drain())
             return self._cat(chunks)
 
@@ -5470,8 +5503,8 @@ class TestBlocks:
 
         chunks = []
         for packet in demuxer:
-            chunks += [converter.convert(raw) for raw in decoder.decode(packet)]
-        chunks += [converter.convert(raw) for raw in decoder.drain()]
+            raws = decoder.drain() if packet.is_eof else decoder.decode(packet)
+            chunks += [converter.convert(raw) for raw in raws]
         chunks.append(converter.drain())
 
         samples = self._cat(chunks)
