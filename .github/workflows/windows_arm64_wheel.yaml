@@ -81,8 +81,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          export TORCHCODEC_BUILD_HEIC=0
-          bash packaging/install_build_dependencies.sh
+          python -m pip install pybind11 "scikit-build-core>=0.10" ninja
 
       - name: Build FFmpeg
         run: |
