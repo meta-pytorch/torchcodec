@@ -28,17 +28,19 @@ from ._frame import Packet
 # specific timestamps for sampling?
 
 
-# TODO_API_BREAKDOWN DESIGN P1: need to figure out the right API for this.
-# StreamIndex? the fields? The methods?
-# We'll have a big problem if/when we implement multi-stream demuxing - and
-# audio!
 @dataclass
-class StreamIndex:
+class FrameIndex:
     """The content of a video stream, as returned by :meth:`VideoDemuxer.scan`.
 
     One entry per frame, in presentation order. Everything here is derived from
     the packets of the stream rather than from the container header, so the
     values are exact.
+
+    The scalars that the header also claims to know carry a ``_from_content``
+    suffix, so that a call site says which source it trusts:
+    ``num_frames_from_content`` here against ``num_frames_from_header`` on the
+    stream's metadata. The per-frame arrays have no header counterpart and are
+    left unsuffixed.
 
     Timestamps are stored in the stream's own time base and converted to
     seconds on access, which is what makes those conversions exact: a frame's
@@ -61,6 +63,11 @@ class StreamIndex:
         """The number of frames in the stream."""
         return self.is_key_frame.shape[0]
 
+    @property
+    def num_frames_from_content(self) -> int:
+        """The number of frames in the stream."""
+        return len(self)
+
     @cached_property
     def pts_seconds(self) -> Tensor:
         """float64 ``[N]``, the presentation timestamp of each frame."""
@@ -77,12 +84,12 @@ class StreamIndex:
         return self.is_key_frame.nonzero().squeeze(1)
 
     @cached_property
-    def begin_stream_seconds(self) -> float:
+    def begin_stream_seconds_from_content(self) -> float:
         """Presentation timestamp of the first frame."""
         return float(self.pts_seconds[0])
 
     @cached_property
-    def end_stream_seconds(self) -> float:
+    def end_stream_seconds_from_content(self) -> float:
         """Timestamp at which the last frame stops being displayed."""
         # max(), not [-1]: durations vary, so the frame that finishes last
         # isn't necessarily the one that starts last. This is how
@@ -90,9 +97,12 @@ class StreamIndex:
         return float(self._end_seconds.max())
 
     @property
-    def average_fps(self) -> float:
+    def average_fps_from_content(self) -> float:
         """Average number of frames per second over the stream."""
-        return len(self) / (self.end_stream_seconds - self.begin_stream_seconds)
+        return len(self) / (
+            self.end_stream_seconds_from_content
+            - self.begin_stream_seconds_from_content
+        )
 
     def index_at(self, seconds: float) -> int:
         """Index of the frame that is being displayed at ``seconds``.
@@ -141,7 +151,7 @@ class StreamIndex:
     def _to_seconds(self, value: Tensor) -> Tensor:
         # pts_to_seconds() (FFMPEGCommon.cpp), and it has to stay bit-for-bit
         # identical to it: float64 is C++ `double`, and the multiplication comes
-        # before the division on both sides. Timestamps from a StreamIndex are
+        # before the division on both sides. Timestamps from a FrameIndex are
         # compared against, and fed back into, values the C++ produced.
         return value.to(torch.float64) * self._time_base_num / self._time_base_den
 
@@ -236,9 +246,9 @@ class VideoDemuxer(_BaseDemuxer):
 
     _media_type = "video"
 
-    def scan(self) -> StreamIndex:
+    def scan(self) -> FrameIndex:
         """Demux the entire stream, without decoding it, and return its
-        :class:`StreamIndex`.
+        :class:`FrameIndex`.
 
         This reads the whole file, and it is the only way to know the stream's
         exact frame count, timestamps and :term:`keyframe` positions: the
@@ -252,7 +262,7 @@ class VideoDemuxer(_BaseDemuxer):
         pts, duration, is_key_frame, time_base_num, time_base_den = (
             _blocks_demuxer_scan(self._handle)
         )
-        return StreamIndex(
+        return FrameIndex(
             is_key_frame=is_key_frame,
             _pts=pts,
             _duration=duration,
@@ -273,7 +283,7 @@ class AudioDemuxer(_BaseDemuxer):
     an :class:`AudioPacketDecoder`, so that is constructed from a demuxer and
     no extra container is opened.
 
-    Unlike :class:`VideoDemuxer` there is no ``scan()``: a :class:`StreamIndex`
+    Unlike :class:`VideoDemuxer` there is no ``scan()``: a :class:`FrameIndex`
     describes keyframes and frame indices, and audio has neither.
 
     Args:

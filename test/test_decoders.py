@@ -4802,6 +4802,7 @@ class TestBlocks:
         frames = video_decoder.get_all_frames()
 
         assert len(index) == video_decoder.metadata.num_frames
+        assert index.num_frames_from_content == video_decoder.metadata.num_frames
         torch.testing.assert_close(
             index.pts_seconds, frames.pts_seconds, atol=0, rtol=0
         )
@@ -4814,9 +4815,15 @@ class TestBlocks:
             atol=0,
             rtol=0,
         )
-        assert index.begin_stream_seconds == video_decoder.metadata.begin_stream_seconds
-        assert index.end_stream_seconds == video_decoder.metadata.end_stream_seconds
-        assert index.average_fps == video_decoder.metadata.average_fps
+        assert (
+            index.begin_stream_seconds_from_content
+            == video_decoder.metadata.begin_stream_seconds
+        )
+        assert (
+            index.end_stream_seconds_from_content
+            == video_decoder.metadata.end_stream_seconds
+        )
+        assert index.average_fps_from_content == video_decoder.metadata.average_fps
 
     @pytest.mark.parametrize(
         "video",
@@ -4950,7 +4957,7 @@ class TestBlocks:
         for frame, expected_pts in zip(frames, index.pts_seconds):
             assert frame.pts_seconds == expected_pts
 
-        demuxer.seek(index.end_stream_seconds / 2)
+        demuxer.seek(index.end_stream_seconds_from_content / 2)
         torch.testing.assert_close(
             demuxer.scan().pts_seconds, index.pts_seconds, atol=0, rtol=0
         )

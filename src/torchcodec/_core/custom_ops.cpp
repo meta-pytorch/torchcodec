@@ -905,7 +905,7 @@ using OpsScanOutput = std::tuple<
     int64_t>;
 
 OpsScanOutput _blocks_demuxer_scan(torch::stable::Tensor& demuxer) {
-  StreamIndex index = unwrap_tensor_to_pointer<Demuxer>(demuxer)->scan();
+  FrameIndex index = unwrap_tensor_to_pointer<Demuxer>(demuxer)->scan();
   return std::make_tuple(
       index.pts,
       index.duration,

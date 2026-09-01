@@ -187,7 +187,7 @@ struct ScannedPacket {
 };
 } // namespace
 
-StreamIndex Demuxer::scan() {
+FrameIndex Demuxer::scan() {
   std::vector<ScannedPacket> packets;
   if (stream_->nb_frames > 0) {
     packets.reserve(static_cast<size_t>(stream_->nb_frames));
@@ -227,7 +227,7 @@ StreamIndex Demuxer::scan() {
   seek(0);
 
   auto num_frames = static_cast<int64_t>(packets.size());
-  StreamIndex index{
+  FrameIndex index{
       torch::stable::empty({num_frames}, kStableInt64),
       torch::stable::empty({num_frames}, kStableInt64),
       torch::stable::empty({num_frames}, kStableBool),
