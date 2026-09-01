@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import io
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cached_property
@@ -16,12 +17,19 @@ import torch
 from torch import Tensor
 
 from torchcodec._core._decoder_utils import create_demuxer
+from torchcodec._core._metadata import (
+    _stream_metadata_from_dict,
+    ContainerMetadata,
+    DemuxerMetadata,
+)
 from torchcodec._core.ops import (
     _blocks_demuxer_add_stream,
+    _blocks_demuxer_container_json_metadata,
     _blocks_demuxer_get_audio_video_stream_indices,
     _blocks_demuxer_next_packet,
     _blocks_demuxer_scan,
     _blocks_demuxer_seek,
+    _blocks_demuxer_stream_json_metadata,
 )
 
 from ._frame import Packet
@@ -184,6 +192,24 @@ class _Stream:
     def __init__(self, demuxer: Demuxer, index: int):
         self._demuxer = demuxer
         self.index = index
+
+    @cached_property
+    def metadata(self):
+        """What the container header says about this stream, and nothing more.
+
+        Content-derived values never appear here: they only exist after an
+        explicit :meth:`VideoStream.scan`, and they live on the
+        :class:`FrameIndex` it returns. So ``metadata.num_frames_from_header``
+        is the header's claim, which may be wrong, and
+        ``scan().num_frames_from_content`` is the exact answer - the name says
+        which one you are reading.
+        """
+        return _stream_metadata_from_dict(
+            json.loads(
+                _blocks_demuxer_stream_json_metadata(self._demuxer._handle, self.index)
+            ),
+            self.index,
+        )
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(index={self.index})"
@@ -352,6 +378,21 @@ class Demuxer:
         self.streams = tuple(
             self._add_stream(selector) for selector in self._parse_streams(streams)
         )
+
+    @cached_property
+    def metadata(self) -> DemuxerMetadata:
+        """What the container header says about the container itself.
+
+        Not about its streams: those are described by
+        ``demuxer.streams[i].metadata``, and there is deliberately only one way
+        to reach each fact. What is here is what no stream can tell you - most
+        usefully ``duration_seconds_from_header``, which some containers carry
+        only at this level, with their streams reporting no duration at all.
+
+        To see every stream in a file, including the ones a demuxer cannot
+        follow, use :func:`get_container_metadata`.
+        """
+        return DemuxerMetadata(**_container_fields(self._handle))
 
     def _parse_streams(self, streams) -> list[int | str]:
         """Normalise the ``streams`` argument to a list of selectors, in the
@@ -557,3 +598,41 @@ class AudioDemuxer(_SingleStreamDemuxer):
         stream = self.streams[0]
         assert isinstance(stream, AudioStream)  # mypy: pinned by _media_type
         return stream.make_decoder()
+
+
+def _container_fields(handle: Tensor) -> dict:
+    container_dict = json.loads(_blocks_demuxer_container_json_metadata(handle))
+    return dict(
+        duration_seconds_from_header=container_dict.get("durationSecondsFromHeader"),
+        bit_rate_from_header=container_dict.get("bitRate"),
+        best_video_stream_index=container_dict.get("bestVideoStreamIndex"),
+        best_audio_stream_index=container_dict.get("bestAudioStreamIndex"),
+    )
+
+
+def get_container_metadata(
+    source: str | Path | bytes | Tensor | io.RawIOBase | io.BufferedReader,
+) -> ContainerMetadata:
+    """Describe a container and every stream in it, without decoding anything.
+
+    This opens the source and reads its header - no packet is demuxed - so it is
+    what you reach for before you know what a file contains and therefore which
+    streams to ask a :class:`Demuxer` for. It reports streams that a demuxer
+    cannot follow, such as subtitles, as plain
+    :class:`~torchcodec._core._metadata.StreamMetadata`.
+
+    Note this opens the source, and constructing a :class:`Demuxer` afterwards
+    opens it again. That second open is a header probe, not a read of the file,
+    and it is the price of a demuxer whose streams are fixed at construction and
+    never change afterwards.
+    """
+    handle = create_demuxer(source=source)
+    container_dict = json.loads(_blocks_demuxer_container_json_metadata(handle))
+    streams = [
+        _stream_metadata_from_dict(
+            json.loads(_blocks_demuxer_stream_json_metadata(handle, stream_index)),
+            stream_index,
+        )
+        for stream_index in range(int(container_dict["numStreams"]))
+    ]
+    return ContainerMetadata(**_container_fields(handle), streams=streams)

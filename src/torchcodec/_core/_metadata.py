@@ -10,6 +10,7 @@ import json
 import pathlib
 from dataclasses import dataclass
 from fractions import Fraction
+from typing import Any
 
 import torch
 from torchcodec._core.ops import (
@@ -206,37 +207,40 @@ class AudioStreamMetadata(AudioStreamHeaderMetadata):
 
 
 @dataclass
-class ContainerMetadata:
+class DemuxerMetadata:
+    """Container-level metadata, as reported by the header.
+
+    This is what a demuxer can say about the container itself. Everything about
+    the streams it follows is on those streams; the full list of streams in the
+    file, including the ones that cannot be followed, comes from
+    ``get_container_metadata()`` instead.
+    """
+
     duration_seconds_from_header: float | None
+    """Duration of the container, in seconds, obtained from the header (float
+    or None). Some containers carry a duration only here, with their streams
+    reporting none, which is why this is worth having separately."""
     bit_rate_from_header: float | None
+    """Overall bit rate of the container (float or None). Not the sum of the
+    streams' bit rates: it includes muxing overhead."""
     best_video_stream_index: int | None
+    """Index of the stream FFmpeg considers the best video one (int or None)."""
     best_audio_stream_index: int | None
+    """Index of the stream FFmpeg considers the best audio one (int or None)."""
 
+    def __repr__(self):
+        s = self.__class__.__name__ + ":\n"
+        for field in dataclasses.fields(self):
+            s += f"{SPACES}{field.name}: {getattr(self, field.name)}\n"
+        return s
+
+
+@dataclass
+class ContainerMetadata(DemuxerMetadata):
     streams: list[StreamMetadata]
-
-    @property
-    def duration_seconds(self) -> float | None:
-        raise NotImplementedError("Decide on logic and implement this!")
-
-    @property
-    def bit_rate(self) -> float | None:
-        raise NotImplementedError("Decide on logic and implement this!")
-
-    @property
-    def best_video_stream(self) -> VideoStreamMetadata:
-        if self.best_video_stream_index is None:
-            raise ValueError("The best video stream is unknown.")
-        metadata = self.streams[self.best_video_stream_index]
-        assert isinstance(metadata, VideoStreamMetadata)  # mypy <3
-        return metadata
-
-    @property
-    def best_audio_stream(self) -> AudioStreamMetadata:
-        if self.best_audio_stream_index is None:
-            raise ValueError("The best audio stream is unknown.")
-        metadata = self.streams[self.best_audio_stream_index]
-        assert isinstance(metadata, AudioStreamMetadata)  # mypy <3
-        return metadata
+    """One entry per stream in the file, indexed by stream index. Streams that
+    are neither video nor audio (subtitles, data) are plain
+    :class:`StreamMetadata`: you can see them, you cannot decode them."""
 
 
 def _get_optional_par_fraction(stream_dict):
@@ -251,6 +255,49 @@ def _get_optional_par_fraction(stream_dict):
 
 # TODO-AUDIO: This is user-facing. Should this just be `get_metadata`, without
 # the "container" name in it? Same below.
+def _stream_metadata_from_dict(stream_dict: dict, stream_index: int) -> StreamMetadata:
+    """Build the header-tier metadata for one stream, from its JSON dict.
+
+    Shared by the decoder path, which then adds the content-derived and
+    computed fields, and by the building-block path, which has only this tier.
+    """
+    # Values come out of untyped JSON, so this is Any as far as mypy can tell.
+    header_meta: dict[str, Any] = dict(
+        duration_seconds_from_header=stream_dict.get("durationSecondsFromHeader"),
+        bit_rate=stream_dict.get("bitRate"),
+        begin_stream_seconds_from_header=stream_dict.get(
+            "beginStreamSecondsFromHeader"
+        ),
+        codec=stream_dict.get("codec"),
+        stream_index=stream_index,
+    )
+    if stream_dict["mediaType"] == "video":
+        return VideoStreamHeaderMetadata(
+            width=stream_dict.get("width"),
+            height=stream_dict.get("height"),
+            num_frames_from_header=stream_dict.get("numFramesFromHeader"),
+            average_fps_from_header=stream_dict.get("averageFpsFromHeader"),
+            pixel_aspect_ratio=_get_optional_par_fraction(stream_dict),
+            rotation=stream_dict.get("rotation"),
+            color_primaries=stream_dict.get("colorPrimaries"),
+            color_space=stream_dict.get("colorSpace"),
+            color_transfer_characteristic=stream_dict.get(
+                "colorTransferCharacteristic"
+            ),
+            pixel_format=stream_dict.get("pixelFormat"),
+            **header_meta,
+        )
+    if stream_dict["mediaType"] == "audio":
+        return AudioStreamHeaderMetadata(
+            sample_rate=stream_dict.get("sampleRate"),
+            num_channels=stream_dict.get("numChannels"),
+            sample_format=stream_dict.get("sampleFormat"),
+            **header_meta,
+        )
+    # Neither video nor audio. Could be e.g. subtitles: visible, not decodable.
+    return StreamMetadata(**header_meta)
+
+
 def get_container_metadata(decoder: torch.Tensor) -> ContainerMetadata:
     """Return container metadata from a decoder.
 

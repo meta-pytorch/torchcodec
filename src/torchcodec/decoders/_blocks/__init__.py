@@ -24,6 +24,7 @@ from ._demuxer import (
     AudioStream,
     Demuxer,
     FrameIndex,
+    get_container_metadata,
     VideoDemuxer,
     VideoStream,
 )
@@ -32,6 +33,7 @@ from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
 
 __all__ = [
     "Demuxer",
+    "get_container_metadata",
     "VideoStream",
     "AudioStream",
     "VideoDemuxer",
@@ -45,9 +47,3 @@ __all__ = [
     "RawAudioSamples",
     "FrameIndex",
 ]
-
-# TODO_API_BREAKDOWN FEAT P1 we probably need a way to expose the *header*
-# metadata - something that would avoid using VideoDecoder? VideoDemuxer.scan()
-# covers the content-derived half of that. Audio makes this more pressing:
-# there is no scan() there, so sample_rate / num_channels / sample_format are
-# only reachable through AudioDecoder today.
