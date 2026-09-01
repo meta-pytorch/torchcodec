@@ -17,11 +17,23 @@ API_breakdown_claude_plan.md for the design and rationale.
 
 from ._audio_converter import AudioConverter
 from ._color_converter import ColorConverter
-from ._demuxer import AudioDemuxer, FrameIndex, VideoDemuxer
+from ._demuxer import (
+    AudioDemuxer,
+    # TODO_API_BREAKDOWN DESIGN P1: AudioStream and VideoStream may conflict
+    # with the encoder-side classes of the same name. Maybe that's OK?
+    AudioStream,
+    Demuxer,
+    FrameIndex,
+    VideoDemuxer,
+    VideoStream,
+)
 from ._frame import Packet, RawAudioSamples, RawFrame
 from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
 
 __all__ = [
+    "Demuxer",
+    "VideoStream",
+    "AudioStream",
     "VideoDemuxer",
     "AudioDemuxer",
     "VideoPacketDecoder",

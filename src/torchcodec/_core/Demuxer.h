@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "AVIOContextHolder.h"
@@ -73,10 +74,20 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
 
   explicit Demuxer(std::unique_ptr<AVIOContextHolder> avio_context_holder);
 
-  // Starts following the stream at `stream_index`, or the best stream of
-  // `media_type` when it is left unspecified, and returns its index (which is
-  // absolute across all media types).
-  int add_stream(std::optional<int> stream_index, AVMediaType media_type);
+  // Starts following a stream, and returns its index (absolute across all
+  // media types) together with its media type. Identify it either by
+  // `stream_index`, in which case its media type is looked up and must be audio
+  // or video, or by `media_type` alone, which follows the best stream of that
+  // type. Passing both follows that stream and requires it to be of that type.
+  std::pair<int, AVMediaType> add_stream(
+      std::optional<int> stream_index = std::nullopt,
+      std::optional<AVMediaType> media_type = std::nullopt);
+
+  // int64 [K]: the index of every audio and video stream in the container, in
+  // container order. Anything else - subtitles, data, attachments - is left
+  // out: those can be seen in the metadata but cannot be followed. Raises if
+  // the container has nothing that can be demuxed at all.
+  torch::stable::Tensor get_audio_video_stream_indices() const;
 
   // Returns the next packet of whichever followed stream has one, as a
   // freshly-allocated packet, or a null packet at end of stream. Which stream
@@ -111,7 +122,11 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
 
  private:
   void find_stream_info();
-  void validate_requested_stream(int stream_index, AVMediaType media_type);
+  // Checks `stream_index` is in range, and that it is of `media_type` when one
+  // is given, or audio or video when it isn't.
+  void validate_requested_stream(
+      int stream_index,
+      std::optional<AVMediaType> media_type);
   // The stream a seek is resolved against when the caller doesn't name one:
   // simply the first one that was added. A seek is resolved in a single
   // stream's time base and lands on that stream's keyframes, so which one it is

@@ -22,12 +22,7 @@ import pytest
 import torch
 from PIL import Image, ImageOps
 from torchcodec import _core, ffmpeg_major_version, FrameBatch
-from torchcodec._core._decoder_utils import create_demuxer
-from torchcodec._core.ops import (
-    _blocks_demuxer_add_stream,
-    _blocks_demuxer_next_packet,
-    _blocks_demuxer_scan,
-)
+from torchcodec._core.ops import _blocks_demuxer_add_stream, _blocks_demuxer_scan
 from torchcodec._frame import Frame
 from torchcodec.decoders import (
     AudioDecoder,
@@ -51,12 +46,15 @@ from torchcodec.decoders._blocks import (
     AudioConverter,
     AudioDemuxer,
     AudioPacketDecoder,
+    AudioStream,
     ColorConverter,
+    Demuxer,
     Packet,
     RawAudioSamples,
     RawFrame,
     VideoDemuxer,
     VideoPacketDecoder,
+    VideoStream,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.decoders._image_decoders import _source_to_tensor
@@ -3664,46 +3662,101 @@ class TestBlocks:
 
         assert num_packets > 0
 
-    def test_ops_follow_several_streams(self):
-        # The Python API for this comes later. At the op level a demuxer can
-        # already follow several streams at once, and it tags every packet with
-        # the stream it came from - which is what routes it to its decoder.
-        handle = create_demuxer(source=NASA_VIDEO.path)
-        video_index = _blocks_demuxer_add_stream(handle, None, "video")
-        audio_index = _blocks_demuxer_add_stream(handle, None, "audio")
-        assert video_index != audio_index
+    # ===== multi-stream Demuxer =====
 
-        counts = {video_index: 0, audio_index: 0}
-        while True:
-            _, is_eof, stream_index = _blocks_demuxer_next_packet(handle)
-            if is_eof:
-                break
-            counts[stream_index] += 1
+    @pytest.mark.parametrize(
+        "streams, expected_indices, expected_types",
+        (
+            ("video", [3], [VideoStream]),
+            ("audio", [4], [AudioStream]),
+            (("video", "audio"), [3, 4], [VideoStream, AudioStream]),
+            # Order is the caller's, not the container's.
+            (("audio", "video"), [4, 3], [AudioStream, VideoStream]),
+            (0, [0], [VideoStream]),
+            ((3, 1), [3, 1], [VideoStream, AudioStream]),
+            # "all" skips the two subtitle streams.
+            ("all", [0, 1, 3, 4], [VideoStream, AudioStream] * 2),
+        ),
+    )
+    def test_stream_selection(self, streams, expected_indices, expected_types):
+        demuxer = Demuxer(NASA_VIDEO.path, streams=streams)
 
-        assert counts[video_index] > 0
-        assert counts[audio_index] > 0
-        # And a single pass really did produce both, rather than one after the
-        # other: the same file demuxed alone gives the same counts.
-        assert counts[video_index] == len(list(VideoDemuxer(NASA_VIDEO.path)))
-        assert counts[audio_index] == len(list(AudioDemuxer(NASA_VIDEO.path)))
+        assert [s.index for s in demuxer.streams] == expected_indices
+        assert [type(s) for s in demuxer.streams] == expected_types
 
-    def test_ops_add_stream_errors(self):
-        handle = create_demuxer(source=NASA_VIDEO.path)
+    def test_stream_selection_defaults_to_best_video(self):
+        assert [s.index for s in Demuxer(NASA_VIDEO.path).streams] == [3]
 
-        # nasa_13013.mp4 carries subtitle streams, which we can demux packets
-        # for but have no decoder for.
-        with pytest.raises(RuntimeError, match="is not a video stream"):
-            _blocks_demuxer_add_stream(handle, 2, "video")
-        with pytest.raises(RuntimeError, match="not a valid stream"):
-            _blocks_demuxer_add_stream(handle, 99, "video")
+    @pytest.mark.parametrize(
+        "streams, match",
+        (
+            ((), "streams is empty"),
+            (("video", "video"), "already being demuxed"),
+            # 3 is the best video stream, so this names it twice.
+            (("video", 3), "already being demuxed"),
+            (2, "which cannot be decoded"),
+            (99, "not a valid stream"),
+            (("all", "audio"), "can only be used on its own"),
+            ("subtitles", "Invalid stream selector"),
+            (1.0, "Invalid stream selector"),
+        ),
+    )
+    def test_stream_selection_errors(self, streams, match):
+        with pytest.raises((ValueError, RuntimeError), match=match):
+            Demuxer(NASA_VIDEO.path, streams=streams)
 
-        _blocks_demuxer_add_stream(handle, 3, "video")
-        with pytest.raises(RuntimeError, match="already being demuxed"):
-            _blocks_demuxer_add_stream(handle, 3, "video")
+    def test_audio_stream_has_no_scan(self):
+        (audio,) = Demuxer(NASA_VIDEO.path, streams="audio").streams
+        assert not hasattr(audio, "scan")
 
-        _blocks_demuxer_next_packet(handle)
+    def test_one_pass_matches_separate_demuxers(self):
+        # The whole point of following both streams at once: what comes out has
+        # to be exactly what two separate demuxers give, sample for sample.
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        video, audio = demuxer.streams
+        decoders = {s.index: s.make_decoder() for s in demuxer.streams}
+
+        frames, samples = [], []
+        for packet in demuxer:
+            target = frames if packet.stream_index == video.index else samples
+            target += decoders[packet.stream_index].decode(packet)
+        frames += decoders[video.index].drain()
+        samples += decoders[audio.index].drain()
+
+        video_only = VideoDemuxer(NASA_VIDEO.path)
+        expected_frames = list(self._decode(video_only.make_decoder(), video_only))
+        audio_only = AudioDemuxer(NASA_VIDEO.path)
+        expected_samples = list(self._decode(audio_only.make_decoder(), audio_only))
+
+        assert len(frames) == len(expected_frames) > 0
+        assert len(samples) == len(expected_samples) > 0
+        for got, expected in zip(frames, expected_frames):
+            assert got.pts_seconds == expected.pts_seconds
+            torch.testing.assert_close(got.planes, expected.planes, atol=0, rtol=0)
+        for got, expected in zip(samples, expected_samples):
+            assert got.pts_seconds == expected.pts_seconds
+            torch.testing.assert_close(got.data, expected.data, atol=0, rtol=0)
+
+    def test_packets_are_tagged_with_their_stream(self):
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        video, audio = demuxer.streams
+
+        seen = {video.index: 0, audio.index: 0}
+        for packet in demuxer:
+            seen[packet.stream_index] += 1
+
+        assert seen[video.index] > 0
+        assert seen[audio.index] > 0
+
+    def test_adding_a_stream_after_demuxing_raises(self):
+        # Demuxer follows its streams from construction, so this is only
+        # reachable underneath it - but the demuxer is what enforces it, and a
+        # stream added late would start from wherever the container now is.
+        demuxer = Demuxer(NASA_VIDEO.path)
+        demuxer.next_packet()
+
         with pytest.raises(RuntimeError, match="before the first packet"):
-            _blocks_demuxer_add_stream(handle, 4, "audio")
+            _blocks_demuxer_add_stream(demuxer._handle, 4, "audio")
 
     # The three decode stages, each expressed as a generator that transforms an
     # iterator of inputs into an iterator of outputs. They compose directly (the
@@ -4385,8 +4438,8 @@ class TestBlocks:
                 yield converter.convert(raw_frame)
         # Seeking into the last GOP can leave the codec holding frames until
         # it's told the stream ended.
-        for decoded_frame in decoder.drain():
-            yield converter.convert(decoded_frame)
+        for raw_frame in decoder.drain():
+            yield converter.convert(raw_frame)
 
     def _first_frame_after_seek(self, blocks, seconds):
         return next(self._frames_after_seek(blocks, seconds))
@@ -5058,28 +5111,27 @@ class TestBlocks:
                 return self._file.seek(offset, whence)
 
         one_stream = CountingFileLike(NASA_VIDEO.path)
-        handle = create_demuxer(source=one_stream)
-        _blocks_demuxer_add_stream(handle, 0, "video")
-        _blocks_demuxer_scan(handle, 0)
+        (only,) = Demuxer(one_stream, streams=0).streams
+        only.scan()
 
         two_streams = CountingFileLike(NASA_VIDEO.path)
-        handle = create_demuxer(source=two_streams)
-        _blocks_demuxer_add_stream(handle, 0, "video")
-        _blocks_demuxer_add_stream(handle, 3, "video")
-        first = _blocks_demuxer_scan(handle, 0)
+        left, right = Demuxer(two_streams, streams=(0, 3)).streams
+        first = left.scan()
         after_first_scan = two_streams.bytes_read
-        second = _blocks_demuxer_scan(handle, 3)
+        second = right.scan()
 
         assert two_streams.bytes_read == after_first_scan  # no further I/O
         assert two_streams.bytes_read == pytest.approx(one_stream.bytes_read, rel=0.01)
-        assert len(first[0]) > 0 and len(second[0]) > 0
+        assert len(first) > 0 and len(second) > 0
 
     def test_scanning_a_non_video_stream_raises(self):
-        handle = create_demuxer(source=NASA_VIDEO.path)
-        _blocks_demuxer_add_stream(handle, 4, "audio")
+        # Unreachable through the Python API, where AudioStream simply has no
+        # scan() - which is the point of the stream classes. The check below it
+        # is still worth keeping honest.
+        demuxer = Demuxer(NASA_VIDEO.path, streams="audio")
 
         with pytest.raises(RuntimeError, match="Only a video stream can be scanned"):
-            _blocks_demuxer_scan(handle, 4)
+            _blocks_demuxer_scan(demuxer._handle, demuxer.streams[0].index)
 
     # ===== source kinds =====
 
