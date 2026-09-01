@@ -57,6 +57,10 @@ class _BasePacketDecoder(Generic[_Decoded]):
             device=device_str,
         )
         self._drained = False
+        # The demuxer position these packets come from. None until the first
+        # packet, and again after every reset(), so it is adopted rather than
+        # tracked: the decoder never needs a reference back to the demuxer.
+        self._generation: int | None = None
 
     def _receive_ready_frames(self) -> list[_Decoded]:
         raise NotImplementedError
@@ -69,6 +73,15 @@ class _BasePacketDecoder(Generic[_Decoded]):
                 "This decoder has been drained, and a codec that has been told "
                 "the stream ended ignores any further packet. Create a new "
                 "decoder to decode another stream."
+            )
+        if self._generation is None:
+            self._generation = packet._generation
+        elif self._generation != packet._generation:
+            raise RuntimeError(
+                "The demuxer seeked since this decoder was last reset(), so "
+                "this packet is from a position the codec knows nothing about "
+                "- decoding it would produce plausible-looking garbage. Call "
+                "reset() on every decoder fed by that demuxer after a seek."
             )
         status = _blocks_packet_decoder_send_packet(self._handle, packet._handle)
         if status < 0:
@@ -88,6 +101,7 @@ class _BasePacketDecoder(Generic[_Decoded]):
         demuxer seeked, and after ``drain()``."""
         _blocks_packet_decoder_reset(self._handle)
         self._drained = False
+        self._generation = None
 
 
 # TODO_API_BREAKDOWN DESIGN P1: Can/should we explicitly prevent user
@@ -165,6 +179,9 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
                     sample_format=sample_format,
                     pts_seconds=pts_seconds,
                     duration_seconds=duration_seconds,
+                    # Carried onward so AudioConverter can make the same check:
+                    # a seek invalidates the resampler's state too.
+                    _generation=self._generation or 0,
                 )
             )
         return samples
