@@ -34,7 +34,7 @@ std::string get_seek_error_message(
 // The frames of the active stream, in presentation order: three parallel
 // tensors of length N, plus the time base `pts` and `duration` are expressed
 // in.
-struct StreamIndex {
+struct FrameIndex {
   torch::stable::Tensor pts; // int64 [N]
   torch::stable::Tensor duration; // int64 [N]
   torch::stable::Tensor is_key_frame; // bool [N]
@@ -65,7 +65,7 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
   // Demuxes the entire stream, without decoding, and returns one entry per
   // frame sorted by pts. Leaves the demuxer back at the start of the stream,
   // and keeps no state of its own.
-  StreamIndex scan();
+  FrameIndex scan();
 
   AVStream* active_stream() const {
     return stream_;
