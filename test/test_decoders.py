@@ -22,6 +22,8 @@ import pytest
 import torch
 from PIL import Image, ImageOps
 from torchcodec import _core, ffmpeg_major_version, FrameBatch
+from torchcodec._core._decoder_utils import create_demuxer
+from torchcodec._core.ops import _blocks_demuxer_add_stream, _blocks_demuxer_next_packet
 from torchcodec._frame import Frame
 from torchcodec.decoders import (
     AudioDecoder,
@@ -3657,6 +3659,47 @@ class TestBlocks:
                 assert frame.duration_seconds >= 0
 
         assert num_packets > 0
+
+    def test_ops_follow_several_streams(self):
+        # The Python API for this comes later. At the op level a demuxer can
+        # already follow several streams at once, and it tags every packet with
+        # the stream it came from - which is what routes it to its decoder.
+        handle = create_demuxer(source=NASA_VIDEO.path)
+        video_index = _blocks_demuxer_add_stream(handle, None, "video")
+        audio_index = _blocks_demuxer_add_stream(handle, None, "audio")
+        assert video_index != audio_index
+
+        counts = {video_index: 0, audio_index: 0}
+        while True:
+            _, is_eof, stream_index = _blocks_demuxer_next_packet(handle)
+            if is_eof:
+                break
+            counts[stream_index] += 1
+
+        assert counts[video_index] > 0
+        assert counts[audio_index] > 0
+        # And a single pass really did produce both, rather than one after the
+        # other: the same file demuxed alone gives the same counts.
+        assert counts[video_index] == len(list(VideoDemuxer(NASA_VIDEO.path)))
+        assert counts[audio_index] == len(list(AudioDemuxer(NASA_VIDEO.path)))
+
+    def test_ops_add_stream_errors(self):
+        handle = create_demuxer(source=NASA_VIDEO.path)
+
+        # nasa_13013.mp4 carries subtitle streams, which we can demux packets
+        # for but have no decoder for.
+        with pytest.raises(RuntimeError, match="is not a video stream"):
+            _blocks_demuxer_add_stream(handle, 2, "video")
+        with pytest.raises(RuntimeError, match="not a valid stream"):
+            _blocks_demuxer_add_stream(handle, 99, "video")
+
+        _blocks_demuxer_add_stream(handle, 3, "video")
+        with pytest.raises(RuntimeError, match="already being demuxed"):
+            _blocks_demuxer_add_stream(handle, 3, "video")
+
+        _blocks_demuxer_next_packet(handle)
+        with pytest.raises(RuntimeError, match="before the first packet"):
+            _blocks_demuxer_add_stream(handle, 4, "audio")
 
     # The three decode stages, each expressed as a generator that transforms an
     # iterator of inputs into an iterator of outputs. They compose directly (the

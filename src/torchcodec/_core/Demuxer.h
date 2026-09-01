@@ -26,14 +26,20 @@ int read_next_packet(
     int active_stream_index,
     ReferenceAVPacket& packet);
 
+// Same, for a demuxer following more than one stream: the packet comes from
+// whichever of `active_stream_indices` has the next one.
+int read_next_packet(
+    AVFormatContext* format_context,
+    const std::vector<int>& active_stream_indices,
+    ReferenceAVPacket& packet);
+
 std::string get_seek_error_message(
     const AVFormatContext* format_context,
     int64_t desired_pts,
     int status);
 
-// The frames of the active stream, in presentation order: three parallel
-// tensors of length N, plus the time base `pts` and `duration` are expressed
-// in.
+// The frames of one stream, in presentation order: three parallel tensors of
+// length N, plus the time base `pts` and `duration` are expressed in.
 struct FrameIndex {
   torch::stable::Tensor pts; // int64 [N]
   torch::stable::Tensor duration; // int64 [N]
@@ -41,42 +47,43 @@ struct FrameIndex {
   AVRational time_base;
 };
 
-// Demux building block: owns an AVFormatContext, selects one stream of the
-// requested media type, and yields its (compressed) packets. Does no decoding.
-// Not thread-safe.
+// Demux building block: owns an AVFormatContext, follows one or more of its
+// streams, and yields their (compressed) packets. Does no decoding. Not
+// thread-safe.
 class FORCE_PUBLIC_VISIBILITY Demuxer {
  public:
-  explicit Demuxer(
-      const std::string& file_path,
-      std::optional<int> stream_index = std::nullopt,
-      AVMediaType media_type = AVMEDIA_TYPE_VIDEO);
+  // Both constructors open the container and probe it, without following any
+  // stream: add_stream() must be called before anything can be demuxed.
+  explicit Demuxer(const std::string& file_path);
 
-  explicit Demuxer(
-      std::unique_ptr<AVIOContextHolder> avio_context_holder,
-      std::optional<int> stream_index = std::nullopt,
-      AVMediaType media_type = AVMEDIA_TYPE_VIDEO);
+  explicit Demuxer(std::unique_ptr<AVIOContextHolder> avio_context_holder);
 
-  // Returns the next packet for the active stream as a freshly-allocated
-  // packet, or a null packet at end of stream.
+  // Starts following the stream at `stream_index`, or the best stream of
+  // `media_type` when it is left unspecified, and returns its index (which is
+  // absolute across all media types).
+  int add_stream(std::optional<int> stream_index, AVMediaType media_type);
+
+  // Returns the next packet of whichever followed stream has one, as a
+  // freshly-allocated packet, or a null packet at end of stream. Which stream
+  // it belongs to is on the packet itself, as `stream_index`.
   UniqueAVPacket next_packet();
 
-  void seek(double seconds);
+  // Moves the *container*: every followed stream jumps, so every decoder fed by
+  // this demuxer must be reset. The target is resolved against `stream_index`,
+  // or against get_reference_stream() when it is left unspecified.
+  void seek(double seconds, std::optional<int> stream_index = std::nullopt);
 
-  // Demuxes the entire stream, without decoding, and returns one entry per
-  // frame sorted by pts. Leaves the demuxer back at the start of the stream,
+  // Demuxes one stream entirely, without decoding, and returns one entry per
+  // frame sorted by pts. Leaves the demuxer back at the start of the container,
   // and keeps no state of its own.
-  FrameIndex scan();
+  FrameIndex scan(std::optional<int> stream_index = std::nullopt);
 
-  AVStream* active_stream() const {
-    return stream_;
-  }
+  // The index passed in, validated, or the only followed stream when it is left
+  // unspecified.
+  int resolve_stream_index(std::optional<int> stream_index) const;
 
-  int active_stream_index() const {
-    return active_stream_index_;
-  }
-
-  AVMediaType media_type() const {
-    return media_type_;
+  const std::vector<int>& active_stream_indices() const {
+    return active_stream_indices_;
   }
 
   const UniqueDecodingAVFormatContext& format_context() const {
@@ -84,16 +91,24 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
   }
 
  private:
-  void validate_requested_stream(int stream_index);
-  void select_stream(std::optional<int> stream_index);
+  void find_stream_info();
+  void validate_requested_stream(int stream_index, AVMediaType media_type);
+  // The stream a seek is resolved against when the caller doesn't name one:
+  // simply the first one that was added. A seek is resolved in a single
+  // stream's time base and lands on that stream's keyframes, so which one it is
+  // does matter - but picking by media type would make the default depend on
+  // what the container happens to hold, where first-added is the caller's own
+  // ordering. Pass a stream to seek() to override it.
+  AVStream* get_reference_stream() const;
 
   // Declared before format_context_ so that it outlives it: the format context
   // reads through the AVIOContext this holds.
   std::unique_ptr<AVIOContextHolder> avio_context_holder_;
   UniqueDecodingAVFormatContext format_context_;
-  int active_stream_index_ = -1;
-  AVStream* stream_ = nullptr;
-  AVMediaType media_type_ = AVMEDIA_TYPE_VIDEO;
+  // In the order they were added. A handful of entries at most, so this is
+  // scanned linearly.
+  std::vector<int> active_stream_indices_;
+  bool has_demuxed_ = false;
   AutoAVPacket auto_packet_;
 };
 
