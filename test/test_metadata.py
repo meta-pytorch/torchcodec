@@ -6,6 +6,7 @@
 
 import functools
 from fractions import Fraction
+from pathlib import Path
 
 import pytest
 from torchcodec import ffmpeg_major_version
@@ -20,9 +21,11 @@ from torchcodec.decoders import AudioDecoder, VideoDecoder
 
 from .utils import (
     BT2020_LIMITED_RANGE_10BIT,
+    call_ffprobe,
     NASA_AUDIO_MP3,
     NASA_VIDEO,
     NASA_VIDEO_ROTATED,
+    needs_ffmpeg_cli,
 )
 
 
@@ -151,6 +154,43 @@ def test_get_metadata_audio_file(metadata_getter):
     assert best_audio_stream_metadata.bit_rate == 64000
     assert best_audio_stream_metadata.codec == "mp3"
     assert best_audio_stream_metadata.sample_format == "fltp"
+
+
+@needs_ffmpeg_cli
+def test_matroska_duration_tag_used_for_stream_duration():
+    path = Path(__file__).parent / "resources" / "nasa_13013_mkv_duration_tag.mkv"
+
+    ffprobe_metadata = call_ffprobe(
+        [
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=duration:stream_tags=DURATION:format=duration",
+            str(path),
+        ]
+    )
+    ffprobe_stream = ffprobe_metadata["streams"][0]
+    assert "duration" not in ffprobe_stream
+
+    hours, minutes, seconds = ffprobe_stream["tags"]["DURATION"].split(":")
+    expected_stream_duration = int(hours) * 60 * 60 + int(minutes) * 60 + float(seconds)
+    expected_container_duration = float(ffprobe_metadata["format"]["duration"])
+    assert expected_stream_duration != expected_container_duration
+
+    metadata = get_container_metadata_from_header(path)
+
+    assert metadata.duration_seconds_from_header == pytest.approx(
+        expected_container_duration
+    )
+    assert metadata.best_video_stream.duration_seconds_from_header == pytest.approx(
+        expected_stream_duration
+    )
+    assert metadata.best_video_stream.duration_seconds == pytest.approx(
+        expected_stream_duration
+    )
+    assert metadata.best_video_stream.duration_seconds != pytest.approx(
+        expected_container_duration
+    )
 
 
 def test_rotation_metadata():
