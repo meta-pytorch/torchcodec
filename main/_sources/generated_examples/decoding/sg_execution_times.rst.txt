@@ -6,7 +6,7 @@
 
 Computation times
 =================
-**05:19.419** total execution time for 13 files **from generated_examples/decoding**:
+**05:20.961** total execution time for 13 files **from generated_examples/decoding**:
 
 .. container::
 
@@ -33,40 +33,40 @@ Computation times
      - Time
      - Mem (MB)
    * - :ref:`sphx_glr_generated_examples_decoding_transforms.py` (``transforms.py``)
-     - 02:26.573
+     - 02:26.323
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_parallel_decoding.py` (``parallel_decoding.py``)
-     - 01:25.330
+     - 01:26.619
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_file_like.py` (``file_like.py``)
-     - 00:26.826
+     - 00:28.033
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py` (``approximate_mode.py``)
-     - 00:25.745
+     - 00:25.224
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py` (``custom_frame_mappings.py``)
-     - 00:24.134
+     - 00:23.852
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_basic_cuda_example.py` (``basic_cuda_example.py``)
-     - 00:04.686
+     - 00:04.782
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_blocks.py` (``blocks.py``)
-     - 00:02.080
+     - 00:02.095
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_basic_example.py` (``basic_example.py``)
-     - 00:02.052
+     - 00:02.067
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_audio_decoding.py` (``audio_decoding.py``)
-     - 00:00.944
-     - 0.0
-   * - :ref:`sphx_glr_generated_examples_decoding_sampling.py` (``sampling.py``)
-     - 00:00.449
+     - 00:01.017
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_hdr_decoding.py` (``hdr_decoding.py``)
-     - 00:00.432
+     - 00:00.436
+     - 0.0
+   * - :ref:`sphx_glr_generated_examples_decoding_sampling.py` (``sampling.py``)
+     - 00:00.422
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_image_decoding.py` (``image_decoding.py``)
-     - 00:00.169
+     - 00:00.090
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_performance_tips.py` (``performance_tips.py``)
      - 00:00.000
