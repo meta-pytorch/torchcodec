@@ -143,7 +143,7 @@ void SingleStreamDecoder::initialize_decoder() {
     }
 
     if (av_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-      double fps = av_q2d(av_stream->r_frame_rate);
+      double fps = av_q2d(av_stream->avg_frame_rate);
       if (fps > 0) {
         stream_metadata.average_fps_from_header = fps;
       }
