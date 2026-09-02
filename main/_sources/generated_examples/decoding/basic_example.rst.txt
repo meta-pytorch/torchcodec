@@ -120,14 +120,9 @@ some metadata via the ``metadata`` attribute which is a
       bit_rate: 505790
       codec: h264
       stream_index: 0
-      duration_seconds: 13.8
-      begin_stream_seconds: 0
-      begin_stream_seconds_from_content: 0
-      end_stream_seconds_from_content: 13.8
       width: 640
       height: 360
       num_frames_from_header: 345
-      num_frames_from_content: 345
       average_fps_from_header: 25
       pixel_aspect_ratio: 1
       rotation: None
@@ -135,6 +130,11 @@ some metadata via the ``metadata`` attribute which is a
       color_space: smpte170m
       color_transfer_characteristic: smpte170m
       pixel_format: yuv420p
+      begin_stream_seconds_from_content: 0
+      end_stream_seconds_from_content: 13.8
+      num_frames_from_content: 345
+      duration_seconds: 13.8
+      begin_stream_seconds: 0
       end_stream_seconds: 13.8
       num_frames: 345
       average_fps: 25
@@ -466,7 +466,7 @@ respectively.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 2.067 seconds)
+   **Total running time of the script:** (0 minutes 2.091 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_basic_example.py:

@@ -54,11 +54,11 @@ AudioStreamMetadata:
  bit_rate: 108039
  codec: mp3
  stream_index: 0
- duration_seconds: 97.48897959183674
- begin_stream_seconds: 0.02505668934240363
  sample_rate: 44100
  num_channels: 2
  sample_format: fltp
+ duration_seconds: 97.48897959183674
+ begin_stream_seconds: 0.02505668934240363
 ```
 
 ## Decoding samples
@@ -154,7 +154,7 @@ as [`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchc
 [TorchCodec Performance Tips and Best Practices](performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py) for more
 details.
 
-**Total running time of the script:** (0 minutes 1.017 seconds)
+**Total running time of the script:** (0 minutes 1.066 seconds)
 
 [`Download Jupyter notebook: audio_decoding.ipynb`](../../_downloads/f6b4925719fd3f116259f89a204c6888/audio_decoding.ipynb)
 

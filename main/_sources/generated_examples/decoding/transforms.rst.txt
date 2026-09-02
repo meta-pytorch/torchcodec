@@ -120,14 +120,9 @@ transforms to reduce the dimensions.
       bit_rate: 24879454
       codec: h264
       stream_index: 0
-      duration_seconds: 37.24
-      begin_stream_seconds: 0
-      begin_stream_seconds_from_content: 0
-      end_stream_seconds_from_content: 37.24
       width: 3840
       height: 2160
       num_frames_from_header: 931
-      num_frames_from_content: 931
       average_fps_from_header: 25
       pixel_aspect_ratio: 0
       rotation: None
@@ -135,6 +130,11 @@ transforms to reduce the dimensions.
       color_space: bt709
       color_transfer_characteristic: bt709
       pixel_format: yuv420p
+      begin_stream_seconds_from_content: 0
+      end_stream_seconds_from_content: 37.24
+      num_frames_from_content: 931
+      duration_seconds: 37.24
+      begin_stream_seconds: 0
       end_stream_seconds: 37.24
       num_frames: 931
       average_fps: 25
@@ -494,8 +494,8 @@ sequentially:
 
  .. code-block:: none
 
-    decoder transforms:    times_med = 1981.16ms +- 16.32
-    torchvision transform: times_med = 4042.81ms +- 56.46
+    decoder transforms:    times_med = 1959.36ms +- 18.50
+    torchvision transform: times_med = 4038.84ms +- 45.25
 
 
 
@@ -523,8 +523,8 @@ even be faster!
 
  .. code-block:: none
 
-    decoder transforms:    times_med = 10726.63ms +- 9.31
-    torchvision transform: times_med = 12509.71ms +- 3.81
+    decoder transforms:    times_med = 10702.36ms +- 12.59
+    torchvision transform: times_med = 12500.63ms +- 19.01
 
 
 
@@ -557,7 +557,7 @@ In brief, our performance guidance is:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (2 minutes 26.323 seconds)
+   **Total running time of the script:** (2 minutes 26.563 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_transforms.py:

@@ -72,14 +72,9 @@ VideoStreamMetadata:
  bit_rate: 9958354
  codec: h264
  stream_index: 0
- duration_seconds: 206.03916666666666
- begin_stream_seconds: 0
- begin_stream_seconds_from_content: 0
- end_stream_seconds_from_content: 206.03916666666666
  width: 1920
  height: 1080
  num_frames_from_header: 6175
- num_frames_from_content: 6175
  average_fps_from_header: 29.97002997002997
  pixel_aspect_ratio: 1
  rotation: None
@@ -87,6 +82,11 @@ VideoStreamMetadata:
  color_space: bt709
  color_transfer_characteristic: bt709
  pixel_format: yuv420p
+ begin_stream_seconds_from_content: 0
+ end_stream_seconds_from_content: 206.03916666666666
+ num_frames_from_content: 6175
+ duration_seconds: 206.03916666666666
+ begin_stream_seconds: 0
  end_stream_seconds: 206.03916666666666
  num_frames: 6175
  average_fps: 29.97002997002997
@@ -150,13 +150,13 @@ bench(direct_url_to_ffmpeg)
 
 ```
 Decode from existing download:
-med = 195.56ms +- 0.20
+med = 194.86ms +- 0.56
 
 Download before decode:
-med = 1078.63ms +- 97.82
+med = 1035.77ms +- 79.25
 
 Direct url to FFmpeg:
-med = 250.51ms +- 11.81
+med = 254.87ms +- 5.96
 ```
 
 Decoding the already downloaded video is clearly the fastest. Having to
@@ -191,7 +191,7 @@ bench(stream_while_decode)
 
 ```
 Stream while decode:
-med = 214.75ms +- 17.21
+med = 213.15ms +- 2.04
 ```
 
 Streaming the data through a file-like object is much faster than
@@ -317,10 +317,10 @@ bench(decode_from_existing_open_file_object)
 
 ```
 Decode from existing file path:
-med = 195.73ms +- 1.05
+med = 194.37ms +- 0.78
 
 Decode from existing open file object:
-med = 195.68ms +- 0.15
+med = 195.68ms +- 0.57
 ```
 
 Thankfully, the answer is both means of decoding from a local file take about
@@ -336,7 +336,7 @@ import shutil
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (0 minutes 28.033 seconds)
+**Total running time of the script:** (0 minutes 27.234 seconds)
 
 [`Download Jupyter notebook: file_like.ipynb`](../../_downloads/f0caa5fce0f20da68647d009fb8dd8d0/file_like.ipynb)
 

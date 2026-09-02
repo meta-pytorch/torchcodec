@@ -115,14 +115,9 @@ its size and content:
       bit_rate: 9958354
       codec: h264
       stream_index: 0
-      duration_seconds: 206.03916666666666
-      begin_stream_seconds: 0
-      begin_stream_seconds_from_content: 0
-      end_stream_seconds_from_content: 206.03916666666666
       width: 1920
       height: 1080
       num_frames_from_header: 6175
-      num_frames_from_content: 6175
       average_fps_from_header: 29.97002997002997
       pixel_aspect_ratio: 1
       rotation: None
@@ -130,6 +125,11 @@ its size and content:
       color_space: bt709
       color_transfer_characteristic: bt709
       pixel_format: yuv420p
+      begin_stream_seconds_from_content: 0
+      end_stream_seconds_from_content: 206.03916666666666
+      num_frames_from_content: 6175
+      duration_seconds: 206.03916666666666
+      begin_stream_seconds: 0
       end_stream_seconds: 206.03916666666666
       num_frames: 6175
       average_fps: 29.97002997002997
@@ -212,13 +212,13 @@ frame. See :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py` for m
  .. code-block:: none
 
     Decode from existing download:
-    med = 195.56ms +- 0.20
+    med = 194.86ms +- 0.56
 
     Download before decode:
-    med = 1078.63ms +- 97.82
+    med = 1035.77ms +- 79.25
 
     Direct url to FFmpeg:
-    med = 250.51ms +- 11.81
+    med = 254.87ms +- 5.96
 
 
 
@@ -269,7 +269,7 @@ Note that using these capabilities from the fsspec library also requires the
  .. code-block:: none
 
     Stream while decode: 
-    med = 214.75ms +- 17.21
+    med = 213.15ms +- 2.04
 
 
 
@@ -433,10 +433,10 @@ An obvious question is: which is faster? The code below tests that question.
  .. code-block:: none
 
     Decode from existing file path:
-    med = 195.73ms +- 1.05
+    med = 194.37ms +- 0.78
 
     Decode from existing open file object:
-    med = 195.68ms +- 0.15
+    med = 195.68ms +- 0.57
 
 
 
@@ -469,7 +469,7 @@ Finally, let's clean up the local resources we created.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 28.033 seconds)
+   **Total running time of the script:** (0 minutes 27.234 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_file_like.py:

@@ -91,14 +91,14 @@ bench(VideoDecoder, source=long_video_path, seek_mode="approximate")
 
 ```
 Creating a VideoDecoder object with seek_mode='exact' on a short video:
-med = 6.59ms +- 0.02
+med = 6.51ms +- 0.03
 Creating a VideoDecoder object with seek_mode='approximate' on a short video:
-med = 5.88ms +- 0.02
+med = 5.77ms +- 0.02
 
 Creating a VideoDecoder object with seek_mode='exact' on a long video:
-med = 79.58ms +- 1.14
+med = 78.74ms +- 1.15
 Creating a VideoDecoder object with seek_mode='approximate' on a long video:
-med = 8.50ms +- 0.05
+med = 8.39ms +- 0.05
 ```
 
 ## Performance: frame decoding and clip sampling
@@ -132,9 +132,9 @@ bench(sample_clips, seek_mode="approximate")
 
 ```
 Sampling clips with seek_mode='exact':
-med = 216.50ms +- 27.18
+med = 210.72ms +- 28.49
 Sampling clips with seek_mode='approximate':
-med = 142.77ms +- 22.77
+med = 143.61ms +- 26.17
 ```
 
 ## Accuracy: Metadata and frame retrieval
@@ -173,14 +173,9 @@ VideoStreamMetadata:
  bit_rate: 505790
  codec: h264
  stream_index: 0
- duration_seconds: 13.8
- begin_stream_seconds: 0
- begin_stream_seconds_from_content: 0
- end_stream_seconds_from_content: 13.8
  width: 640
  height: 360
  num_frames_from_header: 345
- num_frames_from_content: 345
  average_fps_from_header: 25
  pixel_aspect_ratio: 1
  rotation: None
@@ -188,6 +183,11 @@ VideoStreamMetadata:
  color_space: smpte170m
  color_transfer_characteristic: smpte170m
  pixel_format: yuv420p
+ begin_stream_seconds_from_content: 0
+ end_stream_seconds_from_content: 13.8
+ num_frames_from_content: 345
+ duration_seconds: 13.8
+ begin_stream_seconds: 0
  end_stream_seconds: 13.8
  num_frames: 345
  average_fps: 25
@@ -199,14 +199,9 @@ VideoStreamMetadata:
  bit_rate: 505790
  codec: h264
  stream_index: 0
- duration_seconds: 13.8
- begin_stream_seconds: 0
- begin_stream_seconds_from_content: None
- end_stream_seconds_from_content: None
  width: 640
  height: 360
  num_frames_from_header: 345
- num_frames_from_content: None
  average_fps_from_header: 25
  pixel_aspect_ratio: 1
  rotation: None
@@ -214,6 +209,11 @@ VideoStreamMetadata:
  color_space: smpte170m
  color_transfer_characteristic: smpte170m
  pixel_format: yuv420p
+ begin_stream_seconds_from_content: None
+ end_stream_seconds_from_content: None
+ num_frames_from_content: None
+ duration_seconds: 13.8
+ begin_stream_seconds: 0
  end_stream_seconds: 13.8
  num_frames: 345
  average_fps: 25
@@ -248,7 +248,7 @@ is usually the case when doing clip sampling, consider using "approximate".
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (0 minutes 25.224 seconds)
+**Total running time of the script:** (0 minutes 24.968 seconds)
 
 [`Download Jupyter notebook: approximate_mode.ipynb`](../../_downloads/4bf13eb02a73a239a7e7af99b5c000a9/approximate_mode.ipynb)
 
