@@ -78,7 +78,7 @@ Boilerplate: a test video, and the device we'll run on.
 
     device = 'cuda'
 
-    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpu2c8hgak/video.mp4'], returncode=0)
+    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpdc4grm0b/video.mp4'], returncode=0)
 
 
 
@@ -288,18 +288,21 @@ The seek also invalidates the frames the decoder is holding on to, so the
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 208-216
+.. GENERATED FROM PYTHON SOURCE LINES 208-219
 
 Scanning
 --------
 
 ``VideoDemuxer.scan()`` demuxes the whole stream once, without decoding anything,
-and returns a ``StreamIndex``: one entry per frame, in presentation order.
+and returns a ``FrameIndex``: one entry per frame, in presentation order.
 This is the only way to know a stream's exact frame count, timestamps and
 keyframe positions - a container header can be wrong about all of them. It
 costs one pass over the file, and it leaves the demuxer back at the start.
 
-.. GENERATED FROM PYTHON SOURCE LINES 216-224
+The ``_from_content`` suffix marks the values the header also claims to know:
+it is there so that a call site says which of the two sources it trusts.
+
+.. GENERATED FROM PYTHON SOURCE LINES 219-229
 
 .. code-block:: Python
 
@@ -308,8 +311,10 @@ costs one pass over the file, and it leaves the demuxer back at the start.
     packet_decoder = VideoPacketDecoder(demuxer, device=device)
     color_converter = ColorConverter(device=device)
 
-    print(f"{len(index)} frames at {index.average_fps} fps, "
-          f"from {index.begin_stream_seconds}s to {index.end_stream_seconds}s")
+    print(f"{index.num_frames_from_content} frames at "
+          f"{index.average_fps_from_content} fps, "
+          f"from {index.begin_stream_seconds_from_content}s "
+          f"to {index.end_stream_seconds_from_content}s")
 
 
 
@@ -324,14 +329,14 @@ costs one pass over the file, and it leaves the demuxer back at the start.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 225-229
+.. GENERATED FROM PYTHON SOURCE LINES 230-234
 
 The index is also what gives the blocks frame *indices*, which they otherwise
 don't have at all: ``index_at()`` maps a timestamp to the frame on screen
 then, and ``pts_seconds`` maps back. That's enough to build ``get_frame_at``,
 or a clip sampler, on top of the blocks.
 
-.. GENERATED FROM PYTHON SOURCE LINES 229-232
+.. GENERATED FROM PYTHON SOURCE LINES 234-237
 
 .. code-block:: Python
 
@@ -351,7 +356,7 @@ or a clip sampler, on top of the blocks.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 233-244
+.. GENERATED FROM PYTHON SOURCE LINES 238-249
 
 Keyframes
 ^^^^^^^^^
@@ -365,7 +370,7 @@ the one you asked for - no decoding forward, nothing to drop.
 That makes a keyframe-only sampler about as cheap as video decoding gets,
 which is what you want for thumbnails or coarse previews.
 
-.. GENERATED FROM PYTHON SOURCE LINES 244-258
+.. GENERATED FROM PYTHON SOURCE LINES 249-263
 
 .. code-block:: Python
 
@@ -397,7 +402,7 @@ which is what you want for thumbnails or coarse previews.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 259-273
+.. GENERATED FROM PYTHON SOURCE LINES 264-278
 
 Exact seeking
 ^^^^^^^^^^^^^
@@ -414,7 +419,7 @@ The two are the same call on the overwhelming majority of files; this is the
 whole of what separates :class:`~torchcodec.decoders.VideoDecoder`'s
 ``seek_mode="exact"`` from ``"approximate"`` for a timestamp lookup.
 
-.. GENERATED FROM PYTHON SOURCE LINES 273-280
+.. GENERATED FROM PYTHON SOURCE LINES 278-285
 
 .. code-block:: Python
 
@@ -438,7 +443,7 @@ whole of what separates :class:`~torchcodec.decoders.VideoDecoder`'s
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 281-286
+.. GENERATED FROM PYTHON SOURCE LINES 286-291
 
 Raw frames
 ----------
@@ -446,7 +451,7 @@ Raw frames
 Color conversion is optional. A ``RawFrame`` can hand out the decoder's own
 planes as tensor views, with no copy and no conversion.
 
-.. GENERATED FROM PYTHON SOURCE LINES 286-295
+.. GENERATED FROM PYTHON SOURCE LINES 291-300
 
 .. code-block:: Python
 
@@ -473,7 +478,7 @@ planes as tensor views, with no copy and no conversion.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 296-308
+.. GENERATED FROM PYTHON SOURCE LINES 301-313
 
 These are views into the frame's memory: the row stride is the decoder's own
 line size, and the chroma planes of an NVDEC surface are two interleaved
@@ -488,7 +493,7 @@ So we can do the color conversion ourselves. Here it's plain PyTorch ops -
 it could just as well be a Triton or CUDA kernel, fused with whatever your
 model needs next.
 
-.. GENERATED FROM PYTHON SOURCE LINES 308-337
+.. GENERATED FROM PYTHON SOURCE LINES 313-342
 
 .. code-block:: Python
 
@@ -534,7 +539,7 @@ model needs next.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 338-344
+.. GENERATED FROM PYTHON SOURCE LINES 343-349
 
 Raw HDR frames
 --------------
@@ -543,7 +548,7 @@ Raw planes come at the source's own precision, so a 10-bit HDR video gives
 ``uint16`` planes with all 10 bits intact - no clipping to 8 bits, and no
 tone mapping.
 
-.. GENERATED FROM PYTHON SOURCE LINES 344-374
+.. GENERATED FROM PYTHON SOURCE LINES 349-379
 
 .. code-block:: Python
 
@@ -591,7 +596,7 @@ tone mapping.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 375-385
+.. GENERATED FROM PYTHON SOURCE LINES 380-390
 
 Streams of unknown length
 -------------------------
@@ -604,7 +609,7 @@ that has no duration, no frame count, and no end.
 
 Let's make one: FFmpeg generating frames forever into a named pipe.
 
-.. GENERATED FROM PYTHON SOURCE LINES 385-402
+.. GENERATED FROM PYTHON SOURCE LINES 390-407
 
 .. code-block:: Python
 
@@ -632,12 +637,12 @@ Let's make one: FFmpeg generating frames forever into a named pipe.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 403-405
+.. GENERATED FROM PYTHON SOURCE LINES 408-410
 
 ``VideoDecoder`` can't do anything with that (we ask for the approximate
 seek mode; the exact one would scan the stream forever):
 
-.. GENERATED FROM PYTHON SOURCE LINES 405-415
+.. GENERATED FROM PYTHON SOURCE LINES 410-420
 
 .. code-block:: Python
 
@@ -665,11 +670,11 @@ seek mode; the exact one would scan the stream forever):
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 416-417
+.. GENERATED FROM PYTHON SOURCE LINES 421-422
 
 The blocks just stream it, and we stop whenever we want:
 
-.. GENERATED FROM PYTHON SOURCE LINES 417-434
+.. GENERATED FROM PYTHON SOURCE LINES 422-439
 
 .. code-block:: Python
 
@@ -704,7 +709,7 @@ The blocks just stream it, and we stop whenever we want:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 435-449
+.. GENERATED FROM PYTHON SOURCE LINES 440-454
 
 Audio
 -----
@@ -721,7 +726,7 @@ single class in C++; they are separate in Python because what they hand out
 isn't. Audio comes out as ``RawAudioSamples``: the codec's own samples, in
 the codec's own sample type, as a ``[num_channels, num_samples]`` tensor.
 
-.. GENERATED FROM PYTHON SOURCE LINES 449-471
+.. GENERATED FROM PYTHON SOURCE LINES 454-476
 
 .. code-block:: Python
 
@@ -760,7 +765,7 @@ the codec's own sample type, as a ``[num_channels, num_samples]`` tensor.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 472-482
+.. GENERATED FROM PYTHON SOURCE LINES 477-487
 
 Those are the true source samples - 16-bit integers here, not floats in
 ``[-1, 1]``. ``AudioConverter`` is what normalizes them, and it can resample
@@ -773,7 +778,7 @@ of each frame back until the next one arrives - which is why ``convert()``
 can return fewer samples than it was given, and why the pipeline ends with
 ``drain()``. Leave that call out and you lose the end of the stream.
 
-.. GENERATED FROM PYTHON SOURCE LINES 482-496
+.. GENERATED FROM PYTHON SOURCE LINES 487-501
 
 .. code-block:: Python
 
@@ -804,7 +809,7 @@ can return fewer samples than it was given, and why the pipeline ends with
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 497-506
+.. GENERATED FROM PYTHON SOURCE LINES 502-511
 
 .. warning::
 
@@ -819,7 +824,7 @@ can return fewer samples than it was given, and why the pipeline ends with
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 2.084 seconds)
+   **Total running time of the script:** (0 minutes 2.075 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_blocks.py:

@@ -53,7 +53,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpu2c8hgak/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpdc4grm0b/video.mp4'], returncode=0)
 ```
 
 ## The three blocks
@@ -213,10 +213,13 @@ asked for 2.5s, landed on 2.000s, target frame at 2.500s
 ## Scanning
 
 `VideoDemuxer.scan()` demuxes the whole stream once, without decoding anything,
-and returns a `StreamIndex`: one entry per frame, in presentation order.
+and returns a `FrameIndex`: one entry per frame, in presentation order.
 This is the only way to know a stream's exact frame count, timestamps and
 keyframe positions - a container header can be wrong about all of them. It
 costs one pass over the file, and it leaves the demuxer back at the start.
+
+The `_from_content` suffix marks the values the header also claims to know:
+it is there so that a call site says which of the two sources it trusts.
 
 ```
 demuxer = VideoDemuxer(video_path)
@@ -224,8 +227,10 @@ index = demuxer.scan()
 packet_decoder = VideoPacketDecoder(demuxer, device=device)
 color_converter = ColorConverter(device=device)
 
-print(f"{len(index)} frames at {index.average_fps} fps, "
- f"from {index.begin_stream_seconds}s to {index.end_stream_seconds}s")
+print(f"{index.num_frames_from_content} frames at "
+ f"{index.average_fps_from_content} fps, "
+ f"from {index.begin_stream_seconds_from_content}s "
+ f"to {index.end_stream_seconds_from_content}s")
 ```
 
 ```
@@ -573,7 +578,7 @@ whole-file decode. Decoding a margin before your target and discarding it
 is up to you. [`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) does all of this
 for you.
 
-**Total running time of the script:** (0 minutes 2.084 seconds)
+**Total running time of the script:** (0 minutes 2.075 seconds)
 
 [`Download Jupyter notebook: blocks.ipynb`](../../_downloads/37e5fa5a5cd2ea49ae5d47920f4cc2fa/blocks.ipynb)
 
