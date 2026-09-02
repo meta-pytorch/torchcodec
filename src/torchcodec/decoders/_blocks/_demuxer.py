@@ -119,6 +119,7 @@ class FrameIndex:
         index = int(torch.searchsorted(self._end_seconds, seconds, right=True))
         return min(index, len(self) - 1)
 
+    # TODO_API_BREAKDOWN DESIGN P1: Still kinda hate this name
     def key_frame_seconds_for(self, seconds: float) -> float:
         """Timestamp to :meth:`VideoDemuxer.seek` to in order to reach ``seconds``:
         that of the last :term:`keyframe` which isn't after it.
