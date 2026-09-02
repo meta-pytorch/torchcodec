@@ -63,6 +63,7 @@ SingleStreamDecoder::SingleStreamDecoder(
   STD_TORCH_CHECK(raw_context != nullptr, "Unable to alloc avformat context");
 
   raw_context->pb = avio_context_holder_->get_avio_context();
+  forbid_nested_protocols(raw_context);
   int status = avformat_open_input(&raw_context, nullptr, nullptr, nullptr);
   if (status != 0) {
     avformat_free_context(raw_context);
