@@ -94,6 +94,19 @@ def needs_heic(test_item):
     return pytest.mark.needs_heic(test_item)
 
 
+# TO BE DELETED once torch stops swallowing our IndexErrors.
+# https://github.com/pytorch/pytorch/pull/193451 routes torch.ops.* calls
+# through torch's own exception translation, which maps the std::out_of_range
+# that STABLE_CHECK_INDEX raises in C++ to RuntimeError, instead of the
+# IndexError that pybind11's default translator used to produce. This breaks
+# every API that surfaces an out-of-bounds index, including iteration, which
+# relies on IndexError to terminate.
+skip_torch_index_error = pytest.mark.skip(
+    reason="TO BE DELETED: torch converts our IndexError into a RuntimeError, "
+    "see https://github.com/pytorch/pytorch/pull/193451"
+)
+
+
 # This is a special device string that we use to test the legacy "ffmpeg" CUDA
 # backend. It only exists here, in this test utils file. Public and core APIs
 # have no idea that this is how we're testing them. That is, that's not a

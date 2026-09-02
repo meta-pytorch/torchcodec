@@ -53,6 +53,7 @@ from .utils import (
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
+    skip_torch_index_error,
     unsplit_device_str,
 )
 
@@ -224,6 +225,7 @@ class TestVideoDecoderOps:
         assert_frames_equal(frames389and387and1[1], reference_frame387.to(device))
         assert_frames_equal(frames389and387and1[2], reference_frame1.to(device))
 
+    @skip_torch_index_error
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_frames_at_indices_fail_on_invalid_negative_indices(self, device):
         decoder = create_from_file(str(NASA_VIDEO.path))
@@ -363,6 +365,7 @@ class TestVideoDecoderOps:
         empty_frame, *_ = get_frames_in_range(decoder, start=5, stop=5)
         assert_frames_equal(empty_frame, NASA_VIDEO.empty_chw_tensor.to(device))
 
+    @skip_torch_index_error
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_throws_exception_at_eof(self, device):
         decoder = create_from_file(str(NASA_VIDEO.path))
@@ -379,6 +382,7 @@ class TestVideoDecoderOps:
         with pytest.raises(IndexError, match="no more frames"):
             get_frame_at_pts(decoder, seconds=1000.0)
 
+    @skip_torch_index_error
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_throws_exception_if_seek_too_far(self, device):
         decoder = create_from_file(str(NASA_VIDEO.path))
@@ -696,6 +700,7 @@ class TestAudioDecoderOps:
         ):
             add_audio_stream(decoder)
 
+    @skip_torch_index_error
     @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3))
     def test_next(self, asset):
         decoder = create_from_file(str(asset.path), seek_mode="approximate")

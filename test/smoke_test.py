@@ -20,6 +20,7 @@ from test.utils import (
     needs_jpeg,
     needs_png,
     needs_webp,
+    skip_torch_index_error,
 )
 
 from torchcodec import ffmpeg_major_version
@@ -213,6 +214,7 @@ class TestVideoDecoder:
             device=device,
         )
 
+    @skip_torch_index_error
     @pytest.mark.parametrize("device", _get_devices())
     def test_iteration(self, tmp_path, device):
         path, _ = _make_video_file(tmp_path)

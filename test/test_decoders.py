@@ -128,6 +128,7 @@ from .utils import (
     SINE_MONO_S32_8000,
     SINE_MONO_U8,
     SINE_STEREO_MP2_MPEG_PS,
+    skip_torch_index_error,
     TEST_NON_ZERO_START,
     TEST_SRC_2_12BIT_HDR,
     TEST_SRC_2_720P,
@@ -520,6 +521,7 @@ class TestVideoDecoder:
         finally:
             torch.set_default_device(original_device)
 
+    @skip_torch_index_error
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_getitem_fails(self, device, seek_mode):
@@ -539,6 +541,7 @@ class TestVideoDecoder:
         with pytest.raises(TypeError, match="Unsupported key type"):
             frame = decoder[2.3]  # noqa
 
+    @skip_torch_index_error
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_iteration(self, device, seek_mode):
@@ -575,6 +578,7 @@ class TestVideoDecoder:
             elif i == 389:
                 assert_frames_equal(ref_frame_last, frame)
 
+    @skip_torch_index_error
     @pytest.mark.slow
     def test_iteration_slow(self):
         decoder = VideoDecoder(NASA_VIDEO.path)
@@ -641,6 +645,7 @@ class TestVideoDecoder:
         assert frame.pts_seconds == pts
         assert frame.duration_seconds == duration
 
+    @skip_torch_index_error
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frame_at_fails(self, device, seek_mode):
@@ -710,6 +715,7 @@ class TestVideoDecoder:
             frames.duration_seconds, expected_duration_seconds, atol=1e-4, rtol=0
         )
 
+    @skip_torch_index_error
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frames_at_fails(self, device, seek_mode):
