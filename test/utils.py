@@ -27,6 +27,7 @@ from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
 
 IS_WINDOWS = sys.platform in ("win32", "cygwin")
 IN_GITHUB_CI = bool(os.getenv("GITHUB_ACTIONS"))
+IS_ROCM = torch.version.hip is not None
 
 
 def call_ffprobe(args):
