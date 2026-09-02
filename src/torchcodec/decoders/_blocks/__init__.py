@@ -17,7 +17,7 @@ API_breakdown_claude_plan.md for the design and rationale.
 
 from ._audio_converter import AudioConverter
 from ._color_converter import ColorConverter
-from ._demuxer import AudioDemuxer, StreamIndex, VideoDemuxer
+from ._demuxer import AudioDemuxer, FrameIndex, VideoDemuxer
 from ._frame import Packet, RawAudioSamples, RawFrame
 from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
 
@@ -31,7 +31,7 @@ __all__ = [
     "Packet",
     "RawFrame",
     "RawAudioSamples",
-    "StreamIndex",
+    "FrameIndex",
 ]
 
 # TODO_API_BREAKDOWN FEAT P1 we probably need a way to expose the *header*
