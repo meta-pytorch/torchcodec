@@ -42,8 +42,8 @@ if [[ $CHANNEL = nightly ]]; then
   PINNED_PACKAGES=""
   for package in $PACKAGES; do
     case "$package" in
-      torch) package="torch==2.14.0.${NIGHTLY_PIN}" ;;
-      torchvision) package="torchvision==0.29.0.${NIGHTLY_PIN}" ;;
+      torch) package="torch==2.15.0.${NIGHTLY_PIN}" ;;
+      torchvision) package="torchvision==0.30.0.${NIGHTLY_PIN}" ;;
     esac
     PINNED_PACKAGES="${PINNED_PACKAGES} ${package}"
   done
