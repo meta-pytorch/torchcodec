@@ -70,6 +70,14 @@ struct VideoStreamOptions {
   // read this field.
   OutputDtype output_dtype = OutputDtype::UINT8;
 
+  // NVDEC can decode into a surface that is narrower or wider than the source:
+  // a 10-bit source into an 8-bit surface, an 8-bit source into a 16-bit one.
+  // The surface is normally picked to match `output_dtype`, since it only has
+  // to be wide enough for what the frame is converted to. Set this when nothing
+  // here does that conversion, in which case there is no output dtype to honor
+  // and the source's own depth is the only sensible choice.
+  bool nvdec_surface_matches_source = false;
+
   // Encoding options
   std::optional<std::string> codec;
   // Optional pixel format for video encoding (e.g., "yuv420p", "yuv444p")

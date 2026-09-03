@@ -105,17 +105,12 @@ PacketDecoder::PacketDecoder(
     return;
   }
 
-  const AVPixFmtDescriptor* stream_desc =
-      av_pix_fmt_desc_get(codec_context_->pix_fmt);
-  int stream_bit_depth = stream_desc ? stream_desc->comp[0].depth : 8;
-
   VideoStreamOptions options;
   options.device = device;
-  // This is ugly: what we actually mean is "let the device interface decode
-  // into the native surface", which matters for NVDEC.
-  // TODO_API_BREAKDOWN CC P1: Find a cleaner way to express this?
-  options.output_dtype =
-      stream_bit_depth > 8 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
+  // We hand out the decoder's own samples and leave color conversion to a
+  // separate block, so there is no output dtype for a CUDA decode to size its
+  // surface for. Decode into the source's own depth.
+  options.nvdec_surface_matches_source = true;
 
   device_interface_->initialize_video_decoding(
       stream, demuxer.format_context(), options);
