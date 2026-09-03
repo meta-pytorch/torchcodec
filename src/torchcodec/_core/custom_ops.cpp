@@ -79,7 +79,9 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "_blocks_create_demuxer_from_file_like(int file_like_context) -> Tensor");
   m.def(
-      "_blocks_demuxer_add_stream(Tensor(a!) demuxer, int? stream_index=None, str media_type=\"video\") -> int");
+      "_blocks_demuxer_add_stream(Tensor(a!) demuxer, int? stream_index=None, str? media_type=None) -> (int, str)");
+  m.def(
+      "_blocks_demuxer_get_audio_video_stream_indices(Tensor demuxer) -> Tensor");
   m.def(
       "_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool, int)");
   m.def(
@@ -866,12 +868,27 @@ torch::stable::Tensor _blocks_create_demuxer_from_file_like(
   return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
 }
 
-int64_t _blocks_demuxer_add_stream(
+torch::stable::Tensor _blocks_demuxer_get_audio_video_stream_indices(
+    torch::stable::Tensor& demuxer) {
+  return unwrap_tensor_to_pointer<Demuxer>(demuxer)
+      ->get_audio_video_stream_indices();
+}
+
+// (stream index, media type) of the stream that is now being followed. The
+// media type comes back so the caller doesn't have to ask for it separately
+// when it identified the stream by index.
+std::tuple<int64_t, std::string> _blocks_demuxer_add_stream(
     torch::stable::Tensor& demuxer,
     std::optional<int64_t> stream_index,
-    std::string media_type) {
-  return unwrap_tensor_to_pointer<Demuxer>(demuxer)->add_stream(
-      to_optional_int(stream_index), parse_media_type(media_type));
+    std::optional<std::string> media_type) {
+  auto [index, type] = unwrap_tensor_to_pointer<Demuxer>(demuxer)->add_stream(
+      to_optional_int(stream_index),
+      media_type.has_value()
+          ? std::optional<AVMediaType>(parse_media_type(*media_type))
+          : std::nullopt);
+  return {
+      static_cast<int64_t>(index),
+      type == AVMEDIA_TYPE_VIDEO ? "video" : "audio"};
 }
 
 // (packet_handle, is_eof, stream_index). On EOF the packet_handle is a dummy
@@ -1683,6 +1700,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       TORCH_BOX(&get_frames_by_pts_in_range_audio));
   m.impl("get_frames_by_pts", TORCH_BOX(&get_frames_by_pts));
   m.impl("_blocks_demuxer_add_stream", TORCH_BOX(&_blocks_demuxer_add_stream));
+  m.impl(
+      "_blocks_demuxer_get_audio_video_stream_indices",
+      TORCH_BOX(&_blocks_demuxer_get_audio_video_stream_indices));
   m.impl(
       "_blocks_demuxer_next_packet", TORCH_BOX(&_blocks_demuxer_next_packet));
   m.impl("_blocks_demuxer_seek", TORCH_BOX(&_blocks_demuxer_seek));

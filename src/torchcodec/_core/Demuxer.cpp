@@ -140,7 +140,7 @@ void Demuxer::find_stream_info() {
 
 void Demuxer::validate_requested_stream(
     int stream_index,
-    AVMediaType media_type) {
+    std::optional<AVMediaType> media_type) {
   int num_streams = static_cast<int>(format_context_->nb_streams);
   STD_TORCH_CHECK(
       stream_index >= 0 && stream_index < num_streams,
@@ -154,42 +154,59 @@ void Demuxer::validate_requested_stream(
 
   AVMediaType stream_media_type =
       format_context_->streams[stream_index]->codecpar->codec_type;
-  STD_TORCH_CHECK(
-      stream_media_type == media_type,
-      "The stream at index ",
-      stream_index,
-      " is not a ",
-      printable(media_type),
-      " stream, it is of type '",
-      printable(stream_media_type),
-      "'.");
+  if (media_type.has_value()) {
+    STD_TORCH_CHECK(
+        stream_media_type == *media_type,
+        "The stream at index ",
+        stream_index,
+        " is not a ",
+        printable(*media_type),
+        " stream, it is of type '",
+        printable(stream_media_type),
+        "'.");
+  } else {
+    STD_TORCH_CHECK(
+        stream_media_type == AVMEDIA_TYPE_VIDEO ||
+            stream_media_type == AVMEDIA_TYPE_AUDIO,
+        "The stream at index ",
+        stream_index,
+        " is of type '",
+        printable(stream_media_type),
+        "', which cannot be decoded. Only audio and video streams can.");
+  }
 }
 
-int Demuxer::add_stream(
+std::pair<int, AVMediaType> Demuxer::add_stream(
     std::optional<int> stream_index,
-    AVMediaType media_type) {
+    std::optional<AVMediaType> media_type) {
+  STD_TORCH_CHECK(
+      stream_index.has_value() || media_type.has_value(),
+      "A stream must be identified either by its index or by its media type.");
   STD_TORCH_CHECK(
       !has_demuxed_,
       "Streams must all be added before the first packet is demuxed: a stream "
       "added now would start at wherever the container currently is, not at "
       "the beginning.");
 
+  int index;
   if (stream_index.has_value()) {
     validate_requested_stream(*stream_index, media_type);
+    index = *stream_index;
+  } else {
+    index = av_find_best_stream(
+        format_context_.get(),
+        *media_type,
+        /*wanted_stream_nb=*/-1,
+        /*related_stream=*/-1,
+        /*decoder_ret=*/nullptr,
+        /*flags=*/0);
+    STD_TORCH_CHECK(
+        index >= 0,
+        "No valid ",
+        printable(*media_type),
+        " stream found in input file.");
   }
 
-  int index = av_find_best_stream(
-      format_context_.get(),
-      media_type,
-      stream_index.value_or(-1),
-      /*related_stream=*/-1,
-      /*decoder_ret=*/nullptr,
-      /*flags=*/0);
-  STD_TORCH_CHECK(
-      index >= 0,
-      "No valid ",
-      printable(media_type),
-      " stream found in input file.");
   STD_TORCH_CHECK(
       std::find(
           active_stream_indices_.begin(),
@@ -201,7 +218,29 @@ int Demuxer::add_stream(
 
   format_context_->streams[index]->discard = AVDISCARD_DEFAULT;
   active_stream_indices_.push_back(index);
-  return index;
+  return {index, format_context_->streams[index]->codecpar->codec_type};
+}
+
+torch::stable::Tensor Demuxer::get_audio_video_stream_indices() const {
+  std::vector<int> indices;
+  for (unsigned int i = 0; i < format_context_->nb_streams; ++i) {
+    AVMediaType type = format_context_->streams[i]->codecpar->codec_type;
+    if (type == AVMEDIA_TYPE_VIDEO || type == AVMEDIA_TYPE_AUDIO) {
+      indices.push_back(static_cast<int>(i));
+    }
+  }
+  STD_TORCH_CHECK(
+      !indices.empty(),
+      "This container has no audio or video stream at all, so there is "
+      "nothing that could be demuxed.");
+
+  auto out = torch::stable::empty(
+      {static_cast<int64_t>(indices.size())}, kStableInt64);
+  auto accessor = mutable_accessor<int64_t, 1>(out);
+  for (size_t i = 0; i < indices.size(); ++i) {
+    accessor[i] = indices[i];
+  }
+  return out;
 }
 
 int Demuxer::resolve_stream_index(std::optional<int> stream_index) const {

@@ -102,6 +102,9 @@ _blocks_create_demuxer_from_file_like_context = (
     torch.ops.torchcodec_ns._blocks_create_demuxer_from_file_like.default
 )
 _blocks_demuxer_add_stream = torch.ops.torchcodec_ns._blocks_demuxer_add_stream.default
+_blocks_demuxer_get_audio_video_stream_indices = (
+    torch.ops.torchcodec_ns._blocks_demuxer_get_audio_video_stream_indices.default
+)
 _blocks_demuxer_next_packet = (
     torch.ops.torchcodec_ns._blocks_demuxer_next_packet.default
 )
