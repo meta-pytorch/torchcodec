@@ -22,7 +22,8 @@ threads, accessing raw (YUV) frames, and decoding streams of unknown -
 possibly infinite - length.
 
 Audio works the same way, through `AudioDemuxer`, `AudioPacketDecoder` and
-`AudioConverter`; we come back to it at the end.
+`AudioConverter`; we come back to it at the end, along with `Demuxer`, which
+gets the audio *and* the video of a container out of a single pass over it.
 
 Boilerplate: a test video, and the device we'll run on.
 
@@ -53,7 +54,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp12ejwemh/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpkoxh35bb/video.mp4'], returncode=0)
 ```
 
 ## The three blocks
@@ -568,6 +569,131 @@ print(f"{samples.shape = }, {samples.dtype = }, "
 samples.shape = torch.Size([1, 80000]), samples.dtype = torch.float32, 16 samples came out of drain()
 ```
 
+## Metadata
+
+Metadata comes in tiers, and the blocks never merge them. `demuxer.metadata`
+is about the container, `stream.metadata` is what its header says about one
+stream, and `scan()` is what that stream's packets actually say. A name tells
+you which tier you are reading, so a header value is never mistaken for an
+exact one:
+
+```
+demuxer = VideoDemuxer(video_path)
+(video,) = demuxer.streams
+
+print(f"container: {demuxer.metadata.duration_seconds_from_header}s")
+print(f"header: {video.metadata.width}x{video.metadata.height}, "
+ f"{video.metadata.num_frames_from_header} frames "
+ f"at {video.metadata.average_fps_from_header} fps")
+print(f"content: {video.scan().num_frames_from_content} frames "
+ f"at {video.scan().average_fps_from_content} fps")
+```
+
+```
+container: 5s
+header: 1280x720, 150 frames at 30 fps
+content: 150 frames at 30.0 fps
+```
+
+This is deliberately less helpful than
+`metadata`, which merges the two
+behind a single `num_frames` and picks for you. Here you pick, because
+knowing which source a number came from is the reason to be at this level.
+
+To find out what is in a file before deciding which streams to demux - a
+demuxer's streams are fixed when you construct it - use
+`get_container_metadata()`, which reads the header and no packets. It also
+reports streams a demuxer cannot follow, such as subtitles.
+
+```
+from torchcodec.decoders._blocks import get_container_metadata
+
+for stream in get_container_metadata(video_path).streams:
+ print(f" stream {stream.stream_index}: {stream.codec}")
+```
+
+```
+stream 0: h264
+```
+
+## Video and audio together
+
+`VideoDemuxer` and `AudioDemuxer` each open their own container, so
+decoding both streams of one file reads it twice. `Demuxer` follows several
+streams of a single container instead, in one pass.
+
+```
+av_path = temp_dir / "av.mp4"
+subprocess.run(
+ [
+ "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+ "-i", str(video_path), "-i", str(audio_path),
+ "-c:v", "copy", "-c:a", "aac", "-shortest", str(av_path),
+ ],
+ check=True,
+)
+```
+
+```
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpkoxh35bb/video.mp4', '-i', '/tmp/tmpkoxh35bb/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpkoxh35bb/av.mp4'], returncode=0)
+```
+
+Which streams to follow is said once, at construction: a selector is
+`"video"`, `"audio"` or a stream index, and `demuxer.streams` comes back
+in the order you asked for. Each stream builds its own decoder.
+
+```
+from torchcodec.decoders._blocks import Demuxer
+
+demuxer = Demuxer(av_path, streams=("video", "audio"))
+video_stream, audio_stream = demuxer.streams
+
+decoders = {
+ video_stream.index: video_stream.make_decoder(device=device),
+ audio_stream.index: audio_stream.make_decoder(),
+}
+color_converter = ColorConverter(device=device)
+audio_converter = AudioConverter()
+```
+
+The packets come out interleaved, in the order the container stores them, and
+`packet.stream_index` says which stream each belongs to - so the loop is the
+single-stream one with a dispatch in the middle. Each decoder is drained at
+the end, as always.
+
+```
+frames, chunks = [], []
+for packet in demuxer:
+ outputs = decoders[packet.stream_index].decode(packet)
+ if packet.stream_index == video_stream.index:
+ frames += [color_converter.convert(raw) for raw in outputs]
+ else:
+ chunks += [audio_converter.convert(raw) for raw in outputs]
+
+frames += [color_converter.convert(raw)
+ for raw in decoders[video_stream.index].drain()]
+chunks += [audio_converter.convert(raw)
+ for raw in decoders[audio_stream.index].drain()]
+chunks.append(audio_converter.drain())
+
+samples = torch.cat([chunk.data for chunk in chunks], dim=1)
+print(f"{len(frames)} frames up to {frames[-1].pts_seconds:.2f}s, "
+ f"{samples.shape[1]} samples in one pass over the file")
+```
+
+```
+150 frames up to 4.97s, 221184 samples in one pass over the file
+```
+
+Nothing is buffered per stream: a packet is handed to you once, and if you
+want to consume one stream at a time you hold on to the other stream's packets
+yourself. How many to keep in flight is a decision that belongs to your
+pipeline, not to the block.
+
+`seek()` moves the container, so every stream jumps together and every
+decoder has to be reset, not just one. `scan()` lives on the video streams,
+and has to be called before any packet is demuxed.
+
 Warning
 
 These blocks do no pre-roll. A lossy codec's first frames after a seek are
@@ -578,7 +704,7 @@ whole-file decode. Decoding a margin before your target and discarding it
 is up to you. [`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) does all of this
 for you.
 
-**Total running time of the script:** (0 minutes 2.090 seconds)
+**Total running time of the script:** (0 minutes 2.342 seconds)
 
 [`Download Jupyter notebook: blocks.ipynb`](../../_downloads/37e5fa5a5cd2ea49ae5d47920f4cc2fa/blocks.ipynb)
 
