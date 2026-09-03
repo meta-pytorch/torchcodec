@@ -38,8 +38,22 @@ jobs:
       with-rocm: enable
       build-python-only: "disable"
 
-  build:
+  filter-matrix:
+    # torchcodec only supports the TheRock/pip-wheel layout (ROCm 10.0+).
+    # Strip legacy ROCm versions that the upstream matrix may include.
     needs: generate-matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.filter.outputs.matrix }}
+    steps:
+      - id: filter
+        run: |
+          matrix=$(echo '${{ needs.generate-matrix.outputs.matrix }}' \
+            | jq -c 'del(.include[] | select(.gpu_arch_version == "7.14"))')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: filter-matrix
     strategy:
       fail-fast: false
     name: Build and Upload wheel
@@ -49,7 +63,7 @@ jobs:
       ref: ""
       test-infra-repository: pytorch/test-infra
       test-infra-ref: main
-      build-matrix: ${{ needs.generate-matrix.outputs.matrix }}
+      build-matrix: ${{ needs.filter-matrix.outputs.matrix }}
       pre-script: packaging/pre_build_script.sh
       post-script: packaging/post_build_script.sh
       smoke-test-script: packaging/fake_smoke_test.py
@@ -72,7 +86,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ['3.10']
-        rocm-version: ['7.1']
+        rocm-version: ['10.0']
     uses: pytorch/test-infra/.github/workflows/linux_job_v2.yml@main
     permissions:
       id-token: write
@@ -138,12 +152,6 @@ jobs:
         # Prevent the checked-out src/ tree from shadowing the installed wheel.
         bash packaging/remove_src.sh
 
-        echo '::group::Install rocJPEG runtime'
-        # The wheel deliberately does not bundle librocjpeg (see repair_wheel.py),
-        # so decode_jpeg(device="cuda") needs it present at runtime.
-        bash packaging/install_rocjpeg.sh
-        echo '::endgroup::'
-
         echo '::group::Install torchcodec from the wheel'
         python -m pip install "${RUNNER_ARTIFACT_DIR}"/*.whl -vvv
         echo '::endgroup::'
@@ -159,7 +167,30 @@ jobs:
         bash packaging/install_test_dependencies.sh false
         echo '::endgroup::'
 
+        echo '::group::Initialize ROCm SDK'
+        # _rocm_sdk_devel is only available for Python 3.11+ but our test env
+        # uses Python 3.10. Install and run rocm-sdk init in the base conda env
+        # which has the matching Python version.
+        conda run -n base pip install "rocm[devel]"
+        conda run -n base rocm-sdk init
+        echo '::endgroup::'
+
         echo '::group::Run FFmpeg-free image decoder tests (incl. rocJPEG GPU)'
+        rocm_core_lib=$(python -c "import importlib.util, pathlib, os; spec = importlib.util.find_spec('_rocm_sdk_core'); p = pathlib.Path(spec.submodule_search_locations[0]) if spec else None; dirs = [str(p/'lib'), str(p/'lib'/'rocm_sysdeps'/'lib')] if p else []; print(os.pathsep.join(d for d in dirs if pathlib.Path(d).is_dir()))" 2>/dev/null || true)
+        if [ -n "${rocm_core_lib}" ]; then
+          export LD_LIBRARY_PATH="${rocm_core_lib}:${LD_LIBRARY_PATH:-}"
+        fi
+        _rocm_devel_py='import importlib.util, pathlib; spec = importlib.util.find_spec("_rocm_sdk_devel"); print(str(pathlib.Path(spec.submodule_search_locations[0]))) if spec else ""'
+        rocm_path=$(python -c "${_rocm_devel_py}" 2>/dev/null || true)
+        if [ -z "${rocm_path}" ]; then
+          # _rocm_sdk_devel is only available for Python 3.11+; if the test env
+          # uses an older Python the package isn't there and python exits 0 with
+          # empty output (so || wouldn't fire). Check the base env explicitly.
+          rocm_path=$(conda run -n base python -c "${_rocm_devel_py}" 2>/dev/null || true)
+        fi
+        if [ -n "${rocm_path}" ]; then
+          export ROCM_PATH="${rocm_path}"
+        fi
         # torch.cuda.is_available() is True on ROCm (HIP masquerades as CUDA), so
         # the needs_cuda image tests run here and exercise the GPU JPEG decoder,
         # which is rocJPEG on ROCm: the jpeg_cuda params call
