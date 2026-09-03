@@ -185,6 +185,7 @@ class _BaseDemuxer:
         self._stream_index = _blocks_demuxer_add_stream(
             self._handle, stream_index, self._media_type
         )
+        self._frame_index: FrameIndex | None = None
 
     def next_packet(self) -> Packet | None:
         """Return the next :class:`Packet`, or ``None`` at end of stream."""
@@ -255,23 +256,27 @@ class VideoDemuxer(_BaseDemuxer):
 
         This reads the whole file, and it is the only way to know the stream's
         exact frame count, timestamps and :term:`keyframe` positions: the
-        container header can be wrong about all of them.
+        container header can be wrong about all of them. The result is cached:
+        calling this twice scans once.
 
-        The index always covers the entire stream, wherever the demuxer
-        currently is, and the demuxer is left back at the start - so a
-        :class:`VideoPacketDecoder` built from it must be ``reset()``, as after a
-        ``seek()``. Nothing is cached: calling this twice scans twice.
+        **A scan has to happen before any packet is demuxed**, and calling it
+        later raises. That restriction is what keeps it cheap to use: the scan
+        rewinds the demuxer, and since nothing has been fed to a decoder yet,
+        there is nothing to ``reset()`` afterwards.
         """
+        if self._frame_index is not None:
+            return self._frame_index
         pts, duration, is_key_frame, time_base_num, time_base_den = (
             _blocks_demuxer_scan(self._handle, self._stream_index)
         )
-        return FrameIndex(
+        self._frame_index = FrameIndex(
             is_key_frame=is_key_frame,
             _pts=pts,
             _duration=duration,
             _time_base_num=time_base_num,
             _time_base_den=time_base_den,
         )
+        return self._frame_index
 
 
 class AudioDemuxer(_BaseDemuxer):

@@ -249,29 +249,37 @@ void Demuxer::seek(double seconds, std::optional<int> stream_index) {
       get_seek_error_message(format_context_.get(), desired_pts, status));
 }
 
-namespace {
-struct ScannedPacket {
-  int64_t pts;
-  int64_t duration;
-  bool is_key_frame;
-};
-} // namespace
+void Demuxer::scan_all_video_streams() {
+  if (has_scanned_) {
+    return;
+  }
+  STD_TORCH_CHECK(
+      !has_demuxed_,
+      "A scan reads the container from end to end and rewinds it, so it has to "
+      "happen before any packet is demuxed. Scan up front, or build a second "
+      "demuxer for it.");
 
-FrameIndex Demuxer::scan(std::optional<int> stream_index) {
-  AVStream* scanned_stream =
-      format_context_->streams[resolve_stream_index(stream_index)];
-
-  std::vector<ScannedPacket> packets;
-  if (scanned_stream->nb_frames > 0) {
-    packets.reserve(static_cast<size_t>(scanned_stream->nb_frames));
+  std::vector<int> video_stream_indices;
+  for (int index : active_stream_indices_) {
+    AVStream* candidate = format_context_->streams[index];
+    if (candidate->codecpar->codec_type != AVMEDIA_TYPE_VIDEO) {
+      continue;
+    }
+    video_stream_indices.push_back(index);
+    auto& packets = scanned_packets_[index];
+    if (candidate->nb_frames > 0) {
+      packets.reserve(static_cast<size_t>(candidate->nb_frames));
+    }
   }
 
-  seek(0, scanned_stream->index);
+  seek(0);
 
+  // One pass, however many video streams are being followed: the I/O is what a
+  // scan costs, and it is the same read for all of them.
   while (true) {
     ReferenceAVPacket packet(auto_packet_);
     int status =
-        read_next_packet(format_context_.get(), scanned_stream->index, packet);
+        read_next_packet(format_context_.get(), video_stream_indices, packet);
     if (status == AVERROR_EOF) {
       break;
     }
@@ -284,20 +292,40 @@ FrameIndex Demuxer::scan(std::optional<int> stream_index) {
       continue;
     }
 
-    packets.push_back(
+    scanned_packets_[packet->stream_index].push_back(
         {get_pts_or_dts(packet),
          packet->duration,
          (packet->flags & AV_PKT_FLAG_KEY) != 0});
   }
 
+  seek(0);
+  has_scanned_ = true;
+}
+
+// TODO_API_BREAKDOWN DESIGN P1 I'm starting to wonder if this should be named
+// 'scan()' in the python API. We only really scan once, but this is a
+// per-stream call. demuxer.scan(0) pays for the scan and demuxer.scan(1)
+// doesn't, but the 'scan()' name suggests that it does. Maybe this should be
+// .get_frame_index() (but 'index' is still overloaded). Ah.
+FrameIndex Demuxer::scan(std::optional<int> stream_index) {
+  AVStream* scanned_stream =
+      format_context_->streams[resolve_stream_index(stream_index)];
+  STD_TORCH_CHECK(
+      scanned_stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO,
+      "Only a video stream can be scanned: a frame index describes keyframes "
+      "and frame positions, and the stream at index ",
+      scanned_stream->index,
+      " has neither.");
+
+  scan_all_video_streams();
+
+  // Sorting and building the tensors is per-stream work, so it is only done for
+  // the streams whose index is actually asked for.
+  std::vector<FrameInfo>& packets = scanned_packets_.at(scanned_stream->index);
   std::stable_sort(
       packets.begin(),
       packets.end(),
-      [](const ScannedPacket& a, const ScannedPacket& b) {
-        return a.pts < b.pts;
-      });
-
-  seek(0, scanned_stream->index);
+      [](const FrameInfo& a, const FrameInfo& b) { return a.pts < b.pts; });
 
   auto num_frames = static_cast<int64_t>(packets.size());
   FrameIndex index{

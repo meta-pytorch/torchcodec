@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -37,6 +38,20 @@ std::string get_seek_error_message(
     const AVFormatContext* format_context,
     int64_t desired_pts,
     int status);
+
+// One demuxed packet, as a scan records it before sorting.
+//
+// Deliberately the same name as SingleStreamDecoder::FrameInfo, which its own
+// scan produces: these describe the same thing, one entry per frame of a
+// stream, and differ only in how they say it - `duration` here against
+// `next_pts` there, and the frame's index implicit in the vector position
+// rather than stored. The two scans should probably be unified eventually;
+// until then the shared name is the reminder.
+struct FrameInfo {
+  int64_t pts;
+  int64_t duration;
+  bool is_key_frame;
+};
 
 // The frames of one stream, in presentation order: three parallel tensors of
 // length N, plus the time base `pts` and `duration` are expressed in.
@@ -74,8 +89,12 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
   void seek(double seconds, std::optional<int> stream_index = std::nullopt);
 
   // Demuxes one stream entirely, without decoding, and returns one entry per
-  // frame sorted by pts. Leaves the demuxer back at the start of the container,
-  // and keeps no state of its own.
+  // frame sorted by pts. Leaves the demuxer back at the start of the container.
+  //
+  // The demux pass this needs covers every followed video stream at once and
+  // happens only once per demuxer, so indexing a second stream costs no I/O.
+  // Only legal before the first packet is demuxed, which is what makes the
+  // rewind harmless: nothing has been fed to a decoder yet.
   FrameIndex scan(std::optional<int> stream_index = std::nullopt);
 
   // The index passed in, validated, or the only followed stream when it is left
@@ -100,6 +119,9 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
   // what the container happens to hold, where first-added is the caller's own
   // ordering. Pass a stream to seek() to override it.
   AVStream* get_reference_stream() const;
+  // Phase one of a scan: read the container once, bucketing the packets of
+  // every followed video stream. Idempotent.
+  void scan_all_video_streams();
 
   // Declared before format_context_ so that it outlives it: the format context
   // reads through the AVIOContext this holds.
@@ -109,6 +131,10 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
   // scanned linearly.
   std::vector<int> active_stream_indices_;
   bool has_demuxed_ = false;
+  // Filled by scan_all_video_streams(), keyed by stream index. Sorted lazily,
+  // per stream, by scan().
+  std::map<int, std::vector<FrameInfo>> scanned_packets_;
+  bool has_scanned_ = false;
   AutoAVPacket auto_packet_;
 };
 
