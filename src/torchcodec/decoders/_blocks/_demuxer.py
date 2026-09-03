@@ -16,6 +16,7 @@ from torch import Tensor
 
 from torchcodec._core._decoder_utils import create_demuxer
 from torchcodec._core.ops import (
+    _blocks_demuxer_add_stream,
     _blocks_demuxer_next_packet,
     _blocks_demuxer_scan,
     _blocks_demuxer_seek,
@@ -180,13 +181,14 @@ class _BaseDemuxer:
         *,
         stream_index: int | None = None,
     ):
-        self._handle = create_demuxer(
-            source=source, stream_index=stream_index, media_type=self._media_type
+        self._handle = create_demuxer(source=source)
+        self._stream_index = _blocks_demuxer_add_stream(
+            self._handle, stream_index, self._media_type
         )
 
     def next_packet(self) -> Packet | None:
         """Return the next :class:`Packet`, or ``None`` at end of stream."""
-        handle, is_eof = _blocks_demuxer_next_packet(self._handle)
+        handle, is_eof, _ = _blocks_demuxer_next_packet(self._handle)
         return None if is_eof else Packet(handle)
 
     def seek(self, seconds: float) -> None:
@@ -204,7 +206,7 @@ class _BaseDemuxer:
         decoding would give - until it re-primes. Decoding a margin before the
         target and discarding it is the caller's responsibility.
         """
-        _blocks_demuxer_seek(self._handle, float(seconds))
+        _blocks_demuxer_seek(self._handle, float(seconds), self._stream_index)
 
     def __iter__(self):
         while True:
@@ -261,7 +263,7 @@ class VideoDemuxer(_BaseDemuxer):
         ``seek()``. Nothing is cached: calling this twice scans twice.
         """
         pts, duration, is_key_frame, time_base_num, time_base_den = (
-            _blocks_demuxer_scan(self._handle)
+            _blocks_demuxer_scan(self._handle, self._stream_index)
         )
         return FrameIndex(
             is_key_frame=is_key_frame,

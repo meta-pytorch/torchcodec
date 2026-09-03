@@ -32,18 +32,44 @@ std::string get_seek_error_message(
   return ss.str();
 }
 
-int read_next_packet(
+namespace {
+template <typename IsActive>
+int read_next_active_packet(
     AVFormatContext* format_context,
-    int active_stream_index,
-    ReferenceAVPacket& packet) {
+    ReferenceAVPacket& packet,
+    IsActive is_active) {
   int status = AVSUCCESS;
   do {
     status = av_read_frame(format_context, packet.get());
     if (status == AVERROR_EOF || status < AVSUCCESS) {
       return status;
     }
-  } while (packet->stream_index != active_stream_index);
+  } while (!is_active(packet->stream_index));
   return AVSUCCESS;
+}
+} // namespace
+
+int read_next_packet(
+    AVFormatContext* format_context,
+    int active_stream_index,
+    ReferenceAVPacket& packet) {
+  return read_next_active_packet(
+      format_context, packet, [active_stream_index](int stream_index) {
+        return stream_index == active_stream_index;
+      });
+}
+
+int read_next_packet(
+    AVFormatContext* format_context,
+    const std::vector<int>& active_stream_indices,
+    ReferenceAVPacket& packet) {
+  return read_next_active_packet(
+      format_context, packet, [&active_stream_indices](int stream_index) {
+        return std::find(
+                   active_stream_indices.begin(),
+                   active_stream_indices.end(),
+                   stream_index) != active_stream_indices.end();
+      });
 }
 
 namespace {
@@ -54,11 +80,7 @@ const char* printable(AVMediaType media_type) {
 }
 } // namespace
 
-Demuxer::Demuxer(
-    const std::string& file_path,
-    std::optional<int> stream_index,
-    AVMediaType media_type)
-    : media_type_(media_type) {
+Demuxer::Demuxer(const std::string& file_path) {
   set_ffmpeg_log_level();
 
   AVFormatContext* raw_context = nullptr;
@@ -71,15 +93,11 @@ Demuxer::Demuxer(
   STD_TORCH_CHECK(raw_context != nullptr, "Failed to allocate AVFormatContext");
   format_context_.reset(raw_context);
 
-  select_stream(stream_index);
+  find_stream_info();
 }
 
-Demuxer::Demuxer(
-    std::unique_ptr<AVIOContextHolder> avio_context_holder,
-    std::optional<int> stream_index,
-    AVMediaType media_type)
-    : avio_context_holder_(std::move(avio_context_holder)),
-      media_type_(media_type) {
+Demuxer::Demuxer(std::unique_ptr<AVIOContextHolder> avio_context_holder)
+    : avio_context_holder_(std::move(avio_context_holder)) {
   set_ffmpeg_log_level();
 
   STD_TORCH_CHECK(avio_context_holder_ != nullptr, "Context holder is null");
@@ -101,10 +119,28 @@ Demuxer::Demuxer(
   }
   format_context_.reset(raw_context);
 
-  select_stream(stream_index);
+  find_stream_info();
 }
 
-void Demuxer::validate_requested_stream(int stream_index) {
+void Demuxer::find_stream_info() {
+  int status = avformat_find_stream_info(format_context_.get(), nullptr);
+  STD_TORCH_CHECK(
+      status >= 0,
+      "Failed to find stream info: ",
+      get_ffmpeg_error_string_from_error_code(status));
+
+  // We only want packets from the streams we're asked to follow, so discard
+  // every stream until add_stream() says otherwise. Note av_read_frame() may
+  // still return some of them under certain conditions, which is why
+  // read_next_packet() also filters by stream index.
+  for (unsigned int i = 0; i < format_context_->nb_streams; ++i) {
+    format_context_->streams[i]->discard = AVDISCARD_ALL;
+  }
+}
+
+void Demuxer::validate_requested_stream(
+    int stream_index,
+    AVMediaType media_type) {
   int num_streams = static_cast<int>(format_context_->nb_streams);
   STD_TORCH_CHECK(
       stream_index >= 0 && stream_index < num_streams,
@@ -119,57 +155,91 @@ void Demuxer::validate_requested_stream(int stream_index) {
   AVMediaType stream_media_type =
       format_context_->streams[stream_index]->codecpar->codec_type;
   STD_TORCH_CHECK(
-      stream_media_type == media_type_,
+      stream_media_type == media_type,
       "The stream at index ",
       stream_index,
       " is not a ",
-      printable(media_type_),
+      printable(media_type),
       " stream, it is of type '",
       printable(stream_media_type),
       "'.");
 }
 
-void Demuxer::select_stream(std::optional<int> stream_index) {
-  int status = avformat_find_stream_info(format_context_.get(), nullptr);
+int Demuxer::add_stream(
+    std::optional<int> stream_index,
+    AVMediaType media_type) {
   STD_TORCH_CHECK(
-      status >= 0,
-      "Failed to find stream info: ",
-      get_ffmpeg_error_string_from_error_code(status));
+      !has_demuxed_,
+      "Streams must all be added before the first packet is demuxed: a stream "
+      "added now would start at wherever the container currently is, not at "
+      "the beginning.");
 
   if (stream_index.has_value()) {
-    validate_requested_stream(*stream_index);
+    validate_requested_stream(*stream_index, media_type);
   }
 
-  active_stream_index_ = av_find_best_stream(
+  int index = av_find_best_stream(
       format_context_.get(),
-      media_type_,
+      media_type,
       stream_index.value_or(-1),
       /*related_stream=*/-1,
       /*decoder_ret=*/nullptr,
       /*flags=*/0);
   STD_TORCH_CHECK(
-      active_stream_index_ >= 0,
+      index >= 0,
       "No valid ",
-      printable(media_type_),
+      printable(media_type),
       " stream found in input file.");
-  stream_ = format_context_->streams[active_stream_index_];
+  STD_TORCH_CHECK(
+      std::find(
+          active_stream_indices_.begin(),
+          active_stream_indices_.end(),
+          index) == active_stream_indices_.end(),
+      "The stream at index ",
+      index,
+      " is already being demuxed.");
 
-  // We only need packets from the active stream, so tell FFmpeg to discard the
-  // others. Note av_read_frame() may still return some of them under certain
-  // conditions, which is why read_next_packet() also filters by stream index.
-  for (unsigned int i = 0; i < format_context_->nb_streams; ++i) {
-    if (i != static_cast<unsigned int>(active_stream_index_)) {
-      format_context_->streams[i]->discard = AVDISCARD_ALL;
-    }
-  }
+  format_context_->streams[index]->discard = AVDISCARD_DEFAULT;
+  active_stream_indices_.push_back(index);
+  return index;
 }
 
-void Demuxer::seek(double seconds) {
-  int64_t desired_pts = seconds_to_closest_pts(seconds, stream_->time_base);
+int Demuxer::resolve_stream_index(std::optional<int> stream_index) const {
+  if (stream_index.has_value()) {
+    STD_TORCH_CHECK(
+        std::find(
+            active_stream_indices_.begin(),
+            active_stream_indices_.end(),
+            *stream_index) != active_stream_indices_.end(),
+        "The stream at index ",
+        *stream_index,
+        " is not being demuxed.");
+    return *stream_index;
+  }
+  STD_TORCH_CHECK(
+      active_stream_indices_.size() == 1,
+      "This demuxer follows ",
+      active_stream_indices_.size(),
+      " streams, so the stream index must be specified.");
+  return active_stream_indices_[0];
+}
+
+AVStream* Demuxer::get_reference_stream() const {
+  STD_TORCH_CHECK(
+      !active_stream_indices_.empty(),
+      "This demuxer isn't following any stream yet.");
+  return format_context_->streams[active_stream_indices_[0]];
+}
+
+void Demuxer::seek(double seconds, std::optional<int> stream_index) {
+  AVStream* reference = stream_index.has_value()
+      ? format_context_->streams[resolve_stream_index(stream_index)]
+      : get_reference_stream();
+  int64_t desired_pts = seconds_to_closest_pts(seconds, reference->time_base);
 
   int status = avformat_seek_file(
       format_context_.get(),
-      active_stream_index_,
+      reference->index,
       INT64_MIN,
       desired_pts,
       desired_pts,
@@ -187,18 +257,21 @@ struct ScannedPacket {
 };
 } // namespace
 
-FrameIndex Demuxer::scan() {
+FrameIndex Demuxer::scan(std::optional<int> stream_index) {
+  AVStream* scanned_stream =
+      format_context_->streams[resolve_stream_index(stream_index)];
+
   std::vector<ScannedPacket> packets;
-  if (stream_->nb_frames > 0) {
-    packets.reserve(static_cast<size_t>(stream_->nb_frames));
+  if (scanned_stream->nb_frames > 0) {
+    packets.reserve(static_cast<size_t>(scanned_stream->nb_frames));
   }
 
-  seek(0);
+  seek(0, scanned_stream->index);
 
   while (true) {
     ReferenceAVPacket packet(auto_packet_);
     int status =
-        read_next_packet(format_context_.get(), active_stream_index_, packet);
+        read_next_packet(format_context_.get(), scanned_stream->index, packet);
     if (status == AVERROR_EOF) {
       break;
     }
@@ -224,14 +297,14 @@ FrameIndex Demuxer::scan() {
         return a.pts < b.pts;
       });
 
-  seek(0);
+  seek(0, scanned_stream->index);
 
   auto num_frames = static_cast<int64_t>(packets.size());
   FrameIndex index{
       torch::stable::empty({num_frames}, kStableInt64),
       torch::stable::empty({num_frames}, kStableInt64),
       torch::stable::empty({num_frames}, kStableBool),
-      stream_->time_base};
+      scanned_stream->time_base};
 
   auto pts = mutable_accessor<int64_t, 1>(index.pts);
   auto duration = mutable_accessor<int64_t, 1>(index.duration);
@@ -246,11 +319,16 @@ FrameIndex Demuxer::scan() {
 }
 
 UniqueAVPacket Demuxer::next_packet() {
+  STD_TORCH_CHECK(
+      !active_stream_indices_.empty(),
+      "This demuxer isn't following any stream yet.");
+  has_demuxed_ = true;
+
   // TODO_API_BREAKDOWN CC P2: Not a fan of the ReferenceAVPacket / AutoAVPacket
   // / UniqueAVPacket dance here. Can we simplify?
   ReferenceAVPacket packet(auto_packet_);
   int status =
-      read_next_packet(format_context_.get(), active_stream_index_, packet);
+      read_next_packet(format_context_.get(), active_stream_indices_, packet);
   if (status == AVERROR_EOF) {
     return UniqueAVPacket{};
   }

@@ -74,18 +74,20 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "get_frames_by_pts_in_range_audio(Tensor(a!) decoder, *, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
   m.def(
       "get_frames_by_pts(Tensor(a!) decoder, *, Tensor timestamps) -> (Tensor, Tensor, Tensor)");
+  m.def("_blocks_create_demuxer_from_file(str filename) -> Tensor");
+  m.def("_blocks_create_demuxer_from_tensor(Tensor video_tensor) -> Tensor");
   m.def(
-      "_blocks_create_demuxer_from_file(str filename, int? stream_index=None, str media_type=\"video\") -> Tensor");
+      "_blocks_create_demuxer_from_file_like(int file_like_context) -> Tensor");
   m.def(
-      "_blocks_create_demuxer_from_tensor(Tensor video_tensor, int? stream_index=None, str media_type=\"video\") -> Tensor");
+      "_blocks_demuxer_add_stream(Tensor(a!) demuxer, int? stream_index=None, str media_type=\"video\") -> int");
   m.def(
-      "_blocks_create_demuxer_from_file_like(int file_like_context, int? stream_index=None, str media_type=\"video\") -> Tensor");
-  m.def("_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool)");
-  m.def("_blocks_demuxer_seek(Tensor(a!) demuxer, float seconds) -> ()");
+      "_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool, int)");
   m.def(
-      "_blocks_demuxer_scan(Tensor(a!) demuxer) -> (Tensor, Tensor, Tensor, int, int)");
+      "_blocks_demuxer_seek(Tensor(a!) demuxer, float seconds, int? stream_index=None) -> ()");
   m.def(
-      "_blocks_create_packet_decoder(Tensor demuxer, *, int? num_threads=None, str device=\"cpu\") -> Tensor");
+      "_blocks_demuxer_scan(Tensor(a!) demuxer, int? stream_index=None) -> (Tensor, Tensor, Tensor, int, int)");
+  m.def(
+      "_blocks_create_packet_decoder(Tensor demuxer, *, int? stream_index=None, int? num_threads=None, str device=\"cpu\") -> Tensor");
   m.def(
       "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
@@ -830,19 +832,13 @@ AVMediaType parse_media_type(const std::string& media_type) {
   return AVMEDIA_TYPE_AUDIO;
 }
 
-torch::stable::Tensor _blocks_create_demuxer_from_file(
-    std::string filename,
-    std::optional<int64_t> stream_index,
-    std::string media_type) {
-  auto demuxer = std::make_unique<Demuxer>(
-      filename, to_optional_int(stream_index), parse_media_type(media_type));
+torch::stable::Tensor _blocks_create_demuxer_from_file(std::string filename) {
+  auto demuxer = std::make_unique<Demuxer>(filename);
   return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
 }
 
 torch::stable::Tensor _blocks_create_demuxer_from_tensor(
-    const torch::stable::Tensor& video_tensor,
-    std::optional<int64_t> stream_index,
-    std::string media_type) {
+    const torch::stable::Tensor& video_tensor) {
   STD_TORCH_CHECK(
       video_tensor.is_contiguous(), "video_tensor must be contiguous");
   STD_TORCH_CHECK(
@@ -851,17 +847,12 @@ torch::stable::Tensor _blocks_create_demuxer_from_tensor(
 
   auto avio_context_holder = std::make_unique<AVIOContextHolder>(
       std::make_unique<TensorReadIO>(video_tensor), /*is_for_writing=*/false);
-  auto demuxer = std::make_unique<Demuxer>(
-      std::move(avio_context_holder),
-      to_optional_int(stream_index),
-      parse_media_type(media_type));
+  auto demuxer = std::make_unique<Demuxer>(std::move(avio_context_holder));
   return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
 }
 
 torch::stable::Tensor _blocks_create_demuxer_from_file_like(
-    int64_t file_like_context,
-    std::optional<int64_t> stream_index,
-    std::string media_type) {
+    int64_t file_like_context) {
   auto file_like_context_ptr =
       reinterpret_cast<IOInterface*>(file_like_context);
   STD_TORCH_CHECK(
@@ -871,28 +862,40 @@ torch::stable::Tensor _blocks_create_demuxer_from_file_like(
   auto avio_context_holder = std::make_unique<AVIOContextHolder>(
       std::unique_ptr<IOInterface>(file_like_context_ptr),
       /*is_for_writing=*/false);
-  auto demuxer = std::make_unique<Demuxer>(
-      std::move(avio_context_holder),
-      to_optional_int(stream_index),
-      parse_media_type(media_type));
+  auto demuxer = std::make_unique<Demuxer>(std::move(avio_context_holder));
   return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
 }
 
-// (packet_handle, is_eof). On EOF the packet_handle is a dummy tensor that must
-// not be used. Native bool avoids per-frame .item() overhead in Python.
-using OpsPacketOutput = std::tuple<torch::stable::Tensor, bool>;
+int64_t _blocks_demuxer_add_stream(
+    torch::stable::Tensor& demuxer,
+    std::optional<int64_t> stream_index,
+    std::string media_type) {
+  return unwrap_tensor_to_pointer<Demuxer>(demuxer)->add_stream(
+      to_optional_int(stream_index), parse_media_type(media_type));
+}
+
+// (packet_handle, is_eof, stream_index). On EOF the packet_handle is a dummy
+// tensor that must not be used and stream_index is -1. Native bool avoids
+// per-frame .item() overhead in Python.
+using OpsPacketOutput = std::tuple<torch::stable::Tensor, bool, int64_t>;
 
 OpsPacketOutput _blocks_demuxer_next_packet(torch::stable::Tensor& demuxer) {
   Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
   UniqueAVPacket packet = demuxer_ptr->next_packet();
   if (packet == nullptr) {
-    return std::make_tuple(torch::stable::full({1}, 0, kStableInt64), true);
+    return std::make_tuple(torch::stable::full({1}, 0, kStableInt64), true, -1);
   }
-  return std::make_tuple(wrap_pointer_to_tensor(std::move(packet)), false);
+  int64_t stream_index = packet->stream_index;
+  return std::make_tuple(
+      wrap_pointer_to_tensor(std::move(packet)), false, stream_index);
 }
 
-void _blocks_demuxer_seek(torch::stable::Tensor& demuxer, double seconds) {
-  unwrap_tensor_to_pointer<Demuxer>(demuxer)->seek(seconds);
+void _blocks_demuxer_seek(
+    torch::stable::Tensor& demuxer,
+    double seconds,
+    std::optional<int64_t> stream_index) {
+  unwrap_tensor_to_pointer<Demuxer>(demuxer)->seek(
+      seconds, to_optional_int(stream_index));
 }
 
 // (pts, duration, is_key_frame, time_base_num, time_base_den). pts and duration
@@ -904,8 +907,11 @@ using OpsScanOutput = std::tuple<
     int64_t,
     int64_t>;
 
-OpsScanOutput _blocks_demuxer_scan(torch::stable::Tensor& demuxer) {
-  FrameIndex index = unwrap_tensor_to_pointer<Demuxer>(demuxer)->scan();
+OpsScanOutput _blocks_demuxer_scan(
+    torch::stable::Tensor& demuxer,
+    std::optional<int64_t> stream_index) {
+  FrameIndex index = unwrap_tensor_to_pointer<Demuxer>(demuxer)->scan(
+      to_optional_int(stream_index));
   return std::make_tuple(
       index.pts,
       index.duration,
@@ -916,6 +922,7 @@ OpsScanOutput _blocks_demuxer_scan(torch::stable::Tensor& demuxer) {
 
 torch::stable::Tensor _blocks_create_packet_decoder(
     torch::stable::Tensor& demuxer,
+    std::optional<int64_t> stream_index,
     std::optional<int64_t> num_threads,
     std::string device) {
   Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
@@ -925,7 +932,10 @@ torch::stable::Tensor _blocks_create_packet_decoder(
     thread_count = static_cast<int>(num_threads.value());
   }
   auto decoder = std::make_unique<PacketDecoder>(
-      *demuxer_ptr, StableDevice(device), thread_count);
+      *demuxer_ptr,
+      to_optional_int(stream_index),
+      StableDevice(device),
+      thread_count);
   return wrap_pointer_to_tensor<PacketDecoder>(std::move(decoder));
 }
 
@@ -1672,6 +1682,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       "get_frames_by_pts_in_range_audio",
       TORCH_BOX(&get_frames_by_pts_in_range_audio));
   m.impl("get_frames_by_pts", TORCH_BOX(&get_frames_by_pts));
+  m.impl("_blocks_demuxer_add_stream", TORCH_BOX(&_blocks_demuxer_add_stream));
   m.impl(
       "_blocks_demuxer_next_packet", TORCH_BOX(&_blocks_demuxer_next_packet));
   m.impl("_blocks_demuxer_seek", TORCH_BOX(&_blocks_demuxer_seek));

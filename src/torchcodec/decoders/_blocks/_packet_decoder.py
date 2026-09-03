@@ -40,7 +40,10 @@ class _BasePacketDecoder(Generic[_Decoded]):
 
     def __init__(self, demuxer, device_str: str):
         self._handle = _blocks_create_packet_decoder(
-            demuxer._handle, num_threads=1, device=device_str
+            demuxer._handle,
+            stream_index=demuxer._stream_index,
+            num_threads=1,
+            device=device_str,
         )
         self._drained = False
 
