@@ -138,9 +138,7 @@ void Demuxer::find_stream_info() {
   }
 }
 
-void Demuxer::validate_requested_stream(
-    int stream_index,
-    std::optional<AVMediaType> media_type) {
+void Demuxer::validate_requested_stream(int stream_index) {
   int num_streams = static_cast<int>(format_context_->nb_streams);
   STD_TORCH_CHECK(
       stream_index >= 0 && stream_index < num_streams,
@@ -154,34 +152,23 @@ void Demuxer::validate_requested_stream(
 
   AVMediaType stream_media_type =
       format_context_->streams[stream_index]->codecpar->codec_type;
-  if (media_type.has_value()) {
-    STD_TORCH_CHECK(
-        stream_media_type == *media_type,
-        "The stream at index ",
-        stream_index,
-        " is not a ",
-        printable(*media_type),
-        " stream, it is of type '",
-        printable(stream_media_type),
-        "'.");
-  } else {
-    STD_TORCH_CHECK(
-        stream_media_type == AVMEDIA_TYPE_VIDEO ||
-            stream_media_type == AVMEDIA_TYPE_AUDIO,
-        "The stream at index ",
-        stream_index,
-        " is of type '",
-        printable(stream_media_type),
-        "', which cannot be decoded. Only audio and video streams can.");
-  }
+  STD_TORCH_CHECK(
+      stream_media_type == AVMEDIA_TYPE_VIDEO ||
+          stream_media_type == AVMEDIA_TYPE_AUDIO,
+      "The stream at index ",
+      stream_index,
+      " is of type '",
+      printable(stream_media_type),
+      "', which cannot be decoded. Only audio and video streams can.");
 }
 
 std::pair<int, AVMediaType> Demuxer::add_stream(
     std::optional<int> stream_index,
     std::optional<AVMediaType> media_type) {
   STD_TORCH_CHECK(
-      stream_index.has_value() || media_type.has_value(),
-      "A stream must be identified either by its index or by its media type.");
+      stream_index.has_value() != media_type.has_value(),
+      "A stream must be identified by either its index or its media type, "
+      "not both and not neither.");
   STD_TORCH_CHECK(
       !has_demuxed_,
       "Streams must all be added before the first packet is demuxed: a stream "
@@ -190,7 +177,7 @@ std::pair<int, AVMediaType> Demuxer::add_stream(
 
   int index;
   if (stream_index.has_value()) {
-    validate_requested_stream(*stream_index, media_type);
+    validate_requested_stream(*stream_index);
     index = *stream_index;
   } else {
     index = av_find_best_stream(

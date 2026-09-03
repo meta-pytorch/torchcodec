@@ -29,7 +29,7 @@ class _Metadata(NamedTuple):
 class Packet:
     """Opaque, thread-movable handle to a demuxed (compressed) packet.
 
-    Produced by :class:`VideoDemuxer`, consumed by :class:`VideoPacketDecoder`. It wraps a raw
+    Produced by :class:`Demuxer`, consumed by :class:`VideoPacketDecoder`. It wraps a raw
     pointer, so it is only valid within the process that created it (it cannot
     cross a process boundary).
 
@@ -189,8 +189,8 @@ class RawFrame:
 class RawAudioSamples:
     """One decoded audio frame's samples, as the decoder produced them.
 
-    Produced by :class:`VideoPacketDecoder` for an :class:`AudioDemuxer`'s stream,
-    consumed by :class:`AudioConverter`. This is the audio counterpart of
+    Produced by :class:`AudioPacketDecoder`, consumed by
+    :class:`AudioConverter`. This is the audio counterpart of
     :class:`RawFrame`, and like it, nothing has been converted: the samples are
     in the codec's own sample type.
 

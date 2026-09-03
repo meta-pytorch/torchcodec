@@ -21,8 +21,8 @@ stages separately:
 
 .. code-block::
 
-   VideoDemuxer  ->  VideoPacketDecoder  ->  ColorConverter
-     Packet            RawFrame               RGB Frame
+   Demuxer  ->  VideoPacketDecoder  ->  ColorConverter
+    Packet         RawFrame               RGB Frame
 
 The blocks are passive: they never create threads, and they release the GIL.
 You decide how they are composed, on which threads, and where to stop. Below
@@ -30,9 +30,9 @@ we illustrate a few things this enables: overlapping stages on multiple
 threads, accessing raw (YUV) frames, and decoding streams of unknown -
 possibly infinite - length.
 
-Audio works the same way, through ``AudioDemuxer``, ``AudioPacketDecoder`` and
-``AudioConverter``; we come back to it at the end, along with ``Demuxer``, which
-gets the audio *and* the video of a container out of a single pass over it.
+Audio works the same way, through ``AudioPacketDecoder`` and
+``AudioConverter``; we come back to it at the end, and to following the audio
+*and* the video of a container in a single pass over it.
 """
 
 # %%
@@ -67,14 +67,20 @@ subprocess.run(
 # it can output a frame, and it buffers a few frames that ``drain()`` returns
 # at the end.
 #
-# ``VideoPacketDecoder`` and ``ColorConverter`` both accept ``device="cuda"``:
+# A ``Demuxer`` follows one or more streams of a container - by default the
+# best video stream - and ``demuxer.streams`` is what it ended up with. A packet
+# decoder is built from one of those streams, which is what binds it to the
+# codec parameters it has to decode with.
+#
+# ``make_decoder()`` and ``ColorConverter`` both accept ``device="cuda"``:
 # decoding then runs on NVDEC and the color conversion on the GPU, and the
 # frames never leave the device. Demuxing always happens on the CPU. Left
 # unspecified, ``device`` is the current default device.
-from torchcodec.decoders._blocks import ColorConverter, VideoDemuxer, VideoPacketDecoder
+from torchcodec.decoders._blocks import ColorConverter, Demuxer
 
-demuxer = VideoDemuxer(video_path)
-packet_decoder = VideoPacketDecoder(demuxer, device=device)
+demuxer = Demuxer(video_path)
+(video_stream,) = demuxer.streams
+packet_decoder = video_stream.make_decoder(device=device)
 color_converter = ColorConverter(device=device)
 
 frames = []
@@ -137,16 +143,16 @@ def prefetch(upstream, buffer_size=8):
 
 def sequential():
     # demux -> decode -> color-convert, all on the calling thread.
-    demuxer = VideoDemuxer(video_path)
-    packet_decoder = VideoPacketDecoder(demuxer, device=device)
+    demuxer = Demuxer(video_path)
+    packet_decoder = demuxer.streams[0].make_decoder(device=device)
     color_converter = ColorConverter(device=device)
     return color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
 
 
 def convert_on_own_thread():
     # [demux + decode] on one thread || [color-convert] on another.
-    demuxer = VideoDemuxer(video_path)
-    packet_decoder = VideoPacketDecoder(demuxer, device=device)
+    demuxer = Demuxer(video_path)
+    packet_decoder = demuxer.streams[0].make_decoder(device=device)
     color_converter = ColorConverter(device=device)
     raw_frames = prefetch(decode(packet_decoder, demux(demuxer)))
     return color_convert(color_converter, raw_frames)
@@ -156,8 +162,8 @@ def demux_on_own_thread():
     # [demux] on one thread || [decode + color-convert] on another. This is the
     # natural split on CUDA: demuxing is CPU and I/O work, while decoding and
     # color conversion both happen on the GPU, so they belong together.
-    demuxer = VideoDemuxer(video_path)
-    packet_decoder = VideoPacketDecoder(demuxer, device=device)
+    demuxer = Demuxer(video_path)
+    packet_decoder = demuxer.streams[0].make_decoder(device=device)
     color_converter = ColorConverter(device=device)
     packets = prefetch(demux(demuxer))
     return color_convert(color_converter, decode(packet_decoder, packets))
@@ -177,15 +183,15 @@ for pipeline in (sequential, convert_on_own_thread, demux_on_own_thread):
 # Seeking
 # -------
 #
-# ``VideoDemuxer.seek()`` moves the demuxer to a timestamp. A decoder can only start
+# ``Demuxer.seek()`` moves the demuxer to a timestamp. A decoder can only start
 # on a keyframe, so the seek lands on the keyframe at or before the target, and
 # the first frames that come out usually precede it: keep decoding forward and
 # drop them until you reach the timestamp you asked for.
 #
 # The seek also invalidates the frames the decoder is holding on to, so the
 # ``VideoPacketDecoder`` must be ``reset()``.
-demuxer = VideoDemuxer(video_path)
-packet_decoder = VideoPacketDecoder(demuxer, device=device)
+demuxer = Demuxer(video_path)
+packet_decoder = demuxer.streams[0].make_decoder(device=device)
 color_converter = ColorConverter(device=device)
 
 seconds = 2.5
@@ -209,7 +215,7 @@ print(f"asked for {seconds}s, landed on {landed_on.pts_seconds:.3f}s, "
 # Scanning
 # --------
 #
-# ``VideoDemuxer.scan()`` demuxes the whole stream once, without decoding anything,
+# ``VideoStream.scan()`` demuxes the whole stream once, without decoding anything,
 # and returns a ``FrameIndex``: one entry per frame, in presentation order.
 # This is the only way to know a stream's exact frame count, timestamps and
 # keyframe positions - a container header can be wrong about all of them. It
@@ -217,9 +223,10 @@ print(f"asked for {seconds}s, landed on {landed_on.pts_seconds:.3f}s, "
 #
 # The ``_from_content`` suffix marks the values the header also claims to know:
 # it is there so that a call site says which of the two sources it trusts.
-demuxer = VideoDemuxer(video_path)
-index = demuxer.scan()
-packet_decoder = VideoPacketDecoder(demuxer, device=device)
+demuxer = Demuxer(video_path)
+(video_stream,) = demuxer.streams
+index = video_stream.scan()
+packet_decoder = video_stream.make_decoder(device=device)
 color_converter = ColorConverter(device=device)
 
 print(f"{index.num_frames_from_content} frames at "
@@ -289,8 +296,8 @@ print(f"frame {i} at {target.pts_seconds:.3f}s")
 #
 # Color conversion is optional. A ``RawFrame`` can hand out the decoder's own
 # planes as tensor views, with no copy and no conversion.
-demuxer = VideoDemuxer(video_path)
-packet_decoder = VideoPacketDecoder(demuxer, device=device)
+demuxer = Demuxer(video_path)
+packet_decoder = demuxer.streams[0].make_decoder(device=device)
 raw_frame = next(decode(packet_decoder, demux(demuxer)))
 
 Y, U, V = raw_frame.planes
@@ -361,8 +368,8 @@ subprocess.run(
     capture_output=True,  # x265 logs its banner to stderr no matter what
 )
 
-hdr_demuxer = VideoDemuxer(hdr_video_path)
-hdr_packet_decoder = VideoPacketDecoder(hdr_demuxer, device=device)
+hdr_demuxer = Demuxer(hdr_video_path)
+hdr_packet_decoder = hdr_demuxer.streams[0].make_decoder(device=device)
 hdr_raw = next(decode(hdr_packet_decoder, demux(hdr_demuxer)))
 
 hdr_Y = hdr_raw.planes[0]
@@ -421,8 +428,8 @@ ffmpeg.wait()
 # %%
 # The blocks just stream it, and we stop whenever we want:
 ffmpeg = start_live_stream()
-demuxer = VideoDemuxer(fifo_path)
-packet_decoder = VideoPacketDecoder(demuxer, device=device)
+demuxer = Demuxer(fifo_path)
+packet_decoder = demuxer.streams[0].make_decoder(device=device)
 color_converter = ColorConverter(device=device)
 
 frames = []
@@ -445,18 +452,14 @@ ffmpeg.wait()
 #
 # .. code-block::
 #
-#    AudioDemuxer  ->  AudioPacketDecoder  ->  AudioConverter
-#      Packet           RawAudioSamples          AudioSamples
+#    Demuxer  ->  AudioPacketDecoder  ->  AudioConverter
+#     Packet        RawAudioSamples          AudioSamples
 #
 # Decoding is the same operation either way, so the two packet decoders are a
 # single class in C++; they are separate in Python because what they hand out
 # isn't. Audio comes out as ``RawAudioSamples``: the codec's own samples, in
 # the codec's own sample type, as a ``[num_channels, num_samples]`` tensor.
-from torchcodec.decoders._blocks import (
-    AudioConverter,
-    AudioDemuxer,
-    AudioPacketDecoder,
-)
+from torchcodec.decoders._blocks import AudioConverter
 
 audio_path = temp_dir / "audio.wav"
 subprocess.run(
@@ -468,8 +471,8 @@ subprocess.run(
     check=True,
 )
 
-demuxer = AudioDemuxer(audio_path)
-packet_decoder = AudioPacketDecoder(demuxer)
+demuxer = Demuxer(audio_path, streams="audio")
+packet_decoder = demuxer.streams[0].make_decoder()
 raw = next(iter(packet_decoder.decode(next(iter(demuxer)))))
 print(f"{raw.sample_format = }, {raw.data.dtype = }, {raw.data.shape = }, "
       f"{raw.sample_rate = }")
@@ -485,8 +488,8 @@ print(f"{raw.sample_format = }, {raw.data.dtype = }, {raw.data.shape = }, "
 # of each frame back until the next one arrives - which is why ``convert()``
 # can return fewer samples than it was given, and why the pipeline ends with
 # ``drain()``. Leave that call out and you lose the end of the stream.
-demuxer = AudioDemuxer(audio_path)
-packet_decoder = AudioPacketDecoder(demuxer)
+demuxer = Demuxer(audio_path, streams="audio")
+packet_decoder = demuxer.streams[0].make_decoder()
 audio_converter = AudioConverter(sample_rate=16_000, num_channels=1)
 
 chunks = []
@@ -508,7 +511,7 @@ print(f"{samples.shape = }, {samples.dtype = }, "
 # stream, and ``scan()`` is what that stream's packets actually say. A name tells
 # you which tier you are reading, so a header value is never mistaken for an
 # exact one:
-demuxer = VideoDemuxer(video_path)
+demuxer = Demuxer(video_path)
 (video,) = demuxer.streams
 
 print(f"container: {demuxer.metadata.duration_seconds_from_header}s")
@@ -537,9 +540,9 @@ for stream in get_container_metadata(video_path).streams:
 # Video and audio together
 # ------------------------
 #
-# ``VideoDemuxer`` and ``AudioDemuxer`` each open their own container, so
-# decoding both streams of one file reads it twice. ``Demuxer`` follows several
-# streams of a single container instead, in one pass.
+# One demuxer per stream means one open container per stream, so decoding both
+# streams of a file that way reads it twice. A single ``Demuxer`` can follow
+# several streams of one container instead, in one pass.
 av_path = temp_dir / "av.mp4"
 subprocess.run(
     [
@@ -554,8 +557,6 @@ subprocess.run(
 # Which streams to follow is said once, at construction: a selector is
 # ``"video"``, ``"audio"`` or a stream index, and ``demuxer.streams`` comes back
 # in the order you asked for. Each stream builds its own decoder.
-from torchcodec.decoders._blocks import Demuxer
-
 demuxer = Demuxer(av_path, streams=("video", "audio"))
 video_stream, audio_stream = demuxer.streams
 
