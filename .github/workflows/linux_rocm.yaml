@@ -168,10 +168,11 @@ jobs:
         echo '::endgroup::'
 
         echo '::group::Initialize ROCm SDK'
-        # rocm-sdk init expands the development package and creates all required
-        # symlinks (including VA-API driver symlinks needed by rocJPEG's HARDWARE
-        # backend). ROCM_PATH must point to _rocm_sdk_devel after this step.
-        rocm-sdk init
+        # _rocm_sdk_devel is only available for Python 3.11+ but our test env
+        # uses Python 3.10. Install and run rocm-sdk init in the base conda env
+        # which has the matching Python version.
+        conda run -n base pip install "rocm[devel]"
+        conda run -n base rocm-sdk init
         echo '::endgroup::'
 
         echo '::group::Run FFmpeg-free image decoder tests (incl. rocJPEG GPU)'
@@ -179,7 +180,8 @@ jobs:
         if [ -n "${rocm_core_lib}" ]; then
           export LD_LIBRARY_PATH="${rocm_core_lib}:${LD_LIBRARY_PATH:-}"
         fi
-        rocm_path=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('_rocm_sdk_devel'); print(str(pathlib.Path(spec.submodule_search_locations[0]))) if spec else ''" 2>/dev/null || true)
+        rocm_path=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('_rocm_sdk_devel'); print(str(pathlib.Path(spec.submodule_search_locations[0]))) if spec else ''" 2>/dev/null \
+          || conda run -n base python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('_rocm_sdk_devel'); print(str(pathlib.Path(spec.submodule_search_locations[0]))) if spec else ''" 2>/dev/null || true)
         if [ -n "${rocm_path}" ]; then
           export ROCM_PATH="${rocm_path}"
         fi
