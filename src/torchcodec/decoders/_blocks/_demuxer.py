@@ -375,6 +375,10 @@ class Demuxer:
         streams: str | int | tuple[str | int, ...] = "video",
     ):
         self._handle = create_demuxer(source=source)
+        # Bumped on every seek and stamped on every packet, so that a decoder
+        # can tell it is being fed packets from a position it was never reset
+        # for. See _BasePacketDecoder.decode().
+        self._generation = 0
         self.streams = tuple(
             self._add_stream(selector) for selector in self._parse_streams(streams)
         )
@@ -454,7 +458,9 @@ class Demuxer:
         stream each belongs to.
         """
         handle, is_eof, stream_index = _blocks_demuxer_next_packet(self._handle)
-        return None if is_eof else Packet(handle, stream_index)
+        if is_eof:
+            return None
+        return Packet(handle, stream_index, generation=self._generation)
 
     def seek(self, seconds: float, *, stream: _Stream | None = None) -> None:
         """Move the demuxer to ``seconds``.
@@ -490,6 +496,7 @@ class Demuxer:
             float(seconds),
             None if stream is None else stream.index,
         )
+        self._generation += 1
 
     def __iter__(self):
         while True:
@@ -512,6 +519,7 @@ class _SingleStreamDemuxer(Demuxer):
         stream_index: int | None = None,
     ):
         self._handle = create_demuxer(source=source)
+        self._generation = 0
         # The media type is pinned, and an explicit index has to match it.
         index, _ = _blocks_demuxer_add_stream(
             self._handle, stream_index, self._media_type

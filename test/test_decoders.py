@@ -4678,13 +4678,13 @@ class TestBlocks:
             assert_frames_equal(got.data, expected.data)
 
     @pytest.mark.parametrize("device", _block_devices())
-    def test_seek_without_reset_yields_stale_frames(self, device):
-        # What goes wrong if you skip the reset: a decoder always holds a few
-        # frames back, and those belong to wherever we were *before* the seek.
-        # It hands those out first, so the frames don't line up with where the
-        # demuxer now is. They aren't corrupt - the landing keyframe gives the
-        # codec a clean slate to decode from - they're just from the wrong
-        # place, and a caller looking at the first frame gets the wrong one.
+    def test_seek_without_reset_raises(self, device):
+        # Skipping the reset used to give you stale frames: a decoder holds a
+        # few back, and those belong to wherever we were *before* the seek. They
+        # aren't corrupt - the landing keyframe gives the codec a clean slate -
+        # they're just from the wrong place, so nothing complains and the caller
+        # silently gets the wrong frames. The packets carry which side of the
+        # seek they came from, so that is now an error instead.
         video_decoder = VideoDecoder(NASA_VIDEO.path, device=device)
         keyframe_index = video_decoder._get_key_frame_indices()[1]
         seconds = video_decoder.get_frame_at(keyframe_index).pts_seconds
@@ -4698,12 +4698,66 @@ class TestBlocks:
                 break
 
         demuxer.seek(seconds)  # ... and no reset()
-        stale = next(frame for packet in demuxer for frame in decoder.decode(packet))
+        with pytest.raises(RuntimeError, match="seeked since this decoder"):
+            next(frame for packet in demuxer for frame in decoder.decode(packet))
 
-        assert stale.pts_seconds < seconds
         # With the reset, that same seek starts exactly where it was asked to.
         blocks = self._make_blocks(NASA_VIDEO.path, device)
         assert self._first_frame_after_seek(blocks, seconds).pts_seconds == seconds
+
+    def test_seek_without_reset_raises_for_every_decoder(self):
+        # The reason this check exists: with several streams there are several
+        # decoders to remember, and forgetting one is invisible otherwise.
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        video, audio = demuxer.streams
+        decoders = {s.index: s.make_decoder() for s in demuxer.streams}
+
+        # Both decoders have to have seen a packet: one that was never fed
+        # anything has nothing stale to hold on to, and needs no reset.
+        fed = set()
+        for packet in demuxer:
+            decoders[packet.stream_index].decode(packet)
+            fed.add(packet.stream_index)
+            if fed == {video.index, audio.index}:
+                break
+
+        demuxer.seek(4.0)
+        decoders[video.index].reset()  # ... and forget the audio one
+
+        for packet in demuxer:
+            if packet.stream_index == audio.index:
+                with pytest.raises(RuntimeError, match="seeked since this decoder"):
+                    decoders[audio.index].decode(packet)
+                break
+
+    def test_seek_without_converter_reset_raises(self):
+        # A seek invalidates the resampler's state too, and the demuxer cannot
+        # know the converter exists - so the samples carry the check onward.
+        demuxer = AudioDemuxer(NASA_AUDIO_MP3.path)
+        decoder = demuxer.make_decoder()
+        converter = AudioConverter(sample_rate=16_000)
+
+        converted = False
+        for packet in demuxer:
+            for raw in decoder.decode(packet):
+                converter.convert(raw)
+                converted = True
+            if converted:
+                break
+
+        demuxer.seek(2.0)
+        decoder.reset()  # ... and forget the converter
+
+        raws = []
+        for packet in demuxer:
+            raws = decoder.decode(packet)
+            if raws:
+                break
+        with pytest.raises(RuntimeError, match="seeked since this converter"):
+            converter.convert(raws[0])
+
+        converter.reset()
+        converter.convert(raws[0])  # and now it is fine
 
     @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
     @pytest.mark.parametrize("device", _block_devices())
