@@ -26,14 +26,12 @@ and rationale.
 from ._audio_converter import AudioConverter
 from ._color_converter import ColorConverter
 from ._demuxer import (
-    AudioDemuxer,
     # TODO_API_BREAKDOWN DESIGN P1: AudioStream and VideoStream may conflict
     # with the encoder-side classes of the same name. Maybe that's OK?
     AudioStream,
     Demuxer,
     FrameIndex,
     get_container_metadata,
-    VideoDemuxer,
     VideoStream,
 )
 from ._frame import Packet, RawAudioSamples, RawFrame
@@ -44,8 +42,6 @@ __all__ = [
     "get_container_metadata",
     "VideoStream",
     "AudioStream",
-    "VideoDemuxer",
-    "AudioDemuxer",
     "VideoPacketDecoder",
     "AudioPacketDecoder",
     "ColorConverter",
