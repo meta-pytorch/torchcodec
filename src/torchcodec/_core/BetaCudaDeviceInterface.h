@@ -177,7 +177,6 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   SwsConfig prev_sws_config_;
   Rotation rotation_ = Rotation::NONE;
-  OutputDtype output_dtype_ = OutputDtype::UINT8;
   cudaVideoSurfaceFormat surface_format_ = cudaVideoSurfaceFormat_NV12;
 
   CachedColorMatrix cached_color_matrix_;
