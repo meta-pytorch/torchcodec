@@ -209,17 +209,22 @@ print(f"asked for {seconds}s, landed on {landed_on.pts_seconds:.3f}s, "
 # --------
 #
 # ``VideoDemuxer.scan()`` demuxes the whole stream once, without decoding anything,
-# and returns a ``StreamIndex``: one entry per frame, in presentation order.
+# and returns a ``FrameIndex``: one entry per frame, in presentation order.
 # This is the only way to know a stream's exact frame count, timestamps and
 # keyframe positions - a container header can be wrong about all of them. It
 # costs one pass over the file, and it leaves the demuxer back at the start.
+#
+# The ``_from_content`` suffix marks the values the header also claims to know:
+# it is there so that a call site says which of the two sources it trusts.
 demuxer = VideoDemuxer(video_path)
 index = demuxer.scan()
 packet_decoder = VideoPacketDecoder(demuxer, device=device)
 color_converter = ColorConverter(device=device)
 
-print(f"{len(index)} frames at {index.average_fps} fps, "
-      f"from {index.begin_stream_seconds}s to {index.end_stream_seconds}s")
+print(f"{index.num_frames_from_content} frames at "
+      f"{index.average_fps_from_content} fps, "
+      f"from {index.begin_stream_seconds_from_content}s "
+      f"to {index.end_stream_seconds_from_content}s")
 
 # %%
 # The index is also what gives the blocks frame *indices*, which they otherwise

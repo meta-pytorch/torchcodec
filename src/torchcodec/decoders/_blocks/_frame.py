@@ -32,10 +32,17 @@ class Packet:
     Produced by :class:`VideoDemuxer`, consumed by :class:`VideoPacketDecoder`. It wraps a raw
     pointer, so it is only valid within the process that created it (it cannot
     cross a process boundary).
+
+    Attributes:
+        stream_index (int): The index of the stream this packet belongs to,
+            absolute across all media types. This is what routes a packet to
+            its decoder when it comes out of a :class:`Demuxer` following more
+            than one stream.
     """
 
-    def __init__(self, handle: torch.Tensor):
+    def __init__(self, handle: torch.Tensor, stream_index: int):
         self._handle = handle
+        self.stream_index = stream_index
 
 
 # TODO_API_BREAKDOWN DESIGN P1: API design - the public fields, the class name,

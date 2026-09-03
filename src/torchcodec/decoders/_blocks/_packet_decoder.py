@@ -20,7 +20,15 @@ from torchcodec._core.ops import (
 )
 
 from .._decoder_utils import convert_device_to_str
-from ._demuxer import AudioDemuxer, VideoDemuxer
+from ._demuxer import (
+    _SingleStreamDemuxer,
+    _Stream,
+    AudioDemuxer,
+    AudioStream,
+    Demuxer,
+    VideoDemuxer,
+    VideoStream,
+)
 from ._frame import Packet, RawAudioSamples, RawFrame
 
 
@@ -38,9 +46,15 @@ class _BasePacketDecoder(Generic[_Decoded]):
     a decoded frame is turned into, which is :meth:`_receive_ready_frames`.
     """
 
-    def __init__(self, demuxer, device_str: str):
+    def __init__(self, source: _Stream | _SingleStreamDemuxer, device_str: str):
+        # Built from a stream, or from one of the single-stream demuxers, which
+        # stands in for the one stream it follows.
+        stream = source.streams[0] if isinstance(source, Demuxer) else source
         self._handle = _blocks_create_packet_decoder(
-            demuxer._handle, num_threads=1, device=device_str
+            stream._demuxer._handle,
+            stream_index=stream.index,
+            num_threads=1,
+            device=device_str,
         )
         self._drained = False
 
@@ -76,6 +90,8 @@ class _BasePacketDecoder(Generic[_Decoded]):
         self._drained = False
 
 
+# TODO_API_BREAKDOWN DESIGN P1: Can/should we explicitly prevent user
+# instanciation of these?
 class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
     """Decode building block: turns compressed :class:`Packet`\\ s into decoded
     (YUV) :class:`RawFrame`\\ s.
@@ -90,8 +106,12 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
     which means the current default device (see ``torch.set_default_device``).
     """
 
-    def __init__(self, demuxer: VideoDemuxer, device: str | torch.device | None = None):
-        super().__init__(demuxer, convert_device_to_str(device))
+    def __init__(
+        self,
+        source: VideoStream | VideoDemuxer,
+        device: str | torch.device | None = None,
+    ):
+        super().__init__(source, convert_device_to_str(device))
 
     def _receive_ready_frames(self) -> list[RawFrame]:
         frames = []
@@ -127,8 +147,8 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
     that doesn't change with ``torch.set_default_device``.
     """
 
-    def __init__(self, demuxer: AudioDemuxer):
-        super().__init__(demuxer, "cpu")
+    def __init__(self, source: AudioStream | AudioDemuxer):
+        super().__init__(source, "cpu")
 
     def _receive_ready_frames(self) -> list[RawAudioSamples]:
         samples = []
