@@ -26,8 +26,8 @@ stages separately:
 
 .. code-block::
 
-   VideoDemuxer  ->  VideoPacketDecoder  ->  ColorConverter
-     Packet            RawFrame               RGB Frame
+   Demuxer  ->  VideoPacketDecoder  ->  ColorConverter
+    Packet         RawFrame               RGB Frame
 
 The blocks are passive: they never create threads, and they release the GIL.
 You decide how they are composed, on which threads, and where to stop. Below
@@ -35,9 +35,9 @@ we illustrate a few things this enables: overlapping stages on multiple
 threads, accessing raw (YUV) frames, and decoding streams of unknown -
 possibly infinite - length.
 
-Audio works the same way, through ``AudioDemuxer``, ``AudioPacketDecoder`` and
-``AudioConverter``; we come back to it at the end, along with ``Demuxer``, which
-gets the audio *and* the video of a container out of a single pass over it.
+Audio works the same way, through ``AudioPacketDecoder`` and
+``AudioConverter``; we come back to it at the end, and to following the audio
+*and* the video of a container in a single pass over it.
 
 .. GENERATED FROM PYTHON SOURCE LINES 39-40
 
@@ -79,11 +79,11 @@ Boilerplate: a test video, and the device we'll run on.
 
     device = 'cuda'
 
-    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpioneyavp/video.mp4'], returncode=0)
+    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpc5jbs1nf/video.mp4'], returncode=0)
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 63-74
+.. GENERATED FROM PYTHON SOURCE LINES 63-79
 
 The three blocks
 ----------------
@@ -92,19 +92,25 @@ A pipeline is just a loop. The decoder may need more than one packet before
 it can output a frame, and it buffers a few frames that ``drain()`` returns
 at the end.
 
-``VideoPacketDecoder`` and ``ColorConverter`` both accept ``device="cuda"``:
+A ``Demuxer`` follows one or more streams of a container - by default the
+best video stream - and ``demuxer.streams`` is what it ended up with. A packet
+decoder is built from one of those streams, which is what binds it to the
+codec parameters it has to decode with.
+
+``make_decoder()`` and ``ColorConverter`` both accept ``device="cuda"``:
 decoding then runs on NVDEC and the color conversion on the GPU, and the
 frames never leave the device. Demuxing always happens on the CPU. Left
 unspecified, ``device`` is the current default device.
 
-.. GENERATED FROM PYTHON SOURCE LINES 74-90
+.. GENERATED FROM PYTHON SOURCE LINES 79-96
 
 .. code-block:: Python
 
-    from torchcodec.decoders._blocks import ColorConverter, VideoDemuxer, VideoPacketDecoder
+    from torchcodec.decoders._blocks import ColorConverter, Demuxer
 
-    demuxer = VideoDemuxer(video_path)
-    packet_decoder = VideoPacketDecoder(demuxer, device=device)
+    demuxer = Demuxer(video_path)
+    (video_stream,) = demuxer.streams
+    packet_decoder = video_stream.make_decoder(device=device)
     color_converter = ColorConverter(device=device)
 
     frames = []
@@ -130,7 +136,7 @@ unspecified, ``device`` is the current default device.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 91-98
+.. GENERATED FROM PYTHON SOURCE LINES 97-104
 
 Threading: overlapping the stages
 ---------------------------------
@@ -140,7 +146,7 @@ Each stage is a generator, so a pipeline is a chain of generators. Inserting
 thread: the stages then run concurrently, and since the blocks release the
 GIL, that's real parallelism.
 
-.. GENERATED FROM PYTHON SOURCE LINES 98-170
+.. GENERATED FROM PYTHON SOURCE LINES 104-176
 
 .. code-block:: Python
 
@@ -186,16 +192,16 @@ GIL, that's real parallelism.
 
     def sequential():
         # demux -> decode -> color-convert, all on the calling thread.
-        demuxer = VideoDemuxer(video_path)
-        packet_decoder = VideoPacketDecoder(demuxer, device=device)
+        demuxer = Demuxer(video_path)
+        packet_decoder = demuxer.streams[0].make_decoder(device=device)
         color_converter = ColorConverter(device=device)
         return color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
 
 
     def convert_on_own_thread():
         # [demux + decode] on one thread || [color-convert] on another.
-        demuxer = VideoDemuxer(video_path)
-        packet_decoder = VideoPacketDecoder(demuxer, device=device)
+        demuxer = Demuxer(video_path)
+        packet_decoder = demuxer.streams[0].make_decoder(device=device)
         color_converter = ColorConverter(device=device)
         raw_frames = prefetch(decode(packet_decoder, demux(demuxer)))
         return color_convert(color_converter, raw_frames)
@@ -205,8 +211,8 @@ GIL, that's real parallelism.
         # [demux] on one thread || [decode + color-convert] on another. This is the
         # natural split on CUDA: demuxing is CPU and I/O work, while decoding and
         # color conversion both happen on the GPU, so they belong together.
-        demuxer = VideoDemuxer(video_path)
-        packet_decoder = VideoPacketDecoder(demuxer, device=device)
+        demuxer = Demuxer(video_path)
+        packet_decoder = demuxer.streams[0].make_decoder(device=device)
         color_converter = ColorConverter(device=device)
         packets = prefetch(demux(demuxer))
         return color_convert(color_converter, decode(packet_decoder, packets))
@@ -231,19 +237,19 @@ GIL, that's real parallelism.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 171-175
+.. GENERATED FROM PYTHON SOURCE LINES 177-181
 
 Where you insert the thread boundaries is up to you, and so is everything
 else: nothing stops you from running one pipeline per file, decoding on the
 CPU while color-converting on the GPU, or feeding frames into your own
 pre-fetching data loader.
 
-.. GENERATED FROM PYTHON SOURCE LINES 177-187
+.. GENERATED FROM PYTHON SOURCE LINES 183-193
 
 Seeking
 -------
 
-``VideoDemuxer.seek()`` moves the demuxer to a timestamp. A decoder can only start
+``Demuxer.seek()`` moves the demuxer to a timestamp. A decoder can only start
 on a keyframe, so the seek lands on the keyframe at or before the target, and
 the first frames that come out usually precede it: keep decoding forward and
 drop them until you reach the timestamp you asked for.
@@ -251,12 +257,12 @@ drop them until you reach the timestamp you asked for.
 The seek also invalidates the frames the decoder is holding on to, so the
 ``VideoPacketDecoder`` must be ``reset()``.
 
-.. GENERATED FROM PYTHON SOURCE LINES 187-208
+.. GENERATED FROM PYTHON SOURCE LINES 193-214
 
 .. code-block:: Python
 
-    demuxer = VideoDemuxer(video_path)
-    packet_decoder = VideoPacketDecoder(demuxer, device=device)
+    demuxer = Demuxer(video_path)
+    packet_decoder = demuxer.streams[0].make_decoder(device=device)
     color_converter = ColorConverter(device=device)
 
     seconds = 2.5
@@ -289,12 +295,12 @@ The seek also invalidates the frames the decoder is holding on to, so the
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 209-220
+.. GENERATED FROM PYTHON SOURCE LINES 215-226
 
 Scanning
 --------
 
-``VideoDemuxer.scan()`` demuxes the whole stream once, without decoding anything,
+``VideoStream.scan()`` demuxes the whole stream once, without decoding anything,
 and returns a ``FrameIndex``: one entry per frame, in presentation order.
 This is the only way to know a stream's exact frame count, timestamps and
 keyframe positions - a container header can be wrong about all of them. It
@@ -303,13 +309,14 @@ costs one pass over the file, and it leaves the demuxer back at the start.
 The ``_from_content`` suffix marks the values the header also claims to know:
 it is there so that a call site says which of the two sources it trusts.
 
-.. GENERATED FROM PYTHON SOURCE LINES 220-230
+.. GENERATED FROM PYTHON SOURCE LINES 226-237
 
 .. code-block:: Python
 
-    demuxer = VideoDemuxer(video_path)
-    index = demuxer.scan()
-    packet_decoder = VideoPacketDecoder(demuxer, device=device)
+    demuxer = Demuxer(video_path)
+    (video_stream,) = demuxer.streams
+    index = video_stream.scan()
+    packet_decoder = video_stream.make_decoder(device=device)
     color_converter = ColorConverter(device=device)
 
     print(f"{index.num_frames_from_content} frames at "
@@ -330,14 +337,14 @@ it is there so that a call site says which of the two sources it trusts.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 231-235
+.. GENERATED FROM PYTHON SOURCE LINES 238-242
 
 The index is also what gives the blocks frame *indices*, which they otherwise
 don't have at all: ``index_at()`` maps a timestamp to the frame on screen
 then, and ``pts_seconds`` maps back. That's enough to build ``get_frame_at``,
 or a clip sampler, on top of the blocks.
 
-.. GENERATED FROM PYTHON SOURCE LINES 235-238
+.. GENERATED FROM PYTHON SOURCE LINES 242-245
 
 .. code-block:: Python
 
@@ -357,7 +364,7 @@ or a clip sampler, on top of the blocks.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 239-250
+.. GENERATED FROM PYTHON SOURCE LINES 246-257
 
 Keyframes
 ^^^^^^^^^
@@ -371,7 +378,7 @@ the one you asked for - no decoding forward, nothing to drop.
 That makes a keyframe-only sampler about as cheap as video decoding gets,
 which is what you want for thumbnails or coarse previews.
 
-.. GENERATED FROM PYTHON SOURCE LINES 250-264
+.. GENERATED FROM PYTHON SOURCE LINES 257-271
 
 .. code-block:: Python
 
@@ -403,7 +410,7 @@ which is what you want for thumbnails or coarse previews.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 265-279
+.. GENERATED FROM PYTHON SOURCE LINES 272-286
 
 Exact seeking
 ^^^^^^^^^^^^^
@@ -420,7 +427,7 @@ The two are the same call on the overwhelming majority of files; this is the
 whole of what separates :class:`~torchcodec.decoders.VideoDecoder`'s
 ``seek_mode="exact"`` from ``"approximate"`` for a timestamp lookup.
 
-.. GENERATED FROM PYTHON SOURCE LINES 279-286
+.. GENERATED FROM PYTHON SOURCE LINES 286-293
 
 .. code-block:: Python
 
@@ -444,7 +451,7 @@ whole of what separates :class:`~torchcodec.decoders.VideoDecoder`'s
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 287-292
+.. GENERATED FROM PYTHON SOURCE LINES 294-299
 
 Raw frames
 ----------
@@ -452,12 +459,12 @@ Raw frames
 Color conversion is optional. A ``RawFrame`` can hand out the decoder's own
 planes as tensor views, with no copy and no conversion.
 
-.. GENERATED FROM PYTHON SOURCE LINES 292-301
+.. GENERATED FROM PYTHON SOURCE LINES 299-308
 
 .. code-block:: Python
 
-    demuxer = VideoDemuxer(video_path)
-    packet_decoder = VideoPacketDecoder(demuxer, device=device)
+    demuxer = Demuxer(video_path)
+    packet_decoder = demuxer.streams[0].make_decoder(device=device)
     raw_frame = next(decode(packet_decoder, demux(demuxer)))
 
     Y, U, V = raw_frame.planes
@@ -479,7 +486,7 @@ planes as tensor views, with no copy and no conversion.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 302-314
+.. GENERATED FROM PYTHON SOURCE LINES 309-321
 
 These are views into the frame's memory: the row stride is the decoder's own
 line size, and the chroma planes of an NVDEC surface are two interleaved
@@ -494,7 +501,7 @@ So we can do the color conversion ourselves. Here it's plain PyTorch ops -
 it could just as well be a Triton or CUDA kernel, fused with whatever your
 model needs next.
 
-.. GENERATED FROM PYTHON SOURCE LINES 314-343
+.. GENERATED FROM PYTHON SOURCE LINES 321-350
 
 .. code-block:: Python
 
@@ -540,7 +547,7 @@ model needs next.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 344-350
+.. GENERATED FROM PYTHON SOURCE LINES 351-357
 
 Raw HDR frames
 --------------
@@ -549,7 +556,7 @@ Raw planes come at the source's own precision, so a 10-bit HDR video gives
 ``uint16`` planes with all 10 bits intact - no clipping to 8 bits, and no
 tone mapping.
 
-.. GENERATED FROM PYTHON SOURCE LINES 350-380
+.. GENERATED FROM PYTHON SOURCE LINES 357-387
 
 .. code-block:: Python
 
@@ -567,8 +574,8 @@ tone mapping.
         capture_output=True,  # x265 logs its banner to stderr no matter what
     )
 
-    hdr_demuxer = VideoDemuxer(hdr_video_path)
-    hdr_packet_decoder = VideoPacketDecoder(hdr_demuxer, device=device)
+    hdr_demuxer = Demuxer(hdr_video_path)
+    hdr_packet_decoder = hdr_demuxer.streams[0].make_decoder(device=device)
     hdr_raw = next(decode(hdr_packet_decoder, demux(hdr_demuxer)))
 
     hdr_Y = hdr_raw.planes[0]
@@ -597,7 +604,7 @@ tone mapping.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 381-391
+.. GENERATED FROM PYTHON SOURCE LINES 388-398
 
 Streams of unknown length
 -------------------------
@@ -610,7 +617,7 @@ that has no duration, no frame count, and no end.
 
 Let's make one: FFmpeg generating frames forever into a named pipe.
 
-.. GENERATED FROM PYTHON SOURCE LINES 391-408
+.. GENERATED FROM PYTHON SOURCE LINES 398-415
 
 .. code-block:: Python
 
@@ -638,12 +645,12 @@ Let's make one: FFmpeg generating frames forever into a named pipe.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 409-411
+.. GENERATED FROM PYTHON SOURCE LINES 416-418
 
 ``VideoDecoder`` can't do anything with that (we ask for the approximate
 seek mode; the exact one would scan the stream forever):
 
-.. GENERATED FROM PYTHON SOURCE LINES 411-421
+.. GENERATED FROM PYTHON SOURCE LINES 418-428
 
 .. code-block:: Python
 
@@ -671,17 +678,17 @@ seek mode; the exact one would scan the stream forever):
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 422-423
+.. GENERATED FROM PYTHON SOURCE LINES 429-430
 
 The blocks just stream it, and we stop whenever we want:
 
-.. GENERATED FROM PYTHON SOURCE LINES 423-440
+.. GENERATED FROM PYTHON SOURCE LINES 430-447
 
 .. code-block:: Python
 
     ffmpeg = start_live_stream()
-    demuxer = VideoDemuxer(fifo_path)
-    packet_decoder = VideoPacketDecoder(demuxer, device=device)
+    demuxer = Demuxer(fifo_path)
+    packet_decoder = demuxer.streams[0].make_decoder(device=device)
     color_converter = ColorConverter(device=device)
 
     frames = []
@@ -710,7 +717,7 @@ The blocks just stream it, and we stop whenever we want:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 441-455
+.. GENERATED FROM PYTHON SOURCE LINES 448-462
 
 Audio
 -----
@@ -719,23 +726,19 @@ Audio has the same three stages:
 
 .. code-block::
 
-   AudioDemuxer  ->  AudioPacketDecoder  ->  AudioConverter
-     Packet           RawAudioSamples          AudioSamples
+   Demuxer  ->  AudioPacketDecoder  ->  AudioConverter
+    Packet        RawAudioSamples          AudioSamples
 
 Decoding is the same operation either way, so the two packet decoders are a
 single class in C++; they are separate in Python because what they hand out
 isn't. Audio comes out as ``RawAudioSamples``: the codec's own samples, in
 the codec's own sample type, as a ``[num_channels, num_samples]`` tensor.
 
-.. GENERATED FROM PYTHON SOURCE LINES 455-477
+.. GENERATED FROM PYTHON SOURCE LINES 462-480
 
 .. code-block:: Python
 
-    from torchcodec.decoders._blocks import (
-        AudioConverter,
-        AudioDemuxer,
-        AudioPacketDecoder,
-    )
+    from torchcodec.decoders._blocks import AudioConverter
 
     audio_path = temp_dir / "audio.wav"
     subprocess.run(
@@ -747,8 +750,8 @@ the codec's own sample type, as a ``[num_channels, num_samples]`` tensor.
         check=True,
     )
 
-    demuxer = AudioDemuxer(audio_path)
-    packet_decoder = AudioPacketDecoder(demuxer)
+    demuxer = Demuxer(audio_path, streams="audio")
+    packet_decoder = demuxer.streams[0].make_decoder()
     raw = next(iter(packet_decoder.decode(next(iter(demuxer)))))
     print(f"{raw.sample_format = }, {raw.data.dtype = }, {raw.data.shape = }, "
           f"{raw.sample_rate = }")
@@ -766,7 +769,7 @@ the codec's own sample type, as a ``[num_channels, num_samples]`` tensor.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 478-488
+.. GENERATED FROM PYTHON SOURCE LINES 481-491
 
 Those are the true source samples - 16-bit integers here, not floats in
 ``[-1, 1]``. ``AudioConverter`` is what normalizes them, and it can resample
@@ -779,12 +782,12 @@ of each frame back until the next one arrives - which is why ``convert()``
 can return fewer samples than it was given, and why the pipeline ends with
 ``drain()``. Leave that call out and you lose the end of the stream.
 
-.. GENERATED FROM PYTHON SOURCE LINES 488-502
+.. GENERATED FROM PYTHON SOURCE LINES 491-505
 
 .. code-block:: Python
 
-    demuxer = AudioDemuxer(audio_path)
-    packet_decoder = AudioPacketDecoder(demuxer)
+    demuxer = Demuxer(audio_path, streams="audio")
+    packet_decoder = demuxer.streams[0].make_decoder()
     audio_converter = AudioConverter(sample_rate=16_000, num_channels=1)
 
     chunks = []
@@ -810,7 +813,7 @@ can return fewer samples than it was given, and why the pipeline ends with
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 503-511
+.. GENERATED FROM PYTHON SOURCE LINES 506-514
 
 Metadata
 --------
@@ -821,11 +824,11 @@ stream, and ``scan()`` is what that stream's packets actually say. A name tells
 you which tier you are reading, so a header value is never mistaken for an
 exact one:
 
-.. GENERATED FROM PYTHON SOURCE LINES 511-521
+.. GENERATED FROM PYTHON SOURCE LINES 514-524
 
 .. code-block:: Python
 
-    demuxer = VideoDemuxer(video_path)
+    demuxer = Demuxer(video_path)
     (video,) = demuxer.streams
 
     print(f"container: {demuxer.metadata.duration_seconds_from_header}s")
@@ -850,7 +853,7 @@ exact one:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 522-531
+.. GENERATED FROM PYTHON SOURCE LINES 525-534
 
 This is deliberately less helpful than
 :attr:`~torchcodec.decoders.VideoDecoder.metadata`, which merges the two
@@ -862,7 +865,7 @@ demuxer's streams are fixed when you construct it - use
 ``get_container_metadata()``, which reads the header and no packets. It also
 reports streams a demuxer cannot follow, such as subtitles.
 
-.. GENERATED FROM PYTHON SOURCE LINES 531-536
+.. GENERATED FROM PYTHON SOURCE LINES 534-539
 
 .. code-block:: Python
 
@@ -884,16 +887,16 @@ reports streams a demuxer cannot follow, such as subtitles.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 537-543
+.. GENERATED FROM PYTHON SOURCE LINES 540-546
 
 Video and audio together
 ------------------------
 
-``VideoDemuxer`` and ``AudioDemuxer`` each open their own container, so
-decoding both streams of one file reads it twice. ``Demuxer`` follows several
-streams of a single container instead, in one pass.
+One demuxer per stream means one open container per stream, so decoding both
+streams of a file that way reads it twice. A single ``Demuxer`` can follow
+several streams of one container instead, in one pass.
 
-.. GENERATED FROM PYTHON SOURCE LINES 543-553
+.. GENERATED FROM PYTHON SOURCE LINES 546-556
 
 .. code-block:: Python
 
@@ -916,21 +919,19 @@ streams of a single container instead, in one pass.
  .. code-block:: none
 
 
-    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpioneyavp/video.mp4', '-i', '/tmp/tmpioneyavp/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpioneyavp/av.mp4'], returncode=0)
+    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpc5jbs1nf/video.mp4', '-i', '/tmp/tmpc5jbs1nf/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpc5jbs1nf/av.mp4'], returncode=0)
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 554-557
+.. GENERATED FROM PYTHON SOURCE LINES 557-560
 
 Which streams to follow is said once, at construction: a selector is
 ``"video"``, ``"audio"`` or a stream index, and ``demuxer.streams`` comes back
 in the order you asked for. Each stream builds its own decoder.
 
-.. GENERATED FROM PYTHON SOURCE LINES 557-569
+.. GENERATED FROM PYTHON SOURCE LINES 560-570
 
 .. code-block:: Python
-
-    from torchcodec.decoders._blocks import Demuxer
 
     demuxer = Demuxer(av_path, streams=("video", "audio"))
     video_stream, audio_stream = demuxer.streams
@@ -949,14 +950,14 @@ in the order you asked for. Each stream builds its own decoder.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 570-574
+.. GENERATED FROM PYTHON SOURCE LINES 571-575
 
 The packets come out interleaved, in the order the container stores them, and
 ``packet.stream_index`` says which stream each belongs to - so the loop is the
 single-stream one with a dispatch in the middle. Each decoder is drained at
 the end, as always.
 
-.. GENERATED FROM PYTHON SOURCE LINES 574-592
+.. GENERATED FROM PYTHON SOURCE LINES 575-593
 
 .. code-block:: Python
 
@@ -991,7 +992,7 @@ the end, as always.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 593-601
+.. GENERATED FROM PYTHON SOURCE LINES 594-602
 
 Nothing is buffered per stream: a packet is handed to you once, and if you
 want to consume one stream at a time you hold on to the other stream's packets
@@ -1002,7 +1003,7 @@ pipeline, not to the block.
 decoder has to be reset, not just one. ``scan()`` lives on the video streams,
 and has to be called before any packet is demuxed.
 
-.. GENERATED FROM PYTHON SOURCE LINES 603-612
+.. GENERATED FROM PYTHON SOURCE LINES 604-613
 
 .. warning::
 
@@ -1017,7 +1018,7 @@ and has to be called before any packet is demuxed.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 2.337 seconds)
+   **Total running time of the script:** (0 minutes 2.353 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_blocks.py:
