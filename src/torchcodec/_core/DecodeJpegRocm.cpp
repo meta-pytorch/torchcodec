@@ -39,6 +39,12 @@ using namespace exif_private;
 
 namespace {
 
+constexpr int kMemAlignment = 16;
+
+inline uint32_t align_up(uint32_t value, uint32_t alignment) {
+  return (value + alignment - 1) & ~(alignment - 1);
+}
+
 // See kMaxCachedDecodersPerDevice in DecodeJpegCuda.cpp for the rationale.
 constexpr size_t kMaxCachedDecodersPerDevice = 32;
 
@@ -291,22 +297,29 @@ RocJpegDecoder::ImagePlan RocJpegDecoder::make_plan(
   }
   int output_channels = (plan.output_format == ROCJPEG_OUTPUT_Y) ? 1 : 3;
 
-  plan.output_tensor = torch::stable::empty(
-      {int64_t(output_channels), int64_t(heights[0]), int64_t(widths[0])},
+  // rocJpegDecodeBatched writes rows at a 16-byte-aligned pitch, so allocate a
+  // buffer padded to that alignment and narrow it back to the valid region.
+  uint32_t aligned_pitch = align_up(widths[0], kMemAlignment);
+  uint32_t aligned_height = align_up(heights[0], kMemAlignment);
+  auto buffer = torch::stable::empty(
+      {int64_t(output_channels), int64_t(aligned_height), int64_t(aligned_pitch)},
       kStableUInt8,
       std::nullopt,
       target_device_);
 
   for (int c = 0; c < output_channels; ++c) {
     plan.output_image.channel[c] =
-        torch::stable::select(plan.output_tensor, 0, c)
-            .mutable_data_ptr<uint8_t>();
-    plan.output_image.pitch[c] = widths[0];
+        torch::stable::select(buffer, 0, c).mutable_data_ptr<uint8_t>();
+    plan.output_image.pitch[c] = aligned_pitch;
   }
   for (int c = output_channels; c < ROCJPEG_MAX_COMPONENT; ++c) {
     plan.output_image.channel[c] = nullptr;
     plan.output_image.pitch[c] = 0;
   }
+
+  // Return a view of the valid (unpadded) region.
+  auto valid_height = torch::stable::narrow(buffer, 1, 0, heights[0]);
+  plan.output_tensor = torch::stable::narrow(valid_height, 2, 0, widths[0]);
   return plan;
 }
 
@@ -338,24 +351,29 @@ void RocJpegDecoder::decode_batched_hardware(
        {ROCJPEG_OUTPUT_Y, ROCJPEG_OUTPUT_RGB_PLANAR}) {
     std::vector<RocJpegStreamHandle> group_streams;
     std::vector<RocJpegImage> group_images;
+    // rocJpegDecodeBatched indexes decode_params[i] per image, so we must
+    // pass an array — not a pointer to a single struct.
+    std::vector<RocJpegDecodeParams> group_params;
+
     for (size_t idx : indices) {
-      if (plans[idx].output_format == group_format) {
-        group_streams.push_back(plans[idx].stream);
-        group_images.push_back(plans[idx].output_image);
+      if (plans[idx].output_format != group_format) {
+        continue;
       }
+      group_streams.push_back(plans[idx].stream);
+      group_images.push_back(plans[idx].output_image);
+      RocJpegDecodeParams params = {};
+      params.output_format = group_format;
+      group_params.push_back(params);
     }
     if (group_streams.empty()) {
       continue;
     }
 
-    RocJpegDecodeParams params = {};
-    params.output_format = group_format;
-
     RocJpegStatus status = rocJpegDecodeBatched(
         handle_hw_,
         group_streams.data(),
         static_cast<int>(group_streams.size()),
-        &params,
+        group_params.data(),
         group_images.data());
     STD_TORCH_CHECK(
         status == ROCJPEG_STATUS_SUCCESS,
