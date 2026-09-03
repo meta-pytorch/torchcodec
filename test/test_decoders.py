@@ -49,6 +49,7 @@ from torchcodec.decoders._blocks import (
     AudioStream,
     ColorConverter,
     Demuxer,
+    get_container_metadata,
     Packet,
     RawAudioSamples,
     RawFrame,
@@ -3747,6 +3748,114 @@ class TestBlocks:
 
         assert seen[video.index] > 0
         assert seen[audio.index] > 0
+
+    # ===== metadata =====
+
+    def test_stream_metadata_matches_the_decoders(self):
+        # The blocks report the header tier and nothing else, but where a field
+        # exists on both sides it has to say the same thing - same name, same
+        # value.
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        video, audio = demuxer.streams
+
+        expected_video = VideoDecoder(NASA_VIDEO.path).metadata
+        for field in (
+            "stream_index",
+            "codec",
+            "bit_rate",
+            "duration_seconds_from_header",
+            "begin_stream_seconds_from_header",
+            "width",
+            "height",
+            "num_frames_from_header",
+            "average_fps_from_header",
+            "pixel_aspect_ratio",
+            "rotation",
+            "color_primaries",
+            "color_space",
+            "color_transfer_characteristic",
+            "pixel_format",
+        ):
+            assert getattr(video.metadata, field) == getattr(expected_video, field)
+
+        expected_audio = AudioDecoder(NASA_VIDEO.path).metadata
+        for field in ("sample_rate", "num_channels", "sample_format", "codec"):
+            assert getattr(audio.metadata, field) == getattr(expected_audio, field)
+
+    def test_stream_metadata_has_no_content_tier(self):
+        # The whole point: nothing here is derived from content, so nothing
+        # here silently changes meaning depending on whether a scan happened.
+        (video,) = Demuxer(NASA_VIDEO.path).streams
+
+        for field in (
+            "num_frames_from_content",
+            "begin_stream_seconds_from_content",
+            "end_stream_seconds_from_content",
+            "num_frames",
+            "average_fps",
+            "duration_seconds",
+            "begin_stream_seconds",
+            "end_stream_seconds",
+        ):
+            assert not hasattr(video.metadata, field), field
+
+        # Scanning doesn't change that; the exact answers live on the index.
+        index = video.scan()
+        assert not hasattr(video.metadata, "num_frames")
+        assert video.metadata.num_frames_from_header == index.num_frames_from_content
+
+    def test_demuxer_metadata_has_no_stream_list(self):
+        demuxer = Demuxer(NASA_VIDEO.path)
+        # Older FFmpeg reports this container's duration differently.
+        expected_duration = 16.57 if ffmpeg_major_version <= 5 else 13.056
+
+        assert demuxer.metadata.duration_seconds_from_header == pytest.approx(
+            expected_duration
+        )
+        assert demuxer.metadata.best_video_stream_index == 3
+        assert demuxer.metadata.best_audio_stream_index == 4
+        # Streams are described by demuxer.streams[i].metadata, and only there.
+        assert not hasattr(demuxer.metadata, "streams")
+
+    def test_get_container_metadata(self):
+        metadata = get_container_metadata(NASA_VIDEO.path)
+        # Older FFmpeg reports this container's duration differently.
+        expected_duration = 16.57 if ffmpeg_major_version <= 5 else 13.056
+
+        assert metadata.duration_seconds_from_header == pytest.approx(expected_duration)
+        assert metadata.best_video_stream_index == 3
+        # Every stream, including the two subtitle ones a demuxer can't follow.
+        assert [type(s).__name__ for s in metadata.streams] == [
+            "VideoStreamHeaderMetadata",
+            "AudioStreamHeaderMetadata",
+            "StreamMetadata",
+            "VideoStreamHeaderMetadata",
+            "AudioStreamHeaderMetadata",
+            "StreamMetadata",
+        ]
+        assert [s.stream_index for s in metadata.streams] == list(range(6))
+
+    def test_get_container_metadata_reads_no_packets(self):
+        class CountingFileLike:
+            def __init__(self, path):
+                self._file = open(path, "rb")
+                self.bytes_read = 0
+
+            def read(self, size):
+                data = self._file.read(size)
+                self.bytes_read += len(data)
+                return data
+
+            def seek(self, offset, whence):
+                return self._file.seek(offset, whence)
+
+        probed = CountingFileLike(NASA_VIDEO.path)
+        get_container_metadata(probed)
+
+        demuxed = CountingFileLike(NASA_VIDEO.path)
+        list(VideoDemuxer(demuxed))
+
+        assert probed.bytes_read < demuxed.bytes_read
 
     def test_adding_a_stream_after_demuxing_raises(self):
         # Demuxer follows its streams from construction, so this is only

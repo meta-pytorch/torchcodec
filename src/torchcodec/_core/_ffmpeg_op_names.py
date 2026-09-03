@@ -35,6 +35,8 @@ FFMPEG_OP_NAMES = frozenset(
         "_blocks_create_demuxer_from_file_like",
         "_blocks_demuxer_add_stream",
         "_blocks_demuxer_get_audio_video_stream_indices",
+        "_blocks_demuxer_container_json_metadata",
+        "_blocks_demuxer_stream_json_metadata",
         "_blocks_demuxer_next_packet",
         "_blocks_demuxer_seek",
         "_blocks_demuxer_scan",
