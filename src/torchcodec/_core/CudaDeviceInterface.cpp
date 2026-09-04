@@ -128,12 +128,14 @@ void CudaDeviceInterface::initialize_video_decoding(
   cpu_interface_->initialize_video(
       av_stream,
       av_format_ctx,
+      OutputDtype::UINT8,
       VideoStreamOptions(),
       {},
       /*resizedOutputDims=*/std::nullopt);
 }
 
 void CudaDeviceInterface::initialize_color_conversion(
+    [[maybe_unused]] OutputDtype output_dtype,
     const VideoStreamOptions& video_stream_options,
     [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
     [[maybe_unused]] const std::optional<FrameDims>& resized_output_dims) {

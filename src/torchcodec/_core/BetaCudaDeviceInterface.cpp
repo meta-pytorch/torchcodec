@@ -426,6 +426,7 @@ BetaCudaDeviceInterface::Mode BetaCudaDeviceInterface::mode() const {
 }
 
 void BetaCudaDeviceInterface::initialize_color_conversion(
+    [[maybe_unused]] OutputDtype output_dtype,
     [[maybe_unused]] const VideoStreamOptions& video_stream_options,
     [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
     [[maybe_unused]] const std::optional<FrameDims>& resized_output_dims) {

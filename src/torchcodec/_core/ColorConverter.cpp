@@ -47,12 +47,14 @@ void ColorConverter::maybe_initialize_interface(OutputDtype output_dtype) {
   }
 
   VideoStreamOptions options;
-  options.output_dtype = output_dtype;
   options.device = device_;
 
   std::vector<std::unique_ptr<Transform>> no_transforms;
   device_interface_->initialize_color_conversion(
-      options, no_transforms, /*resized_output_dims=*/std::nullopt);
+      output_dtype,
+      options,
+      no_transforms,
+      /*resized_output_dims=*/std::nullopt);
   initialized_output_dtype_ = output_dtype;
 }
 

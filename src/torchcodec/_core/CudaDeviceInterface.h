@@ -34,6 +34,7 @@ class CudaDeviceInterface : public DeviceInterface {
       const VideoStreamOptions& video_stream_options) override;
 
   void initialize_color_conversion(
+      OutputDtype output_dtype,
       const VideoStreamOptions& video_stream_options,
       const std::vector<std::unique_ptr<Transform>>& transforms,
       const std::optional<FrameDims>& resized_output_dims) override;

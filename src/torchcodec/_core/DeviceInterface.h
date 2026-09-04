@@ -63,8 +63,11 @@ class DeviceInterface {
       [[maybe_unused]] const VideoStreamOptions& video_stream_options) {}
 
   // Initialize state needed to color-convert decoded AVFrames into output
-  // tensors.
+  // tensors. `output_dtype` is what the frames are converted to, already
+  // resolved against the source: it is not read off `video_stream_options`,
+  // which only carries the config it was resolved from.
   virtual void initialize_color_conversion(
+      [[maybe_unused]] OutputDtype output_dtype,
       [[maybe_unused]] const VideoStreamOptions& video_stream_options,
       [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
           transforms = {},
@@ -76,12 +79,13 @@ class DeviceInterface {
   void initialize_video(
       const AVStream* av_stream,
       const UniqueDecodingAVFormatContext& av_format_ctx,
+      OutputDtype output_dtype,
       const VideoStreamOptions& video_stream_options,
       const std::vector<std::unique_ptr<Transform>>& transforms,
       const std::optional<FrameDims>& resized_output_dims) {
     initialize_video_decoding(av_stream, av_format_ctx, video_stream_options);
     initialize_color_conversion(
-        video_stream_options, transforms, resized_output_dims);
+        output_dtype, video_stream_options, transforms, resized_output_dims);
   }
 
   // Initialize the device with parameters specific to audio decoding. There is
