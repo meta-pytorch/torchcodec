@@ -134,7 +134,8 @@ torch::stable::Tensor decode_avif(
   int num_channels = return_rgb ? 3 : 4;
 
   bool output_16 = should_output_uint16(
-      static_cast<OutputDtype>(output_dtype), decoder->image->depth > 8);
+      static_cast<ImageOutputDtypeConfig>(output_dtype),
+      decoder->image->depth > 8);
 
   torch::stable::Tensor output;
   uint8_t* output_ptr = nullptr;

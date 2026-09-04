@@ -161,7 +161,7 @@ torch::stable::Tensor decode_heic(
       // *widen* an 8-bit source to 16 bits: that would be a lossy 8->10->16
       // hop, so 8->16 is done exactly as `* 257` in Python instead.
       bool output_16 = should_output_uint16(
-          static_cast<OutputDtype>(output_dtype), source_gt_8bit);
+          static_cast<ImageOutputDtypeConfig>(output_dtype), source_gt_8bit);
       decode_16 = source_gt_8bit && output_16;
 
       constexpr bool little_endian = std::endian::native == std::endian::little;

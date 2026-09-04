@@ -29,7 +29,12 @@ enum class ImageReadMode : int64_t {
 // relevant for the decoders whose source can carry more than 8 bits per channel
 // (PNG, AVIF, HEIC); AUTO keeps the source's native precision (16-bit for
 // >8-bit sources, 8-bit otherwise).
-enum class OutputDtype : int64_t {
+//
+// The image counterpart of OutputDtypeConfig (StreamOptions.h), which the video
+// side resolves in the same way against its own source. The two aren't shared
+// because the dtypes they choose between differ: uint8/uint16 here against
+// uint8/float32 there.
+enum class ImageOutputDtypeConfig : int64_t {
   UINT8 = 0,
   UINT16 = 1,
   AUTO = 2,
@@ -39,20 +44,20 @@ enum class OutputDtype : int64_t {
 // requeted dtype, and the source. This is assumed to be called on a decoder
 // that supports >8bit sources.
 inline bool should_output_uint16(
-    OutputDtype output_dtype,
+    ImageOutputDtypeConfig output_dtype_config,
     bool source_gt_8bit) {
-  switch (output_dtype) {
-    case OutputDtype::UINT8:
+  switch (output_dtype_config) {
+    case ImageOutputDtypeConfig::UINT8:
       return false;
-    case OutputDtype::UINT16:
+    case ImageOutputDtypeConfig::UINT16:
       return true;
-    case OutputDtype::AUTO:
+    case ImageOutputDtypeConfig::AUTO:
       return source_gt_8bit;
     default:
       STD_TORCH_CHECK(
           false,
           "Unexpected output_dtype ",
-          static_cast<int64_t>(output_dtype),
+          static_cast<int64_t>(output_dtype_config),
           ". This should never happen, please report a bug to the TorchCodec repo.");
   }
 }
