@@ -122,7 +122,7 @@ PngHeader read_header_and_configure(
     ErrorCtx& error_ctx,
     SourceCtx& source_ctx,
     ImageReadMode read_mode,
-    OutputDtype output_dtype) {
+    ImageOutputDtypeConfig output_dtype) {
   if (setjmp(png_jmpbuf(png_ptr)) != 0) {
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
     STD_TORCH_CHECK(false, "decode_png failed: ", error_ctx.error_message);
@@ -368,7 +368,7 @@ torch::stable::Tensor decode_png(
       error_ctx,
       source_ctx,
       static_cast<ImageReadMode>(mode),
-      static_cast<OutputDtype>(output_dtype));
+      static_cast<ImageOutputDtypeConfig>(output_dtype));
 
   auto output_16 = header.output_16;
   output = torch::stable::empty(
