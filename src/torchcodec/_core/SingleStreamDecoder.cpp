@@ -436,7 +436,7 @@ void SingleStreamDecoder::add_video_stream(
         active_stream_index_, custom_frame_mappings.value());
   }
 
-  stream_info.video_stream_options.output_dtype = resolve_output_dtype(
+  stream_info.output_dtype = resolve_output_dtype(
       stream_info.video_stream_options.output_dtype_config,
       static_cast<AVPixelFormat>(stream_info.stream->codecpar->format));
 
@@ -485,11 +485,10 @@ void SingleStreamDecoder::add_video_stream(
     transforms_.push_back(std::unique_ptr<Transform>(transform));
   }
 
-  // Pass the resolved options (AUTO -> UINT8/FLOAT32) so the device interface
-  // sees a definite OutputDtype.
   device_interface_->initialize_video(
       stream_info.stream,
       format_context_,
+      stream_info.output_dtype,
       stream_info.video_stream_options,
       transforms_,
       resized_output_dims_);
@@ -628,8 +627,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_at_indices(
       frame_indices.numel(),
       get_output_dims(),
       video_stream_options.device,
-      device_interface_->get_pre_allocation_dtype(
-          video_stream_options.output_dtype));
+      device_interface_->get_pre_allocation_dtype(stream_info.output_dtype));
 
   auto frame_batch_output_pts_seconds =
       mutable_accessor<double, 1>(frame_batch_output.pts_seconds);
@@ -701,8 +699,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_in_range(
       num_output_frames,
       get_output_dims(),
       video_stream_options.device,
-      device_interface_->get_pre_allocation_dtype(
-          video_stream_options.output_dtype));
+      device_interface_->get_pre_allocation_dtype(stream_info.output_dtype));
 
   auto frame_batch_output_pts_seconds =
       mutable_accessor<double, 1>(frame_batch_output.pts_seconds);
@@ -844,8 +841,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
         0,
         get_output_dims(),
         video_stream_options.device,
-        device_interface_->get_pre_allocation_dtype(
-            video_stream_options.output_dtype));
+        device_interface_->get_pre_allocation_dtype(stream_info.output_dtype));
     frame_batch_output.data =
         maybe_permute_and_convert_dtype(frame_batch_output.data);
     return frame_batch_output;
@@ -892,8 +888,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
         num_output_frames,
         get_output_dims(),
         video_stream_options.device,
-        device_interface_->get_pre_allocation_dtype(
-            video_stream_options.output_dtype));
+        device_interface_->get_pre_allocation_dtype(stream_info.output_dtype));
 
     auto frame_batch_output_pts_seconds =
         mutable_accessor<double, 1>(frame_batch_output.pts_seconds);
@@ -945,8 +940,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
         num_frames,
         get_output_dims(),
         video_stream_options.device,
-        device_interface_->get_pre_allocation_dtype(
-            video_stream_options.output_dtype));
+        device_interface_->get_pre_allocation_dtype(stream_info.output_dtype));
     auto frame_batch_output_pts_seconds =
         mutable_accessor<double, 1>(frame_batch_output.pts_seconds);
     auto frame_batch_output_duration_seconds =
@@ -1576,8 +1570,7 @@ torch::stable::Tensor SingleStreamDecoder::maybe_permute_and_convert_dtype(
   }
 
   return convert_to_output_dtype(
-      tensor,
-      stream_infos_[active_stream_index_].video_stream_options.output_dtype);
+      tensor, stream_infos_[active_stream_index_].output_dtype);
 }
 
 // --------------------------------------------------------------------------

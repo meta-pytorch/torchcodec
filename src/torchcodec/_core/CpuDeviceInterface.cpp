@@ -94,14 +94,15 @@ void CpuDeviceInterface::initialize_video_decoding(
 }
 
 void CpuDeviceInterface::initialize_color_conversion(
+    OutputDtype output_dtype,
     const VideoStreamOptions& video_stream_options,
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resized_output_dims) {
   av_media_type_ = AVMEDIA_TYPE_VIDEO;
   video_stream_options_ = video_stream_options;
+  output_dtype_ = output_dtype;
   resized_output_dims_ = resized_output_dims;
-  output_pixel_format_ =
-      get_output_pixel_format(video_stream_options_.output_dtype);
+  output_pixel_format_ = get_output_pixel_format(output_dtype_);
 
   // We can use swscale when we have a single resize transform.
   // With a single resize, we use swscale twice:
@@ -265,9 +266,8 @@ void CpuDeviceInterface::convert_video_av_frame_to_frame_output(
   torch::stable::Tensor output_tensor;
 
   if (color_conversion_library == ColorConversionLibrary::SWSCALE) {
-    output_tensor =
-        pre_allocated_output_tensor.value_or(allocate_empty_hwc_tensor(
-            output_dims, kStableCPU, video_stream_options_.output_dtype));
+    output_tensor = pre_allocated_output_tensor.value_or(
+        allocate_empty_hwc_tensor(output_dims, kStableCPU, output_dtype_));
 
     auto av_frame_format = static_cast<AVPixelFormat>(av_frame.format);
     SwsConfig sws_config(

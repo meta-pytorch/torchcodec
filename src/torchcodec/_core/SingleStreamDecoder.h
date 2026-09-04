@@ -245,6 +245,10 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
 
     VideoStreamOptions video_stream_options;
     AudioStreamOptions audio_stream_options;
+    // video_stream_options.output_dtype_config resolved against this stream's
+    // pixel format, which we only know once the stream is added. Decoder state
+    // rather than an option: it is worked out here, not asked for.
+    OutputDtype output_dtype = OutputDtype::UINT8;
   };
 
   // --------------------------------------------------------------------------

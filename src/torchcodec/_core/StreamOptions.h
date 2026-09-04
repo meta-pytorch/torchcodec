@@ -21,12 +21,15 @@ enum ColorConversionLibrary {
   SWSCALE
 };
 
-// The resolved output dtype. Only UINT8 or FLOAT32 — no AUTO.
-// All code downstream of addVideoStream() should use this.
+// What a frame is actually converted to. Derived, never configured: it is
+// resolve_output_dtype(config, source pixel format), so it can only be known
+// once the source is. Passed to whoever converts or allocates; deliberately not
+// a field of VideoStreamOptions, which describes what was asked for rather than
+// what was worked out from it.
 enum class OutputDtype { UINT8, FLOAT32 };
 
-// The user-facing output dtype config, which may include AUTO.
-// AUTO is resolved in addVideoStream() into an OutputDtype.
+// The user-facing output dtype config, resolved into an OutputDtype by
+// resolve_output_dtype().
 // UINT8: Always output uint8 tensors (default, backward compatible). Uses an
 //        8-bit / RGB24 intermediate.
 // FLOAT32: Always output float32 tensors normalized to [0, 1]. Uses a 16-bit /
@@ -62,13 +65,9 @@ struct VideoStreamOptions {
   // Device variant (e.g., "nvdec", "ffmpeg")
   std::string_view device_variant = "default";
 
-  // The user-specified output dtype config. May be AUTO, which gets resolved
-  // in addVideoStream() into outputDtype below.
+  // What the user asked for. Resolving it needs the source's pixel format, so
+  // that happens where the source is known rather than here.
   OutputDtypeConfig output_dtype_config = OutputDtypeConfig::UINT8;
-
-  // Set by addVideoStream() after resolving AUTO. All downstream code should
-  // read this field.
-  OutputDtype output_dtype = OutputDtype::UINT8;
 
   // Encoding options
   std::optional<std::string> codec;
