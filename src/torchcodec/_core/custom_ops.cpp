@@ -82,6 +82,9 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_demuxer_add_stream(Tensor(a!) demuxer, int? stream_index=None, str? media_type=None) -> (int, str)");
   m.def(
       "_blocks_demuxer_get_audio_video_stream_indices(Tensor demuxer) -> Tensor");
+  m.def("_blocks_demuxer_container_json_metadata(Tensor demuxer) -> str");
+  m.def(
+      "_blocks_demuxer_stream_json_metadata(Tensor demuxer, int stream_index) -> str");
   m.def(
       "_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool, int)");
   m.def(
@@ -1238,65 +1241,20 @@ std::string get_json_metadata(torch::stable::Tensor& decoder) {
 }
 
 // Get the container metadata as a string.
-std::string get_container_json_metadata(torch::stable::Tensor& decoder) {
-  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
-
-  auto container_metadata = video_decoder->get_container_metadata();
-
-  std::map<std::string, std::string> map;
-
-  if (container_metadata.duration_seconds_from_header.has_value()) {
-    map["durationSecondsFromHeader"] =
-        fmt::to_string(*container_metadata.duration_seconds_from_header);
-  }
-
-  if (container_metadata.bit_rate.has_value()) {
-    map["bitRate"] = fmt::to_string(*container_metadata.bit_rate);
-  }
-
-  if (container_metadata.best_video_stream_index.has_value()) {
-    map["bestVideoStreamIndex"] =
-        std::to_string(*container_metadata.best_video_stream_index);
-  }
-  if (container_metadata.best_audio_stream_index.has_value()) {
-    map["bestAudioStreamIndex"] =
-        std::to_string(*container_metadata.best_audio_stream_index);
-  }
-
-  map["numStreams"] =
-      std::to_string(container_metadata.all_stream_metadata.size());
-
-  return map_to_json(map);
-}
-
-// Get the stream metadata as a string.
-std::string get_stream_json_metadata(
-    torch::stable::Tensor& decoder,
-    int64_t stream_index) {
-  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
-  auto all_stream_metadata =
-      video_decoder->get_container_metadata().all_stream_metadata;
-  STABLE_CHECK_INDEX(
-      stream_index >= 0 &&
-          stream_index < static_cast<int64_t>(all_stream_metadata.size()),
-      "stream_index out of bounds: " + std::to_string(stream_index));
-
-  auto stream_metadata = all_stream_metadata[stream_index];
-  auto seek_mode = video_decoder->get_seek_mode();
-  int active_stream_index = video_decoder->get_active_stream_index();
-
-  std::map<std::string, std::string> map;
-
+namespace {
+// The half of a stream's metadata that comes from the container header. Shared
+// by get_stream_json_metadata, which then adds the content-derived and
+// fallback-computed fields, and by the Demuxer building block, which has only
+// this half to report.
+void write_header_based_metadata(
+    std::map<std::string, std::string>& map,
+    const StreamMetadata& stream_metadata) {
   if (stream_metadata.duration_seconds_from_header.has_value()) {
     map["durationSecondsFromHeader"] =
         fmt::to_string(*stream_metadata.duration_seconds_from_header);
   }
   if (stream_metadata.bit_rate.has_value()) {
     map["bitRate"] = fmt::to_string(*stream_metadata.bit_rate);
-  }
-  if (stream_metadata.num_frames_from_content.has_value()) {
-    map["numFramesFromContent"] =
-        std::to_string(*stream_metadata.num_frames_from_content);
   }
   if (stream_metadata.num_frames_from_header.has_value()) {
     map["numFramesFromHeader"] =
@@ -1305,14 +1263,6 @@ std::string get_stream_json_metadata(
   if (stream_metadata.begin_stream_seconds_from_header.has_value()) {
     map["beginStreamSecondsFromHeader"] =
         fmt::to_string(*stream_metadata.begin_stream_seconds_from_header);
-  }
-  if (stream_metadata.begin_stream_pts_seconds_from_content.has_value()) {
-    map["beginStreamSecondsFromContent"] =
-        fmt::to_string(*stream_metadata.begin_stream_pts_seconds_from_content);
-  }
-  if (stream_metadata.end_stream_pts_seconds_from_content.has_value()) {
-    map["endStreamSecondsFromContent"] =
-        fmt::to_string(*stream_metadata.end_stream_pts_seconds_from_content);
   }
   if (stream_metadata.codec_name.has_value()) {
     map["codec"] = quote_value(stream_metadata.codec_name.value());
@@ -1363,6 +1313,116 @@ std::string get_stream_json_metadata(
     map["mediaType"] = quote_value("audio");
   } else {
     map["mediaType"] = quote_value("other");
+  }
+}
+} // namespace
+
+// The container header, as the Demuxer building block reports it: container
+// facts plus one entry per stream, and nothing derived from content. The
+// building blocks never merge the two, so a caller always knows which of the
+// two sources a number came from.
+std::string _blocks_demuxer_container_json_metadata(
+    torch::stable::Tensor& demuxer) {
+  ContainerMetadata metadata = get_container_metadata_from_format_context(
+      unwrap_tensor_to_pointer<Demuxer>(demuxer)->format_context().get());
+
+  std::map<std::string, std::string> map;
+  if (metadata.duration_seconds_from_header.has_value()) {
+    map["durationSecondsFromHeader"] =
+        fmt::to_string(*metadata.duration_seconds_from_header);
+  }
+  if (metadata.bit_rate.has_value()) {
+    map["bitRate"] = fmt::to_string(*metadata.bit_rate);
+  }
+  if (metadata.best_video_stream_index.has_value()) {
+    map["bestVideoStreamIndex"] =
+        std::to_string(*metadata.best_video_stream_index);
+  }
+  if (metadata.best_audio_stream_index.has_value()) {
+    map["bestAudioStreamIndex"] =
+        std::to_string(*metadata.best_audio_stream_index);
+  }
+  map["numStreams"] = std::to_string(metadata.all_stream_metadata.size());
+  return map_to_json(map);
+}
+
+std::string _blocks_demuxer_stream_json_metadata(
+    torch::stable::Tensor& demuxer,
+    int64_t stream_index) {
+  ContainerMetadata metadata = get_container_metadata_from_format_context(
+      unwrap_tensor_to_pointer<Demuxer>(demuxer)->format_context().get());
+  STABLE_CHECK_INDEX(
+      stream_index >= 0 &&
+          stream_index <
+              static_cast<int64_t>(metadata.all_stream_metadata.size()),
+      "stream_index out of bounds: " + std::to_string(stream_index));
+
+  std::map<std::string, std::string> map;
+  write_header_based_metadata(map, metadata.all_stream_metadata[stream_index]);
+  return map_to_json(map);
+}
+
+std::string get_container_json_metadata(torch::stable::Tensor& decoder) {
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
+
+  auto container_metadata = video_decoder->get_container_metadata();
+
+  std::map<std::string, std::string> map;
+
+  if (container_metadata.duration_seconds_from_header.has_value()) {
+    map["durationSecondsFromHeader"] =
+        fmt::to_string(*container_metadata.duration_seconds_from_header);
+  }
+
+  if (container_metadata.bit_rate.has_value()) {
+    map["bitRate"] = fmt::to_string(*container_metadata.bit_rate);
+  }
+
+  if (container_metadata.best_video_stream_index.has_value()) {
+    map["bestVideoStreamIndex"] =
+        std::to_string(*container_metadata.best_video_stream_index);
+  }
+  if (container_metadata.best_audio_stream_index.has_value()) {
+    map["bestAudioStreamIndex"] =
+        std::to_string(*container_metadata.best_audio_stream_index);
+  }
+
+  map["numStreams"] =
+      std::to_string(container_metadata.all_stream_metadata.size());
+
+  return map_to_json(map);
+}
+
+// Get the stream metadata as a string.
+std::string get_stream_json_metadata(
+    torch::stable::Tensor& decoder,
+    int64_t stream_index) {
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
+  auto all_stream_metadata =
+      video_decoder->get_container_metadata().all_stream_metadata;
+  STABLE_CHECK_INDEX(
+      stream_index >= 0 &&
+          stream_index < static_cast<int64_t>(all_stream_metadata.size()),
+      "stream_index out of bounds: " + std::to_string(stream_index));
+
+  auto stream_metadata = all_stream_metadata[stream_index];
+  auto seek_mode = video_decoder->get_seek_mode();
+  int active_stream_index = video_decoder->get_active_stream_index();
+
+  std::map<std::string, std::string> map;
+
+  write_header_based_metadata(map, stream_metadata);
+  if (stream_metadata.num_frames_from_content.has_value()) {
+    map["numFramesFromContent"] =
+        std::to_string(*stream_metadata.num_frames_from_content);
+  }
+  if (stream_metadata.begin_stream_pts_seconds_from_content.has_value()) {
+    map["beginStreamSecondsFromContent"] =
+        fmt::to_string(*stream_metadata.begin_stream_pts_seconds_from_content);
+  }
+  if (stream_metadata.end_stream_pts_seconds_from_content.has_value()) {
+    map["endStreamSecondsFromContent"] =
+        fmt::to_string(*stream_metadata.end_stream_pts_seconds_from_content);
   }
 
   // Check whether content-based metadata is available for this stream.
@@ -1703,6 +1763,12 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "_blocks_demuxer_get_audio_video_stream_indices",
       TORCH_BOX(&_blocks_demuxer_get_audio_video_stream_indices));
+  m.impl(
+      "_blocks_demuxer_container_json_metadata",
+      TORCH_BOX(&_blocks_demuxer_container_json_metadata));
+  m.impl(
+      "_blocks_demuxer_stream_json_metadata",
+      TORCH_BOX(&_blocks_demuxer_stream_json_metadata));
   m.impl(
       "_blocks_demuxer_next_packet", TORCH_BOX(&_blocks_demuxer_next_packet));
   m.impl("_blocks_demuxer_seek", TORCH_BOX(&_blocks_demuxer_seek));

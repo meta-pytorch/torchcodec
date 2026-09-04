@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import io
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cached_property
@@ -16,15 +17,25 @@ import torch
 from torch import Tensor
 
 from torchcodec._core._decoder_utils import create_demuxer
+from torchcodec._core._metadata import (
+    _stream_metadata_from_dict,
+    ContainerMetadata,
+    DemuxerMetadata,
+)
 from torchcodec._core.ops import (
     _blocks_demuxer_add_stream,
+    _blocks_demuxer_container_json_metadata,
     _blocks_demuxer_get_audio_video_stream_indices,
     _blocks_demuxer_next_packet,
     _blocks_demuxer_scan,
     _blocks_demuxer_seek,
+    _blocks_demuxer_stream_json_metadata,
 )
 
+from .._decoder_utils import convert_device_to_str
+
 from ._frame import Packet
+from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
 
 # TODO_API_BREAKDOWN FEAT PERF Do we want / need to support 'batch-like' APIs
 # were containers are pre-allocated for perf? Like if a user wants to decode
@@ -33,7 +44,7 @@ from ._frame import Packet
 
 @dataclass
 class FrameIndex:
-    """The content of a video stream, as returned by :meth:`VideoDemuxer.scan`.
+    """The content of a video stream, as returned by :meth:`VideoStream.scan`.
 
     One entry per frame, in presentation order. Everything here is derived from
     the packets of the stream rather than from the container header, so the
@@ -124,7 +135,7 @@ class FrameIndex:
 
     # TODO_API_BREAKDOWN DESIGN P1: Still kinda hate this name
     def key_frame_seconds_for(self, seconds: float) -> float:
-        """Timestamp to :meth:`VideoDemuxer.seek` to in order to reach ``seconds``:
+        """Timestamp to :meth:`Demuxer.seek` to in order to reach ``seconds``:
         that of the last :term:`keyframe` which isn't after it.
 
         This is what makes a seek *exact*. FFmpeg resolves a seek against decode
@@ -185,6 +196,24 @@ class _Stream:
         self._demuxer = demuxer
         self.index = index
 
+    @cached_property
+    def metadata(self):
+        """What the container header says about this stream, and nothing more.
+
+        Content-derived values never appear here: they only exist after an
+        explicit :meth:`VideoStream.scan`, and they live on the
+        :class:`FrameIndex` it returns. So ``metadata.num_frames_from_header``
+        is the header's claim, which may be wrong, and
+        ``scan().num_frames_from_content`` is the exact answer - the name says
+        which one you are reading.
+        """
+        return _stream_metadata_from_dict(
+            json.loads(
+                _blocks_demuxer_stream_json_metadata(self._demuxer._handle, self.index)
+            ),
+            self.index,
+        )
+
     def __repr__(self) -> str:
         return f"{type(self).__name__}(index={self.index})"
 
@@ -234,19 +263,17 @@ class VideoStream(_Stream):
             )
         return self._frame_index
 
-    def make_decoder(self, device: str | torch.device | None = None):
-        """Build the :class:`VideoPacketDecoder` for this stream.
+    def make_decoder(
+        self, device: str | torch.device | None = None
+    ) -> VideoPacketDecoder:
+        """Build the :class:`VideoPacketDecoder` for this stream. This is the
+        only way to build one.
 
         ``device`` accepts a string or a ``torch.device``. It defaults to
         ``None``, which means the current default device (see
         ``torch.set_default_device``).
         """
-        # Imported here rather than at module scope: _packet_decoder
-        # imports this module for the types a decoder can be built from,
-        # so a top-level import either way round would be circular.
-        from ._packet_decoder import VideoPacketDecoder
-
-        return VideoPacketDecoder(self, device=device)
+        return VideoPacketDecoder._from_stream(self, convert_device_to_str(device))
 
 
 class AudioStream(_Stream):
@@ -265,15 +292,11 @@ class AudioStream(_Stream):
 
     _media_type = "audio"
 
-    def make_decoder(self):
-        """Build the :class:`AudioPacketDecoder` for this stream. Audio is
-        always decoded on the CPU, so there is no ``device`` parameter."""
-        # Imported here rather than at module scope: _packet_decoder
-        # imports this module for the types a decoder can be built from,
-        # so a top-level import either way round would be circular.
-        from ._packet_decoder import AudioPacketDecoder
-
-        return AudioPacketDecoder(self)
+    def make_decoder(self) -> AudioPacketDecoder:
+        """Build the :class:`AudioPacketDecoder` for this stream. This is the
+        only way to build one. Audio is always decoded on the CPU, so there is
+        no ``device`` parameter."""
+        return AudioPacketDecoder._from_stream(self, "cpu")
 
 
 class Demuxer:
@@ -284,9 +307,9 @@ class Demuxer:
     thread-safe: use one ``Demuxer`` per thread. It streams from the start of
     the container, or from wherever :meth:`seek` left it.
 
-    Following several streams at once is the point: two single-stream demuxers
-    open the container twice, so decoding both the video and the audio of a file
-    reads it twice. Here they come out of a single pass, interleaved in the
+    Following several streams at once is the point: one demuxer per stream means
+    one open container per stream, so decoding both the video and the audio of a
+    file reads it twice. Here they come out of a single pass, interleaved in the
     order the container stores them, and :attr:`Packet.stream_index` says which
     stream each one belongs to::
 
@@ -349,9 +372,28 @@ class Demuxer:
         streams: str | int | tuple[str | int, ...] = "video",
     ):
         self._handle = create_demuxer(source=source)
+        # Bumped on every seek and stamped on every packet, so that a decoder
+        # can tell it is being fed packets from a position it was never reset
+        # for. See _BasePacketDecoder.decode().
+        self._generation = 0
         self.streams = tuple(
             self._add_stream(selector) for selector in self._parse_streams(streams)
         )
+
+    @cached_property
+    def metadata(self) -> DemuxerMetadata:
+        """What the container header says about the container itself.
+
+        Not about its streams: those are described by
+        ``demuxer.streams[i].metadata``, and there is deliberately only one way
+        to reach each fact. What is here is what no stream can tell you - most
+        usefully ``duration_seconds_from_header``, which some containers carry
+        only at this level, with their streams reporting no duration at all.
+
+        To see every stream in a file, including the ones a demuxer cannot
+        follow, use :func:`get_container_metadata`.
+        """
+        return DemuxerMetadata(**_container_fields(self._handle))
 
     def _parse_streams(self, streams) -> list[int | str]:
         """Normalise the ``streams`` argument to a list of selectors, in the
@@ -413,7 +455,9 @@ class Demuxer:
         stream each belongs to.
         """
         handle, is_eof, stream_index = _blocks_demuxer_next_packet(self._handle)
-        return None if is_eof else Packet(handle, stream_index)
+        if is_eof:
+            return None
+        return Packet(handle, stream_index, generation=self._generation)
 
     def seek(self, seconds: float, *, stream: _Stream | None = None) -> None:
         """Move the demuxer to ``seconds``.
@@ -449,6 +493,7 @@ class Demuxer:
             float(seconds),
             None if stream is None else stream.index,
         )
+        self._generation += 1
 
     def __iter__(self):
         while True:
@@ -458,102 +503,39 @@ class Demuxer:
             yield packet
 
 
-class _SingleStreamDemuxer(Demuxer):
-    """Shared machinery for :class:`VideoDemuxer` and :class:`AudioDemuxer`,
-    which are :class:`Demuxer` pinned to one stream of a known media type."""
+def _container_fields(handle: Tensor) -> dict:
+    container_dict = json.loads(_blocks_demuxer_container_json_metadata(handle))
+    return dict(
+        duration_seconds_from_header=container_dict.get("durationSecondsFromHeader"),
+        bit_rate_from_header=container_dict.get("bitRate"),
+        best_video_stream_index=container_dict.get("bestVideoStreamIndex"),
+        best_audio_stream_index=container_dict.get("bestAudioStreamIndex"),
+    )
 
-    _media_type: str
 
-    def __init__(
-        self,
-        source: str | Path | bytes | Tensor | io.RawIOBase | io.BufferedReader,
-        *,
-        stream_index: int | None = None,
-    ):
-        self._handle = create_demuxer(source=source)
-        # The media type is pinned, and an explicit index has to match it.
-        index, _ = _blocks_demuxer_add_stream(
-            self._handle, stream_index, self._media_type
+def get_container_metadata(
+    source: str | Path | bytes | Tensor | io.RawIOBase | io.BufferedReader,
+) -> ContainerMetadata:
+    """Describe a container and every stream in it, without decoding anything.
+
+    This opens the source and reads its header - no packet is demuxed - so it is
+    what you reach for before you know what a file contains and therefore which
+    streams to ask a :class:`Demuxer` for. It reports streams that a demuxer
+    cannot follow, such as subtitles, as plain
+    :class:`~torchcodec._core._metadata.StreamMetadata`.
+
+    Note this opens the source, and constructing a :class:`Demuxer` afterwards
+    opens it again. That second open is a header probe, not a read of the file,
+    and it is the price of a demuxer whose streams are fixed at construction and
+    never change afterwards.
+    """
+    handle = create_demuxer(source=source)
+    container_dict = json.loads(_blocks_demuxer_container_json_metadata(handle))
+    streams = [
+        _stream_metadata_from_dict(
+            json.loads(_blocks_demuxer_stream_json_metadata(handle, stream_index)),
+            stream_index,
         )
-        stream_class = VideoStream if self._media_type == "video" else AudioStream
-        self.streams = (stream_class(self, index),)
-
-
-class VideoDemuxer(_SingleStreamDemuxer):
-    """Demux building block: opens a container and yields the compressed
-    :class:`Packet`\\ s for one video stream. Does no decoding.
-
-    This is :class:`Demuxer` pinned to a single video stream; see it for
-    everything not specific to that.
-
-    Args:
-        source (str, ``Pathlib.path``, bytes, ``torch.Tensor`` or file-like object): The source of the video:
-
-            - If ``str``: a local path or a URL to a media file.
-            - If ``Pathlib.path``: a path to a local media file.
-            - If ``bytes`` object or ``torch.Tensor``: the raw encoded data.
-            - If file-like object: we read data from the object on demand. The object must
-              expose the methods `read(self, size: int) -> bytes` and
-              `seek(self, offset: int, whence: int) -> int`. Note that every
-              read has to re-acquire the GIL, so a file-like source doesn't
-              parallelize with the rest of a pipeline as well as the others do.
-        stream_index (int, optional): Specifies which stream in the video to
-            demux packets from. Note that this index is absolute across all
-            media types. It must refer to a video stream; use
-            :class:`AudioDemuxer` for audio. If left unspecified, then the
-            :term:`best stream` is used.
-    """
-
-    _media_type = "video"
-
-    def scan(self) -> FrameIndex:
-        """Demux the entire stream, without decoding it, and return its
-        :class:`FrameIndex`. See :meth:`VideoStream.scan`."""
-        stream = self.streams[0]
-        assert isinstance(stream, VideoStream)  # mypy: pinned by _media_type
-        return stream.scan()
-
-    def make_decoder(self, device: str | torch.device | None = None):
-        """Build the :class:`VideoPacketDecoder` for this stream. See
-        :meth:`VideoStream.make_decoder`."""
-        stream = self.streams[0]
-        assert isinstance(stream, VideoStream)  # mypy: pinned by _media_type
-        return stream.make_decoder(device=device)
-
-
-class AudioDemuxer(_SingleStreamDemuxer):
-    """Demux building block: opens a container and yields the compressed
-    :class:`Packet`\\ s for one audio stream. Does no decoding.
-
-    This is :class:`Demuxer` pinned to a single audio stream; see it for
-    everything not specific to that.
-
-    Unlike :class:`VideoDemuxer` there is no ``scan()``: a :class:`FrameIndex`
-    describes keyframes and frame positions, and audio has neither.
-
-    Args:
-        source (str, ``Pathlib.path``, bytes, ``torch.Tensor`` or file-like object): The source of the audio:
-
-            - If ``str``: a local path or a URL to a media file.
-            - If ``Pathlib.path``: a path to a local media file.
-            - If ``bytes`` object or ``torch.Tensor``: the raw encoded data.
-            - If file-like object: we read data from the object on demand. The object must
-              expose the methods `read(self, size: int) -> bytes` and
-              `seek(self, offset: int, whence: int) -> int`. Note that every
-              read has to re-acquire the GIL, so a file-like source doesn't
-              parallelize with the rest of a pipeline as well as the others do.
-        stream_index (int, optional): Specifies which stream in the file to
-            demux packets from. Note that this index is absolute across all
-            media types. It must refer to an audio stream; use
-            :class:`VideoDemuxer` for video. If left unspecified, then the
-            :term:`best stream` is used.
-    """
-
-    _media_type = "audio"
-
-    def make_decoder(self):
-        """Build the :class:`AudioPacketDecoder` for this stream. See
-        :meth:`AudioStream.make_decoder`."""
-        stream = self.streams[0]
-        assert isinstance(stream, AudioStream)  # mypy: pinned by _media_type
-        return stream.make_decoder()
+        for stream_index in range(int(container_dict["numStreams"]))
+    ]
+    return ContainerMetadata(**_container_fields(handle), streams=streams)

@@ -75,10 +75,9 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
   explicit Demuxer(std::unique_ptr<AVIOContextHolder> avio_context_holder);
 
   // Starts following a stream, and returns its index (absolute across all
-  // media types) together with its media type. Identify it either by
-  // `stream_index`, in which case its media type is looked up and must be audio
-  // or video, or by `media_type` alone, which follows the best stream of that
-  // type. Passing both follows that stream and requires it to be of that type.
+  // media types) together with its media type. Identify it by exactly one of
+  // `stream_index`, whose media type is then looked up and must be audio or
+  // video, or `media_type`, which follows the best stream of that type.
   std::pair<int, AVMediaType> add_stream(
       std::optional<int> stream_index = std::nullopt,
       std::optional<AVMediaType> media_type = std::nullopt);
@@ -122,11 +121,8 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
 
  private:
   void find_stream_info();
-  // Checks `stream_index` is in range, and that it is of `media_type` when one
-  // is given, or audio or video when it isn't.
-  void validate_requested_stream(
-      int stream_index,
-      std::optional<AVMediaType> media_type);
+  // Checks `stream_index` is in range and that it is an audio or video stream.
+  void validate_requested_stream(int stream_index);
   // The stream a seek is resolved against when the caller doesn't name one:
   // simply the first one that was added. A seek is resolved in a single
   // stream's time base and lands on that stream's keyframes, so which one it is

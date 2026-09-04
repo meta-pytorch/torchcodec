@@ -105,6 +105,12 @@ _blocks_demuxer_add_stream = torch.ops.torchcodec_ns._blocks_demuxer_add_stream.
 _blocks_demuxer_get_audio_video_stream_indices = (
     torch.ops.torchcodec_ns._blocks_demuxer_get_audio_video_stream_indices.default
 )
+_blocks_demuxer_container_json_metadata = (
+    torch.ops.torchcodec_ns._blocks_demuxer_container_json_metadata.default
+)
+_blocks_demuxer_stream_json_metadata = (
+    torch.ops.torchcodec_ns._blocks_demuxer_stream_json_metadata.default
+)
 _blocks_demuxer_next_packet = (
     torch.ops.torchcodec_ns._blocks_demuxer_next_packet.default
 )
