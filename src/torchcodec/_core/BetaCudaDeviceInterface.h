@@ -61,6 +61,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       const VideoStreamOptions& video_stream_options) override;
 
   void initialize_color_conversion(
+      OutputDtype output_dtype,
       const VideoStreamOptions& video_stream_options,
       const std::vector<std::unique_ptr<Transform>>& transforms,
       const std::optional<FrameDims>& resized_output_dims) override;
@@ -177,7 +178,6 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   SwsConfig prev_sws_config_;
   Rotation rotation_ = Rotation::NONE;
-  OutputDtype output_dtype_ = OutputDtype::UINT8;
   cudaVideoSurfaceFormat surface_format_ = cudaVideoSurfaceFormat_NV12;
 
   CachedColorMatrix cached_color_matrix_;

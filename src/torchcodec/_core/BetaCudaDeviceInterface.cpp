@@ -71,26 +71,43 @@ static DecoderCapsCache& get_decoder_caps_cache() {
   return cache;
 }
 
+// Which of NVDEC's two surface widths to decode into. The source's own depth is
+// only one of the options: NVDEC will just as happily put a 10-bit source on an
+// 8-bit surface, or an 8-bit source on a 16-bit one.
+enum class SurfaceDepth { EIGHT_BIT, SIXTEEN_BIT, MATCH_SOURCE };
+
+// A surface only has to be wide enough for what the frame will be converted to,
+// so the requested output dtype is what decides its width. Note this is the
+// dtype *config* rather than a resolved OutputDtype: resolving AUTO answers
+// "which dtype for this source", and what we need here is the question it was
+// resolved from, "should the source's own depth decide". A caller that doesn't
+// color-convert at all has no output dtype to honor and wants AUTO too.
+SurfaceDepth surface_depth_for(OutputDtypeConfig output_dtype_config) {
+  switch (output_dtype_config) {
+    case OutputDtypeConfig::UINT8:
+      return SurfaceDepth::EIGHT_BIT;
+    case OutputDtypeConfig::FLOAT32:
+      return SurfaceDepth::SIXTEEN_BIT;
+    case OutputDtypeConfig::AUTO:
+      return SurfaceDepth::MATCH_SOURCE;
+  }
+  STD_TORCH_CHECK(
+      false,
+      "Unexpected output dtype config. This should never happen, please report.");
+}
+
 // NVDEC's output surface formats come in a 4:2:0 and a 4:4:4 flavour, each with
-// an 8-bit and a 16-bit variant. We decode on the surface that respects the
-// source chroma, but we don't respect the source bit depth and instead try to
-// honor the user's requested output dtype:
-// - if the user wants uint8 output, we try to decode on a uint8 surface,
-//   including for >8bit sources. It's not always supported by NVDEC, so the
-//   caller must fallback to the >8bit surface in such case.
-// - similarly if the user wants float32 output, we try to decode on a >8bit
-//   surface, including for 8bit sources. The caller must handle a similar
-//   fallback.
-cudaVideoSurfaceFormat get_preferred_surface_format(
+// an 8-bit and a 16-bit variant. We always decode on the surface that respects
+// the source chroma, so those two inputs name exactly one format.
+cudaVideoSurfaceFormat surface_format_for(
     cudaVideoChromaFormat chroma_format,
-    OutputDtype output_dtype) {
-  bool want_uint8 = output_dtype == OutputDtype::UINT8;
+    bool want_8_bits) {
   if (chroma_format == cudaVideoChromaFormat_444) {
-    return want_uint8 ? cudaVideoSurfaceFormat_YUV444
-                      : cudaVideoSurfaceFormat_YUV444_16Bit;
+    return want_8_bits ? cudaVideoSurfaceFormat_YUV444
+                       : cudaVideoSurfaceFormat_YUV444_16Bit;
   } else {
-    return want_uint8 ? cudaVideoSurfaceFormat_NV12
-                      : cudaVideoSurfaceFormat_P016;
+    return want_8_bits ? cudaVideoSurfaceFormat_NV12
+                       : cudaVideoSurfaceFormat_P016;
   }
 }
 
@@ -254,7 +271,7 @@ std::optional<cudaVideoCodec> validate_codec_support(AVCodecID codec_id) {
 std::optional<cudaVideoSurfaceFormat> get_nvdec_surface_format(
     const StableDevice& device,
     const SharedAVCodecContext& codec_context,
-    OutputDtype output_dtype) {
+    SurfaceDepth surface_depth) {
   // Return the surface format to use for NVDEC decoding if the stream is
   // supported, or nullopt to fall back to CPU.
 
@@ -301,39 +318,30 @@ std::optional<cudaVideoSurfaceFormat> get_nvdec_surface_format(
     return std::nullopt;
   }
 
-  auto preferred_format =
-      get_preferred_surface_format(chroma_format.value(), output_dtype);
+  bool source_is_8_bits = bit_depth_minus8 == 0;
+  bool want_8_bits = surface_depth == SurfaceDepth::MATCH_SOURCE
+      ? source_is_8_bits
+      : surface_depth == SurfaceDepth::EIGHT_BIT;
 
   auto is_supported = [&](cudaVideoSurfaceFormat format) {
     return ((caps.nOutputFormatMask >> format) & 1) != 0;
   };
 
+  auto preferred_format =
+      surface_format_for(chroma_format.value(), want_8_bits);
   if (is_supported(preferred_format)) {
     return preferred_format;
   }
 
-  // The preferred_format heuristic tries to take a shortcut that might cause us
-  // to miss valid formats. We fallabck here:
-  // if source is 8bit we can try the 8bit surface.
-  // if surface is 8bit we can try the 16bit surface.
-
-  bool source_is_8_bits = bit_depth_minus8 == 0;
-  if (is_16bit_surface_format(preferred_format) && source_is_8_bits) {
-    auto narrower = preferred_format == cudaVideoSurfaceFormat_YUV444_16Bit
-        ? cudaVideoSurfaceFormat_YUV444
-        : cudaVideoSurfaceFormat_NV12;
-
-    if (is_supported(narrower)) {
-      return narrower;
-    }
-  }
-  if (!is_16bit_surface_format(preferred_format)) {
-    auto wider = preferred_format == cudaVideoSurfaceFormat_YUV444
-        ? cudaVideoSurfaceFormat_YUV444_16Bit
-        : cudaVideoSurfaceFormat_P016;
-
-    if (is_supported(wider)) {
-      return wider;
+  // NVDEC doesn't support the width we asked for. The other one still describes
+  // the samples validly - widening leaves the low bits zeroed, and narrowing
+  // only drops bits an 8-bit source never had - so it is worth a try. Note this
+  // rules out narrowing a source that does have those bits.
+  if (want_8_bits || source_is_8_bits) {
+    auto fallback_format =
+        surface_format_for(chroma_format.value(), !want_8_bits);
+    if (is_supported(fallback_format)) {
+      return fallback_format;
     }
   }
 
@@ -406,10 +414,10 @@ BetaCudaDeviceInterface::Mode BetaCudaDeviceInterface::mode() const {
 }
 
 void BetaCudaDeviceInterface::initialize_color_conversion(
-    const VideoStreamOptions& video_stream_options,
+    [[maybe_unused]] OutputDtype output_dtype,
+    [[maybe_unused]] const VideoStreamOptions& video_stream_options,
     [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
     [[maybe_unused]] const std::optional<FrameDims>& resized_output_dims) {
-  output_dtype_ = video_stream_options.output_dtype;
   color_conversion_initialized_ = true;
 }
 
@@ -421,10 +429,12 @@ void BetaCudaDeviceInterface::initialize_video_decoding(
   CudaContextGuard context_guard(device_.index());
   decoding_initialized_ = true;
   rotation_ = rotation_from_degrees(get_rotation_from_stream(av_stream));
-  output_dtype_ = video_stream_options.output_dtype;
+
+  SurfaceDepth surface_depth =
+      surface_depth_for(video_stream_options.output_dtype_config);
 
   auto maybe_surface_format = nvcuvid_available_
-      ? get_nvdec_surface_format(device_, codec_context_, output_dtype_)
+      ? get_nvdec_surface_format(device_, codec_context_, surface_depth)
       : std::nullopt;
 
   if (!maybe_surface_format.has_value()) {

@@ -33,6 +33,7 @@ class CpuDeviceInterface : public DeviceInterface {
       const VideoStreamOptions& video_stream_options) override;
 
   virtual void initialize_color_conversion(
+      OutputDtype output_dtype,
       const VideoStreamOptions& video_stream_options,
       const std::vector<std::unique_ptr<Transform>>& transforms,
       const std::optional<FrameDims>& resized_output_dims) override;
@@ -82,6 +83,9 @@ class CpuDeviceInterface : public DeviceInterface {
       const FrameDims& output_dims) const;
 
   VideoStreamOptions video_stream_options_;
+  // Resolved against the source by whoever set up this conversion, so it isn't
+  // on video_stream_options_.
+  OutputDtype output_dtype_ = OutputDtype::UINT8;
   // Default used when color conversion runs standalone (no stream to derive it
   // from, e.g. the ColorConverter block API). initialize_video_decoding()
   // overrides it from the stream when there is one. Its value doesn't matter on
