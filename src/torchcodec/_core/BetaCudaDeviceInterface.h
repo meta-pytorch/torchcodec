@@ -96,11 +96,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   void initialize_bsf(
       const AVCodecParameters* codec_par,
       const UniqueDecodingAVFormatContext& av_format_ctx);
-  // Apply bitstream filter, returns filtered packet or original if no filter
-  // needed.
-  const AVPacket& apply_bsf(
-      const AVPacket& packet,
-      ReferenceAVPacket& filtered_packet);
+  // Apply the bitstream filter. Returns nullptr when there is no filter to
+  // apply and the packet can be sent as-is.
+  UniqueAVPacket apply_bsf(const AVPacket& packet);
 
   CUdeviceptr previously_mapped_frame_ = 0;
   void unmap_previous_frame();

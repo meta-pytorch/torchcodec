@@ -688,14 +688,10 @@ int BetaCudaDeviceInterface::send_packet(const AVPacket& packet) {
       packet.data && packet.size > 0,
       "sendPacket received an empty packet, this is unexpected, please report.");
 
-  // Apply BSF if needed. We want applyBSF to return a *new* filtered packet, or
-  // the original one if no BSF is needed. This new filtered packet must be
-  // allocated outside of applyBSF: if it were allocated inside applyBSF, it
-  // would be destroyed at the end of the function, leaving us with a dangling
-  // reference.
-  AutoAVPacket filtered_auto_packet;
-  ReferenceAVPacket filtered_packet(filtered_auto_packet);
-  const AVPacket& packet_to_send = apply_bsf(packet, filtered_packet);
+  // `filtered_packet` owns the filtered samples for as long as it's in scope,
+  // which covers the parser call below.
+  UniqueAVPacket filtered_packet = apply_bsf(packet);
+  const AVPacket& packet_to_send = filtered_packet ? *filtered_packet : packet;
 
   CUVIDSOURCEDATAPACKET cuvid_packet = {};
   cuvid_packet.payload = packet_to_send.data;
@@ -729,18 +725,16 @@ int BetaCudaDeviceInterface::send_cuvid_packet(
   return result == CUDA_SUCCESS ? AVSUCCESS : AVERROR_EXTERNAL;
 }
 
-const AVPacket& BetaCudaDeviceInterface::apply_bsf(
-    const AVPacket& packet,
-    ReferenceAVPacket& filtered_packet) {
+UniqueAVPacket BetaCudaDeviceInterface::apply_bsf(const AVPacket& packet) {
   if (!bitstream_filter_) {
-    return packet;
+    return nullptr;
   }
 
   // av_bsf_send_packet() takes ownership of what it is given: it moves the
   // reference out of the packet, leaving it empty. Our caller only lends us
   // theirs, so send a reference of our own instead.
-  AutoAVPacket auto_input_packet;
-  ReferenceAVPacket input_packet(auto_input_packet);
+  UniqueAVPacket input_packet(av_packet_alloc());
+  STD_TORCH_CHECK(input_packet != nullptr, "Failed to allocate AVPacket");
   int ret_val = av_packet_ref(input_packet.get(), &packet);
   STD_TORCH_CHECK(
       ret_val >= AVSUCCESS,
@@ -753,6 +747,9 @@ const AVPacket& BetaCudaDeviceInterface::apply_bsf(
       "Failed to send packet to bitstream filter: ",
       get_ffmpeg_error_string_from_error_code(ret_val));
 
+  UniqueAVPacket filtered_packet(av_packet_alloc());
+  STD_TORCH_CHECK(filtered_packet != nullptr, "Failed to allocate AVPacket");
+
   // TODO P1: the docs mention there can theoretically be multiple output
   // packets for a single input, i.e. we may need to call av_bsf_receive_packet
   // more than once. We should figure out whether that applies to the BSF we're
@@ -764,7 +761,7 @@ const AVPacket& BetaCudaDeviceInterface::apply_bsf(
       "Failed to receive packet from bitstream filter: ",
       get_ffmpeg_error_string_from_error_code(ret_val));
 
-  return *filtered_packet;
+  return filtered_packet;
 }
 
 // Parser triggers this callback within cuvidParseVideoData when a frame is
