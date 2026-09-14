@@ -122,8 +122,9 @@ FORCE_PUBLIC_VISIBILITY std::vector<torch::stable::Tensor> get_frame_planes(
 // interleave them, so neither is a [C, N] tensor as it stands. An audio frame
 // is a few kB, so normalizing here buys a uniform layout for the price of a
 // memcpy - and it means a converter can treat the result as planar-of-dtype.
-// TODO_API_BREAKDOWN DESIGN P1: do we want to copy? Should we just keep the
-// original layout?
+// Copying is also what lets the samples be handed out as a plain tensor instead
+// of an opaque handle the way a video frame is, so nothing has to be kept alive
+// to keep them readable.
 FORCE_PUBLIC_VISIBILITY torch::stable::Tensor get_audio_samples(
     const AVFrame& av_frame);
 

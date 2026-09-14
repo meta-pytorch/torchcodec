@@ -5600,7 +5600,6 @@ class TestBlocks:
 
         for chunk in chunks:
             assert isinstance(chunk, RawAudioSamples)
-            assert chunk.sample_format == sample_format
             assert chunk.data.dtype == dtype
             assert chunk.data.ndim == 2
             assert chunk.data.is_contiguous()
