@@ -3626,11 +3626,11 @@ def _is_msb_aligned(pix_fmt):
     return pix_fmt.startswith("p0")
 
 
-# TODO_API_BREAKDOWN CC P2: this entire class should probably be folded in the
-# test/utils asset class.
 class _PlanesCase(NamedTuple):
     """A video, how many significant bits its samples carry, and the pixel
     format its frames come out in on each device."""
+    # Note: this might be merged into TestVideo, but really all these fields are
+    # only tested / relevant in the 'Blocks' APIs.
 
     video: object
     bit_depth: int
