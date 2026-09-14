@@ -102,9 +102,6 @@ class RawFrame:
 
     @property
     def _device(self) -> torch.device:
-        # A frame carries storage only when its samples had to be allocated by
-        # the decoder, which is what a GPU decoder does and a CPU one never
-        # needs to: the samples are in the AVFrame's own (host) buffers.
         return self.storage.device if self.storage is not None else torch.device("cpu")
 
     def _get_metadata(self) -> _Metadata:
