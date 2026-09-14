@@ -1121,8 +1121,8 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
   int64_t num_bytes = is_444 ? pitch * num_luma_plane_rows * 3
                              : pitch * num_luma_plane_rows * 3 / 2;
 
-  auto* surface_base =
-      av_frame->data[0] - get_crop_offsets(static_cast<unsigned int>(pitch)).luma;
+  auto* surface_base = av_frame->data[0] -
+      get_crop_offsets(static_cast<unsigned int>(pitch)).luma;
 
   auto storage =
       torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
