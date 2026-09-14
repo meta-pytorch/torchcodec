@@ -1047,7 +1047,7 @@ OpsReceiveAudioFrameOutput _blocks_audio_packet_decoder_receive_frame(
   const char* sample_format_name =
       av_get_sample_fmt_name(static_cast<AVSampleFormat>(av_frame->format));
   return std::make_tuple(
-      audio_samples(*av_frame),
+      get_audio_samples(*av_frame),
       static_cast<int64_t>(0),
       pts_to_seconds(get_pts_or_dts(*av_frame), time_base),
       pts_to_seconds(get_duration(*av_frame), time_base),
@@ -1112,7 +1112,7 @@ using OpsFrameMetadataOutput = std::tuple<
 OpsFrameMetadataOutput _blocks_frame_metadata(
     torch::stable::Tensor& tensor_handle) {
   FrameMetadata metadata =
-      frame_metadata(*unwrap_tensor_to_pointer<AVFrame>(tensor_handle));
+      get_frame_metadata(*unwrap_tensor_to_pointer<AVFrame>(tensor_handle));
   return std::make_tuple(
       metadata.pix_fmt,
       metadata.colorspace,
@@ -1134,7 +1134,7 @@ OpsFramePlanesOutput _blocks_frame_planes(
     StableDevice device) {
   AVFrame* av_frame = unwrap_tensor_to_pointer<AVFrame>(tensor_handle);
   std::vector<torch::stable::Tensor> planes =
-      frame_planes(*av_frame, device, tensor_handle);
+      get_frame_planes(*av_frame, device, tensor_handle);
 
   // Op schema wants a fixed number of planes, so we pad with empty tensors that
   // then get removed at the Python level.
