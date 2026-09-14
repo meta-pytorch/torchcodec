@@ -3626,11 +3626,15 @@ def _is_msb_aligned(pix_fmt):
     return pix_fmt.startswith("p0")
 
 
+# TODO_API_BREAKDOWN CC P2: this entire class should probably be folded in the
+# test/utils asset class.
 class _PlanesCase(NamedTuple):
-    """A video and the NVDEC surface format its frames come out in. The CPU-side
-    format and bit depth are the video's own, and come from the asset."""
+    """A video, how many significant bits its samples carry, and the pixel
+    format its frames come out in on each device."""
 
     video: object
+    bit_depth: int
+    cpu_pix_fmt: str
     cuda_pix_fmt: str
     cpu_num_planes: int = 3
     cuda_num_planes: int = 3
@@ -3641,12 +3645,8 @@ class _PlanesCase(NamedTuple):
     # the format and the depth we report change with the FFmpeg version.
     needs_p016_before_ffmpeg6: bool = False
 
-    @property
-    def bit_depth(self):
-        return self.video.bit_depth
-
     def pix_fmt(self, device):
-        return self.cuda_pix_fmt if device == "cuda" else self.video.pix_fmt
+        return self.cuda_pix_fmt if device == "cuda" else self.cpu_pix_fmt
 
     def num_planes(self, device):
         return self.cuda_num_planes if device == "cuda" else self.cpu_num_planes
@@ -3669,20 +3669,28 @@ _HDR_VIDEOS = (
 # (uint8 vs uint16 planes). All are YUV, so planes are (Y, U, V) - the sources
 # whose frames aren't three YUV planes are in _NON_YUV_PLANES_VIDEOS below.
 _PLANES_VIDEOS = (
-    _PlanesCase(NASA_VIDEO, "nv12"),  # even dims
-    _PlanesCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9, "nv12"),  # odd
+    _PlanesCase(NASA_VIDEO, 8, "yuv420p", "nv12"),  # even dims
+    _PlanesCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9, 8, "yuv420p", "nv12"),  # odd
     # 4:4:4 (full-res chroma). NVDEC can't decode H264 4:4:4, so these fall back
     # to the CPU and are uploaded as 4:4:4 rather than have their chroma halved.
-    _PlanesCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_444, "yuv444p"),
-    _PlanesCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT, "yuv444p16le"),
+    _PlanesCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_444, 8, "yuv444p", "yuv444p"),
+    _PlanesCase(
+        TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT, 10, "yuv444p10le", "yuv444p16le"
+    ),
     # HEVC 4:4:4, which NVDEC decodes natively into its YUV444 surfaces. The
     # 16-bit one is the only 4:4:4 surface above 8 bits, so 10- and 12-bit
     # sources both land in yuv444p16le.
-    _PlanesCase(TESTSRC2_444_8BIT_HEVC, "yuv444p"),
-    _PlanesCase(TESTSRC2_444_10BIT_HEVC, "yuv444p16le"),
-    _PlanesCase(TESTSRC2_444_12BIT_HEVC, "yuv444p16le"),
-    _PlanesCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT, "p010le"),
-    _PlanesCase(TEST_SRC_2_12BIT_HDR, "p012le", needs_p016_before_ffmpeg6=True),
+    _PlanesCase(TESTSRC2_444_8BIT_HEVC, 8, "yuv444p", "yuv444p"),
+    _PlanesCase(TESTSRC2_444_10BIT_HEVC, 10, "yuv444p10le", "yuv444p16le"),
+    _PlanesCase(TESTSRC2_444_12BIT_HEVC, 12, "yuv444p12le", "yuv444p16le"),
+    _PlanesCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT, 10, "yuv420p10le", "p010le"),
+    _PlanesCase(
+        TEST_SRC_2_12BIT_HDR,
+        12,
+        "yuv420p12le",
+        "p012le",
+        needs_p016_before_ffmpeg6=True,
+    ),
 )
 
 
@@ -3695,12 +3703,12 @@ _PLANES_VIDEOS = (
 # what YUV has no room for: grayscale gains neutral chroma, and alpha is dropped
 # outright.
 _NON_YUV_PLANES_VIDEOS = (
-    _PlanesCase(TESTSRC2_GRAY_HEVC, "nv12", cpu_num_planes=1),
+    _PlanesCase(TESTSRC2_GRAY_HEVC, 8, "gray", "nv12", cpu_num_planes=1),
     # Planar RGB. The planes come out (R, G, B), which is *not* the order the
     # format stores them in: FFmpeg's gbrp is green, blue, red.
-    _PlanesCase(TESTSRC2_GBRP_HEVC, "yuv444p"),
+    _PlanesCase(TESTSRC2_GBRP_HEVC, 8, "gbrp", "yuv444p"),
     # Alpha, which is full size like luma rather than subsampled like chroma.
-    _PlanesCase(TESTSRC2_YUVA420P_FFV1, "nv12", cpu_num_planes=4),
+    _PlanesCase(TESTSRC2_YUVA420P_FFV1, 8, "yuva420p", "nv12", cpu_num_planes=4),
 )
 
 
