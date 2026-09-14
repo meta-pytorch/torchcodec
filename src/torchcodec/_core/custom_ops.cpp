@@ -98,7 +98,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
   m.def("_blocks_packet_decoder_reset(Tensor(a!) decoder) -> ()");
   m.def(
-      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, Device, Tensor)");
+      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, Tensor)");
   m.def(
       "_blocks_audio_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, int, str)");
   m.def(
@@ -976,13 +976,12 @@ void _blocks_packet_decoder_reset(torch::stable::Tensor& decoder) {
   unwrap_tensor_to_pointer<PacketDecoder>(decoder)->reset();
 }
 
-// (frame_handle, status, pts_seconds, duration_seconds, device, storage).
+// (frame_handle, status, pts_seconds, duration_seconds, storage).
 using OpsReceiveFrameOutput = std::tuple<
     torch::stable::Tensor,
     int64_t,
     double,
     double,
-    StableDevice,
     torch::stable::Tensor>;
 
 OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
@@ -997,13 +996,11 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
         static_cast<int64_t>(status),
         0.0,
         0.0,
-        StableDevice(kStableCPU),
         torch::stable::empty({int64_t(0)}, kStableUInt8));
   }
   AVRational time_base = decoder_ptr->time_base();
   double pts_seconds = pts_to_seconds(get_pts_or_dts(*av_frame), time_base);
   double duration_seconds = pts_to_seconds(get_duration(*av_frame), time_base);
-  StableDevice device = decoder_ptr->device();
   torch::stable::Tensor storage =
       decoder_ptr->get_frame_storage(*av_frame).value_or(
           torch::stable::empty({int64_t(0)}, kStableUInt8));
@@ -1012,7 +1009,6 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
       static_cast<int64_t>(0),
       pts_seconds,
       duration_seconds,
-      device,
       storage);
 }
 

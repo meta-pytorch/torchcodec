@@ -129,7 +129,7 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
     def _receive_ready_frames(self) -> list[RawFrame]:
         frames = []
         while True:
-            handle, status, pts_seconds, duration_seconds, device, storage = (
+            handle, status, pts_seconds, duration_seconds, storage = (
                 _blocks_packet_decoder_receive_frame(self._handle)
             )
             if status != 0:  # EAGAIN (need more packets) or EOF: nothing ready
@@ -139,7 +139,6 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
                     handle,
                     pts_seconds,
                     duration_seconds,
-                    device=device,
                     storage=storage if storage.numel() > 0 else None,
                 )
             )

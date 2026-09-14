@@ -88,15 +88,9 @@ class RawFrame:
         handle: torch.Tensor,
         pts_seconds: float,
         duration_seconds: float,
-        device: torch.device,
         storage: torch.Tensor | None = None,
     ):
         self._handle = handle
-        # TODO_API_BREAKDOWN DESIGN P2: do we need this at all? It is always the
-        # device of the decoder that produced the frame, and users can get it
-        # from `storage.device` or from `planes[0].device`. We need *something*
-        # here because the planes op needs a device to build the views on.
-        self._device = device
         # A CUDA consumer reading the frame on a different stream than the
         # decoder's must call storage.record_stream() on it.
         # See [Standalone Frame Storage and the need for record_stream]
@@ -105,6 +99,10 @@ class RawFrame:
         self.duration_seconds = duration_seconds
         self._metadata: _Metadata | None = None
         self._planes: tuple[torch.Tensor, ...] | None = None
+
+    @property
+    def _device(self) -> torch.device:
+        return self.storage.device if self.storage is not None else torch.device("cpu")
 
     def _get_metadata(self) -> _Metadata:
         if self._metadata is None:
