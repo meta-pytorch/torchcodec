@@ -300,11 +300,14 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 // - The *display area*: CUVIDEOFORMAT.display_area, also from the parser. It is
 //   a window within the coded frame, and it is the part of it that is actually
 //   visible, i.e. the frame size we report and hand out to users: 1280x530.
+//   It is purely informative: NVDEC doesn't act on it, it only tells us what
+//   the bitstream says. It's ours to use, or to ignore.
 //
 // - The *surface* dimensions. The surface is the buffer that
 //   cuvidMapVideoFrame() gives us for a decoded frame. Its size is whatever we
 //   asked for in CUVIDDECODECREATEINFO.ulTargetWidth / ulTargetHeight when
-//   creating the decoder, and NVDEC scales the display area into it.
+//   creating the decoder, and NVDEC scales the source rectangle we also asked
+//   for, CUVIDDECODECREATEINFO.display_area, into it.
 //
 //     0    32                     1248 1280
 //   0 +-----+------------------------+---+
@@ -337,6 +340,22 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 // coded dimensions but different display areas would then share a decoder whose
 // surfaces aren't the size we expect, and their frames would be silently
 // corrupted.
+//
+// Careful: both CUVIDEOFORMAT and CUVIDDECODECREATEINFO have a display_area
+// field, and they don't mean the same thing. The former *describes* the stream,
+// as above. The latter is an *instruction* to NVDEC's post-processing stage: it
+// is the source rectangle, i.e. the part of the decoded coded frame that gets
+// read and scaled into the output surface ("Use-case : Source Cropping" in
+// cuviddec.h). The surface's size is ulTargetWidth / ulTargetHeight, and the
+// ratio between the two rectangles is the scaling factor. There is a third
+// rectangle, target_rect, which is where within the surface the scaled result
+// lands (for aspect ratio conversion); we leave it unset, i.e. the whole
+// surface.
+//
+// We set the source rectangle to the entire coded frame and the target to the
+// coded dimensions, which makes that whole stage a no-op: no crop, no scaling.
+// Setting the target alone wouldn't do: with the bitstream's display area as
+// the source rectangle, NVDEC would upscale it to the target.
 //
 // So, in create_decoder(), at decoder creation:
 //
