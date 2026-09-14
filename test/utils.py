@@ -610,6 +610,11 @@ class TestVideoStreamInfo:
     width: int
     height: int
     num_color_channels: int
+    # The stream's own pixel format and the number of significant bits its
+    # samples carry, i.e. what the CPU decoder hands out. Only set on the
+    # assets whose tests need them.
+    pix_fmt: str | None = None
+    bit_depth: int = 8
 
 
 @dataclass
@@ -841,6 +846,14 @@ class TestVideo(TestContainerFile):
         return self.stream_infos[self.default_stream_index].num_color_channels
 
     @property
+    def pix_fmt(self) -> str | None:
+        return self.stream_infos[self.default_stream_index].pix_fmt
+
+    @property
+    def bit_depth(self) -> int:
+        return self.stream_infos[self.default_stream_index].bit_depth
+
+    @property
     def empty_chw_tensor(self) -> torch.Tensor:
         return torch.empty(
             [0, self.num_color_channels, self.height, self.width], dtype=torch.uint8
@@ -880,8 +893,12 @@ NASA_VIDEO = TestVideo(
     filename="nasa_13013.mp4",
     default_stream_index=3,
     stream_infos={
-        0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
-        3: TestVideoStreamInfo(width=480, height=270, num_color_channels=3),
+        0: TestVideoStreamInfo(
+            width=320, height=180, num_color_channels=3, pix_fmt="yuv420p"
+        ),
+        3: TestVideoStreamInfo(
+            width=480, height=270, num_color_channels=3, pix_fmt="yuv420p"
+        ),
     },
     frames={},  # Automatically loaded from json file
 )
@@ -1157,7 +1174,13 @@ TEST_SRC_2_12BIT_HDR = TestVideo(
     filename="testsrc2_12bit_hdr.mp4",
     default_stream_index=0,
     stream_infos={
-        0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
+        0: TestVideoStreamInfo(
+            width=320,
+            height=180,
+            num_color_channels=3,
+            pix_fmt="yuv420p12le",
+            bit_depth=12,
+        ),
     },
     frames={0: {}},
 )
@@ -1261,7 +1284,9 @@ TESTSRC2_ODD_HEIGHT_AND_WIDTH_444 = TestVideo(
     filename="testsrc2_odd_height_and_width_444.mp4",
     default_stream_index=0,
     stream_infos={
-        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+        0: TestVideoStreamInfo(
+            width=321, height=241, num_color_channels=3, pix_fmt="yuv444p"
+        ),
     },
     frames={0: {}},
 )
@@ -1286,7 +1311,13 @@ TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT = TestVideo(
     filename="testsrc2_odd_height_and_width_444_10bit.mp4",
     default_stream_index=0,
     stream_infos={
-        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+        0: TestVideoStreamInfo(
+            width=321,
+            height=241,
+            num_color_channels=3,
+            pix_fmt="yuv444p10le",
+            bit_depth=10,
+        ),
     },
     frames={0: {}},
 )
@@ -1301,7 +1332,9 @@ TESTSRC2_444_8BIT_HEVC = TestVideo(
     filename="testsrc2_444_8bit_hevc.mp4",
     default_stream_index=0,
     stream_infos={
-        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+        0: TestVideoStreamInfo(
+            width=321, height=241, num_color_channels=3, pix_fmt="yuv444p"
+        ),
     },
     frames={0: {}},
 )
@@ -1310,7 +1343,13 @@ TESTSRC2_444_10BIT_HEVC = TestVideo(
     filename="testsrc2_444_10bit_hevc.mp4",
     default_stream_index=0,
     stream_infos={
-        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+        0: TestVideoStreamInfo(
+            width=321,
+            height=241,
+            num_color_channels=3,
+            pix_fmt="yuv444p10le",
+            bit_depth=10,
+        ),
     },
     frames={0: {}},
 )
@@ -1319,7 +1358,13 @@ TESTSRC2_444_12BIT_HEVC = TestVideo(
     filename="testsrc2_444_12bit_hevc.mp4",
     default_stream_index=0,
     stream_infos={
-        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+        0: TestVideoStreamInfo(
+            width=321,
+            height=241,
+            num_color_channels=3,
+            pix_fmt="yuv444p12le",
+            bit_depth=12,
+        ),
     },
     frames={0: {}},
 )
@@ -1333,7 +1378,9 @@ TESTSRC2_GRAY_HEVC = TestVideo(
     filename="testsrc2_gray_hevc.mp4",
     default_stream_index=0,
     stream_infos={
-        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+        0: TestVideoStreamInfo(
+            width=320, height=240, num_color_channels=3, pix_fmt="gray"
+        ),
     },
     frames={0: {}},
 )
@@ -1344,7 +1391,9 @@ TESTSRC2_GBRP_HEVC = TestVideo(
     filename="testsrc2_gbrp_hevc.mp4",
     default_stream_index=0,
     stream_infos={
-        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+        0: TestVideoStreamInfo(
+            width=321, height=241, num_color_channels=3, pix_fmt="gbrp"
+        ),
     },
     frames={0: {}},
 )
@@ -1358,7 +1407,9 @@ TESTSRC2_YUVA420P_FFV1 = TestVideo(
     filename="testsrc2_yuva420p_ffv1.mkv",
     default_stream_index=0,
     stream_infos={
-        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+        0: TestVideoStreamInfo(
+            width=320, height=240, num_color_channels=3, pix_fmt="yuva420p"
+        ),
     },
     frames={0: {}},
 )
@@ -1405,7 +1456,9 @@ TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9 = TestVideo(
     filename="testsrc2_odd_height_and_width_vp9.mp4",
     default_stream_index=0,
     stream_infos={
-        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+        0: TestVideoStreamInfo(
+            width=321, height=241, num_color_channels=3, pix_fmt="yuv420p"
+        ),
     },
     frames={0: {}},
 )
@@ -1438,7 +1491,13 @@ TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT = TestVideo(
     filename="testsrc2_odd_height_and_width_vp9_10bit.mp4",
     default_stream_index=0,
     stream_infos={
-        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+        0: TestVideoStreamInfo(
+            width=321,
+            height=241,
+            num_color_channels=3,
+            pix_fmt="yuv420p10le",
+            bit_depth=10,
+        ),
     },
     frames={0: {}},
 )
