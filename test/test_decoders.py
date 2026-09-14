@@ -2402,7 +2402,7 @@ class TestVideoDecoder:
         # still handle them correctly. The equivalent test for the "blocks" APIs
         # is test_cpu_fallback_upload_keeps_full_range
 
-        if ffmpeg_major_version is not None and ffmpeg_major_version < 6:
+        if ffmpeg_major_version is not None and ffmpeg_major_version <= 6:
             pytest.skip("Colors don't line up across devices before FFmpeg 6")
 
         num_frames = 5
@@ -4632,6 +4632,9 @@ class TestBlocks:
     def test_cpu_fallback_upload_keeps_full_range(
         self, video, expected_colorspace, has_luma
     ):
+        if ffmpeg_major_version <= 6:
+            pytest.skip("don't know, don't care.")
+
         # Full-range sources NVDEC can't decode, so they go through the CPU
         # fallback and its conversion to an NVDEC surface format.
         cpu_frame, cpu_converter = self._first_frame(video.path, "cpu")
