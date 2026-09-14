@@ -75,6 +75,8 @@ from .utils import (
     BT601_LIMITED_RANGE,
     BT709_FULL_RANGE,
     CMYK_JPEG,
+    CODED64_DISPLAY50_VIDEO,
+    CODED64_DISPLAY52_VIDEO,
     CORRUPT_JPEG,
     cuda_devices,
     DISCARD_FIRST_KEYFRAME_VIDEO,
@@ -2524,6 +2526,40 @@ class TestVideoDecoder:
             # Create a new decoder, it's not cached since capacity is 0
             create_decoder()
             assert _core._get_nvdec_cache_size(device_index=0) == 0
+
+    @needs_cuda
+    def test_nvdec_cache_different_display_areas(self):
+        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1704
+        # Videos with the same coded dimensions but different display areas do
+        # share a cached decoder, and that's fine: the decoder outputs the whole
+        # coded frame, and we apply the display area crop ourselves. If the
+        # decoder were the one cropping, sharing it across different display
+        # areas would silently corrupt the frames.
+        # See Note: [NVDEC surface dimensions and cropping].
+        with self.restore_nvdec_cache_capacity():
+            # Evict any leftover cached decoders from previous tests
+            set_nvdec_cache_capacity(0)
+
+        for priming_video, video in itertools.permutations(
+            (CODED64_DISPLAY50_VIDEO, CODED64_DISPLAY52_VIDEO)
+        ):
+            reference = VideoDecoder(video.path, device="cpu")[:].cuda()
+
+            decoder = VideoDecoder(priming_video.path, device="cuda")
+            decoder[0]
+            assert not decoder.cpu_fallback
+            del decoder
+            gc.collect()
+
+            decoder = VideoDecoder(video.path, device="cuda")
+            frames = decoder[:]
+            assert not decoder.cpu_fallback
+            del decoder
+            gc.collect()
+
+            assert_frames_equal(frames, reference)
+            # A single cached decoder was enough for both videos
+            assert _core._get_nvdec_cache_size(device_index=0) == 1
 
     def test_cpu_fallback_no_fallback_on_cpu_device(self):
         """Test that CPU device doesn't trigger fallback (it's not a fallback scenario)."""
