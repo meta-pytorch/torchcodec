@@ -4410,8 +4410,7 @@ class TestBlocks:
     @pytest.mark.parametrize("record_stream", (True, False))
     def test_storage_record_stream(self, record_stream):
         # Using VideoPacketDecoder on one stream and consuming the frames on a
-        # different stream requires the user to call record_stream() on the
-        # frame storage.
+        # different stream requires the user to call frame.record_stream().
         # Without the record_stream() call the decoder's next frame may be
         # handed the same buffer and overwrites it while the read is still
         # queued.
@@ -4436,7 +4435,7 @@ class TestBlocks:
                         torch.cuda._sleep(20_000_000)  # ~10ms, fall behind
                         reads.append(frame.planes[0].clone())
                         if separate_stream and record_stream:
-                            frame.storage.record_stream(read_stream)
+                            frame.record_stream(read_stream)
             torch.cuda.synchronize()
             return reads
 

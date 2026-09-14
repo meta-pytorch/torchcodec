@@ -1104,7 +1104,7 @@ std::optional<torch::stable::Tensor> BetaCudaDeviceInterface::get_frame_storage(
   // ColorConverter, on behalf of the user. But we still must expose the storage
   // for those users who would like to consume the frame with their own
   // consumer, i.e. not using the ColorConverter: they need to call
-  // frame.storage.record_stream(color_conversion_stream) themselves.
+  // frame.record_stream(color_conversion_stream) themselves.
   return reinterpret_cast<OwnedFrameStorage*>(av_frame.opaque_ref->data)
       ->storage;
 }
