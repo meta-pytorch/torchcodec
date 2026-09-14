@@ -1,6 +1,6 @@
 # clips_at_random_indices
 
-torchcodec.samplers.clips_at_random_indices(*decoder: [VideoDecoder](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)*, ***, *num_clips: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *num_frames_per_clip: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *num_indices_between_frames: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *sampling_range_start: [int](https://docs.python.org/3/library/functions.html#int) = 0*, *sampling_range_end: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *policy: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['repeat_last', 'wrap', 'error'] = 'repeat_last'*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/samplers/_index_based.html#clips_at_random_indices)
+torchcodec.samplers.clips_at_random_indices(*decoder: [VideoDecoder](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)*, ***, *num_clips: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*, *num_frames_per_clip: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*, *num_indices_between_frames: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*, *sampling_range_start: [int](https://docs.python.org/3/builtins/functions.html#int) = 0*, *sampling_range_end: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *policy: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['repeat_last', 'wrap', 'error'] = 'repeat_last'*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/samplers/_index_based.html#clips_at_random_indices)
 
 Sample [clips](../glossary.html#term-clips) at random indices.
 
@@ -8,15 +8,15 @@ Parameters:
 
 - **decoder** ([*VideoDecoder*](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)) - The [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)
 instance to sample clips from.
-- **num_clips** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of clips to return. Default: 1.
-- **num_frames_per_clip** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of frames per clips. Default: 1.
-- **num_indices_between_frames** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of indices between
+- **num_clips** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of clips to return. Default: 1.
+- **num_frames_per_clip** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of frames per clips. Default: 1.
+- **num_indices_between_frames** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of indices between
 the frames *within* a clip. Default: 1, which means frames are
 consecutive. This is sometimes refered-to as "dilation".
-- **sampling_range_start** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The start of the sampling range,
+- **sampling_range_start** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The start of the sampling range,
 which defines the first index that a clip may *start* at. Default:
 0, i.e. the start of the video.
-- **sampling_range_end** ([*int*](https://docs.python.org/3/library/functions.html#int)*or**None**,**optional*) - The end of the sampling
+- **sampling_range_end** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*or**None**,**optional*) - The end of the sampling
 range, which defines the last index that a clip may *start* at. This
 value is exclusive, i.e. a clip may only start within
 [`sampling_range_start`, `sampling_range_end`). If None
@@ -27,7 +27,7 @@ set to 99 - 10 + 1 = 90. Negative values are accepted and are
 equivalent to `len(video) - val`. When a clip spans beyond the end
 of the video, the `policy` parameter defines how to construct such
 clip.
-- **policy** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - 
+- **policy** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - 
 
 Defines how to construct clips that span beyond
 the end of the video. This is best described with an example:

@@ -54,7 +54,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpdlhei1f1/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmptqqqj1zy/video.mp4'], returncode=0)
 ```
 
 ## The three blocks
@@ -638,7 +638,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpdlhei1f1/video.mp4', '-i', '/tmp/tmpdlhei1f1/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpdlhei1f1/av.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmptqqqj1zy/video.mp4', '-i', '/tmp/tmptqqqj1zy/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmptqqqj1zy/av.mp4'], returncode=0)
 ```
 
 Which streams to follow is said once, at construction: a selector is
@@ -705,7 +705,7 @@ whole-file decode. Decoding a margin before your target and discarding it
 is up to you. [`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) does all of this
 for you.
 
-**Total running time of the script:** (0 minutes 2.308 seconds)
+**Total running time of the script:** (0 minutes 2.319 seconds)
 
 [`Download Jupyter notebook: blocks.ipynb`](../../_downloads/37e5fa5a5cd2ea49ae5d47920f4cc2fa/blocks.ipynb)
 

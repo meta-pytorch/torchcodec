@@ -1,6 +1,6 @@
 # VideoStream
 
-*class*torchcodec.encoders.VideoStream(*encoder_tensor: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *stream_identifier: [int](https://docs.python.org/3/library/functions.html#int)*)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#VideoStream)
+*class*torchcodec.encoders.VideoStream(*encoder_tensor: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *stream_identifier: [int](https://docs.python.org/3/builtins/functions.html#int)*)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#VideoStream)
 
 A video stream within an [`Encoder`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder).
 
@@ -20,7 +20,7 @@ Encoding audio and video streams with the Encoder
 
 Encoding video with the Encoder
 
-add_frames(*frames: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#VideoStream.add_frames)
+add_frames(*frames: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#VideoStream.add_frames)
 
 Add video frames to this stream.
 

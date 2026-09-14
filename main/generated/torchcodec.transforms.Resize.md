@@ -1,6 +1,6 @@
 # Resize
 
-*class*torchcodec.transforms.Resize(*size: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[int](https://docs.python.org/3/library/functions.html#int)]*)[[source]](../_modules/torchcodec/transforms/_decoder_transforms.html#Resize)
+*class*torchcodec.transforms.Resize(*size: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[int](https://docs.python.org/3/builtins/functions.html#int)]*)[[source]](../_modules/torchcodec/transforms/_decoder_transforms.html#Resize)
 
 Resize the decoded frame to a given size.
 
@@ -9,7 +9,7 @@ Interpolation is always bilinear. Anti-aliasing is always on.
 
 Parameters:
 
-**size** (*Sequence**[*[*int*](https://docs.python.org/3/library/functions.html#int)*]*) - Desired output size. Must be a sequence of
+**size** (*Sequence**[*[*int*](https://docs.python.org/3/builtins/functions.html#int)*]*) - Desired output size. Must be a sequence of
 the form (height, width).
 
 Examples using `Resize`:

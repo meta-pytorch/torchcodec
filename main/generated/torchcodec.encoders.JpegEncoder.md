@@ -36,7 +36,7 @@ Encoding images
 
 Migrating from TorchVision to TorchCodec
 
-to_file(*dest: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *quality: [int](https://docs.python.org/3/library/functions.html#int) = 75*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_file)
+to_file(*dest: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *quality: [int](https://docs.python.org/3/builtins/functions.html#int) = 75*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_file)
 
 Encode the image into a JPEG file.
 
@@ -44,10 +44,10 @@ Parameters:
 
 - **dest** (str or `pathlib.Path`) - The path to the output file, e.g.
 `image.jpg`.
-- **quality** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Quality of the output, between 1 and 100.
+- **quality** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Quality of the output, between 1 and 100.
 Higher means better quality and larger file size. Default: 75.
 
-to_file_like(*dest: [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | [BufferedIOBase](https://docs.python.org/3/library/io.html#io.BufferedIOBase)*, ***, *quality: [int](https://docs.python.org/3/library/functions.html#int) = 75*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_file_like)
+to_file_like(*dest: [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | [BufferedIOBase](https://docs.python.org/3/library/io.html#io.BufferedIOBase)*, ***, *quality: [int](https://docs.python.org/3/builtins/functions.html#int) = 75*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_file_like)
 
 Encode the image into a file-like object.
 
@@ -55,10 +55,10 @@ Parameters:
 
 - **dest** - A writable file-like object supporting `write` and `seek`,
 such as `io.BytesIO()` or an open file in binary write mode.
-- **quality** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Quality of the output, between 1 and 100.
+- **quality** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Quality of the output, between 1 and 100.
 Higher means better quality and larger file size. Default: 75.
 
-to_tensor(***, *quality: [int](https://docs.python.org/3/library/functions.html#int) = 75*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_tensor)
+to_tensor(***, *quality: [int](https://docs.python.org/3/builtins/functions.html#int) = 75*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_tensor)
 
 Encode the image into raw bytes, as a 1D uint8 tensor.
 
@@ -67,7 +67,7 @@ input yields a CUDA tensor).
 
 Parameters:
 
-**quality** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Quality of the output, between 1 and 100.
+**quality** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Quality of the output, between 1 and 100.
 Higher means better quality and larger file size. Default: 75.
 
 Returns:

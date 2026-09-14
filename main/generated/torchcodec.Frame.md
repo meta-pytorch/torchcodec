@@ -1,6 +1,6 @@
 # Frame
 
-*class*torchcodec.Frame(*data: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *pts_seconds: [float](https://docs.python.org/3/library/functions.html#float)*, *duration_seconds: [float](https://docs.python.org/3/library/functions.html#float)*)[[source]](../_modules/torchcodec/_frame.html#Frame)
+*class*torchcodec.Frame(*data: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *pts_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*)[[source]](../_modules/torchcodec/_frame.html#Frame)
 
 A single video frame with associated metadata.
 
@@ -21,10 +21,10 @@ data*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
 
 The frame data as (3-D `torch.Tensor`).
 
-duration_seconds*: [float](https://docs.python.org/3/library/functions.html#float)*
+duration_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
 The duration of the frame, in seconds (float).
 
-pts_seconds*: [float](https://docs.python.org/3/library/functions.html#float)*
+pts_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
 The [pts](../glossary.html#term-pts) of the frame, in seconds (float).

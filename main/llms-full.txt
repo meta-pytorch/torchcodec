@@ -125,7 +125,7 @@ For a tutorial, see: [Decoder Transforms: Applying transforms during decoding](g
 
 # AudioSamples
 
-*class*torchcodec.AudioSamples(*data: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *pts_seconds: [float](https://docs.python.org/3/library/functions.html#float)*, *duration_seconds: [float](https://docs.python.org/3/library/functions.html#float)*, *sample_rate: [int](https://docs.python.org/3/library/functions.html#int)*)[[source]](../_modules/torchcodec/_frame.html#AudioSamples)
+*class*torchcodec.AudioSamples(*data: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *pts_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int)*)[[source]](../_modules/torchcodec/_frame.html#AudioSamples)
 
 Audio samples with associated metadata.
 
@@ -146,15 +146,15 @@ data*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
 
 The sample data (`torch.Tensor` of float in [-1, 1], shape is `(num_channels, num_samples)`).
 
-duration_seconds*: [float](https://docs.python.org/3/library/functions.html#float)*
+duration_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
 The duration of the samples, in seconds.
 
-pts_seconds*: [float](https://docs.python.org/3/library/functions.html#float)*
+pts_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
 The [pts](../glossary.html#term-pts) of the first sample, in seconds.
 
-sample_rate*: [int](https://docs.python.org/3/library/functions.html#int)*
+sample_rate*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
 The sample rate of the samples, in Hz.
 
@@ -162,7 +162,7 @@ The sample rate of the samples, in Hz.
 
 # Frame
 
-*class*torchcodec.Frame(*data: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *pts_seconds: [float](https://docs.python.org/3/library/functions.html#float)*, *duration_seconds: [float](https://docs.python.org/3/library/functions.html#float)*)[[source]](../_modules/torchcodec/_frame.html#Frame)
+*class*torchcodec.Frame(*data: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *pts_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*)[[source]](../_modules/torchcodec/_frame.html#Frame)
 
 A single video frame with associated metadata.
 
@@ -183,11 +183,11 @@ data*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
 
 The frame data as (3-D `torch.Tensor`).
 
-duration_seconds*: [float](https://docs.python.org/3/library/functions.html#float)*
+duration_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
 The duration of the frame, in seconds (float).
 
-pts_seconds*: [float](https://docs.python.org/3/library/functions.html#float)*
+pts_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
 The [pts](../glossary.html#term-pts) of the frame, in seconds (float).
 
@@ -242,7 +242,7 @@ The [pts](../glossary.html#term-pts) of the frame, in seconds (`torch.Tensor` of
 
 # AudioDecoder
 
-*class*torchcodec.decoders.AudioDecoder(*source: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *stream_index: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *sample_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *num_channels: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*)[[source]](../_modules/torchcodec/decoders/_audio_decoder.html#AudioDecoder)
+*class*torchcodec.decoders.AudioDecoder(*source: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *num_channels: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*)[[source]](../_modules/torchcodec/decoders/_audio_decoder.html#AudioDecoder)
 
 A single-stream audio decoder.
 
@@ -303,18 +303,18 @@ object): The source of the video or audio:
 expose the methods read(self, size: int) -> bytes and
 seek(self, offset: int, whence: int) -> int. Read more in:
 [Streaming data through file-like support](../generated_examples/decoding/file_like.html#sphx-glr-generated-examples-decoding-file-like-py).
-- **stream_index** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Specifies which stream in the file to decode samples from.
+- **stream_index** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Specifies which stream in the file to decode samples from.
 Note that this index is absolute across all media types. If left unspecified, then
 the [best stream](../glossary.html#term-best-stream) is used.
-- **sample_rate** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The desired output sample rate of the decoded samples.
+- **sample_rate** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The desired output sample rate of the decoded samples.
 By default, the sample rate of the source is used.
-- **num_channels** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The desired number of channels of the decoded samples.
+- **num_channels** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The desired number of channels of the decoded samples.
 By default, the number of channels of the source is used.
 
 Variables:
 
 - **metadata** ([*AudioStreamMetadata*](torchcodec.decoders.AudioStreamMetadata.html#torchcodec.decoders.AudioStreamMetadata)) - Metadata of the audio stream.
-- **stream_index** ([*int*](https://docs.python.org/3/library/functions.html#int)) - The stream index that this decoder is retrieving samples from. If a
+- **stream_index** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - The stream index that this decoder is retrieving samples from. If a
 stream index was provided at initialization, this is the same value. If it was left
 unspecified, this is the [best stream](../glossary.html#term-best-stream).
 
@@ -361,7 +361,7 @@ Return type:
 
 [AudioSamples](torchcodec.AudioSamples.html#torchcodec.AudioSamples)
 
-get_samples_played_in_range(*start_seconds: [float](https://docs.python.org/3/library/functions.html#float) = 0.0*, *stop_seconds: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [AudioSamples](torchcodec.AudioSamples.html#torchcodec.AudioSamples)[[source]](../_modules/torchcodec/decoders/_audio_decoder.html#AudioDecoder.get_samples_played_in_range)
+get_samples_played_in_range(*start_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) = 0.0*, *stop_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [AudioSamples](torchcodec.AudioSamples.html#torchcodec.AudioSamples)[[source]](../_modules/torchcodec/decoders/_audio_decoder.html#AudioDecoder.get_samples_played_in_range)
 
 Returns audio samples in the given range.
 
@@ -375,9 +375,9 @@ convenient alias.
 
 Parameters:
 
-- **start_seconds** ([*float*](https://docs.python.org/3/library/functions.html#float)) - Time, in seconds, of the start of the
+- **start_seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)) - Time, in seconds, of the start of the
 range. Default: 0.
-- **stop_seconds** ([*float*](https://docs.python.org/3/library/functions.html#float)*or**None*) - Time, in seconds, of the end of the
+- **stop_seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)*or**None*) - Time, in seconds, of the end of the
 range. As a half open range, the end is excluded. Default: None,
 which decodes samples until the end.
 
@@ -393,7 +393,7 @@ Return type:
 
 # AudioStreamMetadata
 
-*class*torchcodec.decoders.AudioStreamMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*, *codec: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/library/functions.html#int)*, *sample_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None)*, *num_channels: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None)*, *sample_format: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None)*, *duration_seconds: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*, *begin_stream_seconds: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*)[[source]](../_modules/torchcodec/_core/_metadata.html#AudioStreamMetadata)
+*class*torchcodec.decoders.AudioStreamMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_channels: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *sample_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*)[[source]](../_modules/torchcodec/_core/_metadata.html#AudioStreamMetadata)
 
 Metadata of a single audio stream.
 
@@ -405,27 +405,27 @@ Examples using `AudioStreamMetadata`:
 
 Decoding audio streams with AudioDecoder
 
-begin_stream_seconds*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+begin_stream_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Beginning of the stream, in seconds (float). Conceptually, this
 corresponds to the first frame's [pts](../glossary.html#term-pts). If a [scan](../glossary.html#term-scan) was performed
 and `begin_stream_seconds_from_content` is not None, then it is returned.
 Otherwise, this value is 0.
 
-begin_stream_seconds_from_header*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+begin_stream_seconds_from_header*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Beginning of the stream, in seconds, obtained from the header (float or
 None). Usually, this is equal to 0.
 
-bit_rate*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+bit_rate*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Bit rate of the stream, in seconds (float or None).
 
-codec*: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None)*
+codec*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Codec (str or None).
 
-duration_seconds*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+duration_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Duration of the stream in seconds. We try to calculate the duration
 from the actual frames if a [scan](../glossary.html#term-scan) was performed. Otherwise we
@@ -434,24 +434,24 @@ we instead calculate the duration from `num_frames_from_header` and
 `average_fps_from_header`. If all of those are unavailable, we fall back
 to the container-level `duration_seconds_from_header`.
 
-duration_seconds_from_header*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+duration_seconds_from_header*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Duration of the stream, in seconds, obtained from the header (float or
 None). This could be inaccurate.
 
-num_channels*: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None)*
+num_channels*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 The number of channels (1 for mono, 2 for stereo, etc.)
 
-sample_format*: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None)*
+sample_format*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 The original sample format, as described by FFmpeg. E.g. 'fltp', 's32', etc.
 
-sample_rate*: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None)*
+sample_rate*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 The original sample rate.
 
-stream_index*: [int](https://docs.python.org/3/library/functions.html#int)*
+stream_index*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
 Index of the stream that this metadata refers to (int).
 
@@ -459,7 +459,7 @@ Index of the stream that this metadata refers to (int).
 
 # CpuFallbackStatus
 
-*class*torchcodec.decoders.CpuFallbackStatus(*status_known: [bool](https://docs.python.org/3/library/functions.html#bool) = False*)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#CpuFallbackStatus)
+*class*torchcodec.decoders.CpuFallbackStatus(*status_known: [bool](https://docs.python.org/3/builtins/functions.html#bool) = False*)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#CpuFallbackStatus)
 
 Information about CPU fallback status.
 
@@ -480,7 +480,7 @@ Examples using `CpuFallbackStatus`:
 
 Accelerated video decoding on GPUs with CUDA and NVDEC
 
-status_known*: [bool](https://docs.python.org/3/library/functions.html#bool)**= False*
+status_known*: [bool](https://docs.python.org/3/builtins/functions.html#bool)**= False*
 
 Whether the fallback status has been determined.
 For the NVDEC CUDA backend (the default; see
@@ -514,7 +514,7 @@ UNCHANGED*= 0*
 
 # VideoDecoder
 
-*class*torchcodec.decoders.VideoDecoder(*source: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *stream_index: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *dimension_order: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['NCHW', 'NHWC'] = 'NCHW'*, *num_ffmpeg_threads: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *device: [str](https://docs.python.org/3/library/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *seek_mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['exact', 'approximate'] = 'exact'*, *transforms: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[DecoderTransform](torchcodec.transforms.DecoderTransform.html#torchcodec.transforms.DecoderTransform) | [Module](https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module)] | [None](https://docs.python.org/3/library/constants.html#None) = None*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*, *custom_frame_mappings: [str](https://docs.python.org/3/library/stdtypes.html#str) | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [None](https://docs.python.org/3/library/constants.html#None) = None*)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder)
+*class*torchcodec.decoders.VideoDecoder(*source: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *dimension_order: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['NCHW', 'NHWC'] = 'NCHW'*, *num_ffmpeg_threads: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*, *device: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *seek_mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['exact', 'approximate'] = 'exact'*, *transforms: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[DecoderTransform](torchcodec.transforms.DecoderTransform.html#torchcodec.transforms.DecoderTransform) | [Module](https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module)] | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*, *custom_frame_mappings: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [None](https://docs.python.org/3/builtins/constants.html#None) = None*)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder)
 
 A single-stream video decoder.
 
@@ -531,10 +531,10 @@ The source of the video:
 expose the methods read(self, size: int) -> bytes and
 seek(self, offset: int, whence: int) -> int. Read more in:
 [Streaming data through file-like support](../generated_examples/decoding/file_like.html#sphx-glr-generated-examples-decoding-file-like-py).
-- **stream_index** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Specifies which stream in the video to decode frames from.
+- **stream_index** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Specifies which stream in the video to decode frames from.
 Note that this index is absolute across all media types. If left unspecified, then
 the [best stream](../glossary.html#term-best-stream) is used.
-- **dimension_order** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - 
+- **dimension_order** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - 
 
 The dimension order of the decoded frames.
 This can be either "NCHW" (default) or "NHWC", where N is the batch
@@ -547,19 +547,19 @@ Frames are natively decoded in NHWC format by the underlying
 FFmpeg implementation. Converting those into NCHW format is a
 cheap no-copy operation that allows these frames to be
 transformed using the [torchvision transforms](https://pytorch.org/vision/stable/transforms.html).
-- **num_ffmpeg_threads** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of threads to use for CPU decoding.
+- **num_ffmpeg_threads** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of threads to use for CPU decoding.
 This has no effect when using GPU decoding.
 Use 1 for single-threaded decoding which may be best if you are running multiple
 instances of `VideoDecoder` in parallel. Use a higher number for multi-threaded
 decoding which is best if you are running a single instance of `VideoDecoder`.
 Passing 0 lets FFmpeg decide on the number of threads.
 Default: 1.
-- **device** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*torch.device*](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device)*,**optional*) - The device to use for decoding.
+- **device** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*torch.device*](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device)*,**optional*) - The device to use for decoding.
 If `None` (default), uses the current default device.
 If you pass a CUDA device, decoding uses the `"nvdec"` backend by
 default. See [`set_cuda_backend()`](torchcodec.decoders.set_cuda_backend.html#torchcodec.decoders.set_cuda_backend) to switch
 to the `"ffmpeg"` CUDA backend.
-- **seek_mode** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - Determines if frame access will be "exact" or
+- **seek_mode** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - Determines if frame access will be "exact" or
 "approximate". Exact guarantees that requesting frame i will always
 return frame i, but doing so requires an initial [scan](../glossary.html#term-scan) of the
 file. Approximate is faster as it avoids scanning the file, but less
@@ -589,7 +589,7 @@ The features associated with this parameter are in beta stage
 and behavior may change in future versions. Specifically,
 detecting whether a video is SDR or HDR is difficult, so the
 "auto" heuristic is subject to change and improve.
-- **custom_frame_mappings** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,*[*bytes*](https://docs.python.org/3/library/stdtypes.html#bytes)*, or**file-like object**,**optional*) - 
+- **custom_frame_mappings** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,*[*bytes*](https://docs.python.org/3/builtins/stdtypes.html#bytes)*, or**file-like object**,**optional*) - 
 
 Mapping of frames to their metadata, typically generated via ffprobe.
 This enables accurate frame seeking without requiring a full video scan.
@@ -615,7 +615,7 @@ Read more about this parameter in:
 Variables:
 
 - **metadata** ([*VideoStreamMetadata*](torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata)) - Metadata of the video stream.
-- **stream_index** ([*int*](https://docs.python.org/3/library/functions.html#int)) - The stream index that this decoder is retrieving frames from. If a
+- **stream_index** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - The stream index that this decoder is retrieving frames from. If a
 stream index was provided at initialization, this is the same value. If it was left
 unspecified, this is the [best stream](../glossary.html#term-best-stream).
 - **cpu_fallback** ([*CpuFallbackStatus*](torchcodec.decoders.CpuFallbackStatus.html#torchcodec.decoders.CpuFallbackStatus)) - Information about whether the decoder fell back to CPU
@@ -691,7 +691,7 @@ Encoding audio and video streams with the Encoder
 
 Encoding video with the Encoder
 
-__getitem__(*key: [Integral](https://docs.python.org/3/library/numbers.html#numbers.Integral) | [slice](https://docs.python.org/3/library/functions.html#slice)*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.__getitem__)
+__getitem__(*key: [Integral](https://docs.python.org/3/library/numbers.html#numbers.Integral) | [slice](https://docs.python.org/3/builtins/functions.html#slice)*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.__getitem__)
 
 Return frame or frames as tensors, at the given index or range.
 
@@ -706,7 +706,7 @@ methods instead, since they are faster:
 
 Parameters:
 
-**key** ([*int*](https://docs.python.org/3/library/functions.html#int)*or*[*slice*](https://docs.python.org/3/library/functions.html#slice)) - The index or range of frame(s) to retrieve.
+**key** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*or*[*slice*](https://docs.python.org/3/builtins/functions.html#slice)) - The index or range of frame(s) to retrieve.
 
 Returns:
 
@@ -716,13 +716,13 @@ Return type:
 
 [torch.Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)
 
-get_all_frames(*fps: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_all_frames)
+get_all_frames(*fps: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_all_frames)
 
 Returns all frames in the video.
 
 Parameters:
 
-**fps** ([*float*](https://docs.python.org/3/library/functions.html#float)*,**optional*) - If specified, resample output to this frame
+**fps** ([*float*](https://docs.python.org/3/builtins/functions.html#float)*,**optional*) - If specified, resample output to this frame
 rate by duplicating or dropping frames as necessary. If None
 (default), returns frames at the source video's frame rate.
 
@@ -734,7 +734,7 @@ Return type:
 
 [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)
 
-get_frame_at(*index: [int](https://docs.python.org/3/library/functions.html#int)*) → [Frame](torchcodec.Frame.html#torchcodec.Frame)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frame_at)
+get_frame_at(*index: [int](https://docs.python.org/3/builtins/functions.html#int)*) → [Frame](torchcodec.Frame.html#torchcodec.Frame)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frame_at)
 
 Return a single frame at the given index.
 
@@ -749,7 +749,7 @@ methods instead, since they are faster:
 
 Parameters:
 
-**index** ([*int*](https://docs.python.org/3/library/functions.html#int)) - The index of the frame to retrieve.
+**index** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - The index of the frame to retrieve.
 
 Returns:
 
@@ -759,7 +759,7 @@ Return type:
 
 [Frame](torchcodec.Frame.html#torchcodec.Frame)
 
-get_frame_played_at(*seconds: [float](https://docs.python.org/3/library/functions.html#float)*) → [Frame](torchcodec.Frame.html#torchcodec.Frame)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frame_played_at)
+get_frame_played_at(*seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*) → [Frame](torchcodec.Frame.html#torchcodec.Frame)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frame_played_at)
 
 Return a single frame played at the given timestamp in seconds.
 
@@ -774,7 +774,7 @@ methods instead, since they are faster:
 
 Parameters:
 
-**seconds** ([*float*](https://docs.python.org/3/library/functions.html#float)) - The time stamp in seconds when the frame is played.
+**seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)) - The time stamp in seconds when the frame is played.
 
 Returns:
 
@@ -784,13 +784,13 @@ Return type:
 
 [Frame](torchcodec.Frame.html#torchcodec.Frame)
 
-get_frames_at(*indices: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [list](https://docs.python.org/3/library/stdtypes.html#list)[[int](https://docs.python.org/3/library/functions.html#int)]*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_at)
+get_frames_at(*indices: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [list](https://docs.python.org/3/builtins/stdtypes.html#list)[[int](https://docs.python.org/3/builtins/functions.html#int)]*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_at)
 
 Return frames at the given indices.
 
 Parameters:
 
-**indices** ([*torch.Tensor*](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*or*[*list*](https://docs.python.org/3/library/stdtypes.html#list)*of*[*int*](https://docs.python.org/3/library/functions.html#int)) - The indices of the frames to retrieve.
+**indices** ([*torch.Tensor*](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*or*[*list*](https://docs.python.org/3/builtins/stdtypes.html#list)*of*[*int*](https://docs.python.org/3/builtins/functions.html#int)) - The indices of the frames to retrieve.
 
 Returns:
 
@@ -800,7 +800,7 @@ Return type:
 
 [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)
 
-get_frames_in_range(*start: [int](https://docs.python.org/3/library/functions.html#int)*, *stop: [int](https://docs.python.org/3/library/functions.html#int)*, *step: [int](https://docs.python.org/3/library/functions.html#int) = 1*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_in_range)
+get_frames_in_range(*start: [int](https://docs.python.org/3/builtins/functions.html#int)*, *stop: [int](https://docs.python.org/3/builtins/functions.html#int)*, *step: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_in_range)
 
 Return multiple frames at the given index range.
 
@@ -808,10 +808,10 @@ Frames are in [start, stop).
 
 Parameters:
 
-- **start** ([*int*](https://docs.python.org/3/library/functions.html#int)) - Index of the first frame to retrieve.
-- **stop** ([*int*](https://docs.python.org/3/library/functions.html#int)) - End of indexing range (exclusive, as per Python
+- **start** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - Index of the first frame to retrieve.
+- **stop** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - End of indexing range (exclusive, as per Python
 conventions).
-- **step** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Step size between frames. Default: 1.
+- **step** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Step size between frames. Default: 1.
 
 Returns:
 
@@ -821,13 +821,13 @@ Return type:
 
 [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)
 
-get_frames_played_at(*seconds: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [list](https://docs.python.org/3/library/stdtypes.html#list)[[float](https://docs.python.org/3/library/functions.html#float)]*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_played_at)
+get_frames_played_at(*seconds: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [list](https://docs.python.org/3/builtins/stdtypes.html#list)[[float](https://docs.python.org/3/builtins/functions.html#float)]*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_played_at)
 
 Return frames played at the given timestamps in seconds.
 
 Parameters:
 
-**seconds** ([*torch.Tensor*](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*or*[*list*](https://docs.python.org/3/library/stdtypes.html#list)*of*[*float*](https://docs.python.org/3/library/functions.html#float)) - The timestamps in seconds when the frames are played.
+**seconds** ([*torch.Tensor*](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*or*[*list*](https://docs.python.org/3/builtins/stdtypes.html#list)*of*[*float*](https://docs.python.org/3/builtins/functions.html#float)) - The timestamps in seconds when the frames are played.
 
 Returns:
 
@@ -837,7 +837,7 @@ Return type:
 
 [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)
 
-get_frames_played_in_range(*start_seconds: [float](https://docs.python.org/3/library/functions.html#float)*, *stop_seconds: [float](https://docs.python.org/3/library/functions.html#float)*, *fps: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_played_in_range)
+get_frames_played_in_range(*start_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *stop_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *fps: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_played_in_range)
 
 Returns multiple frames in the given range.
 
@@ -847,10 +847,10 @@ range.
 
 Parameters:
 
-- **start_seconds** ([*float*](https://docs.python.org/3/library/functions.html#float)) - Time, in seconds, of the start of the range.
-- **stop_seconds** ([*float*](https://docs.python.org/3/library/functions.html#float)) - Time, in seconds, of the end of the range.
+- **start_seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)) - Time, in seconds, of the start of the range.
+- **stop_seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)) - Time, in seconds, of the end of the range.
 As a half open range, the end is excluded.
-- **fps** ([*float*](https://docs.python.org/3/library/functions.html#float)*,**optional*) - If specified, resample output to this frame
+- **fps** ([*float*](https://docs.python.org/3/builtins/functions.html#float)*,**optional*) - If specified, resample output to this frame
 rate by duplicating or dropping frames as necessary. If None
 (default), returns frames at the source video's frame rate.
 
@@ -866,7 +866,7 @@ Return type:
 
 # VideoStreamMetadata
 
-*class*torchcodec.decoders.VideoStreamMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*, *codec: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/library/functions.html#int)*, *width: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None)*, *height: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None)*, *num_frames_from_header: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None)*, *average_fps_from_header: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*, *pixel_aspect_ratio: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/library/constants.html#None)*, *rotation: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*, *color_primaries: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None)*, *color_space: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None)*, *color_transfer_characteristic: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None)*, *pixel_format: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None)*, *begin_stream_seconds_from_content: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*, *end_stream_seconds_from_content: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*, *num_frames_from_content: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None)*, *duration_seconds: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*, *begin_stream_seconds: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*, *end_stream_seconds: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*, *num_frames: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None)*, *average_fps: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*)[[source]](../_modules/torchcodec/_core/_metadata.html#VideoStreamMetadata)
+*class*torchcodec.decoders.VideoStreamMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, *width: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *height: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_frames_from_header: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *average_fps_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *pixel_aspect_ratio: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *rotation: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_primaries: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_space: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_transfer_characteristic: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *pixel_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_content: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *end_stream_seconds_from_content: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_frames_from_content: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *end_stream_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_frames: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *average_fps: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*)[[source]](../_modules/torchcodec/_core/_metadata.html#VideoStreamMetadata)
 
 Metadata of a single video stream.
 
@@ -878,59 +878,59 @@ Examples using `VideoStreamMetadata`:
 
 Decoding a video with VideoDecoder
 
-average_fps*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+average_fps*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Average fps of the stream. If a [scan](../glossary.html#term-scan) was perfomed, this is
 computed from the number of frames and the duration of the stream.
 Otherwise we fall back to `average_fps_from_header`.
 
-average_fps_from_header*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+average_fps_from_header*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Averate fps of the stream, obtained from the header (float or None).
 We recommend using the `average_fps` attribute instead.
 
-begin_stream_seconds*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+begin_stream_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Beginning of the stream, in seconds (float). Conceptually, this
 corresponds to the first frame's [pts](../glossary.html#term-pts). If a [scan](../glossary.html#term-scan) was performed
 and `begin_stream_seconds_from_content` is not None, then it is returned.
 Otherwise, this value is 0.
 
-begin_stream_seconds_from_content*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+begin_stream_seconds_from_content*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Beginning of the stream, in seconds (float or None).
 Conceptually, this corresponds to the first frame's [pts](../glossary.html#term-pts). It is only
 computed when a [scan](../glossary.html#term-scan) is done as min(frame.pts) across all frames in
 the stream. Usually, this is equal to 0.
 
-begin_stream_seconds_from_header*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+begin_stream_seconds_from_header*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Beginning of the stream, in seconds, obtained from the header (float or
 None). Usually, this is equal to 0.
 
-bit_rate*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+bit_rate*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Bit rate of the stream, in seconds (float or None).
 
-codec*: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None)*
+codec*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Codec (str or None).
 
-color_primaries*: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None)*
+color_primaries*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Color primaries as reported by FFmpeg. E.g. `"bt709"`, `"bt2020"`.
 
-color_space*: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None)*
+color_space*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Color space as reported by FFmpeg. E.g. `"bt709"`,
 `"bt2020nc"`.
 
-color_transfer_characteristic*: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None)*
+color_transfer_characteristic*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Color transfer characteristic as reported by FFmpeg
 E.g. `"bt709"`, `"smpte2084"` (PQ), `"arib-std-b67"` (HLG).
 
-duration_seconds*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+duration_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Duration of the stream in seconds. We try to calculate the duration
 from the actual frames if a [scan](../glossary.html#term-scan) was performed. Otherwise we
@@ -939,19 +939,19 @@ we instead calculate the duration from `num_frames_from_header` and
 `average_fps_from_header`. If all of those are unavailable, we fall back
 to the container-level `duration_seconds_from_header`.
 
-duration_seconds_from_header*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+duration_seconds_from_header*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Duration of the stream, in seconds, obtained from the header (float or
 None). This could be inaccurate.
 
-end_stream_seconds*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+end_stream_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 End of the stream, in seconds (float or None).
 Conceptually, this corresponds to last_frame.pts + last_frame.duration.
 If [scan](../glossary.html#term-scan) was performed and``end_stream_seconds_from_content`` is not None, then that value is
 returned. Otherwise, returns `duration_seconds`.
 
-end_stream_seconds_from_content*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+end_stream_seconds_from_content*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 End of the stream, in seconds (float or None).
 Conceptually, this corresponds to last_frame.pts + last_frame.duration. It
@@ -963,43 +963,43 @@ value would result in an error. Retrieving the last frame is best done by
 simply indexing the [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) object with
 `[-1]`.
 
-height*: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None)*
+height*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Height of the frames (int or None).
 
-num_frames*: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None)*
+num_frames*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Number of frames in the stream (int or None).
 This corresponds to `num_frames_from_content` if a [scan](../glossary.html#term-scan) was made,
 otherwise it corresponds to `num_frames_from_header`. If that value is also
 None, the number of frames is calculated from the duration and the average fps.
 
-num_frames_from_content*: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None)*
+num_frames_from_content*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Number of frames computed by TorchCodec by scanning the stream's
 content (the scan doesn't involve decoding). This is more accurate
 than `num_frames_from_header`. We recommend using the
 `num_frames` attribute instead. (int or None).
 
-num_frames_from_header*: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None)*
+num_frames_from_header*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Number of frames, from the stream's metadata. This is potentially
 inaccurate. We recommend using the `num_frames` attribute instead.
 (int or None).
 
-pixel_aspect_ratio*: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/library/constants.html#None)*
+pixel_aspect_ratio*: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Pixel Aspect Ratio (PAR), also known as Sample Aspect Ratio
 (SAR -- not to be confused with Storage Aspect Ratio, also SAR),
 is the ratio between the width and height of each pixel
 (`fractions.Fraction` or None).
 
-pixel_format*: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None)*
+pixel_format*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 The source pixel format of the video as reported by FFmpeg.
 E.g. `'yuv420p'`, `'yuv444p'`, etc.
 
-rotation*: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None)*
+rotation*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Rotation angle in degrees (counter-clockwise rounded to the nearest
 multiple of 90 degrees) from the display matrix metadata. This indicates
@@ -1016,11 +1016,11 @@ will be returned by TorchCodec's decoding methods. For videos with 90
 or -90 degree rotation, this means width and height are swapped
 compared to the raw encoded dimensions in the container.
 
-stream_index*: [int](https://docs.python.org/3/library/functions.html#int)*
+stream_index*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
 Index of the stream that this metadata refers to (int).
 
-width*: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None)*
+width*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Width of the frames (int or None).
 
@@ -1028,7 +1028,7 @@ Width of the frames (int or None).
 
 # WavDecoder
 
-*class*torchcodec.decoders.WavDecoder(*source: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*)[[source]](../_modules/torchcodec/decoders/_wav_decoder.html#WavDecoder)
+*class*torchcodec.decoders.WavDecoder(*source: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*)[[source]](../_modules/torchcodec/decoders/_wav_decoder.html#WavDecoder)
 
 A fast decoder for WAV audio files.
 
@@ -1094,7 +1094,7 @@ int`.
 Variables:
 
 - **metadata** ([*AudioStreamMetadata*](torchcodec.decoders.AudioStreamMetadata.html#torchcodec.decoders.AudioStreamMetadata)) - Metadata of the audio stream.
-- **stream_index** ([*int*](https://docs.python.org/3/library/functions.html#int)) - The stream index. Always 0 for WAV files.
+- **stream_index** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - The stream index. Always 0 for WAV files.
 
 Examples using `WavDecoder`:
 
@@ -1124,7 +1124,7 @@ Return type:
 
 [AudioSamples](torchcodec.AudioSamples.html#torchcodec.AudioSamples)
 
-get_samples_played_in_range(*start_seconds: [float](https://docs.python.org/3/library/functions.html#float) = 0.0*, *stop_seconds: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [AudioSamples](torchcodec.AudioSamples.html#torchcodec.AudioSamples)[[source]](../_modules/torchcodec/decoders/_wav_decoder.html#WavDecoder.get_samples_played_in_range)
+get_samples_played_in_range(*start_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) = 0.0*, *stop_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [AudioSamples](torchcodec.AudioSamples.html#torchcodec.AudioSamples)[[source]](../_modules/torchcodec/decoders/_wav_decoder.html#WavDecoder.get_samples_played_in_range)
 
 Returns audio samples in the given range.
 
@@ -1138,9 +1138,9 @@ convenient alias.
 
 Parameters:
 
-- **start_seconds** ([*float*](https://docs.python.org/3/library/functions.html#float)) - Time, in seconds, of the start of the
+- **start_seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)) - Time, in seconds, of the start of the
 range. Default: 0.
-- **stop_seconds** ([*float*](https://docs.python.org/3/library/functions.html#float)*or**None*) - Time, in seconds, of the end of the
+- **stop_seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)*or**None*) - Time, in seconds, of the end of the
 range. As a half open range, the end is excluded. Default: None,
 which decodes samples until the end.
 
@@ -1156,7 +1156,7 @@ Return type:
 
 # decode_avif
 
-torchcodec.decoders.decode_avif(*source: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['UNCHANGED', 'GRAY', 'GRAY_ALPHA', 'RGB', 'RGB_ALPHA'] | [ImageReadMode](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) = 'RGB'*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*, *num_threads: [int](https://docs.python.org/3/library/functions.html#int) = 1*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_image_decoders.html#decode_avif)
+torchcodec.decoders.decode_avif(*source: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['UNCHANGED', 'GRAY', 'GRAY_ALPHA', 'RGB', 'RGB_ALPHA'] | [ImageReadMode](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) = 'RGB'*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*, *num_threads: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_image_decoders.html#decode_avif)
 
 Decode an AVIF image into a `[N]CHW` tensor.
 
@@ -1176,7 +1176,7 @@ Parameters:
 - **source** (str, `pathlib.Path`, bytes, or `torch.Tensor`) - The encoded AVIF data: a path (`str` or `pathlib.Path`), a
 `bytes` object, or a 1-D uint8 `torch.Tensor` of the raw encoded
 bytes.
-- **mode** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*ImageReadMode*](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode)*,**optional*) - Desired color mode of the output
+- **mode** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*ImageReadMode*](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode)*,**optional*) - Desired color mode of the output
 image. Can be one of `"UNCHANGED"`, `"GRAY"`, `"GRAY_ALPHA"`,
 `"RGB"`, or `"RGB_ALPHA"`. Default is `"RGB"`.
 - **output_dtype** (torch.dtype or `"auto"`, optional) - desired dtype of the
@@ -1188,7 +1188,7 @@ the samples up to fill the full 16-bit range `[0, 65535]` (8-bit
 while `torch.uint8` scales higher-bit sources down. `"auto"`
 yields uint8 for 8-bit AVIFs and uint16 (again filling `[0, 65535]`)
 for higher-bit ones.
-- **num_threads** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Number of threads to use for decoding,
+- **num_threads** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Number of threads to use for decoding,
 directly passed to libavif. Default is 1.
 
 Returns:
@@ -1212,7 +1212,7 @@ Decoding images
 
 # decode_gif
 
-torchcodec.decoders.decode_gif(*source: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['UNCHANGED', 'GRAY', 'GRAY_ALPHA', 'RGB', 'RGB_ALPHA'] | [ImageReadMode](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) = 'RGB'*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_image_decoders.html#decode_gif)
+torchcodec.decoders.decode_gif(*source: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['UNCHANGED', 'GRAY', 'GRAY_ALPHA', 'RGB', 'RGB_ALPHA'] | [ImageReadMode](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) = 'RGB'*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_image_decoders.html#decode_gif)
 
 Decode a GIF image into a `[N]CHW` tensor.
 
@@ -1232,7 +1232,7 @@ Parameters:
 - **source** (str, `pathlib.Path`, bytes, or `torch.Tensor`) - The encoded GIF data: a path (`str` or `pathlib.Path`), a
 `bytes` object, or a 1-D uint8 `torch.Tensor` of the raw encoded
 bytes.
-- **mode** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*ImageReadMode*](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode)*,**optional*) - Desired color mode of the output
+- **mode** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*ImageReadMode*](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode)*,**optional*) - Desired color mode of the output
 image. Can be one of `"UNCHANGED"`, `"GRAY"`, `"GRAY_ALPHA"`,
 `"RGB"`, or `"RGB_ALPHA"`. Default is `"RGB"`.
 - **output_dtype** (torch.dtype or `"auto"`, optional) - desired dtype of the
@@ -1263,7 +1263,7 @@ Decoding images
 
 # decode_heic
 
-torchcodec.decoders.decode_heic(*source: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['UNCHANGED', 'GRAY', 'GRAY_ALPHA', 'RGB', 'RGB_ALPHA'] | [ImageReadMode](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) = 'RGB'*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_image_decoders.html#decode_heic)
+torchcodec.decoders.decode_heic(*source: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['UNCHANGED', 'GRAY', 'GRAY_ALPHA', 'RGB', 'RGB_ALPHA'] | [ImageReadMode](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) = 'RGB'*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_image_decoders.html#decode_heic)
 
 Decode an HEIC/HEIF image into a `[N]CHW` tensor - requires `libheif`!
 
@@ -1290,7 +1290,7 @@ Parameters:
 - **source** (str, `pathlib.Path`, bytes, or `torch.Tensor`) - The encoded HEIC/HEIF data: a path (`str` or `pathlib.Path`), a
 `bytes` object, or a 1-D uint8 `torch.Tensor` of the raw encoded
 bytes.
-- **mode** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*ImageReadMode*](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode)*,**optional*) - Desired color mode of the output
+- **mode** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*ImageReadMode*](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode)*,**optional*) - Desired color mode of the output
 image. Can be one of `"UNCHANGED"`, `"GRAY"`, `"GRAY_ALPHA"`,
 `"RGB"`, or `"RGB_ALPHA"`. Default is `"RGB"`.
 - **output_dtype** (torch.dtype or `"auto"`, optional) - desired dtype of the
@@ -1324,7 +1324,7 @@ Decoding images
 
 # decode_image
 
-torchcodec.decoders.decode_image(*source: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['UNCHANGED', 'GRAY', 'GRAY_ALPHA', 'RGB', 'RGB_ALPHA'] | [ImageReadMode](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) = 'RGB'*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_image_decoders.html#decode_image)
+torchcodec.decoders.decode_image(*source: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['UNCHANGED', 'GRAY', 'GRAY_ALPHA', 'RGB', 'RGB_ALPHA'] | [ImageReadMode](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) = 'RGB'*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_image_decoders.html#decode_image)
 
 Decode an image into a `[N]CHW` tensor, detecting the format automatically.
 
@@ -1353,7 +1353,7 @@ Parameters:
 - **source** (str, `pathlib.Path`, bytes, or `torch.Tensor`) - The encoded image data: a path (`str` or `pathlib.Path`), a
 `bytes` object, or a 1-D uint8 `torch.Tensor` of the raw encoded
 bytes.
-- **mode** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*ImageReadMode*](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode)*,**optional*) - Desired color mode of the output
+- **mode** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*ImageReadMode*](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode)*,**optional*) - Desired color mode of the output
 image. Can be one of `"UNCHANGED"`, `"GRAY"`, `"GRAY_ALPHA"`,
 `"RGB"`, or `"RGB_ALPHA"`. Default is `"RGB"`.
 - **output_dtype** (torch.dtype or `"auto"`, optional) - desired dtype of the
@@ -1393,7 +1393,7 @@ Migrating from TorchVision to TorchCodec
 
 # decode_jpeg
 
-torchcodec.decoders.decode_jpeg(*source: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [list](https://docs.python.org/3/library/stdtypes.html#list)*, ***, *mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['UNCHANGED', 'GRAY', 'GRAY_ALPHA', 'RGB', 'RGB_ALPHA'] | [ImageReadMode](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) = 'RGB'*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*, *device: [str](https://docs.python.org/3/library/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) = 'cpu'*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [list](https://docs.python.org/3/library/stdtypes.html#list)[[Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)][[source]](../_modules/torchcodec/decoders/_image_decoders.html#decode_jpeg)
+torchcodec.decoders.decode_jpeg(*source: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [list](https://docs.python.org/3/builtins/stdtypes.html#list)*, ***, *mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['UNCHANGED', 'GRAY', 'GRAY_ALPHA', 'RGB', 'RGB_ALPHA'] | [ImageReadMode](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) = 'RGB'*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*, *device: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) = 'cpu'*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [list](https://docs.python.org/3/builtins/stdtypes.html#list)[[Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)][[source]](../_modules/torchcodec/decoders/_image_decoders.html#decode_jpeg)
 
 Decode a JPEG image into a `CHW` tensor, on CPU or CUDA.
 
@@ -1421,7 +1421,7 @@ Parameters:
 bytes. Pass a list (or tuple) to decode a batch, in which case a list of
 tensors is returned instead of a single tensor. The encoded bytes must
 live on CPU, even when decoding to a CUDA device.
-- **mode** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*ImageReadMode*](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode)*,**optional*) - Desired color mode of the output
+- **mode** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*ImageReadMode*](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode)*,**optional*) - Desired color mode of the output
 image. Can be one of `"UNCHANGED"`, `"GRAY"`, `"GRAY_ALPHA"`,
 `"RGB"`, or `"RGB_ALPHA"`. Default is `"RGB"`.
 - **output_dtype** (torch.dtype or `"auto"`, optional) - desired dtype of the
@@ -1430,7 +1430,7 @@ output image tensor. Accepted values are `torch.uint8` (default),
 `"auto"` and `torch.uint8` are equivalent. `torch.uint16`
 emulates a 16-bit output by scaling the 8-bit values to the full
 16-bit range (0-255 -> 0-65535).
-- **device** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*torch.device*](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device)*,**optional*) - Device to decode on, `"cpu"`
+- **device** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*torch.device*](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device)*,**optional*) - Device to decode on, `"cpu"`
 (default) or a CUDA device. CUDA decoding uses nvJPEG. We recommend
 passing a batch of sources when decoding on CUDA, for speed.
 
@@ -1461,7 +1461,7 @@ Encoding images
 
 # decode_png
 
-torchcodec.decoders.decode_png(*source: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['UNCHANGED', 'GRAY', 'GRAY_ALPHA', 'RGB', 'RGB_ALPHA'] | [ImageReadMode](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) = 'RGB'*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_image_decoders.html#decode_png)
+torchcodec.decoders.decode_png(*source: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['UNCHANGED', 'GRAY', 'GRAY_ALPHA', 'RGB', 'RGB_ALPHA'] | [ImageReadMode](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) = 'RGB'*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_image_decoders.html#decode_png)
 
 Decode a PNG image into a `CHW` tensor.
 
@@ -1478,7 +1478,7 @@ Parameters:
 - **source** (str, `pathlib.Path`, bytes, or `torch.Tensor`) - The encoded PNG data: a path (`str` or `pathlib.Path`), a
 `bytes` object, or a 1-D uint8 `torch.Tensor` of the raw encoded
 bytes.
-- **mode** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*ImageReadMode*](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode)*,**optional*) - Desired color mode of the output
+- **mode** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*ImageReadMode*](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode)*,**optional*) - Desired color mode of the output
 image. Can be one of `"UNCHANGED"`, `"GRAY"`, `"GRAY_ALPHA"`,
 `"RGB"`, or `"RGB_ALPHA"`. Default is `"RGB"`.
 - **output_dtype** (torch.dtype or `"auto"`, optional) - desired dtype of the
@@ -1509,7 +1509,7 @@ Decoding images
 
 # decode_webp
 
-torchcodec.decoders.decode_webp(*source: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['UNCHANGED', 'GRAY', 'GRAY_ALPHA', 'RGB', 'RGB_ALPHA'] | [ImageReadMode](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) = 'RGB'*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_image_decoders.html#decode_webp)
+torchcodec.decoders.decode_webp(*source: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['UNCHANGED', 'GRAY', 'GRAY_ALPHA', 'RGB', 'RGB_ALPHA'] | [ImageReadMode](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) = 'RGB'*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_image_decoders.html#decode_webp)
 
 Decode a WebP image into a `[N]CHW` tensor.
 
@@ -1529,7 +1529,7 @@ Parameters:
 - **source** (str, `pathlib.Path`, bytes, or `torch.Tensor`) - The encoded WebP data: a path (`str` or `pathlib.Path`), a
 `bytes` object, or a 1-D uint8 `torch.Tensor` of the raw encoded
 bytes.
-- **mode** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*ImageReadMode*](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode)*,**optional*) - Desired color mode of the output
+- **mode** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*ImageReadMode*](torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode)*,**optional*) - Desired color mode of the output
 image. Can be one of `"UNCHANGED"`, `"GRAY"`, `"GRAY_ALPHA"`,
 `"RGB"`, or `"RGB_ALPHA"`. Default is `"RGB"`.
 - **output_dtype** (torch.dtype or `"auto"`, optional) - desired dtype of the
@@ -1560,7 +1560,7 @@ Decoding images
 
 # get_nvdec_cache_capacity
 
-torchcodec.decoders.get_nvdec_cache_capacity() → [int](https://docs.python.org/3/library/functions.html#int)[[source]](../_modules/torchcodec/decoders/_decoder_utils.html#get_nvdec_cache_capacity)
+torchcodec.decoders.get_nvdec_cache_capacity() → [int](https://docs.python.org/3/builtins/functions.html#int)[[source]](../_modules/torchcodec/decoders/_decoder_utils.html#get_nvdec_cache_capacity)
 
 Get the capacity of the per-device NVDEC decoder cache.
 
@@ -1572,13 +1572,13 @@ The maximum number of NVDEC decoders that can be cached per GPU device.
 
 Return type:
 
-[int](https://docs.python.org/3/library/functions.html#int)
+[int](https://docs.python.org/3/builtins/functions.html#int)
 
 ---
 
 # set_cuda_backend
 
-torchcodec.decoders.set_cuda_backend(*backend: [str](https://docs.python.org/3/library/stdtypes.html#str)*) → [Generator](https://docs.python.org/3/library/collections.abc.html#collections.abc.Generator)[[None](https://docs.python.org/3/library/constants.html#None), [None](https://docs.python.org/3/library/constants.html#None), [None](https://docs.python.org/3/library/constants.html#None)][[source]](../_modules/torchcodec/decoders/_decoder_utils.html#set_cuda_backend)
+torchcodec.decoders.set_cuda_backend(*backend: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*) → [Generator](https://docs.python.org/3/library/collections.abc.html#collections.abc.Generator)[[None](https://docs.python.org/3/builtins/constants.html#None), [None](https://docs.python.org/3/builtins/constants.html#None), [None](https://docs.python.org/3/builtins/constants.html#None)][[source]](../_modules/torchcodec/decoders/_decoder_utils.html#set_cuda_backend)
 
 Context Manager to set the CUDA backend for [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder).
 
@@ -1598,7 +1598,7 @@ This is thread-safe and async-safe.
 
 Parameters:
 
-**backend** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)) - The CUDA backend to use. Can be `"nvdec"` (default) or
+**backend** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)) - The CUDA backend to use. Can be `"nvdec"` (default) or
 `"ffmpeg"`.
 
 Example
@@ -1616,7 +1616,7 @@ Example
 
 # set_nvdec_cache_capacity
 
-torchcodec.decoders.set_nvdec_cache_capacity(*capacity: [int](https://docs.python.org/3/library/functions.html#int)*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/decoders/_decoder_utils.html#set_nvdec_cache_capacity)
+torchcodec.decoders.set_nvdec_cache_capacity(*capacity: [int](https://docs.python.org/3/builtins/functions.html#int)*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/decoders/_decoder_utils.html#set_nvdec_cache_capacity)
 
 Set the maximum number of NVDEC decoders that can be cached (per GPU).
 
@@ -1635,14 +1635,14 @@ See also [`get_nvdec_cache_capacity()`](torchcodec.decoders.get_nvdec_cache_capa
 
 Parameters:
 
-**capacity** ([*int*](https://docs.python.org/3/library/functions.html#int)) - The maximum number of NVDEC decoders that can be cached
+**capacity** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - The maximum number of NVDEC decoders that can be cached
 per GPU device. Must be non-negative. Setting to 0 disables caching.
 
 ---
 
 # AudioEncoder
 
-*class*torchcodec.encoders.AudioEncoder(*samples: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *sample_rate: [int](https://docs.python.org/3/library/functions.html#int)*)[[source]](../_modules/torchcodec/encoders/_audio_encoder.html#AudioEncoder)
+*class*torchcodec.encoders.AudioEncoder(*samples: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int)*)[[source]](../_modules/torchcodec/encoders/_audio_encoder.html#AudioEncoder)
 
 A single-stream audio encoder.
 
@@ -1661,7 +1661,7 @@ Parameters:
 tensor of shape `(num_channels, num_samples)`, or a 1D tensor in
 which case `num_channels = 1` is assumed. Values must be float
 values in `[-1, 1]`.
-- **sample_rate** ([*int*](https://docs.python.org/3/library/functions.html#int)) - The sample rate of the **input** `samples`. The
+- **sample_rate** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - The sample rate of the **input** `samples`. The
 sample rate of the encoded output can be specified using the
 encoding methods (`to_file`, etc.).
 
@@ -1678,7 +1678,7 @@ Encoding audio samples with AudioEncoder
 
 Encoding video with the Encoder
 
-to_file(*dest: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *bit_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *num_channels: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *sample_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_audio_encoder.html#AudioEncoder.to_file)
+to_file(*dest: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *bit_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *num_channels: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/encoders/_audio_encoder.html#AudioEncoder.to_file)
 
 Encode samples into a file.
 
@@ -1687,17 +1687,17 @@ Parameters:
 - **dest** (str or `pathlib.Path`) - The path to the output file, e.g.
 `audio.mp3`. The extension of the file determines the audio
 format and container.
-- **bit_rate** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The output bit rate. Encoders typically
+- **bit_rate** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The output bit rate. Encoders typically
 support a finite set of bit rate values, so `bit_rate` will be
 matched to one of those supported values. The default is chosen
 by FFmpeg.
-- **num_channels** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of channels of the encoded
+- **num_channels** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of channels of the encoded
 output samples. By default, the number of channels of the input
 `samples` is used.
-- **sample_rate** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The sample rate of the encoded output.
+- **sample_rate** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The sample rate of the encoded output.
 By default, the sample rate of the input `samples` is used.
 
-to_file_like(*file_like*, *format: [str](https://docs.python.org/3/library/stdtypes.html#str)*, ***, *bit_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *num_channels: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *sample_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_audio_encoder.html#AudioEncoder.to_file_like)
+to_file_like(*file_like*, *format: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, ***, *bit_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *num_channels: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/encoders/_audio_encoder.html#AudioEncoder.to_file_like)
 
 Encode samples into a file-like object.
 
@@ -1708,34 +1708,34 @@ Parameters:
 write mode, etc. Methods must have the following signature:
 `write(data: bytes) -> int` and `seek(offset: int, whence:
 int = 0) -> int`.
-- **format** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)) - The format of the encoded samples, e.g. "mp3", "wav"
+- **format** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)) - The format of the encoded samples, e.g. "mp3", "wav"
 or "flac".
-- **bit_rate** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The output bit rate. Encoders typically
+- **bit_rate** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The output bit rate. Encoders typically
 support a finite set of bit rate values, so `bit_rate` will be
 matched to one of those supported values. The default is chosen
 by FFmpeg.
-- **num_channels** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of channels of the encoded
+- **num_channels** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of channels of the encoded
 output samples. By default, the number of channels of the input
 `samples` is used.
-- **sample_rate** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The sample rate of the encoded output.
+- **sample_rate** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The sample rate of the encoded output.
 By default, the sample rate of the input `samples` is used.
 
-to_tensor(*format: [str](https://docs.python.org/3/library/stdtypes.html#str)*, ***, *bit_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *num_channels: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *sample_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/encoders/_audio_encoder.html#AudioEncoder.to_tensor)
+to_tensor(*format: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, ***, *bit_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *num_channels: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/encoders/_audio_encoder.html#AudioEncoder.to_tensor)
 
 Encode samples into raw bytes, as a 1D uint8 Tensor.
 
 Parameters:
 
-- **format** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)) - The format of the encoded samples, e.g. "mp3", "wav"
+- **format** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)) - The format of the encoded samples, e.g. "mp3", "wav"
 or "flac".
-- **bit_rate** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The output bit rate. Encoders typically
+- **bit_rate** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The output bit rate. Encoders typically
 support a finite set of bit rate values, so `bit_rate` will be
 matched to one of those supported values. The default is chosen
 by FFmpeg.
-- **num_channels** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of channels of the encoded
+- **num_channels** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of channels of the encoded
 output samples. By default, the number of channels of the input
 `samples` is used.
-- **sample_rate** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The sample rate of the encoded output.
+- **sample_rate** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The sample rate of the encoded output.
 By default, the sample rate of the input `samples` is used.
 
 Returns:
@@ -1750,7 +1750,7 @@ Tensor
 
 # AudioStream
 
-*class*torchcodec.encoders.AudioStream(*encoder_tensor: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *stream_identifier: [int](https://docs.python.org/3/library/functions.html#int)*)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#AudioStream)
+*class*torchcodec.encoders.AudioStream(*encoder_tensor: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *stream_identifier: [int](https://docs.python.org/3/builtins/functions.html#int)*)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#AudioStream)
 
 An audio stream within an [`Encoder`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder).
 
@@ -1765,7 +1765,7 @@ Examples using `AudioStream`:
 
 Encoding audio and video streams with the Encoder
 
-add_samples(*samples: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#AudioStream.add_samples)
+add_samples(*samples: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#AudioStream.add_samples)
 
 Add audio samples to this stream.
 
@@ -1842,7 +1842,7 @@ Encoding audio and video streams with the Encoder
 
 Encoding video with the Encoder
 
-add_audio(***, *sample_rate: [int](https://docs.python.org/3/library/functions.html#int)*, *num_channels: [int](https://docs.python.org/3/library/functions.html#int)*, *bit_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *out_num_channels: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *out_sample_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [AudioStream](torchcodec.encoders.AudioStream.html#torchcodec.encoders.AudioStream)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#Encoder.add_audio)
+add_audio(***, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int)*, *num_channels: [int](https://docs.python.org/3/builtins/functions.html#int)*, *bit_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *out_num_channels: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *out_sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [AudioStream](torchcodec.encoders.AudioStream.html#torchcodec.encoders.AudioStream)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#Encoder.add_audio)
 
 Add an audio stream to the encoder.
 
@@ -1850,15 +1850,15 @@ Must be called before `open_file()` or `open_file_like()`.
 
 Parameters:
 
-- **sample_rate** ([*int*](https://docs.python.org/3/library/functions.html#int)) - The sample rate of the **input** samples.
-- **num_channels** ([*int*](https://docs.python.org/3/library/functions.html#int)) - The number of channels of the **input** samples.
-- **bit_rate** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The output bit rate. Encoders typically
+- **sample_rate** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - The sample rate of the **input** samples.
+- **num_channels** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - The number of channels of the **input** samples.
+- **bit_rate** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The output bit rate. Encoders typically
 support a finite set of bit rate values, so `bit_rate` will be
 matched to one of those supported values. The default is chosen
 by FFmpeg.
-- **out_num_channels** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of channels of the
+- **out_num_channels** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of channels of the
 encoded output. By default, the input `num_channels` is used.
-- **out_sample_rate** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The sample rate of the encoded
+- **out_sample_rate** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The sample rate of the encoded
 output. By default, the input `sample_rate` is used.
 
 Returns:
@@ -1866,7 +1866,7 @@ Returns:
 An audio stream object. Use its [`add_samples()`](torchcodec.encoders.AudioStream.html#torchcodec.encoders.AudioStream.add_samples)
 method to feed samples into the stream.
 
-add_video(***, *height: [int](https://docs.python.org/3/library/functions.html#int)*, *width: [int](https://docs.python.org/3/library/functions.html#int)*, *frame_rate: [float](https://docs.python.org/3/library/functions.html#float)*, *device: [str](https://docs.python.org/3/library/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *codec: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *pixel_format: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *crf: [int](https://docs.python.org/3/library/functions.html#int) | [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *preset: [str](https://docs.python.org/3/library/stdtypes.html#str) | [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *extra_options: [dict](https://docs.python.org/3/library/stdtypes.html#dict)[[str](https://docs.python.org/3/library/stdtypes.html#str), [Any](https://docs.python.org/3/library/typing.html#typing.Any)] | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [VideoStream](torchcodec.encoders.VideoStream.html#torchcodec.encoders.VideoStream)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#Encoder.add_video)
+add_video(***, *height: [int](https://docs.python.org/3/builtins/functions.html#int)*, *width: [int](https://docs.python.org/3/builtins/functions.html#int)*, *frame_rate: [float](https://docs.python.org/3/builtins/functions.html#float)*, *device: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *pixel_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *crf: [int](https://docs.python.org/3/builtins/functions.html#int) | [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *preset: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *extra_options: [dict](https://docs.python.org/3/builtins/stdtypes.html#dict)[[str](https://docs.python.org/3/builtins/stdtypes.html#str), [Any](https://docs.python.org/3/library/typing.html#typing.Any)] | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [VideoStream](torchcodec.encoders.VideoStream.html#torchcodec.encoders.VideoStream)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#Encoder.add_video)
 
 Add a video stream to the encoder.
 
@@ -1874,31 +1874,31 @@ Must be called before `open_file()` or `open_file_like()`.
 
 Parameters:
 
-- **height** ([*int*](https://docs.python.org/3/library/functions.html#int)) - The height of the **input** video frames.
-- **width** ([*int*](https://docs.python.org/3/library/functions.html#int)) - The width of the **input** video frames.
-- **frame_rate** ([*float*](https://docs.python.org/3/library/functions.html#float)) - The frame rate of the **input** video frames.
+- **height** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - The height of the **input** video frames.
+- **width** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - The width of the **input** video frames.
+- **frame_rate** ([*float*](https://docs.python.org/3/builtins/functions.html#float)) - The frame rate of the **input** video frames.
 Also defines the encoded **output** frame rate.
-- **device** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*torch.device*](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device)*,**optional*) - The device to use for
+- **device** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*torch.device*](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device)*,**optional*) - The device to use for
 encoding, e.g. `"cpu"` or `"cuda"`. If `None` (default), uses
 the current default device.
-- **codec** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - The codec to use for encoding (e.g.,
+- **codec** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - The codec to use for encoding (e.g.,
 `"libx264"`). If not specified, the default codec for the
 container format will be used.
 See [Codec Selection](../generated_examples/encoding/video_encoding.html#codec-selection) for details.
-- **pixel_format** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - The pixel format for encoding (e.g.,
+- **pixel_format** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - The pixel format for encoding (e.g.,
 `"yuv420p"`). If not specified, uses codec's default format.
 Must be left as `None` when encoding on CUDA.
 See [Pixel Format](../generated_examples/encoding/video_encoding.html#pixel-format) for details.
-- **crf** ([*int*](https://docs.python.org/3/library/functions.html#int)*or*[*float*](https://docs.python.org/3/library/functions.html#float)*,**optional*) - Constant Rate Factor for encoding
+- **crf** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*or*[*float*](https://docs.python.org/3/builtins/functions.html#float)*,**optional*) - Constant Rate Factor for encoding
 quality. Lower values mean better quality. Valid range depends
 on the encoder (e.g. 0-51 for libx264). Defaults to None (which
 will use encoder's default). See [CRF (Constant Rate Factor)](../generated_examples/encoding/video_encoding.html#crf) for details.
-- **preset** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Encoder option that controls the
+- **preset** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Encoder option that controls the
 tradeoff between encoding speed and compression (output size).
 Commonly a string: `"fast"`, `"medium"`, `"slow"`.
 Defaults to None (which will use encoder's default).
 See [Preset](../generated_examples/encoding/video_encoding.html#preset) for details.
-- **extra_options** ([*dict*](https://docs.python.org/3/library/stdtypes.html#dict)*[*[*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**Any**]**,**optional*) - A dictionary of additional
+- **extra_options** ([*dict*](https://docs.python.org/3/builtins/stdtypes.html#dict)*[*[*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**Any**]**,**optional*) - A dictionary of additional
 encoder options to pass, e.g. `{"qp": 5, "tune": "film"}`.
 See [Extra Options](../generated_examples/encoding/video_encoding.html#extra-options) for details.
 
@@ -1907,7 +1907,7 @@ Returns:
 A video stream object. Use its [`add_frames()`](torchcodec.encoders.VideoStream.html#torchcodec.encoders.VideoStream.add_frames)
 method to feed frames into the stream.
 
-close() → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#Encoder.close)
+close() → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#Encoder.close)
 
 Flush all remaining data and close the encoder.
 
@@ -1915,7 +1915,7 @@ This must be called when encoding is complete to ensure all buffered
 data is written. Using the encoder as a context manager (`with`
 statement) calls this automatically.
 
-open_file(*dest: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*) → Encoder[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#Encoder.open_file)
+open_file(*dest: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*) → Encoder[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#Encoder.open_file)
 
 Open a file for writing the encoded output.
 
@@ -1935,7 +1935,7 @@ Return type:
 
 Encoder
 
-open_file_like(*dest*, ***, *format: [str](https://docs.python.org/3/library/stdtypes.html#str)*) → Encoder[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#Encoder.open_file_like)
+open_file_like(*dest*, ***, *format: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*) → Encoder[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#Encoder.open_file_like)
 
 Open a file-like object for writing the encoded output.
 
@@ -1949,7 +1949,7 @@ methods, such as `io.BytesIO()`, an open file in binary write
 mode, etc. Methods must have the following signature:
 `write(data: bytes) -> int` and `seek(offset: int, whence:
 int = 0) -> int`.
-- **format** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)) - The container format of the encoded output, e.g.
+- **format** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)) - The container format of the encoded output, e.g.
 `"mp4"`, `"mov"`, `"mkv"`, `"avi"`, `"webm"`, etc.
 
 Returns:
@@ -2000,7 +2000,7 @@ Encoding images
 
 Migrating from TorchVision to TorchCodec
 
-to_file(*dest: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *quality: [int](https://docs.python.org/3/library/functions.html#int) = 75*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_file)
+to_file(*dest: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *quality: [int](https://docs.python.org/3/builtins/functions.html#int) = 75*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_file)
 
 Encode the image into a JPEG file.
 
@@ -2008,10 +2008,10 @@ Parameters:
 
 - **dest** (str or `pathlib.Path`) - The path to the output file, e.g.
 `image.jpg`.
-- **quality** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Quality of the output, between 1 and 100.
+- **quality** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Quality of the output, between 1 and 100.
 Higher means better quality and larger file size. Default: 75.
 
-to_file_like(*dest: [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | [BufferedIOBase](https://docs.python.org/3/library/io.html#io.BufferedIOBase)*, ***, *quality: [int](https://docs.python.org/3/library/functions.html#int) = 75*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_file_like)
+to_file_like(*dest: [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | [BufferedIOBase](https://docs.python.org/3/library/io.html#io.BufferedIOBase)*, ***, *quality: [int](https://docs.python.org/3/builtins/functions.html#int) = 75*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_file_like)
 
 Encode the image into a file-like object.
 
@@ -2019,10 +2019,10 @@ Parameters:
 
 - **dest** - A writable file-like object supporting `write` and `seek`,
 such as `io.BytesIO()` or an open file in binary write mode.
-- **quality** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Quality of the output, between 1 and 100.
+- **quality** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Quality of the output, between 1 and 100.
 Higher means better quality and larger file size. Default: 75.
 
-to_tensor(***, *quality: [int](https://docs.python.org/3/library/functions.html#int) = 75*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_tensor)
+to_tensor(***, *quality: [int](https://docs.python.org/3/builtins/functions.html#int) = 75*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_tensor)
 
 Encode the image into raw bytes, as a 1D uint8 tensor.
 
@@ -2031,7 +2031,7 @@ input yields a CUDA tensor).
 
 Parameters:
 
-**quality** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Quality of the output, between 1 and 100.
+**quality** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Quality of the output, between 1 and 100.
 Higher means better quality and larger file size. Default: 75.
 
 Returns:
@@ -2081,7 +2081,7 @@ Encoding images
 
 Migrating from TorchVision to TorchCodec
 
-to_file(*dest: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *compression_level: [int](https://docs.python.org/3/library/functions.html#int) = 6*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#PngEncoder.to_file)
+to_file(*dest: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *compression_level: [int](https://docs.python.org/3/builtins/functions.html#int) = 6*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#PngEncoder.to_file)
 
 Encode the image into a PNG file.
 
@@ -2089,11 +2089,11 @@ Parameters:
 
 - **dest** (str or `pathlib.Path`) - The path to the output file, e.g.
 `image.png`.
-- **compression_level** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - zlib compression level between 0
+- **compression_level** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - zlib compression level between 0
 (no compression, fastest) and 9 (max compression, slowest).
 Default: 6.
 
-to_file_like(*dest: [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | [BufferedIOBase](https://docs.python.org/3/library/io.html#io.BufferedIOBase)*, ***, *compression_level: [int](https://docs.python.org/3/library/functions.html#int) = 6*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#PngEncoder.to_file_like)
+to_file_like(*dest: [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | [BufferedIOBase](https://docs.python.org/3/library/io.html#io.BufferedIOBase)*, ***, *compression_level: [int](https://docs.python.org/3/builtins/functions.html#int) = 6*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#PngEncoder.to_file_like)
 
 Encode the image into a file-like object.
 
@@ -2101,17 +2101,17 @@ Parameters:
 
 - **dest** - A writable file-like object supporting `write` and `seek`,
 such as `io.BytesIO()` or an open file in binary write mode.
-- **compression_level** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - zlib compression level between 0
+- **compression_level** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - zlib compression level between 0
 (no compression, fastest) and 9 (max compression, slowest).
 Default: 6.
 
-to_tensor(***, *compression_level: [int](https://docs.python.org/3/library/functions.html#int) = 6*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#PngEncoder.to_tensor)
+to_tensor(***, *compression_level: [int](https://docs.python.org/3/builtins/functions.html#int) = 6*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#PngEncoder.to_tensor)
 
 Encode the image into raw bytes, as a 1D uint8 tensor.
 
 Parameters:
 
-**compression_level** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - zlib compression level between 0
+**compression_level** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - zlib compression level between 0
 (no compression, fastest) and 9 (max compression, slowest).
 Default: 6.
 
@@ -2127,7 +2127,7 @@ Return type:
 
 # VideoEncoder
 
-*class*torchcodec.encoders.VideoEncoder(*frames: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *frame_rate: [float](https://docs.python.org/3/library/functions.html#float)*)[[source]](../_modules/torchcodec/encoders/_video_encoder.html#VideoEncoder)
+*class*torchcodec.encoders.VideoEncoder(*frames: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *frame_rate: [float](https://docs.python.org/3/builtins/functions.html#float)*)[[source]](../_modules/torchcodec/encoders/_video_encoder.html#VideoEncoder)
 
 A single-stream video encoder on CPU or CUDA.
 
@@ -2148,7 +2148,7 @@ C is 3 channels (RGB), H is height, and W is width.
 Values must be uint8 in the range `[0, 255]`.
 The tensor can be on CPU or CUDA. The device of the tensor
 determines which encoder is used (CPU or GPU).
-- **frame_rate** ([*float*](https://docs.python.org/3/library/functions.html#float)) - The frame rate of the **input** `frames`. Also defines the encoded **output** frame rate.
+- **frame_rate** ([*float*](https://docs.python.org/3/builtins/functions.html#float)) - The frame rate of the **input** `frames`. Also defines the encoded **output** frame rate.
 
 Examples using `VideoEncoder`:
 
@@ -2158,7 +2158,7 @@ Examples using `VideoEncoder`:
 
 Encoding video with the Encoder
 
-to_file(*dest: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *codec: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *pixel_format: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *crf: [int](https://docs.python.org/3/library/functions.html#int) | [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *preset: [str](https://docs.python.org/3/library/stdtypes.html#str) | [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *extra_options: [dict](https://docs.python.org/3/library/stdtypes.html#dict)[[str](https://docs.python.org/3/library/stdtypes.html#str), [Any](https://docs.python.org/3/library/typing.html#typing.Any)] | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_video_encoder.html#VideoEncoder.to_file)
+to_file(*dest: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *pixel_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *crf: [int](https://docs.python.org/3/builtins/functions.html#int) | [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *preset: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *extra_options: [dict](https://docs.python.org/3/builtins/stdtypes.html#dict)[[str](https://docs.python.org/3/builtins/stdtypes.html#str), [Any](https://docs.python.org/3/library/typing.html#typing.Any)] | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/encoders/_video_encoder.html#VideoEncoder.to_file)
 
 Encode frames into a file.
 
@@ -2167,28 +2167,28 @@ Parameters:
 - **dest** (str or `pathlib.Path`) - The path to the output file, e.g.
 `video.mp4`. The extension of the file determines the video
 container format.
-- **codec** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - The codec to use for encoding (e.g., "libx264",
+- **codec** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - The codec to use for encoding (e.g., "libx264",
 "h264"). If not specified, the default codec
 for the container format will be used.
 See [Codec Selection](../generated_examples/encoding/video_encoding.html#codec-selection) for details.
-- **pixel_format** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - The pixel format for encoding (e.g.,
+- **pixel_format** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - The pixel format for encoding (e.g.,
 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
 Must be left as `None` when encoding CUDA tensors.
 See [Pixel Format](../generated_examples/encoding/video_encoding.html#pixel-format) for details.
-- **crf** ([*int*](https://docs.python.org/3/library/functions.html#int)*or*[*float*](https://docs.python.org/3/library/functions.html#float)*,**optional*) - Constant Rate Factor for encoding quality. Lower values
+- **crf** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*or*[*float*](https://docs.python.org/3/builtins/functions.html#float)*,**optional*) - Constant Rate Factor for encoding quality. Lower values
 mean better quality. Valid range depends on the encoder (e.g. 0-51 for libx264).
 Defaults to None (which will use encoder's default).
 See [CRF (Constant Rate Factor)](../generated_examples/encoding/video_encoding.html#crf) for details.
-- **preset** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Encoder option that controls the tradeoff between
+- **preset** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Encoder option that controls the tradeoff between
 encoding encoding speed and compression (output size). Valid on the encoder (commonly
 a string: "fast", "medium", "slow"). Defaults to None
 (which will use encoder's default).
 See [Preset](../generated_examples/encoding/video_encoding.html#preset) for details.
-- **extra_options** ([*dict*](https://docs.python.org/3/library/stdtypes.html#dict)*[*[*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**Any**]**,**optional*) - A dictionary of additional
+- **extra_options** ([*dict*](https://docs.python.org/3/builtins/stdtypes.html#dict)*[*[*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**Any**]**,**optional*) - A dictionary of additional
 encoder options to pass, e.g. `{"qp": 5, "tune": "film"}`.
 See [Extra Options](../generated_examples/encoding/video_encoding.html#extra-options) for details.
 
-to_file_like(*file_like*, *format: [str](https://docs.python.org/3/library/stdtypes.html#str)*, ***, *codec: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *pixel_format: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *crf: [int](https://docs.python.org/3/library/functions.html#int) | [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *preset: [str](https://docs.python.org/3/library/stdtypes.html#str) | [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *extra_options: [dict](https://docs.python.org/3/library/stdtypes.html#dict)[[str](https://docs.python.org/3/library/stdtypes.html#str), [Any](https://docs.python.org/3/library/typing.html#typing.Any)] | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_video_encoder.html#VideoEncoder.to_file_like)
+to_file_like(*file_like*, *format: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, ***, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *pixel_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *crf: [int](https://docs.python.org/3/builtins/functions.html#int) | [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *preset: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *extra_options: [dict](https://docs.python.org/3/builtins/stdtypes.html#dict)[[str](https://docs.python.org/3/builtins/stdtypes.html#str), [Any](https://docs.python.org/3/library/typing.html#typing.Any)] | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/encoders/_video_encoder.html#VideoEncoder.to_file_like)
 
 Encode frames into a file-like object.
 
@@ -2199,55 +2199,55 @@ Parameters:
 write mode, etc. Methods must have the following signature:
 `write(data: bytes) -> int` and `seek(offset: int, whence:
 int = 0) -> int`.
-- **format** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)) - The container format of the encoded frames, e.g. "mp4", "mov",
+- **format** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)) - The container format of the encoded frames, e.g. "mp4", "mov",
 "mkv", "avi", "webm", "flv", etc.
-- **codec** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - The codec to use for encoding (e.g., "libx264",
+- **codec** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - The codec to use for encoding (e.g., "libx264",
 "h264"). If not specified, the default codec
 for the container format will be used.
 See [Codec Selection](../generated_examples/encoding/video_encoding.html#codec-selection) for details.
-- **pixel_format** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - The pixel format for encoding (e.g.,
+- **pixel_format** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - The pixel format for encoding (e.g.,
 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
 Must be left as `None` when encoding CUDA tensors.
 See [Pixel Format](../generated_examples/encoding/video_encoding.html#pixel-format) for details.
-- **crf** ([*int*](https://docs.python.org/3/library/functions.html#int)*or*[*float*](https://docs.python.org/3/library/functions.html#float)*,**optional*) - Constant Rate Factor for encoding quality. Lower values
+- **crf** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*or*[*float*](https://docs.python.org/3/builtins/functions.html#float)*,**optional*) - Constant Rate Factor for encoding quality. Lower values
 mean better quality. Valid range depends on the encoder (e.g. 0-51 for libx264).
 Defaults to None (which will use encoder's default).
 See [CRF (Constant Rate Factor)](../generated_examples/encoding/video_encoding.html#crf) for details.
-- **preset** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Encoder option that controls the tradeoff between
+- **preset** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Encoder option that controls the tradeoff between
 encoding encoding speed and compression (output size). Valid on the encoder (commonly
 a string: "fast", "medium", "slow"). Defaults to None
 (which will use encoder's default).
 See [Preset](../generated_examples/encoding/video_encoding.html#preset) for details.
-- **extra_options** ([*dict*](https://docs.python.org/3/library/stdtypes.html#dict)*[*[*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**Any**]**,**optional*) - A dictionary of additional
+- **extra_options** ([*dict*](https://docs.python.org/3/builtins/stdtypes.html#dict)*[*[*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**Any**]**,**optional*) - A dictionary of additional
 encoder options to pass, e.g. `{"qp": 5, "tune": "film"}`.
 See [Extra Options](../generated_examples/encoding/video_encoding.html#extra-options) for details.
 
-to_tensor(*format: [str](https://docs.python.org/3/library/stdtypes.html#str)*, ***, *codec: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *pixel_format: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *crf: [int](https://docs.python.org/3/library/functions.html#int) | [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *preset: [str](https://docs.python.org/3/library/stdtypes.html#str) | [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *extra_options: [dict](https://docs.python.org/3/library/stdtypes.html#dict)[[str](https://docs.python.org/3/library/stdtypes.html#str), [Any](https://docs.python.org/3/library/typing.html#typing.Any)] | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/encoders/_video_encoder.html#VideoEncoder.to_tensor)
+to_tensor(*format: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, ***, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *pixel_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *crf: [int](https://docs.python.org/3/builtins/functions.html#int) | [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *preset: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *extra_options: [dict](https://docs.python.org/3/builtins/stdtypes.html#dict)[[str](https://docs.python.org/3/builtins/stdtypes.html#str), [Any](https://docs.python.org/3/library/typing.html#typing.Any)] | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/encoders/_video_encoder.html#VideoEncoder.to_tensor)
 
 Encode frames into raw bytes, as a 1D uint8 Tensor.
 
 Parameters:
 
-- **format** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)) - The container format of the encoded frames, e.g. "mp4", "mov",
+- **format** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)) - The container format of the encoded frames, e.g. "mp4", "mov",
 "mkv", "avi", "webm", "flv", etc.
-- **codec** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - The codec to use for encoding (e.g., "libx264",
+- **codec** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - The codec to use for encoding (e.g., "libx264",
 "h264"). If not specified, the default codec
 for the container format will be used.
 See [Codec Selection](../generated_examples/encoding/video_encoding.html#codec-selection) for details.
-- **pixel_format** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - The pixel format to encode frames into (e.g.,
+- **pixel_format** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - The pixel format to encode frames into (e.g.,
 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
 Must be left as `None` when encoding CUDA tensors.
 See [Pixel Format](../generated_examples/encoding/video_encoding.html#pixel-format) for details.
-- **crf** ([*int*](https://docs.python.org/3/library/functions.html#int)*or*[*float*](https://docs.python.org/3/library/functions.html#float)*,**optional*) - Constant Rate Factor for encoding quality. Lower values
+- **crf** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*or*[*float*](https://docs.python.org/3/builtins/functions.html#float)*,**optional*) - Constant Rate Factor for encoding quality. Lower values
 mean better quality. Valid range depends on the encoder (e.g. 0-51 for libx264).
 Defaults to None (which will use encoder's default).
 See [CRF (Constant Rate Factor)](../generated_examples/encoding/video_encoding.html#crf) for details.
-- **preset** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Encoder option that controls the tradeoff between
+- **preset** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Encoder option that controls the tradeoff between
 encoding encoding speed and compression (output size). Valid on the encoder (commonly
 a string: "fast", "medium", "slow"). Defaults to None
 (which will use encoder's default).
 See [Preset](../generated_examples/encoding/video_encoding.html#preset) for details.
-- **extra_options** ([*dict*](https://docs.python.org/3/library/stdtypes.html#dict)*[*[*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**Any**]**,**optional*) - A dictionary of additional
+- **extra_options** ([*dict*](https://docs.python.org/3/builtins/stdtypes.html#dict)*[*[*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**Any**]**,**optional*) - A dictionary of additional
 encoder options to pass, e.g. `{"qp": 5, "tune": "film"}`.
 See [Extra Options](../generated_examples/encoding/video_encoding.html#extra-options) for details.
 
@@ -2263,7 +2263,7 @@ Tensor
 
 # VideoStream
 
-*class*torchcodec.encoders.VideoStream(*encoder_tensor: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *stream_identifier: [int](https://docs.python.org/3/library/functions.html#int)*)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#VideoStream)
+*class*torchcodec.encoders.VideoStream(*encoder_tensor: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *stream_identifier: [int](https://docs.python.org/3/builtins/functions.html#int)*)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#VideoStream)
 
 A video stream within an [`Encoder`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder).
 
@@ -2283,7 +2283,7 @@ Encoding audio and video streams with the Encoder
 
 Encoding video with the Encoder
 
-add_frames(*frames: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#VideoStream.add_frames)
+add_frames(*frames: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#VideoStream.add_frames)
 
 Add video frames to this stream.
 
@@ -2300,7 +2300,7 @@ the tensor must match the `device` passed to
 
 # clips_at_random_indices
 
-torchcodec.samplers.clips_at_random_indices(*decoder: [VideoDecoder](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)*, ***, *num_clips: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *num_frames_per_clip: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *num_indices_between_frames: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *sampling_range_start: [int](https://docs.python.org/3/library/functions.html#int) = 0*, *sampling_range_end: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *policy: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['repeat_last', 'wrap', 'error'] = 'repeat_last'*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/samplers/_index_based.html#clips_at_random_indices)
+torchcodec.samplers.clips_at_random_indices(*decoder: [VideoDecoder](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)*, ***, *num_clips: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*, *num_frames_per_clip: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*, *num_indices_between_frames: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*, *sampling_range_start: [int](https://docs.python.org/3/builtins/functions.html#int) = 0*, *sampling_range_end: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *policy: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['repeat_last', 'wrap', 'error'] = 'repeat_last'*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/samplers/_index_based.html#clips_at_random_indices)
 
 Sample [clips](../glossary.html#term-clips) at random indices.
 
@@ -2308,15 +2308,15 @@ Parameters:
 
 - **decoder** ([*VideoDecoder*](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)) - The [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)
 instance to sample clips from.
-- **num_clips** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of clips to return. Default: 1.
-- **num_frames_per_clip** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of frames per clips. Default: 1.
-- **num_indices_between_frames** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of indices between
+- **num_clips** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of clips to return. Default: 1.
+- **num_frames_per_clip** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of frames per clips. Default: 1.
+- **num_indices_between_frames** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of indices between
 the frames *within* a clip. Default: 1, which means frames are
 consecutive. This is sometimes refered-to as "dilation".
-- **sampling_range_start** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The start of the sampling range,
+- **sampling_range_start** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The start of the sampling range,
 which defines the first index that a clip may *start* at. Default:
 0, i.e. the start of the video.
-- **sampling_range_end** ([*int*](https://docs.python.org/3/library/functions.html#int)*or**None**,**optional*) - The end of the sampling
+- **sampling_range_end** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*or**None**,**optional*) - The end of the sampling
 range, which defines the last index that a clip may *start* at. This
 value is exclusive, i.e. a clip may only start within
 [`sampling_range_start`, `sampling_range_end`). If None
@@ -2327,7 +2327,7 @@ set to 99 - 10 + 1 = 90. Negative values are accepted and are
 equivalent to `len(video) - val`. When a clip spans beyond the end
 of the video, the `policy` parameter defines how to construct such
 clip.
-- **policy** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - 
+- **policy** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - 
 
 Defines how to construct clips that span beyond
 the end of the video. This is best described with an example:
@@ -2378,7 +2378,7 @@ How to sample video clips
 
 # clips_at_random_timestamps
 
-torchcodec.samplers.clips_at_random_timestamps(*decoder*, ***, *num_clips: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *num_frames_per_clip: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *seconds_between_frames: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *sampling_range_start: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *sampling_range_end: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *policy: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['repeat_last', 'wrap', 'error'] = 'repeat_last'*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/samplers/_time_based.html#clips_at_random_timestamps)
+torchcodec.samplers.clips_at_random_timestamps(*decoder*, ***, *num_clips: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*, *num_frames_per_clip: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*, *seconds_between_frames: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *sampling_range_start: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *sampling_range_end: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *policy: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['repeat_last', 'wrap', 'error'] = 'repeat_last'*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/samplers/_time_based.html#clips_at_random_timestamps)
 
 Sample [clips](../glossary.html#term-clips) at random timestamps.
 
@@ -2386,9 +2386,9 @@ Parameters:
 
 - **decoder** ([*VideoDecoder*](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)) - The [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)
 instance to sample clips from.
-- **num_clips** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of clips to return. Default: 1.
-- **num_frames_per_clip** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of frames per clips. Default: 1.
-- **seconds_between_frames** ([*float*](https://docs.python.org/3/library/functions.html#float)*or**None**,**optional*) - The time (in seconds)
+- **num_clips** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of clips to return. Default: 1.
+- **num_frames_per_clip** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of frames per clips. Default: 1.
+- **seconds_between_frames** ([*float*](https://docs.python.org/3/builtins/functions.html#float)*or**None**,**optional*) - The time (in seconds)
 between each frame within a clip. More accurately, this defines the
 time between the *frame sampling point*, i.e. the timestamps at
 which we sample the frames. Because frames span intervals in time ,
@@ -2396,12 +2396,12 @@ the resulting start of frames within a clip may not be exactly
 spaced by `seconds_between_frames` - but on average, they will be.
 Default is None, which is set to the average frame duration
 (`1/average_fps`).
-- **sampling_range_start** ([*float*](https://docs.python.org/3/library/functions.html#float)*or**None**,**optional*) - The start of the
+- **sampling_range_start** ([*float*](https://docs.python.org/3/builtins/functions.html#float)*or**None**,**optional*) - The start of the
 sampling range, which defines the first timestamp (in seconds) that
 a clip may *start* at. Default: None, which corresponds to the start
 of the video. (Note: some videos start at negative values, which is
 why the default is not 0).
-- **sampling_range_end** ([*float*](https://docs.python.org/3/library/functions.html#float)*or**None**,**optional*) - The end of the sampling
+- **sampling_range_end** ([*float*](https://docs.python.org/3/builtins/functions.html#float)*or**None**,**optional*) - The end of the sampling
 range, which defines the last timestamp (in seconds) that a clip may
 *start* at. This value is exclusive, i.e. a clip may only start within
 [`sampling_range_start`, `sampling_range_end`). If None
@@ -2410,7 +2410,7 @@ span beyond the end of the video, i.e. it is set to
 `end_video_seconds - (num_frames_per_clip - 1) *
 seconds_between_frames`. When a clip spans beyond the end of the
 video, the `policy` parameter defines how to construct such clip.
-- **policy** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - 
+- **policy** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - 
 
 Defines how to construct clips that span beyond
 the end of the video. This is best described with an example:
@@ -2457,7 +2457,7 @@ How to sample video clips
 
 # clips_at_regular_indices
 
-torchcodec.samplers.clips_at_regular_indices(*decoder: [VideoDecoder](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)*, ***, *num_clips: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *num_frames_per_clip: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *num_indices_between_frames: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *sampling_range_start: [int](https://docs.python.org/3/library/functions.html#int) = 0*, *sampling_range_end: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *policy: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['repeat_last', 'wrap', 'error'] = 'repeat_last'*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/samplers/_index_based.html#clips_at_regular_indices)
+torchcodec.samplers.clips_at_regular_indices(*decoder: [VideoDecoder](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)*, ***, *num_clips: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*, *num_frames_per_clip: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*, *num_indices_between_frames: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*, *sampling_range_start: [int](https://docs.python.org/3/builtins/functions.html#int) = 0*, *sampling_range_end: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *policy: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['repeat_last', 'wrap', 'error'] = 'repeat_last'*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/samplers/_index_based.html#clips_at_regular_indices)
 
 Sample [clips](../glossary.html#term-clips) at regular (equally-spaced) indices.
 
@@ -2465,15 +2465,15 @@ Parameters:
 
 - **decoder** ([*VideoDecoder*](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)) - The [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)
 instance to sample clips from.
-- **num_clips** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of clips to return. Default: 1.
-- **num_frames_per_clip** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of frames per clips. Default: 1.
-- **num_indices_between_frames** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of indices between
+- **num_clips** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of clips to return. Default: 1.
+- **num_frames_per_clip** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of frames per clips. Default: 1.
+- **num_indices_between_frames** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of indices between
 the frames *within* a clip. Default: 1, which means frames are
 consecutive. This is sometimes refered-to as "dilation".
-- **sampling_range_start** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The start of the sampling range,
+- **sampling_range_start** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The start of the sampling range,
 which defines the first index that a clip may *start* at. Default:
 0, i.e. the start of the video.
-- **sampling_range_end** ([*int*](https://docs.python.org/3/library/functions.html#int)*or**None**,**optional*) - The end of the sampling
+- **sampling_range_end** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*or**None**,**optional*) - The end of the sampling
 range, which defines the last index that a clip may *start* at. This
 value is exclusive, i.e. a clip may only start within
 [`sampling_range_start`, `sampling_range_end`). If None
@@ -2484,7 +2484,7 @@ set to 99 - 10 + 1 = 90. Negative values are accepted and are
 equivalent to `len(video) - val`. When a clip spans beyond the end
 of the video, the `policy` parameter defines how to construct such
 clip.
-- **policy** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - 
+- **policy** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - 
 
 Defines how to construct clips that span beyond
 the end of the video. This is best described with an example:
@@ -2535,7 +2535,7 @@ Decoder Transforms: Applying transforms during decoding
 
 # clips_at_regular_timestamps
 
-torchcodec.samplers.clips_at_regular_timestamps(*decoder*, ***, *seconds_between_clip_starts: [float](https://docs.python.org/3/library/functions.html#float)*, *num_frames_per_clip: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *seconds_between_frames: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *sampling_range_start: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *sampling_range_end: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *policy: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['repeat_last', 'wrap', 'error'] = 'repeat_last'*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/samplers/_time_based.html#clips_at_regular_timestamps)
+torchcodec.samplers.clips_at_regular_timestamps(*decoder*, ***, *seconds_between_clip_starts: [float](https://docs.python.org/3/builtins/functions.html#float)*, *num_frames_per_clip: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*, *seconds_between_frames: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *sampling_range_start: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *sampling_range_end: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *policy: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['repeat_last', 'wrap', 'error'] = 'repeat_last'*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/samplers/_time_based.html#clips_at_regular_timestamps)
 
 Sample [clips](../glossary.html#term-clips) at regular (equally-spaced) timestamps.
 
@@ -2550,10 +2550,10 @@ Parameters:
 
 - **decoder** ([*VideoDecoder*](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)) - The [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)
 instance to sample clips from.
-- **seconds_between_clip_starts** ([*float*](https://docs.python.org/3/library/functions.html#float)) - The space (in seconds) between each
+- **seconds_between_clip_starts** ([*float*](https://docs.python.org/3/builtins/functions.html#float)) - The space (in seconds) between each
 clip start.
-- **num_frames_per_clip** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of frames per clips. Default: 1.
-- **seconds_between_frames** ([*float*](https://docs.python.org/3/library/functions.html#float)*or**None**,**optional*) - The time (in seconds)
+- **num_frames_per_clip** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of frames per clips. Default: 1.
+- **seconds_between_frames** ([*float*](https://docs.python.org/3/builtins/functions.html#float)*or**None**,**optional*) - The time (in seconds)
 between each frame within a clip. More accurately, this defines the
 time between the *frame sampling point*, i.e. the timestamps at
 which we sample the frames. Because frames span intervals in time ,
@@ -2561,12 +2561,12 @@ the resulting start of frames within a clip may not be exactly
 spaced by `seconds_between_frames` - but on average, they will be.
 Default is None, which is set to the average frame duration
 (`1/average_fps`).
-- **sampling_range_start** ([*float*](https://docs.python.org/3/library/functions.html#float)*or**None**,**optional*) - The start of the
+- **sampling_range_start** ([*float*](https://docs.python.org/3/builtins/functions.html#float)*or**None**,**optional*) - The start of the
 sampling range, which defines the first timestamp (in seconds) that
 a clip may *start* at. Default: None, which corresponds to the start
 of the video. (Note: some videos start at negative values, which is
 why the default is not 0).
-- **sampling_range_end** ([*float*](https://docs.python.org/3/library/functions.html#float)*or**None**,**optional*) - The end of the sampling
+- **sampling_range_end** ([*float*](https://docs.python.org/3/builtins/functions.html#float)*or**None**,**optional*) - The end of the sampling
 range, which defines the last timestamp (in seconds) that a clip may
 *start* at. This value is exclusive, i.e. a clip may only start within
 [`sampling_range_start`, `sampling_range_end`). If None
@@ -2575,7 +2575,7 @@ span beyond the end of the video, i.e. it is set to
 `end_video_seconds - (num_frames_per_clip - 1) *
 seconds_between_frames`. When a clip spans beyond the end of the
 video, the `policy` parameter defines how to construct such clip.
-- **policy** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - 
+- **policy** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - 
 
 Defines how to construct clips that span beyond
 the end of the video. This is best described with an example:
@@ -2622,7 +2622,7 @@ How to sample video clips
 
 # CenterCrop
 
-*class*torchcodec.transforms.CenterCrop(*size: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[int](https://docs.python.org/3/library/functions.html#int)]*)[[source]](../_modules/torchcodec/transforms/_decoder_transforms.html#CenterCrop)
+*class*torchcodec.transforms.CenterCrop(*size: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[int](https://docs.python.org/3/builtins/functions.html#int)]*)[[source]](../_modules/torchcodec/transforms/_decoder_transforms.html#CenterCrop)
 
 Crop the decoded frame to a given size in the center of the frame.
 
@@ -2630,7 +2630,7 @@ Complementary TorchVision transform: [`CenterCrop`](https://docs.pytorch.org/vis
 
 Parameters:
 
-**size** (*Sequence**[*[*int*](https://docs.python.org/3/library/functions.html#int)*]*) - Desired output size. Must be a sequence of
+**size** (*Sequence**[*[*int*](https://docs.python.org/3/builtins/functions.html#int)*]*) - Desired output size. Must be a sequence of
 the form (height, width).
 
 Examples using `CenterCrop`:
@@ -2685,7 +2685,7 @@ Decoder Transforms: Applying transforms during decoding
 
 # RandomCrop
 
-*class*torchcodec.transforms.RandomCrop(*size: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[int](https://docs.python.org/3/library/functions.html#int)]*)[[source]](../_modules/torchcodec/transforms/_decoder_transforms.html#RandomCrop)
+*class*torchcodec.transforms.RandomCrop(*size: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[int](https://docs.python.org/3/builtins/functions.html#int)]*)[[source]](../_modules/torchcodec/transforms/_decoder_transforms.html#RandomCrop)
 
 Crop the decoded frame to a given size at a random location in the frame.
 
@@ -2699,14 +2699,14 @@ behavior.
 
 Parameters:
 
-**size** (*Sequence**[*[*int*](https://docs.python.org/3/library/functions.html#int)*]*) - Desired output size. Must be a sequence of
+**size** (*Sequence**[*[*int*](https://docs.python.org/3/builtins/functions.html#int)*]*) - Desired output size. Must be a sequence of
 the form (height, width).
 
 ---
 
 # Resize
 
-*class*torchcodec.transforms.Resize(*size: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[int](https://docs.python.org/3/library/functions.html#int)]*)[[source]](../_modules/torchcodec/transforms/_decoder_transforms.html#Resize)
+*class*torchcodec.transforms.Resize(*size: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[int](https://docs.python.org/3/builtins/functions.html#int)]*)[[source]](../_modules/torchcodec/transforms/_decoder_transforms.html#Resize)
 
 Resize the decoded frame to a given size.
 
@@ -2715,7 +2715,7 @@ Interpolation is always bilinear. Anti-aliasing is always on.
 
 Parameters:
 
-**size** (*Sequence**[*[*int*](https://docs.python.org/3/library/functions.html#int)*]*) - Desired output size. Must be a sequence of
+**size** (*Sequence**[*[*int*](https://docs.python.org/3/builtins/functions.html#int)*]*) - Desired output size. Must be a sequence of
 the form (height, width).
 
 Examples using `Resize`:
@@ -2821,14 +2821,14 @@ bench(VideoDecoder, source=long_video_path, seek_mode="approximate")
 
 ```
 Creating a VideoDecoder object with seek_mode='exact' on a short video:
-med = 6.49ms +- 0.03
+med = 6.44ms +- 0.02
 Creating a VideoDecoder object with seek_mode='approximate' on a short video:
-med = 5.72ms +- 0.03
+med = 5.72ms +- 0.02
 
 Creating a VideoDecoder object with seek_mode='exact' on a long video:
-med = 78.03ms +- 2.24
+med = 77.85ms +- 0.88
 Creating a VideoDecoder object with seek_mode='approximate' on a long video:
-med = 8.28ms +- 0.02
+med = 8.29ms +- 0.05
 ```
 
 ## Performance: frame decoding and clip sampling
@@ -2862,9 +2862,9 @@ bench(sample_clips, seek_mode="approximate")
 
 ```
 Sampling clips with seek_mode='exact':
-med = 210.78ms +- 22.63
+med = 214.03ms +- 25.83
 Sampling clips with seek_mode='approximate':
-med = 143.21ms +- 23.82
+med = 141.92ms +- 29.57
 ```
 
 ## Accuracy: Metadata and frame retrieval
@@ -2978,7 +2978,7 @@ is usually the case when doing clip sampling, consider using "approximate".
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (0 minutes 25.036 seconds)
+**Total running time of the script:** (0 minutes 25.130 seconds)
 
 [`Download Jupyter notebook: approximate_mode.ipynb`](../../_downloads/4bf13eb02a73a239a7e7af99b5c000a9/approximate_mode.ipynb)
 
@@ -3146,7 +3146,7 @@ as [`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchc
 [TorchCodec Performance Tips and Best Practices](performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py) for more
 details.
 
-**Total running time of the script:** (0 minutes 1.047 seconds)
+**Total running time of the script:** (0 minutes 0.959 seconds)
 
 [`Download Jupyter notebook: audio_decoding.ipynb`](../../_downloads/f6b4925719fd3f116259f89a204c6888/audio_decoding.ipynb)
 
@@ -3190,9 +3190,9 @@ print(f"{torch.cuda.get_device_properties(0)=}")
 ```
 
 ```
-torch.__version__='2.15.0.dev20260909+cu130'
+torch.__version__='2.15.0.dev20260913+cu130'
 torch.cuda.is_available()=True
-torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=eb097298-0cf7-c880-7662-3a2f0dc70736, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)
+torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=42e145df-7a2d-ea0b-fb5e-f60472e3fc45, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)
 ```
 
 ## Downloading the video
@@ -3215,7 +3215,7 @@ urllib.request.urlretrieve(
 ```
 
 ```
-('video.mp4', <http.client.HTTPMessage object at 0x7f4cb57a3880>)
+('video.mp4', <http.client.HTTPMessage object at 0x7ffaa68f29e0>)
 ```
 
 ## CUDA Decoding using VideoDecoder
@@ -3325,7 +3325,7 @@ mean_abs_diff=tensor(0.6004, device='cuda:0')
 max_abs_diff=tensor(2., device='cuda:0')
 ```
 
-**Total running time of the script:** (0 minutes 4.664 seconds)
+**Total running time of the script:** (0 minutes 4.618 seconds)
 
 [`Download Jupyter notebook: basic_cuda_example.ipynb`](../../_downloads/0d9d7e92cb34559510d86a36f73e1e53/basic_cuda_example.ipynb)
 
@@ -3586,7 +3586,7 @@ plot(other_frames.data, "Other frames")
 - ![Frame played at 2 seconds](../../_images/sphx_glr_basic_example_005.png)
 - ![Other frames](../../_images/sphx_glr_basic_example_006.png)
 
-**Total running time of the script:** (0 minutes 2.083 seconds)
+**Total running time of the script:** (0 minutes 2.072 seconds)
 
 [`Download Jupyter notebook: basic_example.ipynb`](../../_downloads/c8852e7e664672bdb64c6ba771a9bd30/basic_example.ipynb)
 
@@ -3654,7 +3654,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpdlhei1f1/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmptqqqj1zy/video.mp4'], returncode=0)
 ```
 
 ## The three blocks
@@ -4238,7 +4238,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpdlhei1f1/video.mp4', '-i', '/tmp/tmpdlhei1f1/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpdlhei1f1/av.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmptqqqj1zy/video.mp4', '-i', '/tmp/tmptqqqj1zy/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmptqqqj1zy/av.mp4'], returncode=0)
 ```
 
 Which streams to follow is said once, at construction: a selector is
@@ -4305,7 +4305,7 @@ whole-file decode. Decoding a margin before your target and discarding it
 is up to you. [`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) does all of this
 for you.
 
-**Total running time of the script:** (0 minutes 2.308 seconds)
+**Total running time of the script:** (0 minutes 2.319 seconds)
 
 [`Download Jupyter notebook: blocks.ipynb`](../../_downloads/37e5fa5a5cd2ea49ae5d47920f4cc2fa/blocks.ipynb)
 
@@ -4422,10 +4422,10 @@ for frame in sample_data["frames"][:3]:
 
 ```
 Running ffprobe:
-ffprobe -i /tmp/tmpergv4ww3/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmprf9tri_v/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Running ffprobe:
-ffprobe -i /tmp/tmpergv4ww3/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmprf9tri_v/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Sample of fields in custom frame mappings:
 frame['key_frame'] = 1, frame['pts'] = 0, frame['duration'] = 1
@@ -4477,15 +4477,15 @@ for video_path, json_path in ((short_video_path, short_json_path), (long_video_p
 ```
 Running benchmarks on short_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 6.19ms +- 0.03
+med = 6.17ms +- 0.02
 Creating a VideoDecoder object with seek_mode='exact':
-med = 6.46ms +- 0.03
+med = 6.43ms +- 0.03
 
 Running benchmarks on long_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 27.03ms +- 0.13
+med = 27.20ms +- 0.05
 Creating a VideoDecoder object with seek_mode='exact':
-med = 44.69ms +- 0.85
+med = 43.08ms +- 0.42
 ```
 
 ## Performance: Frame decoding with custom frame mappings
@@ -4517,15 +4517,15 @@ for video_path, json_path in ((short_video_path, short_json_path), (long_video_p
 ```
 Running benchmarks on short_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 18.32ms +- 0.06
+med = 18.26ms +- 0.04
 Decoding frames with seek_mode='exact':
-med = 18.53ms +- 0.04
+med = 18.48ms +- 0.02
 
 Running benchmarks on long_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 39.13ms +- 0.12
+med = 39.42ms +- 0.08
 Decoding frames with seek_mode='exact':
-med = 55.90ms +- 0.57
+med = 55.51ms +- 0.49
 ```
 
 ## Accuracy: Metadata and frame retrieval
@@ -4624,7 +4624,7 @@ accuracy benefits.
 same videos are decoded repeatedly, and some preprocessing work can be done.
 - For exact frame seeking without preprocessing, use "exact" mode.
 
-**Total running time of the script:** (0 minutes 23.748 seconds)
+**Total running time of the script:** (0 minutes 23.736 seconds)
 
 [`Download Jupyter notebook: custom_frame_mappings.ipynb`](../../_downloads/515bb6477ed8fb530cccbe1b67ef6f0c/custom_frame_mappings.ipynb)
 
@@ -4788,13 +4788,13 @@ bench(direct_url_to_ffmpeg)
 
 ```
 Decode from existing download:
-med = 194.23ms +- 0.59
+med = 193.98ms +- 0.57
 
 Download before decode:
-med = 1019.81ms +- 63.48
+med = 1035.43ms +- 74.50
 
 Direct url to FFmpeg:
-med = 240.19ms +- 6.52
+med = 242.71ms +- 6.72
 ```
 
 Decoding the already downloaded video is clearly the fastest. Having to
@@ -4829,7 +4829,7 @@ bench(stream_while_decode)
 
 ```
 Stream while decode:
-med = 211.70ms +- 1.07
+med = 212.34ms +- 2.66
 ```
 
 Streaming the data through a file-like object is much faster than
@@ -4955,10 +4955,10 @@ bench(decode_from_existing_open_file_object)
 
 ```
 Decode from existing file path:
-med = 194.17ms +- 0.19
+med = 193.77ms +- 0.17
 
 Decode from existing open file object:
-med = 194.38ms +- 0.32
+med = 193.97ms +- 0.12
 ```
 
 Thankfully, the answer is both means of decoding from a local file take about
@@ -4974,7 +4974,7 @@ import shutil
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (0 minutes 26.647 seconds)
+**Total running time of the script:** (0 minutes 27.021 seconds)
 
 [`Download Jupyter notebook: file_like.ipynb`](../../_downloads/f0caa5fce0f20da68647d009fb8dd8d0/file_like.ipynb)
 
@@ -5049,7 +5049,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc2=duration=2:size=320x180:rate=30', '-c:v', 'libx265', '-pix_fmt', 'yuv420p10le', '-x265-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited', '-preset', 'fast', '-crf', '23', '/tmp/tmpbs2xxg8s/hdr_video.mp4'], returncode=0, stdout=b'', stderr=b"ffmpeg version 7.1.1 Copyright (c) 2000-2025 the FFmpeg developers\n built with gcc 14.3.0 (conda-forge gcc 14.3.0-5)\n configuration: --prefix=/__w/_temp/conda_environment_34608104274 --cc=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-cc --cxx=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-c++ --nm=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-nm --ar=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-ar --disable-doc --enable-openssl --enable-demuxer=dash --enable-hardcoded-tables --enable-libfreetype --enable-libharfbuzz --enable-libfontconfig --enable-libopenh264 --enable-libdav1d --disable-gnutls --enable-libvpx --enable-libass --enable-pthreads --enable-alsa --enable-libpulse --enable-vaapi --enable-libvpl --enable-libopenvino --enable-gpl --enable-libx264 --enable-libx265 --enable-libmp3lame --enable-libaom --enable-libsvtav1 --enable-libxml2 --enable-pic --enable-shared --disable-static --enable-version3 --enable-zlib --enable-libvorbis --enable-libopus --enable-librsvg --enable-ffplay --pkg-config=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/pkg-config\n libavutil 59. 39.100 / 59. 39.100\n libavcodec 61. 19.101 / 61. 19.101\n libavformat 61. 7.100 / 61. 7.100\n libavdevice 61. 3.100 / 61. 3.100\n libavfilter 10. 4.100 / 10. 4.100\n libswscale 8. 3.100 / 8. 3.100\n libswresample 5. 3.100 / 5. 3.100\n libpostproc 58. 3.100 / 58. 3.100\nInput #0, lavfi, from 'testsrc2=duration=2:size=320x180:rate=30':\n Duration: N/A, start: 0.000000, bitrate: N/A\n Stream #0:0: Video: wrapped_avframe, yuv420p, 320x180 [SAR 1:1 DAR 16:9], 30 fps, 30 tbr, 30 tbn\nStream mapping:\n Stream #0:0 -> #0:0 (wrapped_avframe (native) -> hevc (libx265))\nPress [q] to stop, [?] for help\nx265 [info]: HEVC encoder version 3.5+1-f0c1022b6\nx265 [info]: build info [Linux][GCC 15.3.0][64 bit] 10bit\nx265 [info]: using cpu capabilities: MMX2 SSE2Fast LZCNT SSSE3 SSE4.2 AVX FMA3 BMI2 AVX2\nx265 [info]: Main 10 profile, Level-2 (Main tier)\nx265 [info]: Thread pool created using 16 threads\nx265 [info]: Slices : 1\nx265 [info]: frame threads / pool features : 4 / wpp(3 rows)\nx265 [warning]: Source height < 720p; disabling lookahead-slices\nx265 [info]: Coding QT: max CU size, min CU size : 64 / 8\nx265 [info]: Residual QT: max TU size, max depth : 32 / 1 inter / 1 intra\nx265 [info]: ME / range / subpel / merge : hex / 57 / 2 / 2\nx265 [info]: Keyframe min / max / scenecut / bias : 25 / 250 / 40 / 5.00 \nx265 [info]: Lookahead / bframes / badapt : 15 / 4 / 0\nx265 [info]: b-pyramid / weightp / weightb : 1 / 1 / 0\nx265 [info]: References / ref-limit cu / depth : 3 / on / on\nx265 [info]: AQ: mode / str / qg-size / cu-tree : 2 / 1.0 / 32 / 1\nx265 [info]: Rate Control / qCompress : CRF-23.0 / 0.60\nx265 [info]: tools: rd=2 psy-rd=2.00 rskip mode=1 signhide tmvp fast-intra\nx265 [info]: tools: strong-intra-smoothing deblock sao\nOutput #0, mp4, to '/tmp/tmpbs2xxg8s/hdr_video.mp4':\n Metadata:\n encoder : Lavf61.7.100\n Stream #0:0: Video: hevc (hev1 / 0x31766568), yuv420p10le(tv, progressive), 320x180 [SAR 1:1 DAR 16:9], q=2-31, 30 fps, 15360 tbn\n Metadata:\n encoder : Lavc61.19.101 libx265\n Side data:\n cpb: bitrate max/min/avg: 0/0/0 buffer size: 0 vbv_delay: N/A\n[out#0/mp4 @ 0x55b942cce980] video:67KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:2KiB muxing overhead: 5.737264%\nframe= 60 fps=0.0 q=30.9 Lsize= 71KiB time=00:00:01.93 bitrate= 300.9kbits/s speed=8.25x \nx265 [info]: frame I: 1, Avg QP:21.56 kb/s: 966.00 \nx265 [info]: frame P: 12, Avg QP:24.23 kb/s: 550.02 \nx265 [info]: frame B: 47, Avg QP:30.60 kb/s: 188.91 \nx265 [info]: Weighted P-Frames: Y:0.0% UV:0.0%\nx265 [info]: consecutive B-frames: 7.7% 0.0% 0.0% 7.7% 84.6% \n\nencoded 60 frames in 0.22s (277.82 fps), 274.08 kb/s, Avg QP:29.17\n")
+CompletedProcess(args=['ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc2=duration=2:size=320x180:rate=30', '-c:v', 'libx265', '-pix_fmt', 'yuv420p10le', '-x265-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited', '-preset', 'fast', '-crf', '23', '/tmp/tmp135dfd94/hdr_video.mp4'], returncode=0, stdout=b'', stderr=b"ffmpeg version 7.1.1 Copyright (c) 2000-2025 the FFmpeg developers\n built with gcc 14.3.0 (conda-forge gcc 14.3.0-5)\n configuration: --prefix=/__w/_temp/conda_environment_34835631938 --cc=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-cc --cxx=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-c++ --nm=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-nm --ar=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-ar --disable-doc --enable-openssl --enable-demuxer=dash --enable-hardcoded-tables --enable-libfreetype --enable-libharfbuzz --enable-libfontconfig --enable-libopenh264 --enable-libdav1d --disable-gnutls --enable-libvpx --enable-libass --enable-pthreads --enable-alsa --enable-libpulse --enable-vaapi --enable-libvpl --enable-libopenvino --enable-gpl --enable-libx264 --enable-libx265 --enable-libmp3lame --enable-libaom --enable-libsvtav1 --enable-libxml2 --enable-pic --enable-shared --disable-static --enable-version3 --enable-zlib --enable-libvorbis --enable-libopus --enable-librsvg --enable-ffplay --pkg-config=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/pkg-config\n libavutil 59. 39.100 / 59. 39.100\n libavcodec 61. 19.101 / 61. 19.101\n libavformat 61. 7.100 / 61. 7.100\n libavdevice 61. 3.100 / 61. 3.100\n libavfilter 10. 4.100 / 10. 4.100\n libswscale 8. 3.100 / 8. 3.100\n libswresample 5. 3.100 / 5. 3.100\n libpostproc 58. 3.100 / 58. 3.100\nInput #0, lavfi, from 'testsrc2=duration=2:size=320x180:rate=30':\n Duration: N/A, start: 0.000000, bitrate: N/A\n Stream #0:0: Video: wrapped_avframe, yuv420p, 320x180 [SAR 1:1 DAR 16:9], 30 fps, 30 tbr, 30 tbn\nStream mapping:\n Stream #0:0 -> #0:0 (wrapped_avframe (native) -> hevc (libx265))\nPress [q] to stop, [?] for help\nx265 [info]: HEVC encoder version 3.5+1-f0c1022b6\nx265 [info]: build info [Linux][GCC 15.3.0][64 bit] 10bit\nx265 [info]: using cpu capabilities: MMX2 SSE2Fast LZCNT SSSE3 SSE4.2 AVX FMA3 BMI2 AVX2\nx265 [info]: Main 10 profile, Level-2 (Main tier)\nx265 [info]: Thread pool created using 16 threads\nx265 [info]: Slices : 1\nx265 [info]: frame threads / pool features : 4 / wpp(3 rows)\nx265 [warning]: Source height < 720p; disabling lookahead-slices\nx265 [info]: Coding QT: max CU size, min CU size : 64 / 8\nx265 [info]: Residual QT: max TU size, max depth : 32 / 1 inter / 1 intra\nx265 [info]: ME / range / subpel / merge : hex / 57 / 2 / 2\nx265 [info]: Keyframe min / max / scenecut / bias : 25 / 250 / 40 / 5.00 \nx265 [info]: Lookahead / bframes / badapt : 15 / 4 / 0\nx265 [info]: b-pyramid / weightp / weightb : 1 / 1 / 0\nx265 [info]: References / ref-limit cu / depth : 3 / on / on\nx265 [info]: AQ: mode / str / qg-size / cu-tree : 2 / 1.0 / 32 / 1\nx265 [info]: Rate Control / qCompress : CRF-23.0 / 0.60\nx265 [info]: tools: rd=2 psy-rd=2.00 rskip mode=1 signhide tmvp fast-intra\nx265 [info]: tools: strong-intra-smoothing deblock sao\nOutput #0, mp4, to '/tmp/tmp135dfd94/hdr_video.mp4':\n Metadata:\n encoder : Lavf61.7.100\n Stream #0:0: Video: hevc (hev1 / 0x31766568), yuv420p10le(tv, progressive), 320x180 [SAR 1:1 DAR 16:9], q=2-31, 30 fps, 15360 tbn\n Metadata:\n encoder : Lavc61.19.101 libx265\n Side data:\n cpb: bitrate max/min/avg: 0/0/0 buffer size: 0 vbv_delay: N/A\n[out#0/mp4 @ 0x55c3b96a9980] video:67KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:2KiB muxing overhead: 5.737264%\nframe= 60 fps=0.0 q=30.9 Lsize= 71KiB time=00:00:01.93 bitrate= 300.9kbits/s speed=8.18x \nx265 [info]: frame I: 1, Avg QP:21.56 kb/s: 966.00 \nx265 [info]: frame P: 12, Avg QP:24.23 kb/s: 550.02 \nx265 [info]: frame B: 47, Avg QP:30.60 kb/s: 188.91 \nx265 [info]: Weighted P-Frames: Y:0.0% UV:0.0%\nx265 [info]: consecutive B-frames: 7.7% 0.0% 0.0% 7.7% 84.6% \n\nencoded 60 frames in 0.22s (275.43 fps), 274.08 kb/s, Avg QP:29.17\n")
 ```
 
 ## Default behavior: `uint8` output
@@ -5195,7 +5195,7 @@ import shutil
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (0 minutes 0.434 seconds)
+**Total running time of the script:** (0 minutes 0.436 seconds)
 
 [`Download Jupyter notebook: hdr_decoding.ipynb`](../../_downloads/01dc406b3f53981468974c53f6e40c46/hdr_decoding.ipynb)
 
@@ -5354,7 +5354,7 @@ image = decode_jpeg(raw_image_bytes, device="cuda")
 images = decode_jpeg([img_0, img_1, img_2], device="cuda")
 ```
 
-**Total running time of the script:** (0 minutes 0.094 seconds)
+**Total running time of the script:** (0 minutes 0.346 seconds)
 
 [`Download Jupyter notebook: image_decoding.ipynb`](../../_downloads/f5cba4a26e1c617bc387e9f05406c8f2/image_decoding.ipynb)
 
@@ -5597,7 +5597,7 @@ sequential_time = report_stats(times, unit="s")
 ```
 
 ```
-median = 10.71s ± 0.06
+median = 10.69s ± 0.05
 ```
 
 ## Method 2: FFmpeg-based parallelism
@@ -5625,7 +5625,7 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} FFmpeg th
 ```
 
 ```
-median = 3.69s ± 0.06
+median = 3.68s ± 0.05
 Speedup compared to sequential: 2.90x with 16 FFmpeg threads.
 ```
 
@@ -5656,7 +5656,7 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} processes
 ```
 
 ```
-median = 4.36s ± 0.06
+median = 4.34s ± 0.04
 Speedup compared to sequential: 2.46x with 16 processes.
 ```
 
@@ -5688,8 +5688,8 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} threads."
 ```
 
 ```
-median = 1.43s ± 0.07
-Speedup compared to sequential: 7.49x with 16 threads.
+median = 1.43s ± 0.06
+Speedup compared to sequential: 7.50x with 16 threads.
 ```
 
 ## Validation and correctness check
@@ -5712,7 +5712,7 @@ import shutil
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (1 minutes 25.633 seconds)
+**Total running time of the script:** (1 minutes 25.449 seconds)
 
 [`Download Jupyter notebook: parallel_decoding.ipynb`](../../_downloads/1cff79ade5aa64baf192aceab5e06959/parallel_decoding.ipynb)
 
@@ -6280,7 +6280,7 @@ default value ensures that clips start early enough before the end. This means
 that by default, the policy parameter rarely comes into action, and most users
 probably don't need to worry too much about it.
 
-**Total running time of the script:** (0 minutes 0.429 seconds)
+**Total running time of the script:** (0 minutes 0.406 seconds)
 
 [`Download Jupyter notebook: sampling.ipynb`](../../_downloads/98c8aa10d85bcd2ddc4f4456ad29dcbe/sampling.ipynb)
 
@@ -6294,22 +6294,22 @@ probably don't need to worry too much about it.
 
 # Computation times
 
-**05:18.616** total execution time for 13 files **from generated_examples/decoding**:
+**05:19.143** total execution time for 13 files **from generated_examples/decoding**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Decoder Transforms: Applying transforms during decoding](transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`transforms.py`) | 02:26.493 | 0.0 |
-| [Parallel video decoding: multi-processing and multi-threading](parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`parallel_decoding.py`) | 01:25.633 | 0.0 |
-| [Streaming data through file-like support](file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`file_like.py`) | 00:26.647 | 0.0 |
-| [Exact vs Approximate seek mode: Performance and accuracy comparison](approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`approximate_mode.py`) | 00:25.036 | 0.0 |
-| [Decoding with custom frame mappings](custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`custom_frame_mappings.py`) | 00:23.748 | 0.0 |
-| [Accelerated video decoding on GPUs with CUDA and NVDEC](basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`basic_cuda_example.py`) | 00:04.664 | 0.0 |
-| [Blocks: build your own decoding pipeline](blocks.html#sphx-glr-generated-examples-decoding-blocks-py) (`blocks.py`) | 00:02.308 | 0.0 |
-| [Decoding a video with VideoDecoder](basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`basic_example.py`) | 00:02.083 | 0.0 |
-| [Decoding audio streams with AudioDecoder](audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`audio_decoding.py`) | 00:01.047 | 0.0 |
-| [Decoding HDR videos](hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py) (`hdr_decoding.py`) | 00:00.434 | 0.0 |
-| [How to sample video clips](sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`sampling.py`) | 00:00.429 | 0.0 |
-| [Decoding images](image_decoding.html#sphx-glr-generated-examples-decoding-image-decoding-py) (`image_decoding.py`) | 00:00.094 | 0.0 |
+| [Decoder Transforms: Applying transforms during decoding](transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`transforms.py`) | 02:26.650 | 0.0 |
+| [Parallel video decoding: multi-processing and multi-threading](parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`parallel_decoding.py`) | 01:25.449 | 0.0 |
+| [Streaming data through file-like support](file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`file_like.py`) | 00:27.021 | 0.0 |
+| [Exact vs Approximate seek mode: Performance and accuracy comparison](approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`approximate_mode.py`) | 00:25.130 | 0.0 |
+| [Decoding with custom frame mappings](custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`custom_frame_mappings.py`) | 00:23.736 | 0.0 |
+| [Accelerated video decoding on GPUs with CUDA and NVDEC](basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`basic_cuda_example.py`) | 00:04.618 | 0.0 |
+| [Blocks: build your own decoding pipeline](blocks.html#sphx-glr-generated-examples-decoding-blocks-py) (`blocks.py`) | 00:02.319 | 0.0 |
+| [Decoding a video with VideoDecoder](basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`basic_example.py`) | 00:02.072 | 0.0 |
+| [Decoding audio streams with AudioDecoder](audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`audio_decoding.py`) | 00:00.959 | 0.0 |
+| [Decoding HDR videos](hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py) (`hdr_decoding.py`) | 00:00.436 | 0.0 |
+| [How to sample video clips](sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`sampling.py`) | 00:00.406 | 0.0 |
+| [Decoding images](image_decoding.html#sphx-glr-generated-examples-decoding-image-decoding-py) (`image_decoding.py`) | 00:00.346 | 0.0 |
 | [TorchCodec Performance Tips and Best Practices](performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py) (`performance_tips.py`) | 00:00.000 | 0.0 |
 
 ---
@@ -6650,8 +6650,8 @@ print(f"torchvision transform: {bench(sample_torchvision_transforms, num_threads
 ```
 
 ```
-decoder transforms: times_med = 1958.25ms +- 26.51
-torchvision transform: times_med = 4046.31ms +- 109.36
+decoder transforms: times_med = 1953.91ms +- 14.76
+torchvision transform: times_med = 4091.63ms +- 42.37
 ```
 
 The reason is that FFmpeg is applying the decoder transforms in parallel.
@@ -6665,8 +6665,8 @@ print(f"torchvision transform: {bench(sample_torchvision_transforms, num_threads
 ```
 
 ```
-decoder transforms: times_med = 10685.33ms +- 8.28
-torchvision transform: times_med = 12488.17ms +- 7.23
+decoder transforms: times_med = 10685.79ms +- 13.74
+torchvision transform: times_med = 12467.18ms +- 4.88
 ```
 
 In brief, our performance guidance is:
@@ -6683,7 +6683,7 @@ In brief, our performance guidance is:
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (2 minutes 26.493 seconds)
+**Total running time of the script:** (2 minutes 26.650 seconds)
 
 [`Download Jupyter notebook: transforms.ipynb`](../../_downloads/f189e474be55fc74900ac94fda37f6f0/transforms.ipynb)
 
@@ -6824,7 +6824,7 @@ AudioSamples:
 Check the docstring of the encoding methods to learn about the different
 encoding options.
 
-**Total running time of the script:** (0 minutes 0.030 seconds)
+**Total running time of the script:** (0 minutes 0.029 seconds)
 
 [`Download Jupyter notebook: audio_encoding.ipynb`](../../_downloads/11ef1d93158a89ea05a303d1d7c2cc02/audio_encoding.ipynb)
 
@@ -6987,7 +6987,7 @@ PNG encoding is CPU-only.
 Check the docstrings of the encoding methods to learn about the different
 encoding options.
 
-**Total running time of the script:** (0 minutes 0.141 seconds)
+**Total running time of the script:** (0 minutes 0.206 seconds)
 
 [`Download Jupyter notebook: image_encoding.ipynb`](../../_downloads/071d0183e16c5e6ef85b625a2f126867/image_encoding.ipynb)
 
@@ -7095,7 +7095,7 @@ print(f"Output size: {Path(output_path).stat().st_size} bytes")
 ```
 
 ```
-Encoded video + audio to /tmp/tmp_bu9r6lr.mp4
+Encoded video + audio to /tmp/tmpir7f74en.mp4
 Output size: 2526674 bytes
 ```
 
@@ -7158,7 +7158,7 @@ print(f"Output size: {Path(chunk_output).stat().st_size} bytes")
 ```
 
 ```
-Incrementally encoded to /tmp/tmpi264h85r.mp4
+Incrementally encoded to /tmp/tmpl76yry2_.mp4
 Output size: 2527045 bytes
 ```
 
@@ -7234,7 +7234,7 @@ bytes_tensor = torch.frombuffer(encoded_bytes, dtype=torch.uint8)
 Encoded to BytesIO, size: 2526674 bytes
 ```
 
-**Total running time of the script:** (0 minutes 6.124 seconds)
+**Total running time of the script:** (0 minutes 6.174 seconds)
 
 [`Download Jupyter notebook: multi_stream_encoding.ipynb`](../../_downloads/ccd7596cf7d161af13c32c87cfc7f878/multi_stream_encoding.ipynb)
 
@@ -7248,14 +7248,14 @@ Encoded to BytesIO, size: 2526674 bytes
 
 # Computation times
 
-**00:31.685** total execution time for 4 files **from generated_examples/encoding**:
+**00:31.487** total execution time for 4 files **from generated_examples/encoding**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Encoding video with the Encoder](video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`video_encoding.py`) | 00:25.390 | 0.0 |
-| [Encoding audio and video streams with the Encoder](multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`multi_stream_encoding.py`) | 00:06.124 | 0.0 |
-| [Encoding images](image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py) (`image_encoding.py`) | 00:00.141 | 0.0 |
-| [Encoding audio samples with AudioEncoder](audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py) (`audio_encoding.py`) | 00:00.030 | 0.0 |
+| [Encoding video with the Encoder](video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`video_encoding.py`) | 00:25.078 | 0.0 |
+| [Encoding audio and video streams with the Encoder](multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`multi_stream_encoding.py`) | 00:06.174 | 0.0 |
+| [Encoding images](image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py) (`image_encoding.py`) | 00:00.206 | 0.0 |
+| [Encoding audio samples with AudioEncoder](audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py) (`audio_encoding.py`) | 00:00.029 | 0.0 |
 
 ---
 
@@ -7347,7 +7347,7 @@ print(f"Encoded to {output_path}, size: {Path(output_path).stat().st_size} bytes
 ```
 frames.shape = torch.Size([60, 3, 1080, 1920]), frames.dtype = torch.uint8
 frame_rate = 24 fps
-Encoded to /tmp/tmp70wjql6r.mp4, size: 2509386 bytes
+Encoded to /tmp/tmpvy2ynycb.mp4, size: 2509386 bytes
 ```
 
 Now that we have encoded data, let's decode it back to verify the
@@ -7624,7 +7624,7 @@ with encoder.open_file(custom_output):
  vs.add_frames(frames)
 ```
 
-**Total running time of the script:** (0 minutes 25.390 seconds)
+**Total running time of the script:** (0 minutes 25.078 seconds)
 
 [`Download Jupyter notebook: video_encoding.ipynb`](../../_downloads/e8868f804bffbeae56ed6b335353e809/video_encoding.ipynb)
 
@@ -7757,11 +7757,11 @@ Migrating from TorchVision to TorchCodec
 
 # Computation times
 
-**00:00.015** total execution time for 1 file **from generated_examples/migration**:
+**00:00.014** total execution time for 1 file **from generated_examples/migration**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Migrating from TorchVision to TorchCodec](torchvision_migration.html#sphx-glr-generated-examples-migration-torchvision-migration-py) (`torchvision_migration.py`) | 00:00.015 | 0.0 |
+| [Migrating from TorchVision to TorchCodec](torchvision_migration.html#sphx-glr-generated-examples-migration-torchvision-migration-py) (`torchvision_migration.py`) | 00:00.014 | 0.0 |
 
 ---
 
@@ -7923,7 +7923,7 @@ print(f"{len(buffer.getvalue()) = }")
 len(buffer.getvalue()) = 37359
 ```
 
-**Total running time of the script:** (0 minutes 0.015 seconds)
+**Total running time of the script:** (0 minutes 0.014 seconds)
 
 [`Download Jupyter notebook: torchvision_migration.ipynb`](../../_downloads/6ea3c360ab6e7139e0d6f061b01ad558/torchvision_migration.ipynb)
 
@@ -8111,25 +8111,25 @@ How to port `torchvision.io` image decoding and encoding code
 
 # Computation times
 
-**05:50.316** total execution time for 18 files **from all galleries**:
+**05:50.644** total execution time for 18 files **from all galleries**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Decoder Transforms: Applying transforms during decoding](generated_examples/decoding/transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`../../examples/decoding/transforms.py`) | 02:26.493 | 0.0 |
-| [Parallel video decoding: multi-processing and multi-threading](generated_examples/decoding/parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`../../examples/decoding/parallel_decoding.py`) | 01:25.633 | 0.0 |
-| [Streaming data through file-like support](generated_examples/decoding/file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`../../examples/decoding/file_like.py`) | 00:26.647 | 0.0 |
-| [Encoding video with the Encoder](generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`../../examples/encoding/video_encoding.py`) | 00:25.390 | 0.0 |
-| [Exact vs Approximate seek mode: Performance and accuracy comparison](generated_examples/decoding/approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`../../examples/decoding/approximate_mode.py`) | 00:25.036 | 0.0 |
-| [Decoding with custom frame mappings](generated_examples/decoding/custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`../../examples/decoding/custom_frame_mappings.py`) | 00:23.748 | 0.0 |
-| [Encoding audio and video streams with the Encoder](generated_examples/encoding/multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`../../examples/encoding/multi_stream_encoding.py`) | 00:06.124 | 0.0 |
-| [Accelerated video decoding on GPUs with CUDA and NVDEC](generated_examples/decoding/basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`../../examples/decoding/basic_cuda_example.py`) | 00:04.664 | 0.0 |
-| [Blocks: build your own decoding pipeline](generated_examples/decoding/blocks.html#sphx-glr-generated-examples-decoding-blocks-py) (`../../examples/decoding/blocks.py`) | 00:02.308 | 0.0 |
-| [Decoding a video with VideoDecoder](generated_examples/decoding/basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`../../examples/decoding/basic_example.py`) | 00:02.083 | 0.0 |
-| [Decoding audio streams with AudioDecoder](generated_examples/decoding/audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`../../examples/decoding/audio_decoding.py`) | 00:01.047 | 0.0 |
-| [Decoding HDR videos](generated_examples/decoding/hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py) (`../../examples/decoding/hdr_decoding.py`) | 00:00.434 | 0.0 |
-| [How to sample video clips](generated_examples/decoding/sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`../../examples/decoding/sampling.py`) | 00:00.429 | 0.0 |
-| [Encoding images](generated_examples/encoding/image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py) (`../../examples/encoding/image_encoding.py`) | 00:00.141 | 0.0 |
-| [Decoding images](generated_examples/decoding/image_decoding.html#sphx-glr-generated-examples-decoding-image-decoding-py) (`../../examples/decoding/image_decoding.py`) | 00:00.094 | 0.0 |
-| [Encoding audio samples with AudioEncoder](generated_examples/encoding/audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py) (`../../examples/encoding/audio_encoding.py`) | 00:00.030 | 0.0 |
-| [Migrating from TorchVision to TorchCodec](generated_examples/migration/torchvision_migration.html#sphx-glr-generated-examples-migration-torchvision-migration-py) (`../../examples/migration/torchvision_migration.py`) | 00:00.015 | 0.0 |
+| [Decoder Transforms: Applying transforms during decoding](generated_examples/decoding/transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`../../examples/decoding/transforms.py`) | 02:26.650 | 0.0 |
+| [Parallel video decoding: multi-processing and multi-threading](generated_examples/decoding/parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`../../examples/decoding/parallel_decoding.py`) | 01:25.449 | 0.0 |
+| [Streaming data through file-like support](generated_examples/decoding/file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`../../examples/decoding/file_like.py`) | 00:27.021 | 0.0 |
+| [Exact vs Approximate seek mode: Performance and accuracy comparison](generated_examples/decoding/approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`../../examples/decoding/approximate_mode.py`) | 00:25.130 | 0.0 |
+| [Encoding video with the Encoder](generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`../../examples/encoding/video_encoding.py`) | 00:25.078 | 0.0 |
+| [Decoding with custom frame mappings](generated_examples/decoding/custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`../../examples/decoding/custom_frame_mappings.py`) | 00:23.736 | 0.0 |
+| [Encoding audio and video streams with the Encoder](generated_examples/encoding/multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`../../examples/encoding/multi_stream_encoding.py`) | 00:06.174 | 0.0 |
+| [Accelerated video decoding on GPUs with CUDA and NVDEC](generated_examples/decoding/basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`../../examples/decoding/basic_cuda_example.py`) | 00:04.618 | 0.0 |
+| [Blocks: build your own decoding pipeline](generated_examples/decoding/blocks.html#sphx-glr-generated-examples-decoding-blocks-py) (`../../examples/decoding/blocks.py`) | 00:02.319 | 0.0 |
+| [Decoding a video with VideoDecoder](generated_examples/decoding/basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`../../examples/decoding/basic_example.py`) | 00:02.072 | 0.0 |
+| [Decoding audio streams with AudioDecoder](generated_examples/decoding/audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`../../examples/decoding/audio_decoding.py`) | 00:00.959 | 0.0 |
+| [Decoding HDR videos](generated_examples/decoding/hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py) (`../../examples/decoding/hdr_decoding.py`) | 00:00.436 | 0.0 |
+| [How to sample video clips](generated_examples/decoding/sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`../../examples/decoding/sampling.py`) | 00:00.406 | 0.0 |
+| [Decoding images](generated_examples/decoding/image_decoding.html#sphx-glr-generated-examples-decoding-image-decoding-py) (`../../examples/decoding/image_decoding.py`) | 00:00.346 | 0.0 |
+| [Encoding images](generated_examples/encoding/image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py) (`../../examples/encoding/image_encoding.py`) | 00:00.206 | 0.0 |
+| [Encoding audio samples with AudioEncoder](generated_examples/encoding/audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py) (`../../examples/encoding/audio_encoding.py`) | 00:00.029 | 0.0 |
+| [Migrating from TorchVision to TorchCodec](generated_examples/migration/torchvision_migration.html#sphx-glr-generated-examples-migration-torchvision-migration-py) (`../../examples/migration/torchvision_migration.py`) | 00:00.014 | 0.0 |
 | [TorchCodec Performance Tips and Best Practices](generated_examples/decoding/performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py) (`../../examples/decoding/performance_tips.py`) | 00:00.000 | 0.0 |

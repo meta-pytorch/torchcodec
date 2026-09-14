@@ -1,6 +1,6 @@
 # VideoDecoder
 
-*class*torchcodec.decoders.VideoDecoder(*source: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *stream_index: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *dimension_order: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['NCHW', 'NHWC'] = 'NCHW'*, *num_ffmpeg_threads: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *device: [str](https://docs.python.org/3/library/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *seek_mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['exact', 'approximate'] = 'exact'*, *transforms: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[DecoderTransform](torchcodec.transforms.DecoderTransform.html#torchcodec.transforms.DecoderTransform) | [Module](https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module)] | [None](https://docs.python.org/3/library/constants.html#None) = None*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*, *custom_frame_mappings: [str](https://docs.python.org/3/library/stdtypes.html#str) | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [None](https://docs.python.org/3/library/constants.html#None) = None*)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder)
+*class*torchcodec.decoders.VideoDecoder(*source: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *dimension_order: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['NCHW', 'NHWC'] = 'NCHW'*, *num_ffmpeg_threads: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*, *device: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *seek_mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['exact', 'approximate'] = 'exact'*, *transforms: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[DecoderTransform](torchcodec.transforms.DecoderTransform.html#torchcodec.transforms.DecoderTransform) | [Module](https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module)] | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*, *custom_frame_mappings: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [None](https://docs.python.org/3/builtins/constants.html#None) = None*)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder)
 
 A single-stream video decoder.
 
@@ -17,10 +17,10 @@ The source of the video:
 expose the methods read(self, size: int) -> bytes and
 seek(self, offset: int, whence: int) -> int. Read more in:
 [Streaming data through file-like support](../generated_examples/decoding/file_like.html#sphx-glr-generated-examples-decoding-file-like-py).
-- **stream_index** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Specifies which stream in the video to decode frames from.
+- **stream_index** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Specifies which stream in the video to decode frames from.
 Note that this index is absolute across all media types. If left unspecified, then
 the [best stream](../glossary.html#term-best-stream) is used.
-- **dimension_order** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - 
+- **dimension_order** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - 
 
 The dimension order of the decoded frames.
 This can be either "NCHW" (default) or "NHWC", where N is the batch
@@ -33,19 +33,19 @@ Frames are natively decoded in NHWC format by the underlying
 FFmpeg implementation. Converting those into NCHW format is a
 cheap no-copy operation that allows these frames to be
 transformed using the [torchvision transforms](https://pytorch.org/vision/stable/transforms.html).
-- **num_ffmpeg_threads** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - The number of threads to use for CPU decoding.
+- **num_ffmpeg_threads** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of threads to use for CPU decoding.
 This has no effect when using GPU decoding.
 Use 1 for single-threaded decoding which may be best if you are running multiple
 instances of `VideoDecoder` in parallel. Use a higher number for multi-threaded
 decoding which is best if you are running a single instance of `VideoDecoder`.
 Passing 0 lets FFmpeg decide on the number of threads.
 Default: 1.
-- **device** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*torch.device*](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device)*,**optional*) - The device to use for decoding.
+- **device** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*torch.device*](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device)*,**optional*) - The device to use for decoding.
 If `None` (default), uses the current default device.
 If you pass a CUDA device, decoding uses the `"nvdec"` backend by
 default. See [`set_cuda_backend()`](torchcodec.decoders.set_cuda_backend.html#torchcodec.decoders.set_cuda_backend) to switch
 to the `"ffmpeg"` CUDA backend.
-- **seek_mode** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - Determines if frame access will be "exact" or
+- **seek_mode** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,**optional*) - Determines if frame access will be "exact" or
 "approximate". Exact guarantees that requesting frame i will always
 return frame i, but doing so requires an initial [scan](../glossary.html#term-scan) of the
 file. Approximate is faster as it avoids scanning the file, but less
@@ -75,7 +75,7 @@ The features associated with this parameter are in beta stage
 and behavior may change in future versions. Specifically,
 detecting whether a video is SDR or HDR is difficult, so the
 "auto" heuristic is subject to change and improve.
-- **custom_frame_mappings** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,*[*bytes*](https://docs.python.org/3/library/stdtypes.html#bytes)*, or**file-like object**,**optional*) - 
+- **custom_frame_mappings** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,*[*bytes*](https://docs.python.org/3/builtins/stdtypes.html#bytes)*, or**file-like object**,**optional*) - 
 
 Mapping of frames to their metadata, typically generated via ffprobe.
 This enables accurate frame seeking without requiring a full video scan.
@@ -101,7 +101,7 @@ Read more about this parameter in:
 Variables:
 
 - **metadata** ([*VideoStreamMetadata*](torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata)) - Metadata of the video stream.
-- **stream_index** ([*int*](https://docs.python.org/3/library/functions.html#int)) - The stream index that this decoder is retrieving frames from. If a
+- **stream_index** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - The stream index that this decoder is retrieving frames from. If a
 stream index was provided at initialization, this is the same value. If it was left
 unspecified, this is the [best stream](../glossary.html#term-best-stream).
 - **cpu_fallback** ([*CpuFallbackStatus*](torchcodec.decoders.CpuFallbackStatus.html#torchcodec.decoders.CpuFallbackStatus)) - Information about whether the decoder fell back to CPU
@@ -177,7 +177,7 @@ Encoding audio and video streams with the Encoder
 
 Encoding video with the Encoder
 
-__getitem__(*key: [Integral](https://docs.python.org/3/library/numbers.html#numbers.Integral) | [slice](https://docs.python.org/3/library/functions.html#slice)*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.__getitem__)
+__getitem__(*key: [Integral](https://docs.python.org/3/library/numbers.html#numbers.Integral) | [slice](https://docs.python.org/3/builtins/functions.html#slice)*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.__getitem__)
 
 Return frame or frames as tensors, at the given index or range.
 
@@ -192,7 +192,7 @@ methods instead, since they are faster:
 
 Parameters:
 
-**key** ([*int*](https://docs.python.org/3/library/functions.html#int)*or*[*slice*](https://docs.python.org/3/library/functions.html#slice)) - The index or range of frame(s) to retrieve.
+**key** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*or*[*slice*](https://docs.python.org/3/builtins/functions.html#slice)) - The index or range of frame(s) to retrieve.
 
 Returns:
 
@@ -202,13 +202,13 @@ Return type:
 
 [torch.Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)
 
-get_all_frames(*fps: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_all_frames)
+get_all_frames(*fps: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_all_frames)
 
 Returns all frames in the video.
 
 Parameters:
 
-**fps** ([*float*](https://docs.python.org/3/library/functions.html#float)*,**optional*) - If specified, resample output to this frame
+**fps** ([*float*](https://docs.python.org/3/builtins/functions.html#float)*,**optional*) - If specified, resample output to this frame
 rate by duplicating or dropping frames as necessary. If None
 (default), returns frames at the source video's frame rate.
 
@@ -220,7 +220,7 @@ Return type:
 
 [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)
 
-get_frame_at(*index: [int](https://docs.python.org/3/library/functions.html#int)*) → [Frame](torchcodec.Frame.html#torchcodec.Frame)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frame_at)
+get_frame_at(*index: [int](https://docs.python.org/3/builtins/functions.html#int)*) → [Frame](torchcodec.Frame.html#torchcodec.Frame)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frame_at)
 
 Return a single frame at the given index.
 
@@ -235,7 +235,7 @@ methods instead, since they are faster:
 
 Parameters:
 
-**index** ([*int*](https://docs.python.org/3/library/functions.html#int)) - The index of the frame to retrieve.
+**index** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - The index of the frame to retrieve.
 
 Returns:
 
@@ -245,7 +245,7 @@ Return type:
 
 [Frame](torchcodec.Frame.html#torchcodec.Frame)
 
-get_frame_played_at(*seconds: [float](https://docs.python.org/3/library/functions.html#float)*) → [Frame](torchcodec.Frame.html#torchcodec.Frame)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frame_played_at)
+get_frame_played_at(*seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*) → [Frame](torchcodec.Frame.html#torchcodec.Frame)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frame_played_at)
 
 Return a single frame played at the given timestamp in seconds.
 
@@ -260,7 +260,7 @@ methods instead, since they are faster:
 
 Parameters:
 
-**seconds** ([*float*](https://docs.python.org/3/library/functions.html#float)) - The time stamp in seconds when the frame is played.
+**seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)) - The time stamp in seconds when the frame is played.
 
 Returns:
 
@@ -270,13 +270,13 @@ Return type:
 
 [Frame](torchcodec.Frame.html#torchcodec.Frame)
 
-get_frames_at(*indices: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [list](https://docs.python.org/3/library/stdtypes.html#list)[[int](https://docs.python.org/3/library/functions.html#int)]*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_at)
+get_frames_at(*indices: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [list](https://docs.python.org/3/builtins/stdtypes.html#list)[[int](https://docs.python.org/3/builtins/functions.html#int)]*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_at)
 
 Return frames at the given indices.
 
 Parameters:
 
-**indices** ([*torch.Tensor*](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*or*[*list*](https://docs.python.org/3/library/stdtypes.html#list)*of*[*int*](https://docs.python.org/3/library/functions.html#int)) - The indices of the frames to retrieve.
+**indices** ([*torch.Tensor*](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*or*[*list*](https://docs.python.org/3/builtins/stdtypes.html#list)*of*[*int*](https://docs.python.org/3/builtins/functions.html#int)) - The indices of the frames to retrieve.
 
 Returns:
 
@@ -286,7 +286,7 @@ Return type:
 
 [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)
 
-get_frames_in_range(*start: [int](https://docs.python.org/3/library/functions.html#int)*, *stop: [int](https://docs.python.org/3/library/functions.html#int)*, *step: [int](https://docs.python.org/3/library/functions.html#int) = 1*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_in_range)
+get_frames_in_range(*start: [int](https://docs.python.org/3/builtins/functions.html#int)*, *stop: [int](https://docs.python.org/3/builtins/functions.html#int)*, *step: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_in_range)
 
 Return multiple frames at the given index range.
 
@@ -294,10 +294,10 @@ Frames are in [start, stop).
 
 Parameters:
 
-- **start** ([*int*](https://docs.python.org/3/library/functions.html#int)) - Index of the first frame to retrieve.
-- **stop** ([*int*](https://docs.python.org/3/library/functions.html#int)) - End of indexing range (exclusive, as per Python
+- **start** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - Index of the first frame to retrieve.
+- **stop** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - End of indexing range (exclusive, as per Python
 conventions).
-- **step** ([*int*](https://docs.python.org/3/library/functions.html#int)*,**optional*) - Step size between frames. Default: 1.
+- **step** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - Step size between frames. Default: 1.
 
 Returns:
 
@@ -307,13 +307,13 @@ Return type:
 
 [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)
 
-get_frames_played_at(*seconds: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [list](https://docs.python.org/3/library/stdtypes.html#list)[[float](https://docs.python.org/3/library/functions.html#float)]*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_played_at)
+get_frames_played_at(*seconds: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [list](https://docs.python.org/3/builtins/stdtypes.html#list)[[float](https://docs.python.org/3/builtins/functions.html#float)]*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_played_at)
 
 Return frames played at the given timestamps in seconds.
 
 Parameters:
 
-**seconds** ([*torch.Tensor*](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*or*[*list*](https://docs.python.org/3/library/stdtypes.html#list)*of*[*float*](https://docs.python.org/3/library/functions.html#float)) - The timestamps in seconds when the frames are played.
+**seconds** ([*torch.Tensor*](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*or*[*list*](https://docs.python.org/3/builtins/stdtypes.html#list)*of*[*float*](https://docs.python.org/3/builtins/functions.html#float)) - The timestamps in seconds when the frames are played.
 
 Returns:
 
@@ -323,7 +323,7 @@ Return type:
 
 [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)
 
-get_frames_played_in_range(*start_seconds: [float](https://docs.python.org/3/library/functions.html#float)*, *stop_seconds: [float](https://docs.python.org/3/library/functions.html#float)*, *fps: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_played_in_range)
+get_frames_played_in_range(*start_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *stop_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *fps: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [FrameBatch](torchcodec.FrameBatch.html#torchcodec.FrameBatch)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.get_frames_played_in_range)
 
 Returns multiple frames in the given range.
 
@@ -333,10 +333,10 @@ range.
 
 Parameters:
 
-- **start_seconds** ([*float*](https://docs.python.org/3/library/functions.html#float)) - Time, in seconds, of the start of the range.
-- **stop_seconds** ([*float*](https://docs.python.org/3/library/functions.html#float)) - Time, in seconds, of the end of the range.
+- **start_seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)) - Time, in seconds, of the start of the range.
+- **stop_seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)) - Time, in seconds, of the end of the range.
 As a half open range, the end is excluded.
-- **fps** ([*float*](https://docs.python.org/3/library/functions.html#float)*,**optional*) - If specified, resample output to this frame
+- **fps** ([*float*](https://docs.python.org/3/builtins/functions.html#float)*,**optional*) - If specified, resample output to this frame
 rate by duplicating or dropping frames as necessary. If None
 (default), returns frames at the source video's frame rate.
 

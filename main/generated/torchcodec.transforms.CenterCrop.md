@@ -1,6 +1,6 @@
 # CenterCrop
 
-*class*torchcodec.transforms.CenterCrop(*size: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[int](https://docs.python.org/3/library/functions.html#int)]*)[[source]](../_modules/torchcodec/transforms/_decoder_transforms.html#CenterCrop)
+*class*torchcodec.transforms.CenterCrop(*size: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[int](https://docs.python.org/3/builtins/functions.html#int)]*)[[source]](../_modules/torchcodec/transforms/_decoder_transforms.html#CenterCrop)
 
 Crop the decoded frame to a given size in the center of the frame.
 
@@ -8,7 +8,7 @@ Complementary TorchVision transform: [`CenterCrop`](https://docs.pytorch.org/vis
 
 Parameters:
 
-**size** (*Sequence**[*[*int*](https://docs.python.org/3/library/functions.html#int)*]*) - Desired output size. Must be a sequence of
+**size** (*Sequence**[*[*int*](https://docs.python.org/3/builtins/functions.html#int)*]*) - Desired output size. Must be a sequence of
 the form (height, width).
 
 Examples using `CenterCrop`:

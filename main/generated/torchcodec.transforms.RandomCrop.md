@@ -1,6 +1,6 @@
 # RandomCrop
 
-*class*torchcodec.transforms.RandomCrop(*size: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[int](https://docs.python.org/3/library/functions.html#int)]*)[[source]](../_modules/torchcodec/transforms/_decoder_transforms.html#RandomCrop)
+*class*torchcodec.transforms.RandomCrop(*size: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[int](https://docs.python.org/3/builtins/functions.html#int)]*)[[source]](../_modules/torchcodec/transforms/_decoder_transforms.html#RandomCrop)
 
 Crop the decoded frame to a given size at a random location in the frame.
 
@@ -14,5 +14,5 @@ behavior.
 
 Parameters:
 
-**size** (*Sequence**[*[*int*](https://docs.python.org/3/library/functions.html#int)*]*) - Desired output size. Must be a sequence of
+**size** (*Sequence**[*[*int*](https://docs.python.org/3/builtins/functions.html#int)*]*) - Desired output size. Must be a sequence of
 the form (height, width).

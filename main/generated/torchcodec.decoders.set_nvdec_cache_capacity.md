@@ -1,6 +1,6 @@
 # set_nvdec_cache_capacity
 
-torchcodec.decoders.set_nvdec_cache_capacity(*capacity: [int](https://docs.python.org/3/library/functions.html#int)*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/decoders/_decoder_utils.html#set_nvdec_cache_capacity)
+torchcodec.decoders.set_nvdec_cache_capacity(*capacity: [int](https://docs.python.org/3/builtins/functions.html#int)*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/decoders/_decoder_utils.html#set_nvdec_cache_capacity)
 
 Set the maximum number of NVDEC decoders that can be cached (per GPU).
 
@@ -19,5 +19,5 @@ See also [`get_nvdec_cache_capacity()`](torchcodec.decoders.get_nvdec_cache_capa
 
 Parameters:
 
-**capacity** ([*int*](https://docs.python.org/3/library/functions.html#int)) - The maximum number of NVDEC decoders that can be cached
+**capacity** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - The maximum number of NVDEC decoders that can be cached
 per GPU device. Must be non-negative. Setting to 0 disables caching.

@@ -1,6 +1,6 @@
 # WavDecoder
 
-*class*torchcodec.decoders.WavDecoder(*source: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*)[[source]](../_modules/torchcodec/decoders/_wav_decoder.html#WavDecoder)
+*class*torchcodec.decoders.WavDecoder(*source: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*)[[source]](../_modules/torchcodec/decoders/_wav_decoder.html#WavDecoder)
 
 A fast decoder for WAV audio files.
 
@@ -66,7 +66,7 @@ int`.
 Variables:
 
 - **metadata** ([*AudioStreamMetadata*](torchcodec.decoders.AudioStreamMetadata.html#torchcodec.decoders.AudioStreamMetadata)) - Metadata of the audio stream.
-- **stream_index** ([*int*](https://docs.python.org/3/library/functions.html#int)) - The stream index. Always 0 for WAV files.
+- **stream_index** ([*int*](https://docs.python.org/3/builtins/functions.html#int)) - The stream index. Always 0 for WAV files.
 
 Examples using `WavDecoder`:
 
@@ -96,7 +96,7 @@ Return type:
 
 [AudioSamples](torchcodec.AudioSamples.html#torchcodec.AudioSamples)
 
-get_samples_played_in_range(*start_seconds: [float](https://docs.python.org/3/library/functions.html#float) = 0.0*, *stop_seconds: [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [AudioSamples](torchcodec.AudioSamples.html#torchcodec.AudioSamples)[[source]](../_modules/torchcodec/decoders/_wav_decoder.html#WavDecoder.get_samples_played_in_range)
+get_samples_played_in_range(*start_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) = 0.0*, *stop_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [AudioSamples](torchcodec.AudioSamples.html#torchcodec.AudioSamples)[[source]](../_modules/torchcodec/decoders/_wav_decoder.html#WavDecoder.get_samples_played_in_range)
 
 Returns audio samples in the given range.
 
@@ -110,9 +110,9 @@ convenient alias.
 
 Parameters:
 
-- **start_seconds** ([*float*](https://docs.python.org/3/library/functions.html#float)) - Time, in seconds, of the start of the
+- **start_seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)) - Time, in seconds, of the start of the
 range. Default: 0.
-- **stop_seconds** ([*float*](https://docs.python.org/3/library/functions.html#float)*or**None*) - Time, in seconds, of the end of the
+- **stop_seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)*or**None*) - Time, in seconds, of the end of the
 range. As a half open range, the end is excluded. Default: None,
 which decodes samples until the end.
 

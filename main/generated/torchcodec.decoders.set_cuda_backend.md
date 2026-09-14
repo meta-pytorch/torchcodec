@@ -1,6 +1,6 @@
 # set_cuda_backend
 
-torchcodec.decoders.set_cuda_backend(*backend: [str](https://docs.python.org/3/library/stdtypes.html#str)*) → [Generator](https://docs.python.org/3/library/collections.abc.html#collections.abc.Generator)[[None](https://docs.python.org/3/library/constants.html#None), [None](https://docs.python.org/3/library/constants.html#None), [None](https://docs.python.org/3/library/constants.html#None)][[source]](../_modules/torchcodec/decoders/_decoder_utils.html#set_cuda_backend)
+torchcodec.decoders.set_cuda_backend(*backend: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*) → [Generator](https://docs.python.org/3/library/collections.abc.html#collections.abc.Generator)[[None](https://docs.python.org/3/builtins/constants.html#None), [None](https://docs.python.org/3/builtins/constants.html#None), [None](https://docs.python.org/3/builtins/constants.html#None)][[source]](../_modules/torchcodec/decoders/_decoder_utils.html#set_cuda_backend)
 
 Context Manager to set the CUDA backend for [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder).
 
@@ -20,7 +20,7 @@ This is thread-safe and async-safe.
 
 Parameters:
 
-**backend** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)) - The CUDA backend to use. Can be `"nvdec"` (default) or
+**backend** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)) - The CUDA backend to use. Can be `"nvdec"` (default) or
 `"ffmpeg"`.
 
 Example

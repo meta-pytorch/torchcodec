@@ -1,6 +1,6 @@
 # CpuFallbackStatus
 
-*class*torchcodec.decoders.CpuFallbackStatus(*status_known: [bool](https://docs.python.org/3/library/functions.html#bool) = False*)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#CpuFallbackStatus)
+*class*torchcodec.decoders.CpuFallbackStatus(*status_known: [bool](https://docs.python.org/3/builtins/functions.html#bool) = False*)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#CpuFallbackStatus)
 
 Information about CPU fallback status.
 
@@ -21,7 +21,7 @@ Examples using `CpuFallbackStatus`:
 
 Accelerated video decoding on GPUs with CUDA and NVDEC
 
-status_known*: [bool](https://docs.python.org/3/library/functions.html#bool)**= False*
+status_known*: [bool](https://docs.python.org/3/builtins/functions.html#bool)**= False*
 
 Whether the fallback status has been determined.
 For the NVDEC CUDA backend (the default; see
