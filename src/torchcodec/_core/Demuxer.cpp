@@ -332,11 +332,6 @@ void Demuxer::scan_all_video_streams() {
   has_scanned_ = true;
 }
 
-// TODO_API_BREAKDOWN DESIGN P1 I'm starting to wonder if this should be named
-// 'scan()' in the python API. We only really scan once, but this is a
-// per-stream call. demuxer.scan(0) pays for the scan and demuxer.scan(1)
-// doesn't, but the 'scan()' name suggests that it does. Maybe this should be
-// .get_frame_index() (but 'index' is still overloaded). Ah.
 FrameIndex Demuxer::scan(std::optional<int> stream_index) {
   AVStream* scanned_stream =
       format_context_->streams[resolve_stream_index(stream_index)];

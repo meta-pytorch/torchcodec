@@ -140,8 +140,6 @@ class RawFrame:
         msb-aligned and are therefore genuinely valid 16-bit ones, with zeroed
         low bits.
         """
-        # TODO_API_BREAKDOWN DESIGN P2: should this report the depth of the
-        # source instead of the depth of the pixel format?
         return self._get_metadata().bit_depth
 
     @property

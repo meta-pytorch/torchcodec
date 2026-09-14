@@ -189,9 +189,6 @@ class _Stream:
 
     _media_type: str
 
-    # TODO_API_BREAKDOWN DESIGN P1: the index field is public and it's the index
-    # in the container, not the index in the demuxer's .streams field. Maybe
-    # that's OK. We should find a way to make that clear.
     def __init__(self, demuxer: Demuxer, index: int):
         self._demuxer = demuxer
         self.index = index
