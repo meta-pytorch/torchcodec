@@ -26,14 +26,14 @@ namespace facebook::torchcodec {
 int read_next_packet(
     AVFormatContext* format_context,
     int active_stream_index,
-    ReferenceAVPacket& packet);
+    AVPacket& packet);
 
 // Same, for a demuxer following more than one stream: the packet comes from
 // whichever of `active_stream_indices` has the next one.
 int read_next_packet(
     AVFormatContext* format_context,
     const std::vector<int>& active_stream_indices,
-    ReferenceAVPacket& packet);
+    AVPacket& packet);
 
 std::string get_seek_error_message(
     const AVFormatContext* format_context,
