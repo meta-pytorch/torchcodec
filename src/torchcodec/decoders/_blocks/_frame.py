@@ -55,8 +55,6 @@ class Packet:
         self._generation = generation
 
 
-# TODO_API_BREAKDOWN DESIGN P1: API design - the public fields, the class name,
-# whether planes should be 2D (they are), whether they should be named, etc.
 class RawFrame:
     """A decoded (YUV) frame, as the decoder produced it: an opaque,
     thread-movable handle to the frame plus everything describing it.
@@ -78,9 +76,9 @@ class RawFrame:
     it uploads those frames before handing them out, so they are
     indistinguishable from NVDEC ones here.
 
-    All the fields but ``pts_seconds``, ``duration_seconds`` and ``storage`` are
-    computed on first access and then cached, so nothing is paid for by a
-    pipeline that only color-converts.
+    All the fields but ``pts_seconds`` and ``duration_seconds`` are computed on
+    first access and then cached, so nothing is paid for by a pipeline that only
+    color-converts.
     """
 
     def __init__(
@@ -91,10 +89,7 @@ class RawFrame:
         storage: torch.Tensor | None = None,
     ):
         self._handle = handle
-        # A CUDA consumer reading the frame on a different stream than the
-        # decoder's must call storage.record_stream() on it.
-        # See [Standalone Frame Storage and the need for record_stream]
-        self.storage = storage
+        self._storage = storage
         self.pts_seconds = pts_seconds
         self.duration_seconds = duration_seconds
         self._metadata: _Metadata | None = None
@@ -102,7 +97,25 @@ class RawFrame:
 
     @property
     def _device(self) -> torch.device:
-        return self.storage.device if self.storage is not None else torch.device("cpu")
+        return (
+            self._storage.device if self._storage is not None else torch.device("cpu")
+        )
+
+    def record_stream(self, stream: torch.cuda.Stream) -> None:
+        """Tell the CUDA allocator that ``stream`` is still reading this frame's
+        samples, and that its memory must not be reused until that work is done.
+
+        **A CUDA consumer reading the frame on a stream other than the one the
+        decoder ran on must call this**, right after enqueueing the reads, or
+        the decoder's next frame may be handed the same buffer and overwrite it
+        while those reads are still queued. :class:`ColorConverter` does it for
+        you; anything else you write does not.
+
+        A no-op for frames that aren't on a CUDA device.
+        """
+        # See [Standalone Frame Storage and the need for record_stream]
+        if self._storage is not None:
+            self._storage.record_stream(stream)
 
     def _get_metadata(self) -> _Metadata:
         if self._metadata is None:
@@ -163,8 +176,17 @@ class RawFrame:
 
     @property
     def planes(self) -> tuple[torch.Tensor, ...]:
-        """The decoder's own samples as 2D tensor views, with no copy and no
-        conversion: one per component, in the order :attr:`pix_fmt` describes.
+        """The decoder's own samples as 2D ``[height, width]`` tensor views,
+        with no copy and no conversion: exactly one per component of
+        :attr:`pix_fmt`, in the order that format describes. So ``yuv420p`` and
+        ``nv12`` both give three, ``yuva420p`` four and ``gray`` one, and the
+        chroma ones are subsampled to whatever the format says.
+
+        A component is not a plane: the semi-planar formats (``nv12``,
+        ``p010le``, and the rest of the NVDEC surface formats) store U and V
+        interleaved in a single allocation, and they come back here as two
+        **non-contiguous** views into it. Everything that reads a tensor handles
+        that, but a consumer that needs contiguous memory pays a copy for it.
 
         Raises for the pixel formats that can't be viewed without a copy
         (sub-byte-packed, palettised and float ones) - check :attr:`pix_fmt`
@@ -172,8 +194,8 @@ class RawFrame:
         """
         if self._planes is None:
             planes = _blocks_frame_planes(self._handle, self._device)
-            # Absent components come back as empty tensors; real ones are 2D
-            # views.
+            # The op's schema is fixed-arity, so it pads with empty tensors up
+            # to the 4 components of the widest format.
             self._planes = tuple(p for p in planes if p.numel() > 0)
         return self._planes
 
