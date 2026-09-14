@@ -138,7 +138,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
     unsigned int chroma;
   };
 
-  CropOffsets crop_offsets(unsigned int pitch) const;
+  CropOffsets get_crop_offsets(unsigned int pitch) const;
 
   void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
@@ -315,10 +315,10 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 //   macroblock dims, i.e. the coded dimensions:
 //
 // - The *coded* dimensions: CUVIDEOFORMAT.coded_width / coded_height, which the
-//   NVCUVID parser gives us. Larger than the display area: a 1280x530 video is
-//   coded as 1280x544.
+//   NVCUVID parser gives us. Larger than (or equal to) the display area: a
+//   1280x530 video is coded as 1280x544.
 //
-// Dimensions that the user (us) defines:
+// Dimensions we choose:
 //
 // - There's another 'display' area, which (unsurprisingly), has a completely
 //   different meaning to the one above: it defines the area within the coded
@@ -352,6 +352,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 // surface, we'd have to add the display area to the cache key, which would
 // enforce the exact same display area for a decoder to be re-usable, reducing
 // cache hits.
+//
+// The cost for this optimized cache hit is that we handle the crop complexity
+// ourselves. But it's 2026 and agents are good at pointer arithmetic.
 //
 // Finally, this crop has nothing to do with the one in convert_yuv_to_rgb()
 // [color_conversion.cpp], which trims the output of a color-conversion kernel

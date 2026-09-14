@@ -172,7 +172,7 @@ static UniqueCUvideodecoder create_decoder(
   decoder_params.ulWidth = video_format->coded_width;
   decoder_params.ulMaxHeight = video_format->coded_height;
   decoder_params.ulMaxWidth = video_format->coded_width;
-  // The decoder outputs the entire coded frame, see Note: [NVDEC surface
+  // We want coded dimensions everywhere. See [NVDEC surface
   // dimensions and cropping].
   decoder_params.ulTargetHeight = video_format->coded_height;
   decoder_params.ulTargetWidth = video_format->coded_width;
@@ -883,7 +883,7 @@ void BetaCudaDeviceInterface::unmap_previous_frame() {
 
 // Where the display area starts within a plane of the surface, in bytes. See
 // Note: [NVDEC surface dimensions and cropping].
-BetaCudaDeviceInterface::CropOffsets BetaCudaDeviceInterface::crop_offsets(
+BetaCudaDeviceInterface::CropOffsets BetaCudaDeviceInterface::get_crop_offsets(
     unsigned int pitch) const {
   int crop_left = video_format_.display_area.left;
   int crop_top = video_format_.display_area.top;
@@ -896,10 +896,6 @@ BetaCudaDeviceInterface::CropOffsets BetaCudaDeviceInterface::crop_offsets(
       crop_top,
       "), this is unexpected, please report.");
 
-  // The chroma planes of a 4:2:0 surface are subsampled by 2 in both
-  // directions, but only their vertical offset is halved: an NV12 chroma sample
-  // is an interleaved (U, V) pair, i.e. it is twice as wide as a luma sample,
-  // and there are half as many of them per row.
   int bytes_per_sample = is_16bit_surface_format(surface_format_) ? 2 : 1;
   unsigned int luma = crop_top * pitch + crop_left * bytes_per_sample;
   unsigned int chroma =
@@ -985,15 +981,15 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
   unsigned int plane_stride = pitch * round_up_to_even(surface_height());
   bool is_444 = is_444_surface_format(surface_format_);
 
-  CropOffsets crop = crop_offsets(pitch);
+  CropOffsets crop_offsets = get_crop_offsets(pitch);
   auto plane = [&](unsigned int index, unsigned int crop_offset) {
     return reinterpret_cast<uint8_t*>(
         frame_ptr + (plane_stride * index) + crop_offset);
   };
 
-  av_frame->data[0] = plane(0, crop.luma);
-  av_frame->data[1] = plane(1, crop.chroma);
-  av_frame->data[2] = is_444 ? plane(2, crop.chroma) : nullptr;
+  av_frame->data[0] = plane(0, crop_offsets.luma);
+  av_frame->data[1] = plane(1, crop_offsets.chroma);
+  av_frame->data[2] = is_444 ? plane(2, crop_offsets.chroma) : nullptr;
   av_frame->data[3] = nullptr;
   STD_TORCH_CHECK(
       pitch <= static_cast<unsigned int>(std::numeric_limits<int>::max()),
@@ -1132,7 +1128,7 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
                              : pitch * num_luma_plane_rows * 3 / 2;
 
   auto* surface_base =
-      av_frame->data[0] - crop_offsets(static_cast<unsigned int>(pitch)).luma;
+      av_frame->data[0] - get_crop_offsets(static_cast<unsigned int>(pitch)).luma;
 
   auto storage =
       torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
