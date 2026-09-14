@@ -60,10 +60,6 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
     return device_interface_->get_frame_storage(av_frame);
   }
 
-  const StableDevice& device() const {
-    return device_interface_->device();
-  }
-
   // The stream time base, used to convert frame pts/duration to seconds.
   AVRational time_base() const {
     return time_base_;
