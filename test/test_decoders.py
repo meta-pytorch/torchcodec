@@ -3629,6 +3629,7 @@ def _is_msb_aligned(pix_fmt):
 class _PlanesCase(NamedTuple):
     """A video, how many significant bits its samples carry, and the pixel
     format its frames come out in on each device."""
+
     # Note: this might be merged into TestVideo, but really all these fields are
     # only tested / relevant in the 'Blocks' APIs.
 
