@@ -1104,12 +1104,6 @@ std::optional<torch::stable::Tensor> BetaCudaDeviceInterface::get_frame_storage(
 torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
     UniqueAVFrame& av_frame,
     cudaStream_t current_stream) {
-  // We copy the entire surface, i.e. the whole coded frame, not just the
-  // display area that av_frame points to: the planes are all part of the same
-  // allocation, so a single copy is cheaper than one copy per cropped plane,
-  // and it lets us keep the frame's crop offsets untouched below. See
-  // Note: [NVDEC surface dimensions and cropping].
-  //
   // The amount of bytes an NV12 image takes is:
   // num_bytes =  len(Y) + len(UV)
   //           = num_pixels + num_pixels / 2
