@@ -382,9 +382,6 @@ UniqueAVPacket Demuxer::next_packet() {
       "This demuxer isn't following any stream yet.");
   has_demuxed_ = true;
 
-  // Read straight into a fresh packet the caller owns, rather than into the
-  // reusable one a scan reads into: it is what makes the packet safe to hand to
-  // another thread.
   UniqueAVPacket packet(av_packet_alloc());
   STD_TORCH_CHECK(packet != nullptr, "Failed to allocate AVPacket");
 
