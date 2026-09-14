@@ -177,7 +177,7 @@ std::string get_pix_fmt_name(const AVFrame& av_frame) {
 }
 } // namespace
 
-FrameMetadata frame_metadata(const AVFrame& av_frame) {
+FrameMetadata get_frame_metadata(const AVFrame& av_frame) {
   const AVPixFmtDescriptor* desc = get_pix_fmt_desc(av_frame);
   const char* colorspace_name = av_color_space_name(av_frame.colorspace);
   const char* color_range_name = av_color_range_name(av_frame.color_range);
@@ -193,7 +193,7 @@ FrameMetadata frame_metadata(const AVFrame& av_frame) {
   return result;
 }
 
-std::vector<torch::stable::Tensor> frame_planes(
+std::vector<torch::stable::Tensor> get_frame_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
     const torch::stable::Tensor& tensor_handle) {
@@ -282,7 +282,7 @@ void deinterleave(
 }
 } // namespace
 
-torch::stable::Tensor audio_samples(const AVFrame& av_frame) {
+torch::stable::Tensor get_audio_samples(const AVFrame& av_frame) {
   auto sample_format = static_cast<AVSampleFormat>(av_frame.format);
   int num_channels = get_num_channels(av_frame);
   int64_t num_samples = av_frame.nb_samples;

@@ -104,18 +104,17 @@ struct FrameMetadata {
   double rotation_degrees = 0;
 };
 
-// TODO_API_BREAKDOWN CC P1 these should bet get_*
-
-// Describes `av_frame` without touching its samples. Unlike frame_planes(),
+// Describes `av_frame` without touching its samples. Unlike get_frame_planes(),
 // this works for every pixel format, so callers can ask what a frame is before
 // asking for views they may not be able to get.
-FORCE_PUBLIC_VISIBILITY FrameMetadata frame_metadata(const AVFrame& av_frame);
+FORCE_PUBLIC_VISIBILITY FrameMetadata
+get_frame_metadata(const AVFrame& av_frame);
 
 // A decoded frame's own samples, before any color conversion: one view per
 // component, in the frame's native order: (Y, U, V) for YUV, (R, G, B) for RGB
 // codecs, (Y,) for grayscale, plus a trailing alpha view when the format has
 // one.
-FORCE_PUBLIC_VISIBILITY std::vector<torch::stable::Tensor> frame_planes(
+FORCE_PUBLIC_VISIBILITY std::vector<torch::stable::Tensor> get_frame_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
     const torch::stable::Tensor& tensor_handle);
@@ -129,7 +128,7 @@ FORCE_PUBLIC_VISIBILITY std::vector<torch::stable::Tensor> frame_planes(
 // memcpy - and it means a converter can treat the result as planar-of-dtype.
 // TODO_API_BREAKDOWN DESIGN P1: do we want to copy? Should we just keep the
 // original layout?
-FORCE_PUBLIC_VISIBILITY torch::stable::Tensor audio_samples(
+FORCE_PUBLIC_VISIBILITY torch::stable::Tensor get_audio_samples(
     const AVFrame& av_frame);
 
 } // namespace facebook::torchcodec
