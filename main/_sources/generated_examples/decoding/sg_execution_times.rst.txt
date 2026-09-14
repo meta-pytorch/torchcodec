@@ -6,7 +6,7 @@
 
 Computation times
 =================
-**05:19.105** total execution time for 13 files **from generated_examples/decoding**:
+**05:19.348** total execution time for 13 files **from generated_examples/decoding**:
 
 .. container::
 
@@ -33,40 +33,40 @@ Computation times
      - Time
      - Mem (MB)
    * - :ref:`sphx_glr_generated_examples_decoding_transforms.py` (``transforms.py``)
-     - 02:26.380
+     - 02:26.711
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_parallel_decoding.py` (``parallel_decoding.py``)
-     - 01:25.537
+     - 01:25.436
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_file_like.py` (``file_like.py``)
-     - 00:27.029
+     - 00:26.776
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py` (``approximate_mode.py``)
-     - 00:25.287
+     - 00:25.364
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py` (``custom_frame_mappings.py``)
-     - 00:23.884
+     - 00:23.814
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_basic_cuda_example.py` (``basic_cuda_example.py``)
-     - 00:04.690
+     - 00:04.796
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_blocks.py` (``blocks.py``)
-     - 00:02.306
+     - 00:02.320
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_basic_example.py` (``basic_example.py``)
-     - 00:02.063
+     - 00:02.065
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_audio_decoding.py` (``audio_decoding.py``)
-     - 00:00.950
+     - 00:01.100
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_hdr_decoding.py` (``hdr_decoding.py``)
-     - 00:00.433
+     - 00:00.436
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_sampling.py` (``sampling.py``)
-     - 00:00.426
+     - 00:00.427
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_image_decoding.py` (``image_decoding.py``)
-     - 00:00.120
+     - 00:00.104
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_performance_tips.py` (``performance_tips.py``)
      - 00:00.000
