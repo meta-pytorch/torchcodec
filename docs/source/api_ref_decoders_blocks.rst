@@ -75,3 +75,17 @@ Data types
 
     FrameIndex
     RawAudioSamples
+
+Metadata
+--------
+
+.. autosummary::
+    :toctree: generated/
+    :nosignatures:
+    :template: dataclass.rst
+
+    DemuxerMetadata
+    ContainerMetadata
+    VideoStreamHeaderMetadata
+    AudioStreamHeaderMetadata
+    StreamMetadata

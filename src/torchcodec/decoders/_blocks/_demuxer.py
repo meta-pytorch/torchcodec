@@ -225,9 +225,7 @@ class Demuxer:
             named them. Packet decoders are built from these.
         metadata (DemuxerMetadata): What the container header says about the
             container itself. What it says about a given stream is on
-            ``demuxer.streams[i].metadata``, and
-            :func:`get_container_metadata` describes every stream of a file,
-            including those a ``Demuxer`` cannot follow.
+            ``demuxer.streams[i].metadata``.
     """
 
     def __init__(

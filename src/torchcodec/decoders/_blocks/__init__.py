@@ -4,6 +4,14 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from torchcodec._core._metadata import (
+    AudioStreamHeaderMetadata,
+    ContainerMetadata,
+    DemuxerMetadata,
+    StreamMetadata,
+    VideoStreamHeaderMetadata,
+)
+
 from ._audio_converter import AudioConverter
 from ._color_converter import ColorConverter
 from ._demuxer import (
@@ -29,4 +37,9 @@ __all__ = [
     "RawFrame",
     "RawAudioSamples",
     "FrameIndex",
+    "DemuxerMetadata",
+    "ContainerMetadata",
+    "StreamMetadata",
+    "VideoStreamHeaderMetadata",
+    "AudioStreamHeaderMetadata",
 ]
