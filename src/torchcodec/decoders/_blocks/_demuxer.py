@@ -223,6 +223,11 @@ class Demuxer:
         streams (tuple): The :class:`VideoStream` and :class:`AudioStream`
             objects being followed, in the order the ``streams`` parameter
             named them. Packet decoders are built from these.
+        metadata (DemuxerMetadata): What the container header says about the
+            container itself. What it says about a given stream is on
+            ``demuxer.streams[i].metadata``, and
+            :func:`get_container_metadata` describes every stream of a file,
+            including those a ``Demuxer`` cannot follow.
     """
 
     def __init__(
