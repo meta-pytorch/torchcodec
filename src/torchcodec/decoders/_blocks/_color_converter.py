@@ -18,6 +18,8 @@ from ._frame import RawFrame
 
 
 class ColorConverter:
+    """TODO_API_BREAKDOWN DOC"""
+
     def __init__(
         self,
         device: str | torch.device | None = None,

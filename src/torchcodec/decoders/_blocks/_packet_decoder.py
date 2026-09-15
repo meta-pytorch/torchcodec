@@ -94,12 +94,15 @@ class _BasePacketDecoder(Generic[_Decoded]):
         return frames
 
     def reset(self) -> None:
+        """TODO_API_BREAKDOWN DOC"""
         _blocks_packet_decoder_reset(self._handle)
         self._drained = False
         self._generation = None
 
 
 class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
+    """TODO_API_BREAKDOWN DOC"""
+
     def _receive_ready_frames(self) -> list[RawFrame]:
         frames = []
         while True:
@@ -120,6 +123,8 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
 
 
 class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
+    """TODO_API_BREAKDOWN DOC"""
+
     def _receive_ready_frames(self) -> list[RawAudioSamples]:
         samples = []
         while True:

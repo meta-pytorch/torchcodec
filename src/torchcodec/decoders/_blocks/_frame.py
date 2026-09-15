@@ -26,6 +26,8 @@ class _Metadata(NamedTuple):
 
 
 class Packet:
+    """TODO_API_BREAKDOWN DOC"""
+
     def __init__(
         self,
         handle: torch.Tensor,
@@ -42,6 +44,8 @@ class Packet:
 
 
 class RawFrame:
+    """TODO_API_BREAKDOWN DOC"""
+
     def __init__(
         self,
         handle: torch.Tensor,
@@ -112,6 +116,8 @@ class RawFrame:
 
 @dataclass
 class RawAudioSamples:
+    """TODO_API_BREAKDOWN DOC"""
+
     data: torch.Tensor
     sample_rate: int
     pts_seconds: float

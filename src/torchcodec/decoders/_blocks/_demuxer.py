@@ -44,6 +44,8 @@ from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
 
 @dataclass
 class FrameIndex:
+    """TODO_API_BREAKDOWN DOC"""
+
     is_key_frame: Tensor
     _pts: Tensor
     _duration: Tensor
@@ -150,6 +152,8 @@ class _Stream:
 
 
 class VideoStream(_Stream):
+    """TODO_API_BREAKDOWN DOC"""
+
     _media_type = "video"
 
     def __init__(self, demuxer: Demuxer, index: int):
@@ -177,13 +181,56 @@ class VideoStream(_Stream):
 
 
 class AudioStream(_Stream):
+    """TODO_API_BREAKDOWN DOC"""
+
     _media_type = "audio"
 
     def make_decoder(self) -> AudioPacketDecoder:
         return AudioPacketDecoder._from_stream(self, "cpu")
 
 
+# TODO_API_BREAKDOWN DESIGN P1: streams param raises ValueError or RuntimeError
+# depending on where the validation lives. We should align to ValueError if
+# possible.
 class Demuxer:
+    """Reads one or more video and audio streams from a container, and produces their compressed :class:`Packet`\\ s.
+
+    Packets come out interleaved, and :attr:`Packet.stream_index` says which
+    stream each one belongs to::
+
+        demuxer = Demuxer("video.mp4", streams=("video", "audio"))
+        decoders = {s.index: s.make_decoder() for s in demuxer.streams}
+
+        for packet in demuxer:
+            for output in decoders[packet.stream_index].decode(packet):
+                ...
+
+    Args:
+        source (str, ``Pathlib.path``, bytes, ``torch.Tensor`` or file-like object): The source of the media:
+
+            - If ``str``: a local path or a URL to a media file.
+            - If ``Pathlib.path``: a path to a local media file.
+            - If ``bytes`` object or ``torch.Tensor``: the raw encoded data.
+            - If file-like object: we read data from the object on demand. The
+              object must expose the methods `read(self, size: int) -> bytes`
+              and `seek(self, offset: int, whence: int) -> int`.
+        streams (str, int or tuple, optional): Which streams to follow, as a
+            single selector or a tuple of them. A selector is either
+            ``"video"`` or ``"audio"`` for the :term:`best stream` of that
+            type, or an ``int`` for a stream index, absolute across all media
+            types. ``"all"`` follows every audio and video stream in container
+            order, skipping the rest, and can only be used on its own. Default:
+            ``"video"``.
+
+    Attributes:
+        streams (tuple): The :class:`VideoStream` and :class:`AudioStream`
+            objects being followed, in the order the ``streams`` parameter
+            named them. Packet decoders are built from these.
+        metadata (DemuxerMetadata): What the container header says about the
+            container itself. What it says about a given stream is on
+            ``demuxer.streams[i].metadata``.
+    """
+
     def __init__(
         self,
         source: str | Path | bytes | Tensor | io.RawIOBase | io.BufferedReader,
@@ -244,13 +291,66 @@ class Demuxer:
         stream_class = VideoStream if media_type == "video" else AudioStream
         return stream_class(self, index)
 
+    # TODO_API_BREAKDOWN DESIGN P0: We probably don't want this, and should
+    # probably just expose __iter__ and __next__ instead of next_packet().
+    # IF we keep next_packet() then we must revisit the docstring because I
+    # haven't checked it.
     def next_packet(self) -> Packet | None:
+        """Read and return the next :class:`Packet`.
+
+        Packets come out interleaved across the streams being followed, in the
+        order the container stores them, so this is where
+        :attr:`Packet.stream_index` matters: it is what routes each packet to
+        the decoder of its own stream. Iterating over a ``Demuxer`` calls this
+        until it returns ``None``.
+
+        ``None`` means the *container* is exhausted, not a stream: it only
+        comes once no followed stream has a packet left. An individual stream
+        usually runs dry before that - an audio stream shorter than the video
+        it accompanies simply stops appearing - and nothing announces that it
+        did. Its decoder is finished off with ``drain()``, not by watching for
+        ``None``. Once exhausted, further calls keep returning ``None``; a read
+        error raises instead.
+
+        Returns:
+            Packet or None: The next packet, or ``None`` once the container is
+            exhausted.
+        """
         handle, is_eof, stream_index = _blocks_demuxer_next_packet(self._handle)
         if is_eof:
             return None
         return Packet(handle, stream_index, generation=self._generation)
 
-    def seek(self, seconds: float, *, stream: _Stream | None = None) -> None:
+    # TODO_API_BREAKDOWN DESIGN P2 Should we consider int-based (pts) seeks?
+    def seek(
+        self, seconds: float, *, stream: VideoStream | AudioStream | None = None
+    ) -> None:
+        """Move the demuxer to ``seconds``.
+
+        This moves *every* stream being followed. For videos, this lands on the
+        keyframe at or before ``seconds``. For audio, a lossy codec's first
+        frames after a seek are typically slightly wrong until the codec
+        re-primes. This is especially true when resampling is involved (via an
+        :class:`AudioConverter`). Pre-rolling a margin of audio before the
+        target is up to you.
+
+        .. important::
+
+            You must call :meth:`VideoPacketDecoder.reset` or
+            :meth:`AudioPacketDecoder.reset` on every decoder fed by this
+            demuxer afterwards, and :meth:`AudioConverter.reset` on every
+            converter too: a seek invalidates a codec and resampler states.
+
+        Args:
+            seconds (float): The position to seek to.
+            stream (VideoStream or AudioStream, optional): The stream the
+                target ``seconds`` is resolved against. FFmpeg resolves a seek in a single
+                stream's time base and lands on *that* stream's keyframes, the
+                other streams merely resuming from wherever the container ends
+                up - so a second video stream may land mid-GOP and decode
+                garbage until its next keyframe. Defaults to the first of
+                :attr:`streams`, as passed to the constructor.
+        """
         _blocks_demuxer_seek(
             self._handle,
             float(seconds),
@@ -279,6 +379,8 @@ def _container_fields(handle: Tensor) -> dict:
 def get_container_metadata(
     source: str | Path | bytes | Tensor | io.RawIOBase | io.BufferedReader,
 ) -> ContainerMetadata:
+    """TODO_API_BREAKDOWN DOC"""
+
     handle = create_demuxer(source=source)
     container_dict = json.loads(_blocks_demuxer_container_json_metadata(handle))
     streams = [

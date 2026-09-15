@@ -210,23 +210,19 @@ class AudioStreamMetadata(AudioStreamHeaderMetadata):
 class DemuxerMetadata:
     """Container-level metadata, as reported by the header.
 
-    This is what a demuxer can say about the container itself. Everything about
-    the streams it follows is on those streams; the full list of streams in the
-    file, including the ones that cannot be followed, comes from
-    ``get_container_metadata()`` instead.
+    This is what a :class:`~torchcodec.decoders._blocks.Demuxer` can say about
+    the container itself.
     """
 
     duration_seconds_from_header: float | None
     """Duration of the container, in seconds, obtained from the header (float
-    or None). Some containers carry a duration only here, with their streams
-    reporting none, which is why this is worth having separately."""
+    or None)."""
     bit_rate_from_header: float | None
-    """Overall bit rate of the container (float or None). Not the sum of the
-    streams' bit rates: it includes muxing overhead."""
+    """Overall bit rate of the container (float or None)."""
     best_video_stream_index: int | None
-    """Index of the stream FFmpeg considers the best video one (int or None)."""
+    """Index of the :term:`best stream` of video type (int or None)."""
     best_audio_stream_index: int | None
-    """Index of the stream FFmpeg considers the best audio one (int or None)."""
+    """Index of the :term:`best stream` of audio type (int or None)."""
 
     def __repr__(self):
         s = self.__class__.__name__ + ":\n"
@@ -235,8 +231,16 @@ class DemuxerMetadata:
         return s
 
 
+# TODO_API_BREAKDOWN DOC: not checked this yet, do once we address
+# get_container_metadata
 @dataclass
 class ContainerMetadata(DemuxerMetadata):
+    """Metadata of a container and of every stream in it.
+
+    Unlike :class:`DemuxerMetadata`, which describes the container alone, this
+    also lists the streams, including the ones that cannot be decoded.
+    """
+
     streams: list[StreamMetadata]
     """One entry per stream in the file, indexed by stream index. Streams that
     are neither video nor audio (subtitles, data) are plain
