@@ -18,7 +18,37 @@ from ._frame import RawFrame
 
 
 class ColorConverter:
-    """TODO_API_BREAKDOWN DOC"""
+    """Turn a :class:`RawFrame` (typically YUV) into an RGB :class:`~torchcodec.Frame`.
+
+    .. code-block:: python
+
+        converter = ColorConverter()
+
+        for packet in demuxer:
+            for raw_frame in packet_decoder.decode(packet):
+                frame = converter.convert(raw_frame)
+                frame.data  # uint8 [3, height, width], RGB
+
+    Unlike the other blocks this one isn't tied to a specific video stream.
+    Everything it needs (dimensions, pixel format, colorspace, rotation) comes
+    from the :class:`RawFrame` itself, so the same converter instance can
+    process frames from any video stream, provided that they share the same
+    device.
+
+    Args:
+        device (str or torch.device, optional): The device to convert on. If
+            ``None`` (default), the current default device is used (see
+            ``torch.set_default_device``). It has to be the device the frames
+            are already on, i.e. it must match what was passed to the
+            :class:`~torchcodec.decoders._blocks.VideoPacketDecoder` that produced
+            the :class:`RawFrame`.
+        output_dtype (torch.dtype or ``"auto"``, optional): ``torch.uint8``
+            (default) for values in ``[0, 255]``, ``torch.float32`` for
+            ``[0, 1]``, or ``"auto"`` for uint8 from 8-bit sources and float32
+            from deeper ones. Since this block isn't tied to a stream,
+            ``"auto"`` is resolved per frame rather than once per video, so
+            feeding it a mix of SDR and HDR frames gives you a mix of dtypes.
+    """
 
     def __init__(
         self,
@@ -40,6 +70,22 @@ class ColorConverter:
     # do the upload ourselves (the download makes no sense, it's super slow).
     # Anyway, that can be done later.
     def convert(self, raw_frame: RawFrame) -> Frame:
+        """Convert one :class:`RawFrame` to an RGB :class:`~torchcodec.Frame`.
+
+        :attr:`RawFrame.rotation_degrees` is applied, so the output is upright
+        and matches what a :class:`~torchcodec.decoders.VideoDecoder` gives you.
+
+        Args:
+            raw_frame (RawFrame): The frame to convert. It has to be on this
+                converter's device.
+
+        Returns:
+            The RGB ``[3, height, width]`` frame in the converter's
+            ``output_dtype``.
+
+        Raises:
+            RuntimeError: If the frame is not on this converter's device.
+        """
         data = _blocks_convert_frame(self._handle, raw_frame._handle, raw_frame._device)
         if raw_frame._device.type == "cuda":
             # See [Standalone Frame Storage and the need for record_stream]
