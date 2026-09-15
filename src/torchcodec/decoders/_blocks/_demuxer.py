@@ -280,9 +280,6 @@ class VideoStream(_Stream):
     ) -> VideoPacketDecoder:
         """Build the :class:`VideoPacketDecoder` for this stream.
 
-        This is the only way to build one: it is what binds the decoder to the
-        codec parameters of the stream whose packets it will decode.
-
         Args:
             device (str or torch.device, optional): The device to decode on (cpu or CUDA).
                 If ``None`` (default), the current default device is used (see
@@ -297,17 +294,12 @@ class VideoStream(_Stream):
 class AudioStream(_Stream):
     """An audio stream followed by a :class:`Demuxer`.
 
-    Not built directly: a ``Demuxer`` creates one per stream it follows and
-    exposes them as :attr:`Demuxer.streams`. Holding on to one keeps that
-    demuxer, and so the container it opened, alive.
-
-    There is no ``scan()``: a :class:`FrameIndex` describes keyframes and frame
-    positions, and audio has neither.
+    You should not build one yourself: a ``Demuxer`` creates one for you.
 
     Attributes:
         index (int): The stream's index within the container, absolute across
             all media types. This is what a :class:`Packet`'s ``stream_index``
-            is compared against.
+            can be compared against.
     """
 
     _media_type = "audio"
@@ -316,18 +308,12 @@ class AudioStream(_Stream):
     def metadata(self) -> AudioStreamHeaderMetadata:
         """What the container header says about this audio stream.
 
-        The header only, and that is all there is for audio: there is no
-        ``scan()`` to derive anything from the stream's own content.
+        From the header only.
         """
         return cast(AudioStreamHeaderMetadata, self._read_metadata())
 
     def make_decoder(self) -> AudioPacketDecoder:
         """Build the :class:`AudioPacketDecoder` for this stream.
-
-        This is the only way to build one: it is what binds the decoder to the
-        codec parameters of the stream whose packets it will decode. Audio is
-        always decoded on the CPU, so there is no ``device`` parameter, and
-        ``torch.set_default_device`` doesn't change that.
 
         Returns:
             AudioPacketDecoder: A decoder for this stream's packets.
