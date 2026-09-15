@@ -3965,6 +3965,14 @@ class TestBlocks:
             "StreamMetadata",
         ]
         assert [s.stream_index for s in metadata.streams] == list(range(6))
+        assert [s.media_type for s in metadata.streams] == [
+            "video",
+            "audio",
+            "subtitle",
+            "video",
+            "audio",
+            "subtitle",
+        ]
 
     def test_get_container_metadata_reads_no_packets(self):
         class CountingFileLike:
