@@ -15,7 +15,7 @@ For a tutorial, see:
 | [`VideoStream`](generated/torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream) | A video stream followed by a [`Demuxer`](generated/torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer). |
 | [`AudioStream`](generated/torchcodec.decoders._blocks.AudioStream.html#torchcodec.decoders._blocks.AudioStream) | An audio stream followed by a [`Demuxer`](generated/torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer). |
 
-| [`get_container_metadata`](generated/torchcodec.decoders._blocks.get_container_metadata.html#torchcodec.decoders._blocks.get_container_metadata) | TODO_API_BREAKDOWN DOC |
+| [`get_container_metadata`](generated/torchcodec.decoders._blocks.get_container_metadata.html#torchcodec.decoders._blocks.get_container_metadata) | Describe a container and every stream in it, without decoding anything. |
 | --- | --- |
 
 ## Decoding

@@ -1204,7 +1204,26 @@ document.write(`
 <dl class="py function">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.get_container_metadata">
 <span class="sig-prename descclassname"><span class="pre">torchcodec.decoders._blocks.</span></span><span class="sig-name descname"><span class="pre">get_container_metadata</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#bytes" title="(in Python v3.14)"><span class="pre">bytes</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/io.html#io.RawIOBase" title="(in Python v3.14)"><span class="pre">RawIOBase</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">BufferedReader</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="torchcodec.decoders._blocks.ContainerMetadata.html#torchcodec.decoders._blocks.ContainerMetadata" title="torchcodec._core._metadata.ContainerMetadata"><span class="pre">ContainerMetadata</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_demuxer.html#get_container_metadata"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.get_container_metadata" title="Link to this definition">#</a></dt>
-<dd><p>TODO_API_BREAKDOWN DOC</p>
+<dd><p>Describe a container and every stream in it, without decoding anything.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">metadata</span> <span class="o">=</span> <span class="n">get_container_metadata</span><span class="p">(</span><span class="s2">&quot;video.mp4&quot;</span><span class="p">)</span>
+<span class="n">metadata</span><span class="o">.</span><span class="n">duration_seconds_from_header</span>
+<span class="n">metadata</span><span class="o">.</span><span class="n">streams</span><span class="p">[</span><span class="n">metadata</span><span class="o">.</span><span class="n">best_video_stream_index</span><span class="p">]</span><span class="o">.</span><span class="n">width</span>
+</pre></div>
+</div>
+<p>Only the header is read, so this is what to reach for before you know what a
+file holds, and therefore which streams to ask a <a class="reference internal" href="torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer" title="torchcodec.decoders._blocks.Demuxer"><code class="xref py py-class docutils literal notranslate"><span class="pre">Demuxer</span></code></a> for.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>source</strong> (str, <code class="docutils literal notranslate"><span class="pre">Pathlib.path</span></code>, bytes, <code class="docutils literal notranslate"><span class="pre">torch.Tensor</span></code> or file-like object) – The source of the media, as for <a class="reference internal" href="torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer" title="torchcodec.decoders._blocks.Demuxer"><code class="xref py py-class docutils literal notranslate"><span class="pre">Demuxer</span></code></a>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The container’s own metadata, plus one entry per
+stream, indexed by stream index.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="torchcodec.decoders._blocks.ContainerMetadata.html#torchcodec.decoders._blocks.ContainerMetadata" title="torchcodec.decoders._blocks.ContainerMetadata">ContainerMetadata</a></p>
+</dd>
+</dl>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">get_container_metadata</span></code>:</p>
 <div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_blocks_thumb.png" />
 <p><a class="reference internal" href="../generated_examples/decoding/blocks.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
@@ -1556,7 +1575,7 @@ document.write(`
        "headline": "get_container_metadata",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders._blocks.get_container_metadata.html",
-       "articleBody": "get_container_metadata# torchcodec.decoders._blocks.get_container_metadata(source: str | Path | bytes | Tensor | RawIOBase | BufferedReader) \u2192 ContainerMetadata[source]# TODO_API_BREAKDOWN DOC Examples using get_container_metadata: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline",
+       "articleBody": "get_container_metadata# torchcodec.decoders._blocks.get_container_metadata(source: str | Path | bytes | Tensor | RawIOBase | BufferedReader) \u2192 ContainerMetadata[source]# Describe a container and every stream in it, without decoding anything. metadata = get_container_metadata(\"video.mp4\") metadata.duration_seconds_from_header metadata.streams[metadata.best_video_stream_index].width Only the header is read, so this is what to reach for before you know what a file holds, and therefore which streams to ask a Demuxer for. Parameters: source (str, Pathlib.path, bytes, torch.Tensor or file-like object) \u2013 The source of the media, as for Demuxer. Returns: The container\u2019s own metadata, plus one entry per stream, indexed by stream index. Return type: ContainerMetadata Examples using get_container_metadata: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

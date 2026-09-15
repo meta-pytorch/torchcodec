@@ -26,6 +26,9 @@ or None).
 
 streams*: [list](https://docs.python.org/3/builtins/stdtypes.html#list)[[StreamMetadata](torchcodec.decoders._blocks.StreamMetadata.html#torchcodec.decoders._blocks.StreamMetadata)]*
 
-One entry per stream in the file, indexed by stream index. Streams that
-are neither video nor audio (subtitles, data) are plain
-[`StreamMetadata`](torchcodec.decoders._blocks.StreamMetadata.html#torchcodec.decoders._blocks.StreamMetadata): you can see them, you cannot decode them.
+One entry per stream in the file, indexed by stream index.
+
+Despite the annotation, the entries are rarely plain
+[`StreamMetadata`](torchcodec.decoders._blocks.StreamMetadata.html#torchcodec.decoders._blocks.StreamMetadata). A video stream comes back as a
+[`VideoStreamHeaderMetadata`](torchcodec.decoders._blocks.VideoStreamHeaderMetadata.html#torchcodec.decoders._blocks.VideoStreamHeaderMetadata) and an audio stream as an
+[`AudioStreamHeaderMetadata`](torchcodec.decoders._blocks.AudioStreamHeaderMetadata.html#torchcodec.decoders._blocks.AudioStreamHeaderMetadata).
