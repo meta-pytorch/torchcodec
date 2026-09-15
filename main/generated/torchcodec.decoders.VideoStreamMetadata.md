@@ -118,7 +118,7 @@ than `num_frames_from_header`. We recommend using the
 num_frames_from_header*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Number of frames, from the stream's metadata. This is potentially
-inaccurate. We recommend using the `num_frames` attribute instead.
+inaccurate.
 (int or None).
 
 pixel_aspect_ratio*: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*

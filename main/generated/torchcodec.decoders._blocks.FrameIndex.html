@@ -1204,7 +1204,28 @@ document.write(`
 <dl class="py class">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.FrameIndex">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">torchcodec.decoders._blocks.</span></span><span class="sig-name descname"><span class="pre">FrameIndex</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">is_key_frame</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">_pts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">_duration</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">_time_base_num</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">_time_base_den</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_demuxer.html#FrameIndex"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.FrameIndex" title="Link to this definition">#</a></dt>
-<dd><p>TODO_API_BREAKDOWN DOC</p>
+<dd><p>What the packets of a video stream say about its frames, as returned by
+a <a class="reference internal" href="../glossary.html#term-scan"><span class="xref std std-term">scan</span></a> (<a class="reference internal" href="torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.scan" title="torchcodec.decoders._blocks.VideoStream.scan"><code class="xref py py-meth docutils literal notranslate"><span class="pre">VideoStream.scan()</span></code></a>).</p>
+<p>Its members come in three shapes:</p>
+<ul class="simple">
+<li><p><strong>Per-frame tensors</strong>, of shape <code class="docutils literal notranslate"><span class="pre">[N]</span></code> where <code class="docutils literal notranslate"><span class="pre">N</span></code> is the number of
+frames: one entry per frame, in presentation order. These are
+<a class="reference internal" href="#torchcodec.decoders._blocks.FrameIndex.is_key_frame" title="torchcodec.decoders._blocks.FrameIndex.is_key_frame"><code class="xref py py-attr docutils literal notranslate"><span class="pre">is_key_frame</span></code></a>, <a class="reference internal" href="#torchcodec.decoders._blocks.FrameIndex.pts_seconds" title="torchcodec.decoders._blocks.FrameIndex.pts_seconds"><code class="xref py py-attr docutils literal notranslate"><span class="pre">pts_seconds</span></code></a> and <a class="reference internal" href="#torchcodec.decoders._blocks.FrameIndex.duration_seconds" title="torchcodec.decoders._blocks.FrameIndex.duration_seconds"><code class="xref py py-attr docutils literal notranslate"><span class="pre">duration_seconds</span></code></a>.</p></li>
+<li><p><strong>Keyframe positions</strong>, <a class="reference internal" href="#torchcodec.decoders._blocks.FrameIndex.key_frame_indices" title="torchcodec.decoders._blocks.FrameIndex.key_frame_indices"><code class="xref py py-attr docutils literal notranslate"><span class="pre">key_frame_indices</span></code></a>, of shape <code class="docutils literal notranslate"><span class="pre">[K]</span></code> where
+<code class="docutils literal notranslate"><span class="pre">K</span></code> is the number of keyframes. These are indices into the per-frame
+tensors, not frames themselves.</p></li>
+<li><p><strong>Stream-level metadata scalars</strong>, one value for the whole stream:
+<a class="reference internal" href="#torchcodec.decoders._blocks.FrameIndex.num_frames_from_content" title="torchcodec.decoders._blocks.FrameIndex.num_frames_from_content"><code class="xref py py-attr docutils literal notranslate"><span class="pre">num_frames_from_content</span></code></a>,
+<a class="reference internal" href="#torchcodec.decoders._blocks.FrameIndex.begin_stream_seconds_from_content" title="torchcodec.decoders._blocks.FrameIndex.begin_stream_seconds_from_content"><code class="xref py py-attr docutils literal notranslate"><span class="pre">begin_stream_seconds_from_content</span></code></a>,
+<a class="reference internal" href="#torchcodec.decoders._blocks.FrameIndex.end_stream_seconds_from_content" title="torchcodec.decoders._blocks.FrameIndex.end_stream_seconds_from_content"><code class="xref py py-attr docutils literal notranslate"><span class="pre">end_stream_seconds_from_content</span></code></a> and
+<a class="reference internal" href="#torchcodec.decoders._blocks.FrameIndex.average_fps_from_content" title="torchcodec.decoders._blocks.FrameIndex.average_fps_from_content"><code class="xref py py-attr docutils literal notranslate"><span class="pre">average_fps_from_content</span></code></a>.</p></li>
+</ul>
+<p><a class="reference internal" href="#torchcodec.decoders._blocks.FrameIndex.index_at" title="torchcodec.decoders._blocks.FrameIndex.index_at"><code class="xref py py-meth docutils literal notranslate"><span class="pre">index_at()</span></code></a> and <a class="reference internal" href="#torchcodec.decoders._blocks.FrameIndex.key_frame_seconds_for" title="torchcodec.decoders._blocks.FrameIndex.key_frame_seconds_for"><code class="xref py py-meth docutils literal notranslate"><span class="pre">key_frame_seconds_for()</span></code></a> are convenience methods
+that search those tensors so that you don’t have to.</p>
+<p>Everything here is derived from the stream’s packets rather than from the
+container header, so it is exact where the header is only a claim. That is
+what the <code class="docutils literal notranslate"><span class="pre">_from_content</span></code> suffixes mark, against the <code class="docutils literal notranslate"><span class="pre">_from_header</span></code> ones
+on <a class="reference internal" href="torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.metadata" title="torchcodec.decoders._blocks.VideoStream.metadata"><code class="xref py py-attr docutils literal notranslate"><span class="pre">VideoStream.metadata</span></code></a>.</p>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">FrameIndex</span></code>:</p>
 <div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_blocks_thumb.png" />
 <p><a class="reference internal" href="../generated_examples/decoding/blocks.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
@@ -1212,52 +1233,91 @@ document.write(`
 </div></div><dl class="py property">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.FrameIndex.average_fps_from_content">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">average_fps_from_content</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.FrameIndex.average_fps_from_content" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>The average number of frames per second over the stream.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.FrameIndex.begin_stream_seconds_from_content">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">begin_stream_seconds_from_content</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.FrameIndex.begin_stream_seconds_from_content" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>The <a class="reference internal" href="../glossary.html#term-pts"><span class="xref std std-term">pts</span></a> of the first frame.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.FrameIndex.duration_seconds">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">duration_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.FrameIndex.duration_seconds" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>Float64 tensor of shape <code class="docutils literal notranslate"><span class="pre">[N]</span></code>, how long each frame is displayed
+for.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.FrameIndex.end_stream_seconds_from_content">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">end_stream_seconds_from_content</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.FrameIndex.end_stream_seconds_from_content" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>The time at which the last frame stops being displayed.</p>
+<p>This is the largest <code class="docutils literal notranslate"><span class="pre">pts</span> <span class="pre">+</span> <span class="pre">duration</span></code> across the stream, not the last
+frame’s own end time. Durations vary, so the frame that finishes last
+isn’t necessarily the one that starts last.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.FrameIndex.index_at">
 <span class="sig-name descname"><span class="pre">index_at</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_demuxer.html#FrameIndex.index_at"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.FrameIndex.index_at" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>The index of the frame being displayed at <code class="docutils literal notranslate"><span class="pre">seconds</span></code>.</p>
+<p>A frame is displayed from its own <a class="reference internal" href="../glossary.html#term-pts"><span class="xref std std-term">pts</span></a> until that plus its
+duration, so this is the frame whose interval contains <code class="docutils literal notranslate"><span class="pre">seconds</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>seconds</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – The timestamp to look up. A value outside the
+stream gives the closest frame, i.e. the first or the last one.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The index of that frame.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)">int</a></p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.FrameIndex.is_key_frame">
 <span class="sig-name descname"><span class="pre">is_key_frame</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.FrameIndex.is_key_frame" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>Bool tensor of shape <code class="docutils literal notranslate"><span class="pre">[N]</span></code>, whether each frame is a keyframe.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.FrameIndex.key_frame_indices">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">key_frame_indices</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.FrameIndex.key_frame_indices" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>Int64 tensor of shape <code class="docutils literal notranslate"><span class="pre">[K]</span></code>, the indices of the keyframes.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.FrameIndex.key_frame_seconds_for">
 <span class="sig-name descname"><span class="pre">key_frame_seconds_for</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_demuxer.html#FrameIndex.key_frame_seconds_for"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.FrameIndex.key_frame_seconds_for" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>The timestamp of the last keyframe at or before <code class="docutils literal notranslate"><span class="pre">seconds</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>seconds</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – The timestamp you want to reach.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The timestamp to seek to.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)">float</a></p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.FrameIndex.num_frames_from_content">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">num_frames_from_content</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.FrameIndex.num_frames_from_content" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>The number of frames in the stream.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.FrameIndex.pts_seconds">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">pts_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.FrameIndex.pts_seconds" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>Float64 tensor of shape <code class="docutils literal notranslate"><span class="pre">[N]</span></code>, the <a class="reference internal" href="../glossary.html#term-pts"><span class="xref std std-term">pts</span></a> of each frame.</p>
+</dd></dl>
 
 </dd></dl>
 
@@ -1618,7 +1678,7 @@ document.write(`
        "headline": "FrameIndex",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders._blocks.FrameIndex.html",
-       "articleBody": "FrameIndex# class torchcodec.decoders._blocks.FrameIndex(is_key_frame: Tensor, _pts: Tensor, _duration: Tensor, _time_base_num: int, _time_base_den: int)[source]# TODO_API_BREAKDOWN DOC Examples using FrameIndex: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline property average_fps_from_content: float# property begin_stream_seconds_from_content: float# property duration_seconds: Tensor# property end_stream_seconds_from_content: float# index_at(seconds: float) \u2192 int[source]# is_key_frame: Tensor# property key_frame_indices: Tensor# key_frame_seconds_for(seconds: float) \u2192 float[source]# property num_frames_from_content: int# property pts_seconds: Tensor#",
+       "articleBody": "FrameIndex# class torchcodec.decoders._blocks.FrameIndex(is_key_frame: Tensor, _pts: Tensor, _duration: Tensor, _time_base_num: int, _time_base_den: int)[source]# What the packets of a video stream say about its frames, as returned by a scan (VideoStream.scan()). Its members come in three shapes: Per-frame tensors, of shape [N] where N is the number of frames: one entry per frame, in presentation order. These are is_key_frame, pts_seconds and duration_seconds. Keyframe positions, key_frame_indices, of shape [K] where K is the number of keyframes. These are indices into the per-frame tensors, not frames themselves. Stream-level metadata scalars, one value for the whole stream: num_frames_from_content, begin_stream_seconds_from_content, end_stream_seconds_from_content and average_fps_from_content. index_at() and key_frame_seconds_for() are convenience methods that search those tensors so that you don\u2019t have to. Everything here is derived from the stream\u2019s packets rather than from the container header, so it is exact where the header is only a claim. That is what the _from_content suffixes mark, against the _from_header ones on VideoStream.metadata. Examples using FrameIndex: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline property average_fps_from_content: float# The average number of frames per second over the stream. property begin_stream_seconds_from_content: float# The pts of the first frame. property duration_seconds: Tensor# Float64 tensor of shape [N], how long each frame is displayed for. property end_stream_seconds_from_content: float# The time at which the last frame stops being displayed. This is the largest pts + duration across the stream, not the last frame\u2019s own end time. Durations vary, so the frame that finishes last isn\u2019t necessarily the one that starts last. index_at(seconds: float) \u2192 int[source]# The index of the frame being displayed at seconds. A frame is displayed from its own pts until that plus its duration, so this is the frame whose interval contains seconds. Parameters: seconds (float) \u2013 The timestamp to look up. A value outside the stream gives the closest frame, i.e. the first or the last one. Returns: The index of that frame. Return type: int is_key_frame: Tensor# Bool tensor of shape [N], whether each frame is a keyframe. property key_frame_indices: Tensor# Int64 tensor of shape [K], the indices of the keyframes. key_frame_seconds_for(seconds: float) \u2192 float[source]# The timestamp of the last keyframe at or before seconds. Parameters: seconds (float) \u2013 The timestamp you want to reach. Returns: The timestamp to seek to. Return type: float property num_frames_from_content: int# The number of frames in the stream. property pts_seconds: Tensor# Float64 tensor of shape [N], the pts of each frame.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

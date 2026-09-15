@@ -1204,12 +1204,41 @@ document.write(`
 <dl class="py class">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.AudioStream">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">torchcodec.decoders._blocks.</span></span><span class="sig-name descname"><span class="pre">AudioStream</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">demuxer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer" title="torchcodec.decoders._blocks._demuxer.Demuxer"><span class="pre">Demuxer</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_demuxer.html#AudioStream"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.AudioStream" title="Link to this definition">#</a></dt>
-<dd><p>TODO_API_BREAKDOWN DOC</p>
+<dd><p>An audio stream followed by a <a class="reference internal" href="torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer" title="torchcodec.decoders._blocks.Demuxer"><code class="xref py py-class docutils literal notranslate"><span class="pre">Demuxer</span></code></a>.</p>
+<p>You should not build one yourself: a <code class="docutils literal notranslate"><span class="pre">Demuxer</span></code> creates one for you.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>index</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – The stream’s index within the container, absolute across
+all media types. This is what a <a class="reference internal" href="torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet" title="torchcodec.decoders._blocks.Packet"><code class="xref py py-class docutils literal notranslate"><span class="pre">Packet</span></code></a>’s <code class="docutils literal notranslate"><span class="pre">stream_index</span></code>
+can be compared against.</p>
+</dd>
+</dl>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">AudioStream</span></code>:</p>
 <div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_blocks_thumb.png" />
 <p><a class="reference internal" href="../generated_examples/decoding/blocks.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
   <div class="sphx-glr-thumbnail-title">Blocks: build your own decoding pipeline</div>
-</div></div></dd></dl>
+</div></div><dl class="py method">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.AudioStream.make_decoder">
+<span class="sig-name descname"><span class="pre">make_decoder</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder" title="torchcodec.decoders._blocks._packet_decoder.AudioPacketDecoder"><span class="pre">AudioPacketDecoder</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_demuxer.html#AudioStream.make_decoder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.AudioStream.make_decoder" title="Link to this definition">#</a></dt>
+<dd><p>Build the <a class="reference internal" href="torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder" title="torchcodec.decoders._blocks.AudioPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioPacketDecoder</span></code></a> for this stream.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A decoder for this stream’s packets.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder" title="torchcodec.decoders._blocks.AudioPacketDecoder">AudioPacketDecoder</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.AudioStream.metadata">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">metadata</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="torchcodec.decoders._blocks.AudioStreamHeaderMetadata.html#torchcodec.decoders._blocks.AudioStreamHeaderMetadata" title="torchcodec._core._metadata.AudioStreamHeaderMetadata"><span class="pre">AudioStreamHeaderMetadata</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.AudioStream.metadata" title="Link to this definition">#</a></dt>
+<dd><p>What the container header says about this audio stream.</p>
+<p>From the header only.</p>
+</dd></dl>
+
+</dd></dl>
 
 </section>
 
@@ -1330,7 +1359,11 @@ document.write(`
   </div>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.AudioStream"><code class="docutils literal notranslate"><span class="pre">AudioStream</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.AudioStream"><code class="docutils literal notranslate"><span class="pre">AudioStream</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.AudioStream.make_decoder"><code class="docutils literal notranslate"><span class="pre">AudioStream.make_decoder()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.AudioStream.metadata"><code class="docutils literal notranslate"><span class="pre">AudioStream.metadata</span></code></a></li>
+</ul>
+</li>
 </ul>
   </nav></div>
     
@@ -1556,7 +1589,7 @@ document.write(`
        "headline": "AudioStream",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders._blocks.AudioStream.html",
-       "articleBody": "AudioStream# class torchcodec.decoders._blocks.AudioStream(demuxer: Demuxer, index: int)[source]# TODO_API_BREAKDOWN DOC Examples using AudioStream: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline",
+       "articleBody": "AudioStream# class torchcodec.decoders._blocks.AudioStream(demuxer: Demuxer, index: int)[source]# An audio stream followed by a Demuxer. You should not build one yourself: a Demuxer creates one for you. Variables: index (int) \u2013 The stream\u2019s index within the container, absolute across all media types. This is what a Packet\u2019s stream_index can be compared against. Examples using AudioStream: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline make_decoder() \u2192 AudioPacketDecoder[source]# Build the AudioPacketDecoder for this stream. Returns: A decoder for this stream\u2019s packets. Return type: AudioPacketDecoder property metadata: AudioStreamHeaderMetadata# What the container header says about this audio stream. From the header only.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

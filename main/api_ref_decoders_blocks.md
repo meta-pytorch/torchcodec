@@ -12,8 +12,8 @@ For a tutorial, see:
 
 | [`Demuxer`](generated/torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer) | Reads one or more video and audio streams from a container, and produces their compressed [`Packet`](generated/torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet)s. |
 | --- | --- |
-| [`VideoStream`](generated/torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream) | TODO_API_BREAKDOWN DOC |
-| [`AudioStream`](generated/torchcodec.decoders._blocks.AudioStream.html#torchcodec.decoders._blocks.AudioStream) | TODO_API_BREAKDOWN DOC |
+| [`VideoStream`](generated/torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream) | A video stream followed by a [`Demuxer`](generated/torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer). |
+| [`AudioStream`](generated/torchcodec.decoders._blocks.AudioStream.html#torchcodec.decoders._blocks.AudioStream) | An audio stream followed by a [`Demuxer`](generated/torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer). |
 
 | [`get_container_metadata`](generated/torchcodec.decoders._blocks.get_container_metadata.html#torchcodec.decoders._blocks.get_container_metadata) | TODO_API_BREAKDOWN DOC |
 | --- | --- |
@@ -36,7 +36,7 @@ For a tutorial, see:
 | --- | --- |
 | [`RawFrame`](generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame) | TODO_API_BREAKDOWN DOC |
 
-| [`FrameIndex`](generated/torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex) | TODO_API_BREAKDOWN DOC |
+| [`FrameIndex`](generated/torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex) | What the packets of a video stream say about its frames, as returned by a [scan](glossary.html#term-scan) ([`VideoStream.scan()`](generated/torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.scan)). |
 | --- | --- |
 | [`RawAudioSamples`](generated/torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples) | TODO_API_BREAKDOWN DOC |
 

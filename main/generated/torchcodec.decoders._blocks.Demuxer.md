@@ -91,6 +91,12 @@ re-primes. This is especially true when resampling is involved (via an
 [`AudioConverter`](torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter)). Pre-rolling a margin of audio before the
 target is up to you.
 
+There is no `seek_mode` to choose from: seeking straight to
+`seconds` is what [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) calls
+`seek_mode="approximate"`. To get the `seek_mode="exact"` behavior,
+[scan](../glossary.html#term-scan) the stream and seek to
+[`FrameIndex.key_frame_seconds_for()`](torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex.key_frame_seconds_for) of your target instead.
+
 Important
 
 You must call [`VideoPacketDecoder.reset()`](torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder.reset) or
