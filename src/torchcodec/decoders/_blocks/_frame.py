@@ -26,7 +26,17 @@ class _Metadata(NamedTuple):
 
 
 class Packet:
-    """TODO_API_BREAKDOWN DOC"""
+    """One compressed packet of one stream, as a :class:`Demuxer` produced it.
+
+    You should not build one yourself: a ``Demuxer`` creates them, and a
+    :class:`VideoPacketDecoder` or an :class:`AudioPacketDecoder` consumes
+    them. The contents are opaque: a ``Packet`` is a handle to an FFmpeg packet.
+    """
+
+    stream_index: int
+    """The index of the stream this packet belongs to, absolute across all
+    media types. When a demuxer follows more than one stream, this is what
+    routes each packet to the right decoder."""
 
     def __init__(
         self,
