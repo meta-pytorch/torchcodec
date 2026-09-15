@@ -494,8 +494,8 @@ sequentially:
 
  .. code-block:: none
 
-    decoder transforms:    times_med = 1963.73ms +- 11.74
-    torchvision transform: times_med = 4144.27ms +- 82.75
+    decoder transforms:    times_med = 1966.23ms +- 22.21
+    torchvision transform: times_med = 4178.44ms +- 125.97
 
 
 
@@ -523,8 +523,8 @@ even be faster!
 
  .. code-block:: none
 
-    decoder transforms:    times_med = 10743.93ms +- 15.80
-    torchvision transform: times_med = 12529.30ms +- 19.77
+    decoder transforms:    times_med = 10819.95ms +- 31.28
+    torchvision transform: times_med = 12586.97ms +- 0.80
 
 
 
@@ -557,7 +557,7 @@ In brief, our performance guidance is:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (2 minutes 29.298 seconds)
+   **Total running time of the script:** (2 minutes 30.326 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_transforms.py:
