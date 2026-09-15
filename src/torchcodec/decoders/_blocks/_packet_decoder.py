@@ -67,22 +67,6 @@ class _BasePacketDecoder(Generic[_Decoded]):
         raise NotImplementedError
 
     def decode(self, packet: Packet) -> list[_Decoded]:
-        """Send one :class:`Packet` to the codec and return whatever is ready.
-
-        The result is often empty, and it is not "the decoding of that packet":
-        a codec that is buffering B-frames, or still priming itself, emits what
-        it owes you on a later call.
-
-        Args:
-            packet (Packet): A packet of this decoder's own stream.
-
-        Returns:
-            What the codec had ready, in presentation order. Possibly nothing.
-
-        Raises:
-            RuntimeError: If this decoder has been drained, or if the demuxer
-                seeked without it being :meth:`reset` afterwards.
-        """
         if self._drained:
             raise RuntimeError(
                 "This decoder has been drained, and a codec that has been told "
@@ -104,15 +88,6 @@ class _BasePacketDecoder(Generic[_Decoded]):
         return self._receive_ready_frames()
 
     def drain(self) -> list[_Decoded]:
-        """Tell the codec the stream has ended, and return what it was still
-        holding.
-
-        Skipping this loses the tail of the stream. A drained decoder refuses
-        any further packet; :meth:`reset` makes it usable again.
-
-        Returns:
-            The last of what the codec had buffered, in presentation order.
-        """
         _blocks_packet_decoder_send_eof(self._handle)
         frames = self._receive_ready_frames()
         self._drained = True
@@ -134,6 +109,17 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
 
     You should not build one yourself: :meth:`VideoStream.make_decoder` is what
     creates it. Frames come out on the device given there.
+
+    Feed it one packet at a time, and drain it at the end::
+
+        demuxer = Demuxer("video.mp4")
+        decoder = demuxer.streams[0].make_decoder()
+
+        for packet in demuxer:
+            for raw_frame in decoder.decode(packet):
+                ...
+        for raw_frame in decoder.drain():
+            ...
 
     It is stateful. It holds the codec's reference-frame buffer, so it expects
     the packets of its own stream, in the order the demuxer produced them.
@@ -197,13 +183,64 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
 
 
 class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
-    """TODO_API_BREAKDOWN DOC"""
+    """Decodes the compressed :class:`Packet`\\ s of one audio stream into
+    :class:`RawAudioSamples`.
+
+    You should not build one yourself: :meth:`AudioStream.make_decoder` is what
+    creates it. Audio is always decoded on the CPU.
+
+    Feed it one packet at a time, and drain it at the end::
+
+        demuxer = Demuxer("audio.mp3", streams="audio")
+        decoder = demuxer.streams[0].make_decoder()
+
+        for packet in demuxer:
+            for raw_samples in decoder.decode(packet):
+                ...
+        for raw_samples in decoder.drain():
+            ...
+
+    It is stateful. A lossy codec carries state from one frame to the next, so
+    it expects the packets of its own stream, in the order the demuxer produced
+    them. After a :meth:`Demuxer.seek`, :meth:`reset` is necessary but not
+    sufficient: the first samples that come out are subtly wrong until the codec
+    re-primes, so decode a margin before your target and throw it away.
+    """
 
     # See VideoPacketDecoder: pinning the return type down to RawAudioSamples.
     def decode(self, packet: Packet) -> list[RawAudioSamples]:
+        """Send one :class:`Packet` to the codec and return the
+        :class:`RawAudioSamples` that are ready.
+
+        **This can return zero, one, or more than one**
+        :class:`RawAudioSamples`. What comes back is not the decoding of the
+        packet you just passed: a codec that is still priming itself will emit
+        what it owes you on a later call.
+
+        Args:
+            packet (Packet): A packet of this decoder's own stream.
+
+        Returns:
+            The possibly empty list of :class:`RawAudioSamples` that the codec
+            has ready, in presentation order.
+
+        Raises:
+            RuntimeError: If this decoder has been drained, or if the demuxer
+                seeked without it being :meth:`reset` afterwards.
+        """
         return super().decode(packet)
 
     def drain(self) -> list[RawAudioSamples]:
+        """Tell the codec the stream has ended, and return the
+        :class:`RawAudioSamples` it was still holding.
+
+        Skipping this loses the tail of the stream. A drained decoder refuses
+        any further packet; :meth:`reset` makes it usable again.
+
+        Returns:
+            The possibly empty list of :class:`RawAudioSamples` that the codec
+            was still holding, in presentation order.
+        """
         return super().drain()
 
     def _receive_ready_frames(self) -> list[RawAudioSamples]:
