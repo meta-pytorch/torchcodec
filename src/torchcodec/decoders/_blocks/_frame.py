@@ -200,9 +200,6 @@ class RawFrame:
         return self._planes
 
 
-# TODO_API_BREAKDOWN DESIGN P1: API design - the class name, and whether
-# sample_format is worth carrying now that the layout it describes has been
-# normalized away.
 @dataclass
 class RawAudioSamples:
     """One decoded audio frame's samples, as the decoder produced them.
@@ -225,17 +222,12 @@ class RawAudioSamples:
             ``float64`` for ``dbl``. Note the integer ones are *not* normalized
             to ``[-1, 1]``; :class:`AudioConverter` is what does that.
         sample_rate (int): The source's sample rate, in Hz.
-        sample_format (str): FFmpeg sample-format name, e.g. ``"s16p"`` or
-            ``"fltp"``. This is the format the samples were decoded in, kept
-            for provenance: the trailing ``p`` (planar) no longer describes
-            :attr:`data`, whose layout is always the same.
         pts_seconds (float): Presentation timestamp of the first sample.
         duration_seconds (float): How long these samples last.
     """
 
     data: torch.Tensor
     sample_rate: int
-    sample_format: str
     pts_seconds: float
     duration_seconds: float
     # See Packet._generation.

@@ -164,7 +164,7 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
     def _receive_ready_frames(self) -> list[RawAudioSamples]:
         samples = []
         while True:
-            data, status, pts_seconds, duration_seconds, sample_rate, sample_format = (
+            data, status, pts_seconds, duration_seconds, sample_rate, _ = (
                 _blocks_audio_packet_decoder_receive_frame(self._handle)
             )
             if status != 0:  # EAGAIN (need more packets) or EOF: nothing ready
@@ -173,7 +173,6 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
                 RawAudioSamples(
                     data=data,
                     sample_rate=sample_rate,
-                    sample_format=sample_format,
                     pts_seconds=pts_seconds,
                     duration_seconds=duration_seconds,
                     # Carried onward so AudioConverter can make the same check:

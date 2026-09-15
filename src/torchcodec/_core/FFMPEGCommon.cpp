@@ -917,6 +917,31 @@ bool SwsConfig::operator!=(const SwsConfig& other) const {
   return !(*this == other);
 }
 
+namespace {
+#if FFMPEG_SWS_COLORSPACE_DETAILS_FAILS_ON_YUV_TO_YUV
+// Matches swscale's own isYUV() || isGray(): everything that isn't RGB,
+// palettised or a hardware format.
+bool is_yuv_or_gray(AVPixelFormat format) {
+  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(format);
+  return desc != nullptr &&
+      !(desc->flags &
+        (AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_PAL | AV_PIX_FMT_FLAG_HWACCEL));
+}
+
+void validate_sws_set_colorspace_details(int ret, const SwsConfig& sws_config) {
+  bool yuv_or_gray_to_yuv_or_gray = is_yuv_or_gray(sws_config.input_format) &&
+      is_yuv_or_gray(sws_config.output_format);
+  STD_TORCH_CHECK(
+      ret != -1 || yuv_or_gray_to_yuv_or_gray,
+      "sws_setColorspaceDetails returned -1");
+}
+#else
+void validate_sws_set_colorspace_details(int ret, const SwsConfig&) {
+  STD_TORCH_CHECK(ret != -1, "sws_setColorspaceDetails returned -1");
+}
+#endif
+} // namespace
+
 UniqueSwsContext create_sws_context(
     const SwsConfig& sws_config,
     int sws_flags) {
@@ -966,7 +991,7 @@ UniqueSwsContext create_sws_context(
       brightness,
       contrast,
       saturation);
-  STD_TORCH_CHECK(ret != -1, "sws_setColorspaceDetails returned -1");
+  validate_sws_set_colorspace_details(ret, sws_config);
 
   return UniqueSwsContext(sws_context);
 }
