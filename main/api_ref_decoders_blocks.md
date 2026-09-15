@@ -22,7 +22,7 @@ For a tutorial, see:
 
 | [`VideoPacketDecoder`](generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder) | Decodes the compressed [`Packet`](generated/torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet)s of one video stream into [`RawFrame`](generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame)s. |
 | --- | --- |
-| [`AudioPacketDecoder`](generated/torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder) | TODO_API_BREAKDOWN DOC |
+| [`AudioPacketDecoder`](generated/torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder) | Decodes the compressed [`Packet`](generated/torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet)s of one audio stream into [`RawAudioSamples`](generated/torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples). |
 
 ## Conversion
 
@@ -38,7 +38,7 @@ For a tutorial, see:
 
 | [`FrameIndex`](generated/torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex) | What the packets of a video stream say about its frames, as returned by a [scan](glossary.html#term-scan) ([`VideoStream.scan()`](generated/torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.scan)). |
 | --- | --- |
-| [`RawAudioSamples`](generated/torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples) | TODO_API_BREAKDOWN DOC |
+| [`RawAudioSamples`](generated/torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples) | One decoded audio frame's samples, exactly as the decoder produced them. |
 
 ## Metadata
 

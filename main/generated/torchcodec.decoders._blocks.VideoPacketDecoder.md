@@ -8,6 +8,19 @@ Decodes the compressed [`Packet`](torchcodec.decoders._blocks.Packet.html#torchc
 You should not build one yourself: [`VideoStream.make_decoder()`](torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.make_decoder) is what
 creates it. Frames come out on the device given there.
 
+Feed it one packet at a time, and drain it at the end:
+
+```
+demuxer = Demuxer("video.mp4")
+decoder = demuxer.streams[0].make_decoder()
+
+for packet in demuxer:
+ for raw_frame in decoder.decode(packet):
+ ...
+for raw_frame in decoder.drain():
+ ...
+```
+
 It is stateful. It holds the codec's reference-frame buffer, so it expects
 the packets of its own stream, in the order the demuxer produced them.
 

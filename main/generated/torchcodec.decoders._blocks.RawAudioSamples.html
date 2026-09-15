@@ -1204,7 +1204,17 @@ document.write(`
 <dl class="py class">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawAudioSamples">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">torchcodec.decoders._blocks.</span></span><span class="sig-name descname"><span class="pre">RawAudioSamples</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_rate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">pts_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">duration_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">_generation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_frame.html#RawAudioSamples"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.RawAudioSamples" title="Link to this definition">#</a></dt>
-<dd><p>TODO_API_BREAKDOWN DOC</p>
+<dd><p>One decoded audio frame’s samples, exactly as the decoder produced them.</p>
+<p>You cannot build one yourself: an <a class="reference internal" href="torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder" title="torchcodec.decoders._blocks.AudioPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioPacketDecoder</span></code></a> creates them.
+Use an <a class="reference internal" href="torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter" title="torchcodec.decoders._blocks.AudioConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioConverter</span></code></a> to turn them into normalised float32
+<a class="reference internal" href="torchcodec.AudioSamples.html#torchcodec.AudioSamples" title="torchcodec.AudioSamples"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioSamples</span></code></a>, or read <a class="reference internal" href="#torchcodec.decoders._blocks.RawAudioSamples.data" title="torchcodec.decoders._blocks.RawAudioSamples.data"><code class="xref py py-attr docutils literal notranslate"><span class="pre">data</span></code></a> directly:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">packet</span> <span class="ow">in</span> <span class="n">demuxer</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">raw_samples</span> <span class="ow">in</span> <span class="n">audio_packet_decoder</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">packet</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">raw_samples</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>   <span class="c1"># e.g. [2, 1024]</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">raw_samples</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>   <span class="c1"># e.g. float32, for an fltp source</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">raw_samples</span><span class="o">.</span><span class="n">sample_rate</span><span class="p">)</span>  <span class="c1"># e.g. 16000</span>
+</pre></div>
+</div>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">RawAudioSamples</span></code>:</p>
 <div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_blocks_thumb.png" />
 <p><a class="reference internal" href="../generated_examples/decoding/blocks.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
@@ -1212,32 +1222,45 @@ document.write(`
 </div></div><dl class="py attribute">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawAudioSamples.data">
 <span class="sig-name descname"><span class="pre">data</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawAudioSamples.data" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>Always a contiguous <code class="docutils literal notranslate"><span class="pre">[num_channels,</span> <span class="pre">num_samples]</span></code> tensor, whatever the
+source’s sample format. Planar and packed sources alike come out with that
+same shape and layout (they are copied).</p>
+<p>The dtype is whichever one holds the source’s samples exactly: <code class="docutils literal notranslate"><span class="pre">uint8</span></code>
+for <code class="docutils literal notranslate"><span class="pre">u8</span></code>, <code class="docutils literal notranslate"><span class="pre">int16</span></code> for <code class="docutils literal notranslate"><span class="pre">s16</span></code>, <code class="docutils literal notranslate"><span class="pre">int32</span></code> for <code class="docutils literal notranslate"><span class="pre">s32</span></code>, <code class="docutils literal notranslate"><span class="pre">int64</span></code> for
+<code class="docutils literal notranslate"><span class="pre">s64</span></code>, <code class="docutils literal notranslate"><span class="pre">float32</span></code> for <code class="docutils literal notranslate"><span class="pre">flt</span></code> and <code class="docutils literal notranslate"><span class="pre">float64</span></code> for <code class="docutils literal notranslate"><span class="pre">dbl</span></code>. The integer
+ones are <em>not</em> normalised to <code class="docutils literal notranslate"><span class="pre">[-1,</span> <span class="pre">1]</span></code>; that is what an
+<a class="reference internal" href="torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter" title="torchcodec.decoders._blocks.AudioConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioConverter</span></code></a> does.</p>
+</dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawAudioSamples.duration_seconds">
 <span class="sig-name descname"><span class="pre">duration_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawAudioSamples.duration_seconds" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>How long these samples last, in seconds.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawAudioSamples.num_channels">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">num_channels</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawAudioSamples.num_channels" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>The number of channels, i.e. <code class="docutils literal notranslate"><span class="pre">data.shape[0]</span></code>.</p>
+</dd></dl>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawAudioSamples.num_samples">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">num_samples</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawAudioSamples.num_samples" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>The number of samples per channel, i.e. <code class="docutils literal notranslate"><span class="pre">data.shape[1]</span></code>.</p>
+</dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawAudioSamples.pts_seconds">
 <span class="sig-name descname"><span class="pre">pts_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawAudioSamples.pts_seconds" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>The <a class="reference internal" href="../glossary.html#term-pts"><span class="xref std std-term">pts</span></a> of the first sample, in seconds.</p>
+</dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawAudioSamples.sample_rate">
 <span class="sig-name descname"><span class="pre">sample_rate</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawAudioSamples.sample_rate" title="Link to this definition">#</a></dt>
-<dd></dd></dl>
+<dd><p>The source’s sample rate, in Hz.</p>
+</dd></dl>
 
 </dd></dl>
 
@@ -1594,7 +1617,7 @@ document.write(`
        "headline": "RawAudioSamples",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders._blocks.RawAudioSamples.html",
-       "articleBody": "RawAudioSamples# class torchcodec.decoders._blocks.RawAudioSamples(data: Tensor, sample_rate: int, pts_seconds: float, duration_seconds: float, _generation: int = 0)[source]# TODO_API_BREAKDOWN DOC Examples using RawAudioSamples: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline data: Tensor# duration_seconds: float# property num_channels: int# property num_samples: int# pts_seconds: float# sample_rate: int#",
+       "articleBody": "RawAudioSamples# class torchcodec.decoders._blocks.RawAudioSamples(data: Tensor, sample_rate: int, pts_seconds: float, duration_seconds: float, _generation: int = 0)[source]# One decoded audio frame\u2019s samples, exactly as the decoder produced them. You cannot build one yourself: an AudioPacketDecoder creates them. Use an AudioConverter to turn them into normalised float32 AudioSamples, or read data directly: for packet in demuxer: for raw_samples in audio_packet_decoder.decode(packet): print(raw_samples.data.shape) # e.g. [2, 1024] print(raw_samples.data.dtype) # e.g. float32, for an fltp source print(raw_samples.sample_rate) # e.g. 16000 Examples using RawAudioSamples: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline data: Tensor# Always a contiguous [num_channels, num_samples] tensor, whatever the source\u2019s sample format. Planar and packed sources alike come out with that same shape and layout (they are copied). The dtype is whichever one holds the source\u2019s samples exactly: uint8 for u8, int16 for s16, int32 for s32, int64 for s64, float32 for flt and float64 for dbl. The integer ones are not normalised to [-1, 1]; that is what an AudioConverter does. duration_seconds: float# How long these samples last, in seconds. property num_channels: int# The number of channels, i.e. data.shape[0]. property num_samples: int# The number of samples per channel, i.e. data.shape[1]. pts_seconds: float# The pts of the first sample, in seconds. sample_rate: int# The source\u2019s sample rate, in Hz.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

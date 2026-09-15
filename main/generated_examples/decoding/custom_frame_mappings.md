@@ -103,10 +103,10 @@ for frame in sample_data["frames"][:3]:
 
 ```
 Running ffprobe:
-ffprobe -i /tmp/tmprjby80od/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmp02kkuq_a/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Running ffprobe:
-ffprobe -i /tmp/tmprjby80od/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmp02kkuq_a/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Sample of fields in custom frame mappings:
 frame['key_frame'] = 1, frame['pts'] = 0, frame['duration'] = 1
@@ -160,13 +160,13 @@ Running benchmarks on short_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
 med = 6.19ms +- 0.04
 Creating a VideoDecoder object with seek_mode='exact':
-med = 6.44ms +- 0.02
+med = 6.46ms +- 0.02
 
 Running benchmarks on long_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 27.68ms +- 0.12
+med = 27.48ms +- 0.09
 Creating a VideoDecoder object with seek_mode='exact':
-med = 43.20ms +- 0.61
+med = 43.43ms +- 0.54
 ```
 
 ## Performance: Frame decoding with custom frame mappings
@@ -198,15 +198,15 @@ for video_path, json_path in ((short_video_path, short_json_path), (long_video_p
 ```
 Running benchmarks on short_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 18.28ms +- 0.03
+med = 18.29ms +- 0.04
 Decoding frames with seek_mode='exact':
-med = 18.49ms +- 0.04
+med = 18.51ms +- 0.04
 
 Running benchmarks on long_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 39.93ms +- 0.10
+med = 39.76ms +- 0.14
 Decoding frames with seek_mode='exact':
-med = 55.48ms +- 0.48
+med = 55.54ms +- 0.47
 ```
 
 ## Accuracy: Metadata and frame retrieval
@@ -305,7 +305,7 @@ accuracy benefits.
 same videos are decoded repeatedly, and some preprocessing work can be done.
 - For exact frame seeking without preprocessing, use "exact" mode.
 
-**Total running time of the script:** (0 minutes 23.699 seconds)
+**Total running time of the script:** (0 minutes 23.703 seconds)
 
 [`Download Jupyter notebook: custom_frame_mappings.ipynb`](../../_downloads/515bb6477ed8fb530cccbe1b67ef6f0c/custom_frame_mappings.ipynb)
 

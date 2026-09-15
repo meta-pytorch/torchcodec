@@ -20,7 +20,18 @@ tensors, not frames themselves.
 `average_fps_from_content`.
 
 `index_at()` and `key_frame_seconds_for()` are convenience methods
-that search those tensors so that you don't have to.
+that search those tensors so that you don't have to. Together with
+[`Demuxer.seek()`](torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer.seek), they are what an exact seek is built from:
+
+```
+frame_index = video_stream.scan()
+
+# Reach the frame displayed at 12.5 seconds
+target = frame_index.pts_seconds[frame_index.index_at(12.5)]
+demuxer.seek(frame_index.key_frame_seconds_for(target))
+packet_decoder.reset()
+# ... then decode forward, dropping the frames before `target`
+```
 
 Everything here is derived from the stream's packets rather than from the
 container header, so it is exact where the header is only a claim. That is
