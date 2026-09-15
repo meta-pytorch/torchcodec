@@ -54,7 +54,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpk0rtj9pl/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp72j2jct5/video.mp4'], returncode=0)
 ```
 
 ## The three blocks
@@ -533,12 +533,11 @@ subprocess.run(
 demuxer = Demuxer(audio_path, streams="audio")
 packet_decoder = demuxer.streams[0].make_decoder()
 raw = next(iter(packet_decoder.decode(next(iter(demuxer)))))
-print(f"{raw.sample_format = }, {raw.data.dtype = }, {raw.data.shape = }, "
- f"{raw.sample_rate = }")
+print(f"{raw.data.dtype = }, {raw.data.shape = }, {raw.sample_rate = }")
 ```
 
 ```
-raw.sample_format = 's16', raw.data.dtype = torch.int16, raw.data.shape = torch.Size([1, 4096]), raw.sample_rate = 44100
+raw.data.dtype = torch.int16, raw.data.shape = torch.Size([1, 4096]), raw.sample_rate = 44100
 ```
 
 Those are the true source samples - 16-bit integers here, not floats in
@@ -638,7 +637,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpk0rtj9pl/video.mp4', '-i', '/tmp/tmpk0rtj9pl/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpk0rtj9pl/av.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmp72j2jct5/video.mp4', '-i', '/tmp/tmp72j2jct5/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmp72j2jct5/av.mp4'], returncode=0)
 ```
 
 Which streams to follow is said once, at construction: a selector is
@@ -705,7 +704,7 @@ whole-file decode. Decoding a margin before your target and discarding it
 is up to you. [`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) does all of this
 for you.
 
-**Total running time of the script:** (0 minutes 2.320 seconds)
+**Total running time of the script:** (0 minutes 2.322 seconds)
 
 [`Download Jupyter notebook: blocks.ipynb`](../../_downloads/37e5fa5a5cd2ea49ae5d47920f4cc2fa/blocks.ipynb)
 

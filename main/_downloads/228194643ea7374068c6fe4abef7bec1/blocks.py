@@ -474,8 +474,7 @@ subprocess.run(
 demuxer = Demuxer(audio_path, streams="audio")
 packet_decoder = demuxer.streams[0].make_decoder()
 raw = next(iter(packet_decoder.decode(next(iter(demuxer)))))
-print(f"{raw.sample_format = }, {raw.data.dtype = }, {raw.data.shape = }, "
-      f"{raw.sample_rate = }")
+print(f"{raw.data.dtype = }, {raw.data.shape = }, {raw.sample_rate = }")
 
 # %%
 # Those are the true source samples - 16-bit integers here, not floats in
