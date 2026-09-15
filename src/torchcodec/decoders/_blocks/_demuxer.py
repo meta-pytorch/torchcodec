@@ -128,10 +128,7 @@ class FrameIndex:
         frame's own end time. Durations vary, so the frame that finishes last
         isn't necessarily the one that starts last.
         """
-        # max(), not [-1]: durations vary, so the frame that finishes last
-        # isn't necessarily the one that starts last. This is how
-        # end_stream_pts_from_content is accumulated in SingleStreamDecoder.
-        return float(self._end_seconds.max())
+        return float(self._end_seconds_so_far[-1])
 
     @property
     def average_fps_from_content(self) -> float:
@@ -141,19 +138,20 @@ class FrameIndex:
             - self.begin_stream_seconds_from_content
         )
 
-    # TODO_API_BREAKDOWN DESIGN P1: Do we still need this?
-    def index_at(self, seconds: float) -> int:
+    def index_at(self, seconds: float | Tensor) -> int | Tensor:
         """The index of the frame being displayed at ``seconds``.
 
         A frame is displayed from its own :term:`pts` until that plus its
         duration, so this is the frame whose interval contains ``seconds``.
 
         Args:
-            seconds (float): The timestamp to look up. A value outside the
-                stream gives the closest frame, i.e. the first or the last one.
+            seconds (float or Tensor): The timestamp(s) to look up. A value
+                outside the stream gives the closest frame, i.e. the first or
+                the last one.
 
         Returns:
-            int: The index of that frame.
+            int or Tensor: The index of that frame. A tensor of timestamps
+            gives an int64 tensor of indices of the same shape.
         """
         # First frame that hasn't finished playing by `seconds`, which is
         # get_frame_played_at()'s criterion (frame_start <= t < frame_end,
@@ -161,8 +159,12 @@ class FrameIndex:
         # decoded frames. Note it is *not* seconds_to_index_lower_bound(), which
         # compares against next_pts and so answers differently for a timestamp
         # falling in a gap between two frames.
-        index = int(torch.searchsorted(self._end_seconds, seconds, right=True))
-        return min(index, len(self) - 1)
+        indices = torch.searchsorted(
+            self._end_seconds_so_far,
+            torch.as_tensor(seconds, dtype=torch.float64),
+            right=True,
+        ).clamp(max=len(self) - 1)
+        return indices if isinstance(seconds, Tensor) else int(indices)
 
     # TODO_API_BREAKDOWN DESIGN P1: Still kinda hate this name
     def key_frame_seconds_for(self, seconds: float) -> float:
@@ -196,8 +198,12 @@ class FrameIndex:
         return value.to(torch.float64) * self._time_base_num / self._time_base_den
 
     @cached_property
-    def _end_seconds(self) -> Tensor:
-        return self._to_seconds(self._pts + self._duration)
+    def _end_seconds_so_far(self) -> Tensor:
+        # A running max, because the raw end times aren't necessarily sorted: a
+        # frame whose duration overruns the start of the next one finishes after
+        # it. We need this to be sorted for the binary search in index_at() to
+        # work.
+        return self._to_seconds(self._pts + self._duration).cummax(dim=0).values
 
     @cached_property
     def _key_frame_seconds(self) -> Tensor:
@@ -452,7 +458,9 @@ class Demuxer:
             raise StopIteration
         return Packet(handle, stream_index, generation=self._generation)
 
-    # TODO_API_BREAKDOWN DESIGN P2 Should we consider int-based (pts) seeks?
+    # Note: could consider adding int-based APIs? Not sure if needed for seek
+    # but we could at least expose the int-based pts values along with the time
+    # base, etc.
     def seek(
         self, seconds: float, *, stream: VideoStream | AudioStream | None = None
     ) -> None:
