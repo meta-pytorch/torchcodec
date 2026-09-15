@@ -66,6 +66,7 @@ VideoStreamMetadata:
  bit_rate: 505790
  codec: h264
  stream_index: 0
+ media_type: video
  width: 640
  height: 360
  num_frames_from_header: 345
@@ -247,7 +248,7 @@ plot(other_frames.data, "Other frames")
 - ![Frame played at 2 seconds](../../_images/sphx_glr_basic_example_005.png)
 - ![Other frames](../../_images/sphx_glr_basic_example_006.png)
 
-**Total running time of the script:** (0 minutes 2.077 seconds)
+**Total running time of the script:** (0 minutes 2.124 seconds)
 
 [`Download Jupyter notebook: basic_example.ipynb`](../../_downloads/c8852e7e664672bdb64c6ba771a9bd30/basic_example.ipynb)
 

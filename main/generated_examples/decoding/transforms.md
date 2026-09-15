@@ -72,6 +72,7 @@ Penguin video metadata: VideoStreamMetadata:
  bit_rate: 24879454
  codec: h264
  stream_index: 0
+ media_type: video
  width: 3840
  height: 2160
  num_frames_from_header: 931
@@ -334,8 +335,8 @@ print(f"torchvision transform: {bench(sample_torchvision_transforms, num_threads
 ```
 
 ```
-decoder transforms: times_med = 1966.23ms +- 22.21
-torchvision transform: times_med = 4178.44ms +- 125.97
+decoder transforms: times_med = 1927.71ms +- 30.52
+torchvision transform: times_med = 4199.82ms +- 98.61
 ```
 
 The reason is that FFmpeg is applying the decoder transforms in parallel.
@@ -349,8 +350,8 @@ print(f"torchvision transform: {bench(sample_torchvision_transforms, num_threads
 ```
 
 ```
-decoder transforms: times_med = 10819.95ms +- 31.28
-torchvision transform: times_med = 12586.97ms +- 0.80
+decoder transforms: times_med = 10700.19ms +- 12.58
+torchvision transform: times_med = 12491.32ms +- 13.99
 ```
 
 In brief, our performance guidance is:
@@ -367,7 +368,7 @@ In brief, our performance guidance is:
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (2 minutes 30.326 seconds)
+**Total running time of the script:** (2 minutes 26.245 seconds)
 
 [`Download Jupyter notebook: transforms.ipynb`](../../_downloads/f189e474be55fc74900ac94fda37f6f0/transforms.ipynb)
 
