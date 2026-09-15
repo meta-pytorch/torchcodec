@@ -80,6 +80,14 @@ def test_get_metadata(metadata_getter):
     assert len(metadata.streams) == 6
     assert metadata.best_video_stream_index == 3
     assert metadata.best_audio_stream_index == 4
+    assert [s.media_type for s in metadata.streams] == [
+        "video",
+        "audio",
+        "subtitle",
+        "video",
+        "audio",
+        "subtitle",
+    ]
 
     if ffmpeg_major_version <= 5:
         expected_duration_seconds_from_header = 16.57
@@ -191,6 +199,7 @@ def test_repr():
   bit_rate: 128783
   codec: h264
   stream_index: 3
+  media_type: video
   width: 480
   height: 270
   num_frames_from_header: 390
@@ -223,6 +232,7 @@ def test_repr():
   bit_rate: 64000
   codec: mp3
   stream_index: 0
+  media_type: audio
   sample_rate: 8000
   num_channels: 2
   sample_format: fltp

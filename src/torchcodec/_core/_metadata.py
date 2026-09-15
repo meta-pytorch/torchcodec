@@ -44,6 +44,9 @@ class StreamMetadata:
     """Codec (str or None)."""
     stream_index: int
     """Index of the stream that this metadata refers to (int)."""
+    media_type: str
+    """Type of media the stream carries (str). One of ``"video"``, ``"audio"``,
+    ``"subtitle"``, ``"data"``, ``"attachment"`` or ``"unknown"``."""
 
     def __repr__(self):
         s = self.__class__.__name__ + ":\n"
@@ -231,8 +234,6 @@ class DemuxerMetadata:
         return s
 
 
-# TODO_API_BREAKDOWN DESIGN P1 we shuold probably expose a media_type field on
-# StreamMetadata so that users can identify the subtitle streams wihtout looking at the class type
 @dataclass
 class ContainerMetadata(DemuxerMetadata):
     """Metadata of a container and of every stream in it.
@@ -244,10 +245,10 @@ class ContainerMetadata(DemuxerMetadata):
     streams: list[StreamMetadata]
     """One entry per stream in the file, indexed by stream index.
 
-    Despite the annotation, the entries are rarely plain
-    :class:`StreamMetadata`. A video stream comes back as a
-    :class:`VideoStreamHeaderMetadata` and an audio stream as an
-    :class:`AudioStreamHeaderMetadata`."""
+    A video stream comes back as a :class:`VideoStreamHeaderMetadata` and an
+    audio stream as an :class:`AudioStreamHeaderMetadata`. The rest will be plain
+    :class:`StreamMetadata`. The ``media_type`` attribute tells the
+    entries apart."""
 
 
 def _get_optional_par_fraction(stream_dict):
@@ -277,6 +278,7 @@ def _stream_metadata_from_dict(stream_dict: dict, stream_index: int) -> StreamMe
         ),
         codec=stream_dict.get("codec"),
         stream_index=stream_index,
+        media_type=stream_dict["mediaType"],
     )
     if stream_dict["mediaType"] == "video":
         return VideoStreamHeaderMetadata(
@@ -324,6 +326,7 @@ def get_container_metadata(decoder: torch.Tensor) -> ContainerMetadata:
             ),
             codec=stream_dict.get("codec"),
             stream_index=stream_index,
+            media_type=stream_dict["mediaType"],
         )
         # Only the video and audio classes have the computed fields; a stream of
         # any other type is described by its header alone.

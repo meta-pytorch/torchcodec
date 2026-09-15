@@ -1302,13 +1302,11 @@ void write_header_based_metadata(
   if (stream_metadata.sample_format.has_value()) {
     map["sampleFormat"] = quote_value(stream_metadata.sample_format.value());
   }
-  if (stream_metadata.media_type == AVMEDIA_TYPE_VIDEO) {
-    map["mediaType"] = quote_value("video");
-  } else if (stream_metadata.media_type == AVMEDIA_TYPE_AUDIO) {
-    map["mediaType"] = quote_value("audio");
-  } else {
-    map["mediaType"] = quote_value("other");
-  }
+  // "video", "audio", "subtitle", "data" or "attachment".
+  const char* media_type_name =
+      av_get_media_type_string(stream_metadata.media_type);
+  map["mediaType"] =
+      quote_value(media_type_name == nullptr ? "unknown" : media_type_name);
 }
 } // namespace
 
