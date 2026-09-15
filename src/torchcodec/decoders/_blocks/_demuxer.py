@@ -294,7 +294,36 @@ class Demuxer:
             return None
         return Packet(handle, stream_index, generation=self._generation)
 
-    def seek(self, seconds: float, *, stream: _Stream | None = None) -> None:
+    # TODO_API_BREAKDOWN Should we consider int-based (pts) seeks?
+    def seek(
+        self, seconds: float, *, stream: VideoStream | AudioStream | None = None
+    ) -> None:
+        """Move the demuxer to ``seconds``.
+
+        This moves *every* stream being followed. For videos, this lands on the
+        keyframe at or before ``seconds``. For audio, a lossy codec's first
+        frames after a seek are typically slightly wrong until the codec
+        re-primes. This is especially true when resampling is involved (via an
+        :class:`AudioConverter`). Pre-rolling a margin of audio before the
+        target is up to you.
+
+        .. important::
+
+            You must call :meth:`VideoPacketDecoder.reset` or
+            :meth:`AudioPacketDecoder.reset` on every decoder fed by this
+            demuxer afterwards, and :meth:`AudioConverter.reset` on every
+            converter too: a seek invalidates a codec and resampler states.
+
+        Args:
+            seconds (float): The position to seek to.
+            stream (VideoStream or AudioStream, optional): The stream the
+                target ``seconds`` is resolved against. FFmpeg resolves a seek in a single
+                stream's time base and lands on *that* stream's keyframes, the
+                other streams merely resuming from wherever the container ends
+                up - so a second video stream may land mid-GOP and decode
+                garbage until its next keyframe. Defaults to the first of
+                :attr:`streams`, as passed to the constructor.
+        """
         _blocks_demuxer_seek(
             self._handle,
             float(seconds),

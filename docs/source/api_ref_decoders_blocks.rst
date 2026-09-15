@@ -41,7 +41,7 @@ Decoding
 .. autosummary::
     :toctree: generated/
     :nosignatures:
-    :template: class.rst
+    :template: class_inherited.rst
 
     VideoPacketDecoder
     AudioPacketDecoder

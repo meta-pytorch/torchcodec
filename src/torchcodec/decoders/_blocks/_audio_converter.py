@@ -93,6 +93,7 @@ class AudioConverter:
         return self._wrap(data)
 
     def reset(self) -> None:
+        """TODO_API_BREAKDOWN DOC"""
         _blocks_audio_converter_reset(self._handle)
         self._drained = False
         self._first_frame_pts_seconds = None

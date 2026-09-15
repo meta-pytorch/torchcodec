@@ -94,6 +94,7 @@ class _BasePacketDecoder(Generic[_Decoded]):
         return frames
 
     def reset(self) -> None:
+        """TODO_API_BREAKDOWN DOC"""
         _blocks_packet_decoder_reset(self._handle)
         self._drained = False
         self._generation = None
