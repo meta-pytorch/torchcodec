@@ -432,34 +432,23 @@ class Demuxer:
         stream_class = VideoStream if media_type == "video" else AudioStream
         return stream_class(self, index)
 
-    # TODO_API_BREAKDOWN DESIGN P0: We probably don't want this, and should
-    # probably just expose __iter__ and __next__ instead of next_packet().
-    # IF we keep next_packet() then we must revisit the docstring because I
-    # haven't checked it.
-    def next_packet(self) -> Packet | None:
+    def __iter__(self) -> Demuxer:
+        return self
+
+    def __next__(self) -> Packet:
         """Read and return the next :class:`Packet`.
 
         Packets come out interleaved across the streams being followed, in the
         order the container stores them, so this is where
         :attr:`Packet.stream_index` matters: it is what routes each packet to
-        the decoder of its own stream. Iterating over a ``Demuxer`` calls this
-        until it returns ``None``.
-
-        ``None`` means the *container* is exhausted, not a stream: it only
-        comes once no followed stream has a packet left. An individual stream
-        usually runs dry before that - an audio stream shorter than the video
-        it accompanies simply stops appearing - and nothing announces that it
-        did. Its decoder is finished off with ``drain()``, not by watching for
-        ``None``. Once exhausted, further calls keep returning ``None``; a read
-        error raises instead.
+        the decoder of its own stream.
 
         Returns:
-            Packet or None: The next packet, or ``None`` once the container is
-            exhausted.
+            Packet: The next packet.
         """
         handle, is_eof, stream_index = _blocks_demuxer_next_packet(self._handle)
         if is_eof:
-            return None
+            raise StopIteration
         return Packet(handle, stream_index, generation=self._generation)
 
     # TODO_API_BREAKDOWN DESIGN P2 Should we consider int-based (pts) seeks?
@@ -504,13 +493,6 @@ class Demuxer:
             None if stream is None else stream.index,
         )
         self._generation += 1
-
-    def __iter__(self):
-        while True:
-            packet = self.next_packet()
-            if packet is None:
-                return
-            yield packet
 
 
 def _container_fields(handle: Tensor) -> dict:

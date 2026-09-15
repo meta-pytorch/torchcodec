@@ -473,7 +473,7 @@ subprocess.run(
 
 demuxer = Demuxer(audio_path, streams="audio")
 packet_decoder = demuxer.streams[0].make_decoder()
-raw = next(iter(packet_decoder.decode(next(iter(demuxer)))))
+raw = next(iter(packet_decoder.decode(next(demuxer))))
 print(f"{raw.data.dtype = }, {raw.data.shape = }, {raw.sample_rate = }")
 
 # %%
