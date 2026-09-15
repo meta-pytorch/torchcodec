@@ -3810,7 +3810,7 @@ class TestBlocks:
         ),
     )
     def test_stream_selection_errors(self, streams, match):
-        with pytest.raises((ValueError, RuntimeError), match=match):
+        with pytest.raises(ValueError, match=match):
             Demuxer(NASA_VIDEO.path, streams=streams)
 
     def test_audio_stream_has_no_scan(self):
@@ -5533,11 +5533,11 @@ class TestBlocks:
             assert_frames_equal(got_frame.data, expected_data)
 
     def test_audio_only_file_raises(self):
-        with pytest.raises(RuntimeError, match="No valid video stream found"):
+        with pytest.raises(ValueError, match="No valid video stream found"):
             Demuxer(NASA_AUDIO_MP3.path, streams="video")
 
     def test_video_only_file_raises(self):
-        with pytest.raises(RuntimeError, match="No valid audio stream found"):
+        with pytest.raises(ValueError, match="No valid audio stream found"):
             Demuxer(H265_VIDEO.path, streams="audio")
 
     # ===== audio streams =====
@@ -5988,7 +5988,7 @@ class TestBlocks:
 
     @pytest.mark.parametrize("stream_index", (-1, 6, 1000))
     def test_invalid_stream_index_raises(self, stream_index):
-        with pytest.raises(RuntimeError, match="is not a valid stream"):
+        with pytest.raises(ValueError, match="is not a valid stream"):
             Demuxer(NASA_VIDEO.path, streams=stream_index)
 
     def test_bad_source_type_raises(self):

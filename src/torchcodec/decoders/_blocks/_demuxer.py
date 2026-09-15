@@ -330,9 +330,6 @@ class AudioStream(_Stream):
         return AudioPacketDecoder._from_stream(self, "cpu")
 
 
-# TODO_API_BREAKDOWN DESIGN P1: streams param raises ValueError or RuntimeError
-# depending on where the validation lives. We should align to ValueError if
-# possible.
 class Demuxer:
     """Reads one or more video and audio streams from a container, and produces their compressed :class:`Packet`\\ s.
 
@@ -379,13 +376,17 @@ class Demuxer:
         streams: str | int | tuple[str | int, ...] = "video",
     ):
         self._handle = create_demuxer(source=source)
-        # Bumped on every seek and stamped on every packet, so that a decoder
-        # can tell it is being fed packets from a position it was never reset
-        # for. See _BasePacketDecoder.decode().
+        # _generation is bumped on every seek and stamped on every packet, so
+        # that a decoder can tell if the user forgot to `reset()` it.
         self._generation = 0
-        self.streams = tuple(
-            self._add_stream(selector) for selector in self._parse_streams(streams)
-        )
+        try:
+            self.streams = tuple(
+                self._add_stream(selector) for selector in self._parse_streams(streams)
+            )
+        except RuntimeError as e:
+            # Just to be nice, we convert the C++ RuntimeErrors into ValueError
+            # so all stream validation errors are consistently ValueError.
+            raise ValueError(str(e)) from None
 
     @cached_property
     def metadata(self) -> DemuxerMetadata:
