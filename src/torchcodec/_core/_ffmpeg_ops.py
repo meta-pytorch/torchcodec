@@ -218,8 +218,18 @@ def _bytes_to_tensor(data: bytes) -> torch.Tensor:
         return torch.frombuffer(data, dtype=torch.uint8)
 
 
-def create_from_bytes(video_bytes: bytes, seek_mode: str | None = None) -> torch.Tensor:
-    return create_from_tensor(_bytes_to_tensor(video_bytes), seek_mode)
+def create_from_bytes(
+    video_bytes: bytes,
+    seek_mode: str | None = None,
+    input_format: str | None = None,
+    allowed_decoders: list[str] | None = None,
+) -> torch.Tensor:
+    return create_from_tensor(
+        _bytes_to_tensor(video_bytes),
+        seek_mode,
+        input_format,
+        allowed_decoders,
+    )
 
 
 def create_from_file_like(
@@ -321,7 +331,10 @@ def _create_from_file_like_abstract(
 
 @register_fake("torchcodec_ns::create_from_tensor")
 def create_from_tensor_abstract(
-    video_tensor: torch.Tensor, seek_mode: str | None
+    video_tensor: torch.Tensor,
+    seek_mode: str | None,
+    input_format: str | None,
+    allowed_decoders: list[str] | None,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 

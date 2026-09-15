@@ -246,6 +246,146 @@ class TestDecoder:
         with pytest.raises(TypeError, match="binary reading?"):
             Decoder(open(NASA_VIDEO.path))
 
+    @pytest.mark.parametrize("source_kind", ("tensor", "bytes"))
+    def test_video_decoder_restrictions_allow_approved_in_memory_media(
+        self, source_kind
+    ):
+        source = (
+            TEST_SRC_2_720P.to_tensor()
+            if source_kind == "tensor"
+            else TEST_SRC_2_720P.path.read_bytes()
+        )
+        expected = VideoDecoder(source)[0]
+        actual = VideoDecoder(
+            source,
+            input_format="mov",
+            allowed_decoders=("h264",),
+        )[0]
+
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+    @pytest.mark.parametrize(
+        "input_format, allowed_decoders",
+        (
+            ("matroska", ("h264",)),
+            ("mov", ("vp9",)),
+        ),
+    )
+    def test_video_decoder_restrictions_reject_unapproved_media(
+        self, input_format, allowed_decoders
+    ):
+        with pytest.raises(RuntimeError, match="Restricted media decode rejected"):
+            VideoDecoder(
+                TEST_SRC_2_720P.to_tensor(),
+                input_format=input_format,
+                allowed_decoders=allowed_decoders,
+            )
+
+    def test_video_decoder_restrictions_require_both_lists(self):
+        with pytest.raises(ValueError, match="must be set together"):
+            VideoDecoder(
+                TEST_SRC_2_720P.to_tensor(),
+                input_format="mov",
+            )
+
+    @pytest.mark.parametrize(
+        "input_format, allowed_decoders, expected_error",
+        (
+            (
+                "mov\0concat",
+                ("h264",),
+                "input_format must name exactly one FFmpeg demuxer",
+            ),
+            (
+                "mov",
+                ("h264\0tdsc",),
+                "allowed_decoders must contain non-empty FFmpeg decoder names",
+            ),
+        ),
+    )
+    def test_video_decoder_restrictions_reject_embedded_nulls(
+        self, input_format, allowed_decoders, expected_error
+    ):
+        with pytest.raises(ValueError, match=expected_error):
+            VideoDecoder(
+                TEST_SRC_2_720P.to_tensor(),
+                input_format=input_format,
+                allowed_decoders=allowed_decoders,
+            )
+
+    def test_video_decoder_restrictions_are_limited_to_in_memory_sources(self):
+        with pytest.raises(ValueError, match="only bytes and Tensor sources"):
+            VideoDecoder(
+                TEST_SRC_2_720P.path,
+                input_format="mov",
+                allowed_decoders=("h264",),
+            )
+
+    def test_video_decoder_restrictions_cover_auxiliary_streams(self):
+        with pytest.raises(RuntimeError, match="Restricted media decode rejected.*aac"):
+            VideoDecoder(
+                NASA_VIDEO.to_tensor(),
+                seek_mode="approximate",
+                input_format="mov",
+                allowed_decoders=("h264",),
+            )
+
+        decoder = VideoDecoder(
+            NASA_VIDEO.to_tensor(),
+            seek_mode="approximate",
+            input_format="mov",
+            allowed_decoders=("h264", "aac", "mov_text"),
+        )
+        expected = VideoDecoder(NASA_VIDEO.to_tensor(), seek_mode="approximate")[0]
+        torch.testing.assert_close(decoder[0], expected, rtol=0, atol=0)
+
+    def test_video_decoder_restrictions_allow_non_decodable_metadata_streams(self):
+        source = NASA_VIDEO.path.read_bytes()
+        assert b"tx3g" in source
+        source_with_timecode = source.replace(b"tx3g", b"tmcd", 1)
+
+        expected = VideoDecoder(source_with_timecode, seek_mode="approximate")[0]
+        actual = VideoDecoder(
+            source_with_timecode,
+            seek_mode="approximate",
+            input_format="mov",
+            allowed_decoders=("h264", "aac", "mov_text"),
+        )[0]
+
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+    def test_video_decoder_restrictions_reject_non_decodable_video_streams(self):
+        source = TEST_SRC_2_720P.path.read_bytes()
+        prefix, sample_entry, suffix = source.rpartition(b"avc1")
+        assert sample_entry == b"avc1"
+        source_with_unknown_video = prefix + b"zzzz" + suffix
+
+        with pytest.raises(
+            RuntimeError,
+            match="Restricted media decode rejected.*no descriptor for codec none",
+        ):
+            VideoDecoder(
+                source_with_unknown_video,
+                input_format="mov",
+                allowed_decoders=("h264",),
+            )
+
+    def test_video_decoder_restrictions_block_nested_local_file_opens(
+        self, tmp_path, monkeypatch
+    ):
+        nested_video = tmp_path / "nested.mp4"
+        nested_video.write_bytes(TEST_SRC_2_720P.path.read_bytes())
+        concat_manifest = b"ffconcat version 1.0\nfile 'nested.mp4'\n"
+
+        with monkeypatch.context() as m:
+            m.chdir(tmp_path)
+            with pytest.raises(RuntimeError, match="Restricted media decode rejected"):
+                VideoDecoder(
+                    concat_manifest,
+                    input_format="concat",
+                    allowed_decoders=("h264",),
+                )
+
 
 class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))

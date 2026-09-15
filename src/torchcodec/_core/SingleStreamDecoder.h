@@ -8,8 +8,11 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <ostream>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include "AVIOContextHolder.h"
 #include "DeviceInterface.h"
@@ -21,6 +24,17 @@
 #include "Transform.h"
 
 namespace facebook::torchcodec {
+
+// Restricts decoding of untrusted in-memory media to named FFmpeg components.
+// All decodable streams in the input must have a codec ID represented by an
+// allowed decoder name. A device backend may select another implementation of
+// the same codec. Non-decodable data and attachment streams are permitted. This
+// is not a sandbox: callers must choose an input format whose nested I/O
+// behavior and each decoder's helper-decoder dependencies have been reviewed.
+struct DecoderRestrictions {
+  std::string input_format;
+  std::vector<std::string> allowed_decoders;
+};
 
 // The SingleStreamDecoder class can be used to decode video frames to Tensors.
 // Note that SingleStreamDecoder is not thread-safe.
@@ -43,6 +57,12 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   explicit SingleStreamDecoder(
       std::unique_ptr<AVIOContextHolder> context,
       SeekMode seek_mode = SeekMode::exact);
+
+  // Creates a restricted decoder for untrusted in-memory media.
+  explicit SingleStreamDecoder(
+      std::unique_ptr<AVIOContextHolder> context,
+      SeekMode seek_mode,
+      std::optional<DecoderRestrictions> decoder_restrictions);
 
   // --------------------------------------------------------------------------
   // VIDEO METADATA QUERY API
@@ -344,12 +364,17 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   void validate_frame_index(
       const StreamMetadata& stream_metadata,
       int64_t frame_index);
+  void validate_restricted_format_context() const;
+  void validate_restricted_stream_codecs(bool allow_unresolved_codec_ids) const;
+  void validate_restricted_decoder(const AVCodec* decoder) const;
 
   // --------------------------------------------------------------------------
   // ATTRIBUTES
   // --------------------------------------------------------------------------
 
   SeekMode seek_mode_;
+  std::optional<DecoderRestrictions> decoder_restrictions_;
+  std::vector<AVCodecID> allowed_codec_ids_;
   ContainerMetadata container_metadata_;
   UniqueDecodingAVFormatContext format_context_;
   std::unique_ptr<DeviceInterface> device_interface_;
