@@ -192,6 +192,16 @@ class AudioStream(_Stream):
 class Demuxer:
     """Reads one or more video and audio streams from a container, and produces their compressed :class:`Packet`\\ s.
 
+    Packets come out interleaved, and :attr:`Packet.stream_index` says which
+    stream each one belongs to::
+
+        demuxer = Demuxer("video.mp4", streams=("video", "audio"))
+        decoders = {s.index: s.make_decoder() for s in demuxer.streams}
+
+        for packet in demuxer:
+            for output in decoders[packet.stream_index].decode(packet):
+                ...
+
     Args:
         source (str, ``Pathlib.path``, bytes, ``torch.Tensor`` or file-like object): The source of the media:
 
