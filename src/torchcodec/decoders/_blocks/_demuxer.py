@@ -526,7 +526,25 @@ def _container_fields(handle: Tensor) -> dict:
 def get_container_metadata(
     source: str | Path | bytes | Tensor | io.RawIOBase | io.BufferedReader,
 ) -> ContainerMetadata:
-    """TODO_API_BREAKDOWN DOC"""
+    """Describe a container and every stream in it, without decoding anything.
+
+    .. code-block:: python
+
+        metadata = get_container_metadata("video.mp4")
+        metadata.duration_seconds_from_header
+        metadata.streams[metadata.best_video_stream_index].width
+
+    Only the header is read, so this is what to reach for before you know what a
+    file holds, and therefore which streams to ask a :class:`Demuxer` for.
+
+    Args:
+        source (str, ``Pathlib.path``, bytes, ``torch.Tensor`` or file-like object):
+            The source of the media, as for :class:`Demuxer`.
+
+    Returns:
+        ContainerMetadata: The container's own metadata, plus one entry per
+        stream, indexed by stream index.
+    """
 
     handle = create_demuxer(source=source)
     container_dict = json.loads(_blocks_demuxer_container_json_metadata(handle))

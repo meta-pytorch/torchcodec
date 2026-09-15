@@ -231,8 +231,8 @@ class DemuxerMetadata:
         return s
 
 
-# TODO_API_BREAKDOWN DOC: not checked this yet, do once we address
-# get_container_metadata
+# TODO_API_BREAKDOWN DESIGN P1 we shuold probably expose a media_type field on
+# StreamMetadata so that users can identify the subtitle streams wihtout looking at the class type
 @dataclass
 class ContainerMetadata(DemuxerMetadata):
     """Metadata of a container and of every stream in it.
@@ -242,9 +242,12 @@ class ContainerMetadata(DemuxerMetadata):
     """
 
     streams: list[StreamMetadata]
-    """One entry per stream in the file, indexed by stream index. Streams that
-    are neither video nor audio (subtitles, data) are plain
-    :class:`StreamMetadata`: you can see them, you cannot decode them."""
+    """One entry per stream in the file, indexed by stream index.
+
+    Despite the annotation, the entries are rarely plain
+    :class:`StreamMetadata`. A video stream comes back as a
+    :class:`VideoStreamHeaderMetadata` and an audio stream as an
+    :class:`AudioStreamHeaderMetadata`."""
 
 
 def _get_optional_par_fraction(stream_dict):
