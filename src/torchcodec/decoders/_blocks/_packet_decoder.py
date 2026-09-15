@@ -139,9 +139,9 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
     the packets of its own stream, in the order the demuxer produced them.
     """
 
-    # These two exist only to pin the return type down to RawFrame. The base
-    # class is generic over _Decoded, which is what a caller, and the rendered
-    # docs, would otherwise be shown.
+    # methods calling super() only to pin the return type down to RawFrame. The
+    # base class is generic over _Decoded, which isn't ideal for the rendered
+    # docs.
     def decode(self, packet: Packet) -> list[RawFrame]:
         """Send one :class:`Packet` to the codec and return the
         :class:`RawFrame`\\ s that are ready.

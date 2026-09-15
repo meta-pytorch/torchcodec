@@ -54,7 +54,41 @@ class Packet:
 
 
 class RawFrame:
-    """TODO_API_BREAKDOWN DOC"""
+    """One decoded video frame, exactly as the decoder produced it.
+
+    You cannot build one yourself: a :class:`VideoPacketDecoder` creates
+    them. Use a :class:`ColorConverter` to turn them into RGB
+    :class:`~torchcodec.Frame`\\ s, or you can read and transform the raw
+    samples directly from :attr:`planes`::
+
+
+        for packet in demuxer:
+            for raw_frame in packet_decoder.decode(packet):
+                y, u, v = raw_frame.planes
+                # For a 480x270 yuv420p frame, y is [270, 480] uint8, and the
+                # chroma is subsampled: u and v are [135, 240] each.
+                print(y.shape, u.shape, v.shape)
+
+    Nothing here has been converted. The samples are in the codec's own pixel
+    format (typically YUV), on the device that was passed to
+    :meth:`VideoStream.make_decoder`, and
+    :attr:`width`, :attr:`height` and :attr:`planes` are all pre-rotation:
+    :attr:`rotation_degrees` is what a :class:`ColorConverter` applies for
+    you, and what you have to apply yourself if you convert :attr:`planes` on
+    your own.
+
+    .. important::
+
+        On CUDA, anything that reads the samples on a stream other than the one
+        the decoder ran on must call :meth:`record_stream`, or the decoder may
+        overwrite them while those reads are still pending. A
+        :class:`ColorConverter` does this for you.
+    """
+
+    pts_seconds: float
+    """The :term:`pts` of this frame, in seconds."""
+    duration_seconds: float
+    """How long this frame is displayed for, in seconds."""
 
     def __init__(
         self,
@@ -77,6 +111,23 @@ class RawFrame:
         )
 
     def record_stream(self, stream: torch.cuda.Stream) -> None:
+        """Tell the CUDA caching allocator that ``stream`` is still reading this
+        frame's samples.
+
+        **A CUDA consumer that reads the frame on a stream other than the one
+        the decoder ran on must call this**, right after queueing its reads.
+        Without it, the decoder's next frame can be handed the same buffer and
+        overwrite these samples while those reads are still pending.
+        :class:`ColorConverter` does it for you, but you will have to call this
+        yourself if you consume :attr:`planes` directly on a different stream.
+
+        See `this post
+        <https://zdevito.github.io/2022/08/04/cuda-caching-allocator.html>`_ for
+        what the allocator is doing and why this is needed.
+
+        Args:
+            stream (torch.cuda.Stream): The stream that is reading the samples.
+        """
         # See [Standalone Frame Storage and the need for record_stream]
         if self._storage is not None:
             self._storage.record_stream(stream)
@@ -88,34 +139,101 @@ class RawFrame:
 
     @property
     def pix_fmt(self) -> str:
+        """The FFmpeg pixel-format name, e.g. ``"yuv420p"``.
+
+        On CPU this is the source's own format. On CUDA it is always one of the
+        NVDEC surface formats: ``"nv12"``, ``"p010le"``, ``"p012le"``,
+        ``"p016le"``, ``"yuv444p"`` or ``"yuv444p16le"``.
+        """
         return self._get_metadata().pix_fmt
 
     @property
     def colorspace(self) -> str:
+        """The FFmpeg colorspace name, e.g. ``"bt709"``."""
         return self._get_metadata().colorspace
 
     @property
     def color_range(self) -> str:
+        """``"tv"`` for limited range, ``"pc"`` for full range."""
         return self._get_metadata().color_range
 
     @property
     def bit_depth(self) -> int:
+        """How many bits of each :attr:`planes` sample are meaningful.
+
+        In almost every case this is just the bit depth of the source: 8 for an
+        8-bit video, 10 for a 10-bit one. It is worth having because a plane's
+        dtype only tells you its storage width, ``uint8`` or ``uint16``, while
+        this tells you the range of the values held in it. So it is what you
+        shift or scale by to reach a range of your own -
+        ``y >> (frame.bit_depth - 8)`` for 8 bits, or
+        ``y / (2 ** frame.bit_depth - 1)`` to normalise.
+
+        Two CUDA surface formats report more than their source: a 10-bit 4:4:4
+        source is uploaded as ``yuv444p16le``, and a 12-bit source is tagged
+        ``p016le`` on FFmpeg < 6, which has no ``p012le``. Both report 16 where
+        CPU decoding would report 10 and 12. Their samples are msb-aligned, so
+        they genuinely are 16-bit values with zeroed low bits, and the
+        arithmetic above still holds.
+        """
         return self._get_metadata().bit_depth
 
     @property
     def width(self) -> int:
+        """The width of the decoded samples, before rotation."""
         return self._get_metadata().width
 
     @property
     def height(self) -> int:
+        """The height of the decoded samples, before rotation."""
         return self._get_metadata().height
 
     @property
     def rotation_degrees(self) -> float:
+        """How many degrees counter-clockwise the frame has to be rotated to be
+        upright, or 0 if the container asks for no rotation.
+
+        This is *not* applied to :attr:`planes`. A :class:`ColorConverter`
+        applies it, rounded to the nearest multiple of 90, to its output.
+        """
         return self._get_metadata().rotation_degrees
 
     @property
     def planes(self) -> tuple[torch.Tensor, ...]:
+        """The decoder's own samples, as 2D tensor views.
+
+        There is exactly one tensor per *component*
+        of :attr:`pix_fmt`, in the order that format describes, of dtype
+        ``uint8`` or ``uint16`` depending on :attr:`bit_depth`. So ``yuv420p``
+        and ``nv12`` both give three (``y, u, v = planes``), ``yuva420p`` four
+        (``y, u, v, a = planes``) and ``gray`` one (``(y,) = planes``).
+
+        They are always on the device that was passed to
+        :meth:`VideoStream.make_decoder`, including when a CUDA decoder has to
+        fall back to decoding on the CPU: it uploads those frames before handing
+        them out.
+
+        Only the luma and alpha components are :attr:`height` by :attr:`width`.
+        The chroma ones are subsampled by whatever :attr:`pix_fmt` says: half in
+        both directions for a 4:2:0 format, half the width for 4:2:2, full size
+        for 4:4:4 and for the RGB formats. Odd sizes round up, so the chroma of
+        a 4:2:0 frame 481 samples wide is 241 wide.
+
+        .. note::
+
+            None of these views is contiguous in general. FFmpeg pads each row
+            out to a line size of its own choosing, so even a luma plane is
+            usually strided, and the semi-planar formats (``nv12``, ``p010le``,
+            and the other NVDEC surface formats) store U and V interleaved in a
+            single allocation, which forces those two to be strided views into
+            it.
+
+        Raises:
+            RuntimeError: For the pixel formats that can't be viewed without a
+                copy - sub-byte-packed, palettised and float ones - and for
+                frames stored bottom-up. Check :attr:`pix_fmt` first if you are
+                decoding something exotic.
+        """
         if self._planes is None:
             planes = _blocks_frame_planes(self._handle, self._device)
             # The op's schema is fixed-arity, so it pads with empty tensors up
