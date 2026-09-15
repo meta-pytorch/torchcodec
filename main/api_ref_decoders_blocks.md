@@ -20,7 +20,7 @@ For a tutorial, see:
 
 ## Decoding
 
-| [`VideoPacketDecoder`](generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder) | TODO_API_BREAKDOWN DOC |
+| [`VideoPacketDecoder`](generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder) | Decodes the compressed [`Packet`](generated/torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet)s of one video stream into [`RawFrame`](generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame)s. |
 | --- | --- |
 | [`AudioPacketDecoder`](generated/torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder) | TODO_API_BREAKDOWN DOC |
 
@@ -32,9 +32,9 @@ For a tutorial, see:
 
 ## Data types
 
-| [`Packet`](generated/torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet) | TODO_API_BREAKDOWN DOC |
+| [`Packet`](generated/torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet) | One compressed packet of one stream, as a [`Demuxer`](generated/torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer) produced it. |
 | --- | --- |
-| [`RawFrame`](generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame) | TODO_API_BREAKDOWN DOC |
+| [`RawFrame`](generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame) | One decoded video frame, exactly as the decoder produced it. |
 
 | [`FrameIndex`](generated/torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex) | What the packets of a video stream say about its frames, as returned by a [scan](glossary.html#term-scan) ([`VideoStream.scan()`](generated/torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.scan)). |
 | --- | --- |

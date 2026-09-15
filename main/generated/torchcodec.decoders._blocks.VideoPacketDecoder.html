@@ -1204,15 +1204,60 @@ document.write(`
 <dl class="py class">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.VideoPacketDecoder">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">torchcodec.decoders._blocks.</span></span><span class="sig-name descname"><span class="pre">VideoPacketDecoder</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_packet_decoder.html#VideoPacketDecoder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.VideoPacketDecoder" title="Link to this definition">#</a></dt>
-<dd><p>TODO_API_BREAKDOWN DOC</p>
+<dd><p>Decodes the compressed <a class="reference internal" href="torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet" title="torchcodec.decoders._blocks.Packet"><code class="xref py py-class docutils literal notranslate"><span class="pre">Packet</span></code></a>s of one video stream into
+<a class="reference internal" href="torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame" title="torchcodec.decoders._blocks.RawFrame"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawFrame</span></code></a>s.</p>
+<p>You should not build one yourself: <a class="reference internal" href="torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.make_decoder" title="torchcodec.decoders._blocks.VideoStream.make_decoder"><code class="xref py py-meth docutils literal notranslate"><span class="pre">VideoStream.make_decoder()</span></code></a> is what
+creates it. Frames come out on the device given there.</p>
+<p>It is stateful. It holds the codec’s reference-frame buffer, so it expects
+the packets of its own stream, in the order the demuxer produced them.</p>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">VideoPacketDecoder</span></code>:</p>
 <div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_blocks_thumb.png" />
 <p><a class="reference internal" href="../generated_examples/decoding/blocks.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
   <div class="sphx-glr-thumbnail-title">Blocks: build your own decoding pipeline</div>
 </div></div><dl class="py method">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.VideoPacketDecoder.decode">
+<span class="sig-name descname"><span class="pre">decode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">packet</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet" title="torchcodec.decoders._blocks._frame.Packet"><span class="pre">Packet</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame" title="torchcodec.decoders._blocks._frame.RawFrame"><span class="pre">RawFrame</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_packet_decoder.html#VideoPacketDecoder.decode"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.VideoPacketDecoder.decode" title="Link to this definition">#</a></dt>
+<dd><p>Send one <a class="reference internal" href="torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet" title="torchcodec.decoders._blocks.Packet"><code class="xref py py-class docutils literal notranslate"><span class="pre">Packet</span></code></a> to the codec and return the
+<a class="reference internal" href="torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame" title="torchcodec.decoders._blocks.RawFrame"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawFrame</span></code></a>s that are ready.</p>
+<p><strong>This can return zero, one, or more than one</strong> <a class="reference internal" href="torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame" title="torchcodec.decoders._blocks.RawFrame"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawFrame</span></code></a>. What
+comes back is not the decoding of the packet you just passed: a codec
+that is buffering B-frames, or still priming itself, will emit what it owes
+you on a later call.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>packet</strong> (<a class="reference internal" href="torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet" title="torchcodec.decoders._blocks.Packet"><em>Packet</em></a>) – A packet of this decoder’s own stream.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The possibly empty list of <a class="reference internal" href="torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame" title="torchcodec.decoders._blocks.RawFrame"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawFrame</span></code></a>s that the codec has
+ready, in presentation order.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If this decoder has been drained, or if the demuxer
+    seeked without it being <a class="reference internal" href="#torchcodec.decoders._blocks.VideoPacketDecoder.reset" title="torchcodec.decoders._blocks.VideoPacketDecoder.reset"><code class="xref py py-meth docutils literal notranslate"><span class="pre">reset()</span></code></a> afterwards.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.VideoPacketDecoder.drain">
+<span class="sig-name descname"><span class="pre">drain</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame" title="torchcodec.decoders._blocks._frame.RawFrame"><span class="pre">RawFrame</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_packet_decoder.html#VideoPacketDecoder.drain"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.VideoPacketDecoder.drain" title="Link to this definition">#</a></dt>
+<dd><p>Tell the codec the stream has ended, and return the
+<a class="reference internal" href="torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame" title="torchcodec.decoders._blocks.RawFrame"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawFrame</span></code></a>s it was still holding.</p>
+<p>Skipping this loses the tail of the stream. A drained decoder refuses
+any further packet; <a class="reference internal" href="#torchcodec.decoders._blocks.VideoPacketDecoder.reset" title="torchcodec.decoders._blocks.VideoPacketDecoder.reset"><code class="xref py py-meth docutils literal notranslate"><span class="pre">reset()</span></code></a> makes it usable again.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The possibly empty list of <a class="reference internal" href="torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame" title="torchcodec.decoders._blocks.RawFrame"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawFrame</span></code></a>s that the codec was
+still holding, in presentation order.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.VideoPacketDecoder.reset">
 <span class="sig-name descname"><span class="pre">reset</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#torchcodec.decoders._blocks.VideoPacketDecoder.reset" title="Link to this definition">#</a></dt>
-<dd><p>TODO_API_BREAKDOWN DOC</p>
+<dd><p>Drop the codec’s buffered state and start over.</p>
+<p>Needed after a <a class="reference internal" href="torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer.seek" title="torchcodec.decoders._blocks.Demuxer.seek"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Demuxer.seek()</span></code></a>, and after <a class="reference internal" href="#torchcodec.decoders._blocks.VideoPacketDecoder.drain" title="torchcodec.decoders._blocks.VideoPacketDecoder.drain"><code class="xref py py-meth docutils literal notranslate"><span class="pre">drain()</span></code></a>.</p>
 </dd></dl>
 
 </dd></dl>
@@ -1337,6 +1382,8 @@ document.write(`
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.VideoPacketDecoder"><code class="docutils literal notranslate"><span class="pre">VideoPacketDecoder</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.VideoPacketDecoder.decode"><code class="docutils literal notranslate"><span class="pre">VideoPacketDecoder.decode()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.VideoPacketDecoder.drain"><code class="docutils literal notranslate"><span class="pre">VideoPacketDecoder.drain()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.VideoPacketDecoder.reset"><code class="docutils literal notranslate"><span class="pre">VideoPacketDecoder.reset()</span></code></a></li>
 </ul>
 </li>
@@ -1565,7 +1612,7 @@ document.write(`
        "headline": "VideoPacketDecoder",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders._blocks.VideoPacketDecoder.html",
-       "articleBody": "VideoPacketDecoder# class torchcodec.decoders._blocks.VideoPacketDecoder(*args, **kwargs)[source]# TODO_API_BREAKDOWN DOC Examples using VideoPacketDecoder: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline reset() \u2192 None# TODO_API_BREAKDOWN DOC",
+       "articleBody": "VideoPacketDecoder# class torchcodec.decoders._blocks.VideoPacketDecoder(*args, **kwargs)[source]# Decodes the compressed Packets of one video stream into RawFrames. You should not build one yourself: VideoStream.make_decoder() is what creates it. Frames come out on the device given there. It is stateful. It holds the codec\u2019s reference-frame buffer, so it expects the packets of its own stream, in the order the demuxer produced them. Examples using VideoPacketDecoder: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline decode(packet: Packet) \u2192 list[RawFrame][source]# Send one Packet to the codec and return the RawFrames that are ready. This can return zero, one, or more than one RawFrame. What comes back is not the decoding of the packet you just passed: a codec that is buffering B-frames, or still priming itself, will emit what it owes you on a later call. Parameters: packet (Packet) \u2013 A packet of this decoder\u2019s own stream. Returns: The possibly empty list of RawFrames that the codec has ready, in presentation order. Raises: RuntimeError \u2013 If this decoder has been drained, or if the demuxer seeked without it being reset() afterwards. drain() \u2192 list[RawFrame][source]# Tell the codec the stream has ended, and return the RawFrames it was still holding. Skipping this loses the tail of the stream. A drained decoder refuses any further packet; reset() makes it usable again. Returns: The possibly empty list of RawFrames that the codec was still holding, in presentation order. reset() \u2192 None# Drop the codec\u2019s buffered state and start over. Needed after a Demuxer.seek(), and after drain().",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

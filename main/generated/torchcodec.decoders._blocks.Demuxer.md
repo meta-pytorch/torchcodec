@@ -4,7 +4,7 @@
 
 Reads one or more video and audio streams from a container, and produces their compressed [`Packet`](torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet)s.
 
-Packets come out interleaved, and `Packet.stream_index` says which
+Packets come out interleaved, and [`Packet.stream_index`](torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet.stream_index) says which
 stream each one belongs to:
 
 ```
@@ -59,7 +59,7 @@ Read and return the next [`Packet`](torchcodec.decoders._blocks.Packet.html#torc
 
 Packets come out interleaved across the streams being followed, in the
 order the container stores them, so this is where
-`Packet.stream_index` matters: it is what routes each packet to
+[`Packet.stream_index`](torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet.stream_index) matters: it is what routes each packet to
 the decoder of its own stream. Iterating over a `Demuxer` calls this
 until it returns `None`.
 

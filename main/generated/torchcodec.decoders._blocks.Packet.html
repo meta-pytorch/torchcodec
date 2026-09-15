@@ -1204,12 +1204,23 @@ document.write(`
 <dl class="py class">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.Packet">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">torchcodec.decoders._blocks.</span></span><span class="sig-name descname"><span class="pre">Packet</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">handle</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">stream_index</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">generation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_frame.html#Packet"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.Packet" title="Link to this definition">#</a></dt>
-<dd><p>TODO_API_BREAKDOWN DOC</p>
+<dd><p>One compressed packet of one stream, as a <a class="reference internal" href="torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer" title="torchcodec.decoders._blocks.Demuxer"><code class="xref py py-class docutils literal notranslate"><span class="pre">Demuxer</span></code></a> produced it.</p>
+<p>You should not build one yourself: a <code class="docutils literal notranslate"><span class="pre">Demuxer</span></code> creates them, and a
+<a class="reference internal" href="torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder" title="torchcodec.decoders._blocks.VideoPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoPacketDecoder</span></code></a> or an <a class="reference internal" href="torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder" title="torchcodec.decoders._blocks.AudioPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioPacketDecoder</span></code></a> consumes
+them. The contents are opaque: a <code class="docutils literal notranslate"><span class="pre">Packet</span></code> is a handle to an FFmpeg packet.</p>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">Packet</span></code>:</p>
 <div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_blocks_thumb.png" />
 <p><a class="reference internal" href="../generated_examples/decoding/blocks.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
   <div class="sphx-glr-thumbnail-title">Blocks: build your own decoding pipeline</div>
-</div></div></dd></dl>
+</div></div><dl class="py attribute">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.Packet.stream_index">
+<span class="sig-name descname"><span class="pre">stream_index</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.Packet.stream_index" title="Link to this definition">#</a></dt>
+<dd><p>The index of the stream this packet belongs to, absolute across all
+media types. When a demuxer follows more than one stream, this is what
+routes each packet to the right decoder.</p>
+</dd></dl>
+
+</dd></dl>
 
 </section>
 
@@ -1330,7 +1341,10 @@ document.write(`
   </div>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.Packet"><code class="docutils literal notranslate"><span class="pre">Packet</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.Packet"><code class="docutils literal notranslate"><span class="pre">Packet</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.Packet.stream_index"><code class="docutils literal notranslate"><span class="pre">Packet.stream_index</span></code></a></li>
+</ul>
+</li>
 </ul>
   </nav></div>
     
@@ -1556,7 +1570,7 @@ document.write(`
        "headline": "Packet",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders._blocks.Packet.html",
-       "articleBody": "Packet# class torchcodec.decoders._blocks.Packet(handle: Tensor, stream_index: int, *, generation: int = 0)[source]# TODO_API_BREAKDOWN DOC Examples using Packet: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline",
+       "articleBody": "Packet# class torchcodec.decoders._blocks.Packet(handle: Tensor, stream_index: int, *, generation: int = 0)[source]# One compressed packet of one stream, as a Demuxer produced it. You should not build one yourself: a Demuxer creates them, and a VideoPacketDecoder or an AudioPacketDecoder consumes them. The contents are opaque: a Packet is a handle to an FFmpeg packet. Examples using Packet: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline stream_index: int# The index of the stream this packet belongs to, absolute across all media types. When a demuxer follows more than one stream, this is what routes each packet to the right decoder.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

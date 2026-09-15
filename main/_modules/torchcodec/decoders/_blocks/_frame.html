@@ -1492,7 +1492,17 @@ document.write(`
 <div class="viewcode-block" id="Packet">
 <a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Packet</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;TODO_API_BREAKDOWN DOC&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;One compressed packet of one stream, as a :class:`Demuxer` produced it.</span>
+
+<span class="sd">    You should not build one yourself: a ``Demuxer`` creates them, and a</span>
+<span class="sd">    :class:`VideoPacketDecoder` or an :class:`AudioPacketDecoder` consumes</span>
+<span class="sd">    them. The contents are opaque: a ``Packet`` is a handle to an FFmpeg packet.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">stream_index</span><span class="p">:</span> <span class="nb">int</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The index of the stream this packet belongs to, absolute across all</span>
+<span class="sd">    media types. When a demuxer follows more than one stream, this is what</span>
+<span class="sd">    routes each packet to the right decoder.&quot;&quot;&quot;</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
@@ -1513,7 +1523,41 @@ document.write(`
 <div class="viewcode-block" id="RawFrame">
 <a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">RawFrame</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;TODO_API_BREAKDOWN DOC&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;One decoded video frame, exactly as the decoder produced it.</span>
+
+<span class="sd">    You cannot build one yourself: a :class:`VideoPacketDecoder` creates</span>
+<span class="sd">    them. Use a :class:`ColorConverter` to turn them into RGB</span>
+<span class="sd">    :class:`~torchcodec.Frame`\\ s, or you can read and transform the raw</span>
+<span class="sd">    samples directly from :attr:`planes`::</span>
+
+
+<span class="sd">        for packet in demuxer:</span>
+<span class="sd">            for raw_frame in packet_decoder.decode(packet):</span>
+<span class="sd">                y, u, v = raw_frame.planes</span>
+<span class="sd">                # For a 480x270 yuv420p frame, y is [270, 480] uint8, and the</span>
+<span class="sd">                # chroma is subsampled: u and v are [135, 240] each.</span>
+<span class="sd">                print(y.shape, u.shape, v.shape)</span>
+
+<span class="sd">    Nothing here has been converted. The samples are in the codec&#39;s own pixel</span>
+<span class="sd">    format (typically YUV), on the device that was passed to</span>
+<span class="sd">    :meth:`VideoStream.make_decoder`, and</span>
+<span class="sd">    :attr:`width`, :attr:`height` and :attr:`planes` are all pre-rotation:</span>
+<span class="sd">    :attr:`rotation_degrees` is what a :class:`ColorConverter` applies for</span>
+<span class="sd">    you, and what you have to apply yourself if you convert :attr:`planes` on</span>
+<span class="sd">    your own.</span>
+
+<span class="sd">    .. important::</span>
+
+<span class="sd">        On CUDA, anything that reads the samples on a stream other than the one</span>
+<span class="sd">        the decoder ran on must call :meth:`record_stream`, or the decoder may</span>
+<span class="sd">        overwrite them while those reads are still pending. A</span>
+<span class="sd">        :class:`ColorConverter` does this for you.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">pts_seconds</span><span class="p">:</span> <span class="nb">float</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;The :term:`pts` of this frame, in seconds.&quot;&quot;&quot;</span>
+    <span class="n">duration_seconds</span><span class="p">:</span> <span class="nb">float</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;How long this frame is displayed for, in seconds.&quot;&quot;&quot;</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
@@ -1535,10 +1579,30 @@ document.write(`
             <span class="bp">self</span><span class="o">.</span><span class="n">_storage</span><span class="o">.</span><span class="n">device</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_storage</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="s2">&quot;cpu&quot;</span><span class="p">)</span>
         <span class="p">)</span>
 
+<div class="viewcode-block" id="RawFrame.record_stream">
+<a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.record_stream">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">record_stream</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stream</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">Stream</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Tell the CUDA caching allocator that ``stream`` is still reading this</span>
+<span class="sd">        frame&#39;s samples.</span>
+
+<span class="sd">        **A CUDA consumer that reads the frame on a stream other than the one</span>
+<span class="sd">        the decoder ran on must call this**, right after queueing its reads.</span>
+<span class="sd">        Without it, the decoder&#39;s next frame can be handed the same buffer and</span>
+<span class="sd">        overwrite these samples while those reads are still pending.</span>
+<span class="sd">        :class:`ColorConverter` does it for you, but you will have to call this</span>
+<span class="sd">        yourself if you consume :attr:`planes` directly on a different stream.</span>
+
+<span class="sd">        See `this post</span>
+<span class="sd">        &lt;https://zdevito.github.io/2022/08/04/cuda-caching-allocator.html&gt;`_ for</span>
+<span class="sd">        what the allocator is doing and why this is needed.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            stream (torch.cuda.Stream): The stream that is reading the samples.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="c1"># See [Standalone Frame Storage and the need for record_stream]</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_storage</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_storage</span><span class="o">.</span><span class="n">record_stream</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_storage</span><span class="o">.</span><span class="n">record_stream</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span></div>
+
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_get_metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">_Metadata</span><span class="p">:</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_metadata</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -1547,34 +1611,101 @@ document.write(`
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">pix_fmt</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The FFmpeg pixel-format name, e.g. ``&quot;yuv420p&quot;``.</span>
+
+<span class="sd">        On CPU this is the source&#39;s own format. On CUDA it is always one of the</span>
+<span class="sd">        NVDEC surface formats: ``&quot;nv12&quot;``, ``&quot;p010le&quot;``, ``&quot;p012le&quot;``,</span>
+<span class="sd">        ``&quot;p016le&quot;``, ``&quot;yuv444p&quot;`` or ``&quot;yuv444p16le&quot;``.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_metadata</span><span class="p">()</span><span class="o">.</span><span class="n">pix_fmt</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">colorspace</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The FFmpeg colorspace name, e.g. ``&quot;bt709&quot;``.&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_metadata</span><span class="p">()</span><span class="o">.</span><span class="n">colorspace</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">color_range</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;``&quot;tv&quot;`` for limited range, ``&quot;pc&quot;`` for full range.&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_metadata</span><span class="p">()</span><span class="o">.</span><span class="n">color_range</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">bit_depth</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;How many bits of each :attr:`planes` sample are meaningful.</span>
+
+<span class="sd">        In almost every case this is just the bit depth of the source: 8 for an</span>
+<span class="sd">        8-bit video, 10 for a 10-bit one. It is worth having because a plane&#39;s</span>
+<span class="sd">        dtype only tells you its storage width, ``uint8`` or ``uint16``, while</span>
+<span class="sd">        this tells you the range of the values held in it. So it is what you</span>
+<span class="sd">        shift or scale by to reach a range of your own -</span>
+<span class="sd">        ``y &gt;&gt; (frame.bit_depth - 8)`` for 8 bits, or</span>
+<span class="sd">        ``y / (2 ** frame.bit_depth - 1)`` to normalise.</span>
+
+<span class="sd">        Two CUDA surface formats report more than their source: a 10-bit 4:4:4</span>
+<span class="sd">        source is uploaded as ``yuv444p16le``, and a 12-bit source is tagged</span>
+<span class="sd">        ``p016le`` on FFmpeg &lt; 6, which has no ``p012le``. Both report 16 where</span>
+<span class="sd">        CPU decoding would report 10 and 12. Their samples are msb-aligned, so</span>
+<span class="sd">        they genuinely are 16-bit values with zeroed low bits, and the</span>
+<span class="sd">        arithmetic above still holds.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_metadata</span><span class="p">()</span><span class="o">.</span><span class="n">bit_depth</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">width</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The width of the decoded samples, before rotation.&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_metadata</span><span class="p">()</span><span class="o">.</span><span class="n">width</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">height</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The height of the decoded samples, before rotation.&quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_metadata</span><span class="p">()</span><span class="o">.</span><span class="n">height</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">rotation_degrees</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;How many degrees counter-clockwise the frame has to be rotated to be</span>
+<span class="sd">        upright, or 0 if the container asks for no rotation.</span>
+
+<span class="sd">        This is *not* applied to :attr:`planes`. A :class:`ColorConverter`</span>
+<span class="sd">        applies it, rounded to the nearest multiple of 90, to its output.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_metadata</span><span class="p">()</span><span class="o">.</span><span class="n">rotation_degrees</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">planes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;The decoder&#39;s own samples, as 2D tensor views.</span>
+
+<span class="sd">        There is exactly one tensor per *component*</span>
+<span class="sd">        of :attr:`pix_fmt`, in the order that format describes, of dtype</span>
+<span class="sd">        ``uint8`` or ``uint16`` depending on :attr:`bit_depth`. So ``yuv420p``</span>
+<span class="sd">        and ``nv12`` both give three (``y, u, v = planes``), ``yuva420p`` four</span>
+<span class="sd">        (``y, u, v, a = planes``) and ``gray`` one (``(y,) = planes``).</span>
+
+<span class="sd">        They are always on the device that was passed to</span>
+<span class="sd">        :meth:`VideoStream.make_decoder`, including when a CUDA decoder has to</span>
+<span class="sd">        fall back to decoding on the CPU: it uploads those frames before handing</span>
+<span class="sd">        them out.</span>
+
+<span class="sd">        Only the luma and alpha components are :attr:`height` by :attr:`width`.</span>
+<span class="sd">        The chroma ones are subsampled by whatever :attr:`pix_fmt` says: half in</span>
+<span class="sd">        both directions for a 4:2:0 format, half the width for 4:2:2, full size</span>
+<span class="sd">        for 4:4:4 and for the RGB formats. Odd sizes round up, so the chroma of</span>
+<span class="sd">        a 4:2:0 frame 481 samples wide is 241 wide.</span>
+
+<span class="sd">        .. note::</span>
+
+<span class="sd">            None of these views is contiguous in general. FFmpeg pads each row</span>
+<span class="sd">            out to a line size of its own choosing, so even a luma plane is</span>
+<span class="sd">            usually strided, and the semi-planar formats (``nv12``, ``p010le``,</span>
+<span class="sd">            and the other NVDEC surface formats) store U and V interleaved in a</span>
+<span class="sd">            single allocation, which forces those two to be strided views into</span>
+<span class="sd">            it.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            RuntimeError: For the pixel formats that can&#39;t be viewed without a</span>
+<span class="sd">                copy - sub-byte-packed, palettised and float ones - and for</span>
+<span class="sd">                frames stored bottom-up. Check :attr:`pix_fmt` first if you are</span>
+<span class="sd">                decoding something exotic.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_planes</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">planes</span> <span class="o">=</span> <span class="n">_blocks_frame_planes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_handle</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_device</span><span class="p">)</span>
             <span class="c1"># The op&#39;s schema is fixed-arity, so it pads with empty tensors up</span>
@@ -1867,7 +1998,7 @@ document.write(`
        "headline": "torchcodec.decoders._blocks._frame",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/_modules/torchcodec/decoders/_blocks/_frame.html",
-       "articleBody": "Source code for torchcodec.decoders._blocks._frame # Copyright (c) Meta Platforms, Inc. and affiliates. # All rights reserved. # # This source code is licensed under the BSD-style license found in the # LICENSE file in the root directory of this source tree. from __future__ import annotations from dataclasses import dataclass from typing import NamedTuple import torch from torchcodec._core.ops import _blocks_frame_metadata, _blocks_frame_planes class _Metadata(NamedTuple): # The fields of the `_blocks_frame_metadata` op, in order. pix_fmt: str colorspace: str color_range: str bit_depth: int width: int height: int rotation_degrees: float [docs] class Packet: \"\"\"TODO_API_BREAKDOWN DOC\"\"\" def __init__( self, handle: torch.Tensor, stream_index: int, *, generation: int = 0, ): self._handle = handle self.stream_index = stream_index # Which side of the demuxer\u0027s last seek this packet came from. Private: # it exists so a decoder can catch a missing reset(), not for callers to # reason about. See _BasePacketDecoder.decode(). self._generation = generation [docs] class RawFrame: \"\"\"TODO_API_BREAKDOWN DOC\"\"\" def __init__( self, handle: torch.Tensor, pts_seconds: float, duration_seconds: float, storage: torch.Tensor | None = None, ): self._handle = handle self._storage = storage self.pts_seconds = pts_seconds self.duration_seconds = duration_seconds self._metadata: _Metadata | None = None self._planes: tuple[torch.Tensor, ...] | None = None @property def _device(self) -\u003e torch.device: return ( self._storage.device if self._storage is not None else torch.device(\"cpu\") ) def record_stream(self, stream: torch.cuda.Stream) -\u003e None: # See [Standalone Frame Storage and the need for record_stream] if self._storage is not None: self._storage.record_stream(stream) def _get_metadata(self) -\u003e _Metadata: if self._metadata is None: self._metadata = _Metadata(*_blocks_frame_metadata(self._handle)) return self._metadata @property def pix_fmt(self) -\u003e str: return self._get_metadata().pix_fmt @property def colorspace(self) -\u003e str: return self._get_metadata().colorspace @property def color_range(self) -\u003e str: return self._get_metadata().color_range @property def bit_depth(self) -\u003e int: return self._get_metadata().bit_depth @property def width(self) -\u003e int: return self._get_metadata().width @property def height(self) -\u003e int: return self._get_metadata().height @property def rotation_degrees(self) -\u003e float: return self._get_metadata().rotation_degrees @property def planes(self) -\u003e tuple[torch.Tensor, ...]: if self._planes is None: planes = _blocks_frame_planes(self._handle, self._device) # The op\u0027s schema is fixed-arity, so it pads with empty tensors up # to the 4 components of the widest format. self._planes = tuple(p for p in planes if p.numel() \u003e 0) return self._planes [docs] @dataclass class RawAudioSamples: \"\"\"TODO_API_BREAKDOWN DOC\"\"\" data: torch.Tensor sample_rate: int pts_seconds: float duration_seconds: float # See Packet._generation. _generation: int = 0 @property def num_channels(self) -\u003e int: return self.data.shape[0] @property def num_samples(self) -\u003e int: return self.data.shape[1]",
+       "articleBody": "Source code for torchcodec.decoders._blocks._frame # Copyright (c) Meta Platforms, Inc. and affiliates. # All rights reserved. # # This source code is licensed under the BSD-style license found in the # LICENSE file in the root directory of this source tree. from __future__ import annotations from dataclasses import dataclass from typing import NamedTuple import torch from torchcodec._core.ops import _blocks_frame_metadata, _blocks_frame_planes class _Metadata(NamedTuple): # The fields of the `_blocks_frame_metadata` op, in order. pix_fmt: str colorspace: str color_range: str bit_depth: int width: int height: int rotation_degrees: float [docs] class Packet: \"\"\"One compressed packet of one stream, as a :class:`Demuxer` produced it. You should not build one yourself: a ``Demuxer`` creates them, and a :class:`VideoPacketDecoder` or an :class:`AudioPacketDecoder` consumes them. The contents are opaque: a ``Packet`` is a handle to an FFmpeg packet. \"\"\" stream_index: int \"\"\"The index of the stream this packet belongs to, absolute across all media types. When a demuxer follows more than one stream, this is what routes each packet to the right decoder.\"\"\" def __init__( self, handle: torch.Tensor, stream_index: int, *, generation: int = 0, ): self._handle = handle self.stream_index = stream_index # Which side of the demuxer\u0027s last seek this packet came from. Private: # it exists so a decoder can catch a missing reset(), not for callers to # reason about. See _BasePacketDecoder.decode(). self._generation = generation [docs] class RawFrame: \"\"\"One decoded video frame, exactly as the decoder produced it. You cannot build one yourself: a :class:`VideoPacketDecoder` creates them. Use a :class:`ColorConverter` to turn them into RGB :class:`~torchcodec.Frame`\\\\ s, or you can read and transform the raw samples directly from :attr:`planes`:: for packet in demuxer: for raw_frame in packet_decoder.decode(packet): y, u, v = raw_frame.planes # For a 480x270 yuv420p frame, y is [270, 480] uint8, and the # chroma is subsampled: u and v are [135, 240] each. print(y.shape, u.shape, v.shape) Nothing here has been converted. The samples are in the codec\u0027s own pixel format (typically YUV), on the device that was passed to :meth:`VideoStream.make_decoder`, and :attr:`width`, :attr:`height` and :attr:`planes` are all pre-rotation: :attr:`rotation_degrees` is what a :class:`ColorConverter` applies for you, and what you have to apply yourself if you convert :attr:`planes` on your own. .. important:: On CUDA, anything that reads the samples on a stream other than the one the decoder ran on must call :meth:`record_stream`, or the decoder may overwrite them while those reads are still pending. A :class:`ColorConverter` does this for you. \"\"\" pts_seconds: float \"\"\"The :term:`pts` of this frame, in seconds.\"\"\" duration_seconds: float \"\"\"How long this frame is displayed for, in seconds.\"\"\" def __init__( self, handle: torch.Tensor, pts_seconds: float, duration_seconds: float, storage: torch.Tensor | None = None, ): self._handle = handle self._storage = storage self.pts_seconds = pts_seconds self.duration_seconds = duration_seconds self._metadata: _Metadata | None = None self._planes: tuple[torch.Tensor, ...] | None = None @property def _device(self) -\u003e torch.device: return ( self._storage.device if self._storage is not None else torch.device(\"cpu\") ) [docs] def record_stream(self, stream: torch.cuda.Stream) -\u003e None: \"\"\"Tell the CUDA caching allocator that ``stream`` is still reading this frame\u0027s samples. **A CUDA consumer that reads the frame on a stream other than the one the decoder ran on must call this**, right after queueing its reads. Without it, the decoder\u0027s next frame can be handed the same buffer and overwrite these samples while those reads are still pending. :class:`ColorConverter` does it for you, but you will have to call this yourself if you consume :attr:`planes` directly on a different stream. See `this post \u003chttps://zdevito.github.io/2022/08/04/cuda-caching-allocator.html\u003e`_ for what the allocator is doing and why this is needed. Args: stream (torch.cuda.Stream): The stream that is reading the samples. \"\"\" # See [Standalone Frame Storage and the need for record_stream] if self._storage is not None: self._storage.record_stream(stream) def _get_metadata(self) -\u003e _Metadata: if self._metadata is None: self._metadata = _Metadata(*_blocks_frame_metadata(self._handle)) return self._metadata @property def pix_fmt(self) -\u003e str: \"\"\"The FFmpeg pixel-format name, e.g. ``\"yuv420p\"``. On CPU this is the source\u0027s own format. On CUDA it is always one of the NVDEC surface formats: ``\"nv12\"``, ``\"p010le\"``, ``\"p012le\"``, ``\"p016le\"``, ``\"yuv444p\"`` or ``\"yuv444p16le\"``. \"\"\" return self._get_metadata().pix_fmt @property def colorspace(self) -\u003e str: \"\"\"The FFmpeg colorspace name, e.g. ``\"bt709\"``.\"\"\" return self._get_metadata().colorspace @property def color_range(self) -\u003e str: \"\"\"``\"tv\"`` for limited range, ``\"pc\"`` for full range.\"\"\" return self._get_metadata().color_range @property def bit_depth(self) -\u003e int: \"\"\"How many bits of each :attr:`planes` sample are meaningful. In almost every case this is just the bit depth of the source: 8 for an 8-bit video, 10 for a 10-bit one. It is worth having because a plane\u0027s dtype only tells you its storage width, ``uint8`` or ``uint16``, while this tells you the range of the values held in it. So it is what you shift or scale by to reach a range of your own - ``y \u003e\u003e (frame.bit_depth - 8)`` for 8 bits, or ``y / (2 ** frame.bit_depth - 1)`` to normalise. Two CUDA surface formats report more than their source: a 10-bit 4:4:4 source is uploaded as ``yuv444p16le``, and a 12-bit source is tagged ``p016le`` on FFmpeg \u003c 6, which has no ``p012le``. Both report 16 where CPU decoding would report 10 and 12. Their samples are msb-aligned, so they genuinely are 16-bit values with zeroed low bits, and the arithmetic above still holds. \"\"\" return self._get_metadata().bit_depth @property def width(self) -\u003e int: \"\"\"The width of the decoded samples, before rotation.\"\"\" return self._get_metadata().width @property def height(self) -\u003e int: \"\"\"The height of the decoded samples, before rotation.\"\"\" return self._get_metadata().height @property def rotation_degrees(self) -\u003e float: \"\"\"How many degrees counter-clockwise the frame has to be rotated to be upright, or 0 if the container asks for no rotation. This is *not* applied to :attr:`planes`. A :class:`ColorConverter` applies it, rounded to the nearest multiple of 90, to its output. \"\"\" return self._get_metadata().rotation_degrees @property def planes(self) -\u003e tuple[torch.Tensor, ...]: \"\"\"The decoder\u0027s own samples, as 2D tensor views. There is exactly one tensor per *component* of :attr:`pix_fmt`, in the order that format describes, of dtype ``uint8`` or ``uint16`` depending on :attr:`bit_depth`. So ``yuv420p`` and ``nv12`` both give three (``y, u, v = planes``), ``yuva420p`` four (``y, u, v, a = planes``) and ``gray`` one (``(y,) = planes``). They are always on the device that was passed to :meth:`VideoStream.make_decoder`, including when a CUDA decoder has to fall back to decoding on the CPU: it uploads those frames before handing them out. Only the luma and alpha components are :attr:`height` by :attr:`width`. The chroma ones are subsampled by whatever :attr:`pix_fmt` says: half in both directions for a 4:2:0 format, half the width for 4:2:2, full size for 4:4:4 and for the RGB formats. Odd sizes round up, so the chroma of a 4:2:0 frame 481 samples wide is 241 wide. .. note:: None of these views is contiguous in general. FFmpeg pads each row out to a line size of its own choosing, so even a luma plane is usually strided, and the semi-planar formats (``nv12``, ``p010le``, and the other NVDEC surface formats) store U and V interleaved in a single allocation, which forces those two to be strided views into it. Raises: RuntimeError: For the pixel formats that can\u0027t be viewed without a copy - sub-byte-packed, palettised and float ones - and for frames stored bottom-up. Check :attr:`pix_fmt` first if you are decoding something exotic. \"\"\" if self._planes is None: planes = _blocks_frame_planes(self._handle, self._device) # The op\u0027s schema is fixed-arity, so it pads with empty tensors up # to the 4 components of the widest format. self._planes = tuple(p for p in planes if p.numel() \u003e 0) return self._planes [docs] @dataclass class RawAudioSamples: \"\"\"TODO_API_BREAKDOWN DOC\"\"\" data: torch.Tensor sample_rate: int pts_seconds: float duration_seconds: float # See Packet._generation. _generation: int = 0 @property def num_channels(self) -\u003e int: return self.data.shape[0] @property def num_samples(self) -\u003e int: return self.data.shape[1]",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

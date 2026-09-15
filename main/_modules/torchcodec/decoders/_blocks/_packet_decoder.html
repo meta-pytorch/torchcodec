@@ -1531,6 +1531,22 @@ document.write(`
         <span class="k">raise</span> <span class="ne">NotImplementedError</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">decode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">packet</span><span class="p">:</span> <span class="n">Packet</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">_Decoded</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Send one :class:`Packet` to the codec and return whatever is ready.</span>
+
+<span class="sd">        The result is often empty, and it is not &quot;the decoding of that packet&quot;:</span>
+<span class="sd">        a codec that is buffering B-frames, or still priming itself, emits what</span>
+<span class="sd">        it owes you on a later call.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            packet (Packet): A packet of this decoder&#39;s own stream.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            What the codec had ready, in presentation order. Possibly nothing.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            RuntimeError: If this decoder has been drained, or if the demuxer</span>
+<span class="sd">                seeked without it being :meth:`reset` afterwards.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_drained</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
                 <span class="s2">&quot;This decoder has been drained, and a codec that has been told &quot;</span>
@@ -1552,13 +1568,25 @@ document.write(`
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_receive_ready_frames</span><span class="p">()</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">drain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">_Decoded</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Tell the codec the stream has ended, and return what it was still</span>
+<span class="sd">        holding.</span>
+
+<span class="sd">        Skipping this loses the tail of the stream. A drained decoder refuses</span>
+<span class="sd">        any further packet; :meth:`reset` makes it usable again.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The last of what the codec had buffered, in presentation order.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">_blocks_packet_decoder_send_eof</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_handle</span><span class="p">)</span>
         <span class="n">frames</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_receive_ready_frames</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_drained</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="k">return</span> <span class="n">frames</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">reset</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;TODO_API_BREAKDOWN DOC&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Drop the codec&#39;s buffered state and start over.</span>
+
+<span class="sd">        Needed after a :meth:`Demuxer.seek`, and after :meth:`drain`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">_blocks_packet_decoder_reset</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_handle</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_drained</span> <span class="o">=</span> <span class="kc">False</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_generation</span> <span class="o">=</span> <span class="kc">None</span>
@@ -1567,7 +1595,59 @@ document.write(`
 <div class="viewcode-block" id="VideoPacketDecoder">
 <a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">VideoPacketDecoder</span><span class="p">(</span><span class="n">_BasePacketDecoder</span><span class="p">[</span><span class="n">RawFrame</span><span class="p">]):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;TODO_API_BREAKDOWN DOC&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Decodes the compressed :class:`Packet`\\ s of one video stream into</span>
+<span class="sd">    :class:`RawFrame`\\ s.</span>
+
+<span class="sd">    You should not build one yourself: :meth:`VideoStream.make_decoder` is what</span>
+<span class="sd">    creates it. Frames come out on the device given there.</span>
+
+<span class="sd">    It is stateful. It holds the codec&#39;s reference-frame buffer, so it expects</span>
+<span class="sd">    the packets of its own stream, in the order the demuxer produced them.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># methods calling super() only to pin the return type down to RawFrame. The</span>
+    <span class="c1"># base class is generic over _Decoded, which isn&#39;t ideal for the rendered</span>
+    <span class="c1"># docs.</span>
+<div class="viewcode-block" id="VideoPacketDecoder.decode">
+<a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder.decode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">decode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">packet</span><span class="p">:</span> <span class="n">Packet</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RawFrame</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Send one :class:`Packet` to the codec and return the</span>
+<span class="sd">        :class:`RawFrame`\\ s that are ready.</span>
+
+<span class="sd">        **This can return zero, one, or more than one** :class:`RawFrame`. What</span>
+<span class="sd">        comes back is not the decoding of the packet you just passed: a codec</span>
+<span class="sd">        that is buffering B-frames, or still priming itself, will emit what it owes</span>
+<span class="sd">        you on a later call.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            packet (Packet): A packet of this decoder&#39;s own stream.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The possibly empty list of :class:`RawFrame`\\ s that the codec has</span>
+<span class="sd">            ready, in presentation order.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            RuntimeError: If this decoder has been drained, or if the demuxer</span>
+<span class="sd">                seeked without it being :meth:`reset` afterwards.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">packet</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="VideoPacketDecoder.drain">
+<a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder.drain">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">drain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RawFrame</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Tell the codec the stream has ended, and return the</span>
+<span class="sd">        :class:`RawFrame`\\ s it was still holding.</span>
+
+<span class="sd">        Skipping this loses the tail of the stream. A drained decoder refuses</span>
+<span class="sd">        any further packet; :meth:`reset` makes it usable again.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The possibly empty list of :class:`RawFrame`\\ s that the codec was</span>
+<span class="sd">            still holding, in presentation order.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">drain</span><span class="p">()</span></div>
+
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_receive_ready_frames</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RawFrame</span><span class="p">]:</span>
         <span class="n">frames</span> <span class="o">=</span> <span class="p">[]</span>
@@ -1593,6 +1673,19 @@ document.write(`
 <a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">AudioPacketDecoder</span><span class="p">(</span><span class="n">_BasePacketDecoder</span><span class="p">[</span><span class="n">RawAudioSamples</span><span class="p">]):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;TODO_API_BREAKDOWN DOC&quot;&quot;&quot;</span>
+
+    <span class="c1"># See VideoPacketDecoder: pinning the return type down to RawAudioSamples.</span>
+<div class="viewcode-block" id="AudioPacketDecoder.decode">
+<a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder.decode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">decode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">packet</span><span class="p">:</span> <span class="n">Packet</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RawAudioSamples</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">packet</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="AudioPacketDecoder.drain">
+<a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder.drain">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">drain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RawAudioSamples</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">drain</span><span class="p">()</span></div>
+
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_receive_ready_frames</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RawAudioSamples</span><span class="p">]:</span>
         <span class="n">samples</span> <span class="o">=</span> <span class="p">[]</span>
@@ -1877,7 +1970,7 @@ document.write(`
        "headline": "torchcodec.decoders._blocks._packet_decoder",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/_modules/torchcodec/decoders/_blocks/_packet_decoder.html",
-       "articleBody": "Source code for torchcodec.decoders._blocks._packet_decoder # Copyright (c) Meta Platforms, Inc. and affiliates. # All rights reserved. # # This source code is licensed under the BSD-style license found in the # LICENSE file in the root directory of this source tree. from __future__ import annotations from typing import Generic, TYPE_CHECKING, TypeVar import torch from torchcodec._core.ops import ( _blocks_audio_packet_decoder_receive_frame, _blocks_create_packet_decoder, _blocks_packet_decoder_receive_frame, _blocks_packet_decoder_reset, _blocks_packet_decoder_send_eof, _blocks_packet_decoder_send_packet, ) from ._frame import Packet, RawAudioSamples, RawFrame if TYPE_CHECKING: # Only for the annotation: _demuxer imports this module to build decoders, # so importing it back at runtime would be circular. from ._demuxer import _Stream # TODO_API_BREAKDOWN DOC P1 revisit every single docstring / comments at some point. _Decoded = TypeVar(\"_Decoded\", RawFrame, RawAudioSamples) _Self = TypeVar(\"_Self\", bound=\"_BasePacketDecoder\") class _BasePacketDecoder(Generic[_Decoded]): _handle: torch.Tensor _drained: bool _generation: int | None # *args so that a call with arguments gets the message below rather than a # TypeError about the argument count. def __init__(self, *args, **kwargs) -\u003e None: raise RuntimeError( f\"{type(self).__name__} cannot be instantiated directly. Build one \" \"from the stream whose packets it decodes, with \" \"stream.make_decoder().\" ) @classmethod def _from_stream(cls: type[_Self], stream: _Stream, device_str: str) -\u003e _Self: decoder = cls.__new__(cls) decoder._handle = _blocks_create_packet_decoder( stream._demuxer._handle, stream_index=stream.index, num_threads=1, device=device_str, ) decoder._drained = False # The demuxer position these packets come from. None until the first # packet, and again after every reset(), so it is adopted rather than # tracked: the decoder never needs a reference back to the demuxer. decoder._generation = None return decoder def _receive_ready_frames(self) -\u003e list[_Decoded]: raise NotImplementedError def decode(self, packet: Packet) -\u003e list[_Decoded]: if self._drained: raise RuntimeError( \"This decoder has been drained, and a codec that has been told \" \"the stream ended ignores any further packet. Create a new \" \"decoder to decode another stream.\" ) if self._generation is None: self._generation = packet._generation elif self._generation != packet._generation: raise RuntimeError( \"The demuxer seeked since this decoder was last reset(), so \" \"this packet is from a position the codec knows nothing about \" \"- decoding it would produce plausible-looking garbage. Call \" \"reset() on every decoder fed by that demuxer after a seek.\" ) status = _blocks_packet_decoder_send_packet(self._handle, packet._handle) if status \u003c 0: raise RuntimeError(f\"Failed to send packet to decoder (status {status})\") return self._receive_ready_frames() def drain(self) -\u003e list[_Decoded]: _blocks_packet_decoder_send_eof(self._handle) frames = self._receive_ready_frames() self._drained = True return frames def reset(self) -\u003e None: \"\"\"TODO_API_BREAKDOWN DOC\"\"\" _blocks_packet_decoder_reset(self._handle) self._drained = False self._generation = None [docs] class VideoPacketDecoder(_BasePacketDecoder[RawFrame]): \"\"\"TODO_API_BREAKDOWN DOC\"\"\" def _receive_ready_frames(self) -\u003e list[RawFrame]: frames = [] while True: handle, status, pts_seconds, duration_seconds, storage = ( _blocks_packet_decoder_receive_frame(self._handle) ) if status != 0: # EAGAIN (need more packets) or EOF: nothing ready break frames.append( RawFrame( handle, pts_seconds, duration_seconds, storage=storage if storage.numel() \u003e 0 else None, ) ) return frames [docs] class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]): \"\"\"TODO_API_BREAKDOWN DOC\"\"\" def _receive_ready_frames(self) -\u003e list[RawAudioSamples]: samples = [] while True: data, status, pts_seconds, duration_seconds, sample_rate, _ = ( _blocks_audio_packet_decoder_receive_frame(self._handle) ) if status != 0: # EAGAIN (need more packets) or EOF: nothing ready break samples.append( RawAudioSamples( data=data, sample_rate=sample_rate, pts_seconds=pts_seconds, duration_seconds=duration_seconds, # Carried onward so AudioConverter can make the same check: # a seek invalidates the resampler\u0027s state too. _generation=self._generation or 0, ) ) return samples",
+       "articleBody": "Source code for torchcodec.decoders._blocks._packet_decoder # Copyright (c) Meta Platforms, Inc. and affiliates. # All rights reserved. # # This source code is licensed under the BSD-style license found in the # LICENSE file in the root directory of this source tree. from __future__ import annotations from typing import Generic, TYPE_CHECKING, TypeVar import torch from torchcodec._core.ops import ( _blocks_audio_packet_decoder_receive_frame, _blocks_create_packet_decoder, _blocks_packet_decoder_receive_frame, _blocks_packet_decoder_reset, _blocks_packet_decoder_send_eof, _blocks_packet_decoder_send_packet, ) from ._frame import Packet, RawAudioSamples, RawFrame if TYPE_CHECKING: # Only for the annotation: _demuxer imports this module to build decoders, # so importing it back at runtime would be circular. from ._demuxer import _Stream # TODO_API_BREAKDOWN DOC P1 revisit every single docstring / comments at some point. _Decoded = TypeVar(\"_Decoded\", RawFrame, RawAudioSamples) _Self = TypeVar(\"_Self\", bound=\"_BasePacketDecoder\") class _BasePacketDecoder(Generic[_Decoded]): _handle: torch.Tensor _drained: bool _generation: int | None # *args so that a call with arguments gets the message below rather than a # TypeError about the argument count. def __init__(self, *args, **kwargs) -\u003e None: raise RuntimeError( f\"{type(self).__name__} cannot be instantiated directly. Build one \" \"from the stream whose packets it decodes, with \" \"stream.make_decoder().\" ) @classmethod def _from_stream(cls: type[_Self], stream: _Stream, device_str: str) -\u003e _Self: decoder = cls.__new__(cls) decoder._handle = _blocks_create_packet_decoder( stream._demuxer._handle, stream_index=stream.index, num_threads=1, device=device_str, ) decoder._drained = False # The demuxer position these packets come from. None until the first # packet, and again after every reset(), so it is adopted rather than # tracked: the decoder never needs a reference back to the demuxer. decoder._generation = None return decoder def _receive_ready_frames(self) -\u003e list[_Decoded]: raise NotImplementedError def decode(self, packet: Packet) -\u003e list[_Decoded]: \"\"\"Send one :class:`Packet` to the codec and return whatever is ready. The result is often empty, and it is not \"the decoding of that packet\": a codec that is buffering B-frames, or still priming itself, emits what it owes you on a later call. Args: packet (Packet): A packet of this decoder\u0027s own stream. Returns: What the codec had ready, in presentation order. Possibly nothing. Raises: RuntimeError: If this decoder has been drained, or if the demuxer seeked without it being :meth:`reset` afterwards. \"\"\" if self._drained: raise RuntimeError( \"This decoder has been drained, and a codec that has been told \" \"the stream ended ignores any further packet. Create a new \" \"decoder to decode another stream.\" ) if self._generation is None: self._generation = packet._generation elif self._generation != packet._generation: raise RuntimeError( \"The demuxer seeked since this decoder was last reset(), so \" \"this packet is from a position the codec knows nothing about \" \"- decoding it would produce plausible-looking garbage. Call \" \"reset() on every decoder fed by that demuxer after a seek.\" ) status = _blocks_packet_decoder_send_packet(self._handle, packet._handle) if status \u003c 0: raise RuntimeError(f\"Failed to send packet to decoder (status {status})\") return self._receive_ready_frames() def drain(self) -\u003e list[_Decoded]: \"\"\"Tell the codec the stream has ended, and return what it was still holding. Skipping this loses the tail of the stream. A drained decoder refuses any further packet; :meth:`reset` makes it usable again. Returns: The last of what the codec had buffered, in presentation order. \"\"\" _blocks_packet_decoder_send_eof(self._handle) frames = self._receive_ready_frames() self._drained = True return frames def reset(self) -\u003e None: \"\"\"Drop the codec\u0027s buffered state and start over. Needed after a :meth:`Demuxer.seek`, and after :meth:`drain`. \"\"\" _blocks_packet_decoder_reset(self._handle) self._drained = False self._generation = None [docs] class VideoPacketDecoder(_BasePacketDecoder[RawFrame]): \"\"\"Decodes the compressed :class:`Packet`\\\\ s of one video stream into :class:`RawFrame`\\\\ s. You should not build one yourself: :meth:`VideoStream.make_decoder` is what creates it. Frames come out on the device given there. It is stateful. It holds the codec\u0027s reference-frame buffer, so it expects the packets of its own stream, in the order the demuxer produced them. \"\"\" # methods calling super() only to pin the return type down to RawFrame. The # base class is generic over _Decoded, which isn\u0027t ideal for the rendered # docs. [docs] def decode(self, packet: Packet) -\u003e list[RawFrame]: \"\"\"Send one :class:`Packet` to the codec and return the :class:`RawFrame`\\\\ s that are ready. **This can return zero, one, or more than one** :class:`RawFrame`. What comes back is not the decoding of the packet you just passed: a codec that is buffering B-frames, or still priming itself, will emit what it owes you on a later call. Args: packet (Packet): A packet of this decoder\u0027s own stream. Returns: The possibly empty list of :class:`RawFrame`\\\\ s that the codec has ready, in presentation order. Raises: RuntimeError: If this decoder has been drained, or if the demuxer seeked without it being :meth:`reset` afterwards. \"\"\" return super().decode(packet) [docs] def drain(self) -\u003e list[RawFrame]: \"\"\"Tell the codec the stream has ended, and return the :class:`RawFrame`\\\\ s it was still holding. Skipping this loses the tail of the stream. A drained decoder refuses any further packet; :meth:`reset` makes it usable again. Returns: The possibly empty list of :class:`RawFrame`\\\\ s that the codec was still holding, in presentation order. \"\"\" return super().drain() def _receive_ready_frames(self) -\u003e list[RawFrame]: frames = [] while True: handle, status, pts_seconds, duration_seconds, storage = ( _blocks_packet_decoder_receive_frame(self._handle) ) if status != 0: # EAGAIN (need more packets) or EOF: nothing ready break frames.append( RawFrame( handle, pts_seconds, duration_seconds, storage=storage if storage.numel() \u003e 0 else None, ) ) return frames [docs] class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]): \"\"\"TODO_API_BREAKDOWN DOC\"\"\" # See VideoPacketDecoder: pinning the return type down to RawAudioSamples. [docs] def decode(self, packet: Packet) -\u003e list[RawAudioSamples]: return super().decode(packet) [docs] def drain(self) -\u003e list[RawAudioSamples]: return super().drain() def _receive_ready_frames(self) -\u003e list[RawAudioSamples]: samples = [] while True: data, status, pts_seconds, duration_seconds, sample_rate, _ = ( _blocks_audio_packet_decoder_receive_frame(self._handle) ) if status != 0: # EAGAIN (need more packets) or EOF: nothing ready break samples.append( RawAudioSamples( data=data, sample_rate=sample_rate, pts_seconds=pts_seconds, duration_seconds=duration_seconds, # Carried onward so AudioConverter can make the same check: # a seek invalidates the resampler\u0027s state too. _generation=self._generation or 0, ) ) return samples",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

@@ -1210,9 +1210,45 @@ document.write(`
 <p><a class="reference internal" href="../generated_examples/decoding/blocks.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
   <div class="sphx-glr-thumbnail-title">Blocks: build your own decoding pipeline</div>
 </div></div><dl class="py method">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.AudioPacketDecoder.decode">
+<span class="sig-name descname"><span class="pre">decode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">packet</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet" title="torchcodec.decoders._blocks._frame.Packet"><span class="pre">Packet</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples" title="torchcodec.decoders._blocks._frame.RawAudioSamples"><span class="pre">RawAudioSamples</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_packet_decoder.html#AudioPacketDecoder.decode"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.AudioPacketDecoder.decode" title="Link to this definition">#</a></dt>
+<dd><p>Send one <a class="reference internal" href="torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet" title="torchcodec.decoders._blocks.Packet"><code class="xref py py-class docutils literal notranslate"><span class="pre">Packet</span></code></a> to the codec and return whatever is ready.</p>
+<p>The result is often empty, and it is not “the decoding of that packet”:
+a codec that is buffering B-frames, or still priming itself, emits what
+it owes you on a later call.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>packet</strong> (<a class="reference internal" href="torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet" title="torchcodec.decoders._blocks.Packet"><em>Packet</em></a>) – A packet of this decoder’s own stream.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>What the codec had ready, in presentation order. Possibly nothing.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – If this decoder has been drained, or if the demuxer
+    seeked without it being <a class="reference internal" href="#torchcodec.decoders._blocks.AudioPacketDecoder.reset" title="torchcodec.decoders._blocks.AudioPacketDecoder.reset"><code class="xref py py-meth docutils literal notranslate"><span class="pre">reset()</span></code></a> afterwards.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.AudioPacketDecoder.drain">
+<span class="sig-name descname"><span class="pre">drain</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples" title="torchcodec.decoders._blocks._frame.RawAudioSamples"><span class="pre">RawAudioSamples</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_packet_decoder.html#AudioPacketDecoder.drain"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.AudioPacketDecoder.drain" title="Link to this definition">#</a></dt>
+<dd><p>Tell the codec the stream has ended, and return what it was still
+holding.</p>
+<p>Skipping this loses the tail of the stream. A drained decoder refuses
+any further packet; <a class="reference internal" href="#torchcodec.decoders._blocks.AudioPacketDecoder.reset" title="torchcodec.decoders._blocks.AudioPacketDecoder.reset"><code class="xref py py-meth docutils literal notranslate"><span class="pre">reset()</span></code></a> makes it usable again.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The last of what the codec had buffered, in presentation order.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.AudioPacketDecoder.reset">
 <span class="sig-name descname"><span class="pre">reset</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="headerlink" href="#torchcodec.decoders._blocks.AudioPacketDecoder.reset" title="Link to this definition">#</a></dt>
-<dd><p>TODO_API_BREAKDOWN DOC</p>
+<dd><p>Drop the codec’s buffered state and start over.</p>
+<p>Needed after a <a class="reference internal" href="torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer.seek" title="torchcodec.decoders._blocks.Demuxer.seek"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Demuxer.seek()</span></code></a>, and after <a class="reference internal" href="#torchcodec.decoders._blocks.AudioPacketDecoder.drain" title="torchcodec.decoders._blocks.AudioPacketDecoder.drain"><code class="xref py py-meth docutils literal notranslate"><span class="pre">drain()</span></code></a>.</p>
 </dd></dl>
 
 </dd></dl>
@@ -1337,6 +1373,8 @@ document.write(`
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.AudioPacketDecoder"><code class="docutils literal notranslate"><span class="pre">AudioPacketDecoder</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.AudioPacketDecoder.decode"><code class="docutils literal notranslate"><span class="pre">AudioPacketDecoder.decode()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.AudioPacketDecoder.drain"><code class="docutils literal notranslate"><span class="pre">AudioPacketDecoder.drain()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.AudioPacketDecoder.reset"><code class="docutils literal notranslate"><span class="pre">AudioPacketDecoder.reset()</span></code></a></li>
 </ul>
 </li>
@@ -1565,7 +1603,7 @@ document.write(`
        "headline": "AudioPacketDecoder",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders._blocks.AudioPacketDecoder.html",
-       "articleBody": "AudioPacketDecoder# class torchcodec.decoders._blocks.AudioPacketDecoder(*args, **kwargs)[source]# TODO_API_BREAKDOWN DOC Examples using AudioPacketDecoder: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline reset() \u2192 None# TODO_API_BREAKDOWN DOC",
+       "articleBody": "AudioPacketDecoder# class torchcodec.decoders._blocks.AudioPacketDecoder(*args, **kwargs)[source]# TODO_API_BREAKDOWN DOC Examples using AudioPacketDecoder: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline decode(packet: Packet) \u2192 list[RawAudioSamples][source]# Send one Packet to the codec and return whatever is ready. The result is often empty, and it is not \u201cthe decoding of that packet\u201d: a codec that is buffering B-frames, or still priming itself, emits what it owes you on a later call. Parameters: packet (Packet) \u2013 A packet of this decoder\u2019s own stream. Returns: What the codec had ready, in presentation order. Possibly nothing. Raises: RuntimeError \u2013 If this decoder has been drained, or if the demuxer seeked without it being reset() afterwards. drain() \u2192 list[RawAudioSamples][source]# Tell the codec the stream has ended, and return what it was still holding. Skipping this loses the tail of the stream. A drained decoder refuses any further packet; reset() makes it usable again. Returns: The last of what the codec had buffered, in presentation order. reset() \u2192 None# Drop the codec\u2019s buffered state and start over. Needed after a Demuxer.seek(), and after drain().",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

@@ -1204,12 +1204,168 @@ document.write(`
 <dl class="py class">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawFrame">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">torchcodec.decoders._blocks.</span></span><span class="sig-name descname"><span class="pre">RawFrame</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">handle</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">pts_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">duration_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">storage</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_frame.html#RawFrame"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.RawFrame" title="Link to this definition">#</a></dt>
-<dd><p>TODO_API_BREAKDOWN DOC</p>
+<dd><p>One decoded video frame, exactly as the decoder produced it.</p>
+<p>You cannot build one yourself: a <a class="reference internal" href="torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder" title="torchcodec.decoders._blocks.VideoPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoPacketDecoder</span></code></a> creates
+them. Use a <a class="reference internal" href="torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter" title="torchcodec.decoders._blocks.ColorConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ColorConverter</span></code></a> to turn them into RGB
+<a class="reference internal" href="torchcodec.Frame.html#torchcodec.Frame" title="torchcodec.Frame"><code class="xref py py-class docutils literal notranslate"><span class="pre">Frame</span></code></a>s, or you can read and transform the raw
+samples directly from <a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.planes" title="torchcodec.decoders._blocks.RawFrame.planes"><code class="xref py py-attr docutils literal notranslate"><span class="pre">planes</span></code></a>:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">packet</span> <span class="ow">in</span> <span class="n">demuxer</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">raw_frame</span> <span class="ow">in</span> <span class="n">packet_decoder</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">packet</span><span class="p">):</span>
+        <span class="n">y</span><span class="p">,</span> <span class="n">u</span><span class="p">,</span> <span class="n">v</span> <span class="o">=</span> <span class="n">raw_frame</span><span class="o">.</span><span class="n">planes</span>
+        <span class="c1"># For a 480x270 yuv420p frame, y is [270, 480] uint8, and the</span>
+        <span class="c1"># chroma is subsampled: u and v are [135, 240] each.</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">y</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">u</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">v</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Nothing here has been converted. The samples are in the codec’s own pixel
+format (typically YUV), on the device that was passed to
+<a class="reference internal" href="torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.make_decoder" title="torchcodec.decoders._blocks.VideoStream.make_decoder"><code class="xref py py-meth docutils literal notranslate"><span class="pre">VideoStream.make_decoder()</span></code></a>, and
+<a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.width" title="torchcodec.decoders._blocks.RawFrame.width"><code class="xref py py-attr docutils literal notranslate"><span class="pre">width</span></code></a>, <a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.height" title="torchcodec.decoders._blocks.RawFrame.height"><code class="xref py py-attr docutils literal notranslate"><span class="pre">height</span></code></a> and <a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.planes" title="torchcodec.decoders._blocks.RawFrame.planes"><code class="xref py py-attr docutils literal notranslate"><span class="pre">planes</span></code></a> are all pre-rotation:
+<a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.rotation_degrees" title="torchcodec.decoders._blocks.RawFrame.rotation_degrees"><code class="xref py py-attr docutils literal notranslate"><span class="pre">rotation_degrees</span></code></a> is what a <a class="reference internal" href="torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter" title="torchcodec.decoders._blocks.ColorConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ColorConverter</span></code></a> applies for
+you, and what you have to apply yourself if you convert <a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.planes" title="torchcodec.decoders._blocks.RawFrame.planes"><code class="xref py py-attr docutils literal notranslate"><span class="pre">planes</span></code></a> on
+your own.</p>
+<div class="admonition important">
+<p class="admonition-title">Important</p>
+<p>On CUDA, anything that reads the samples on a stream other than the one
+the decoder ran on must call <a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.record_stream" title="torchcodec.decoders._blocks.RawFrame.record_stream"><code class="xref py py-meth docutils literal notranslate"><span class="pre">record_stream()</span></code></a>, or the decoder may
+overwrite them while those reads are still pending. A
+<a class="reference internal" href="torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter" title="torchcodec.decoders._blocks.ColorConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ColorConverter</span></code></a> does this for you.</p>
+</div>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">RawFrame</span></code>:</p>
 <div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_blocks_thumb.png" />
 <p><a class="reference internal" href="../generated_examples/decoding/blocks.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
   <div class="sphx-glr-thumbnail-title">Blocks: build your own decoding pipeline</div>
-</div></div></dd></dl>
+</div></div><dl class="py property">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawFrame.bit_depth">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">bit_depth</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawFrame.bit_depth" title="Link to this definition">#</a></dt>
+<dd><p>How many bits of each <a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.planes" title="torchcodec.decoders._blocks.RawFrame.planes"><code class="xref py py-attr docutils literal notranslate"><span class="pre">planes</span></code></a> sample are meaningful.</p>
+<p>In almost every case this is just the bit depth of the source: 8 for an
+8-bit video, 10 for a 10-bit one. It is worth having because a plane’s
+dtype only tells you its storage width, <code class="docutils literal notranslate"><span class="pre">uint8</span></code> or <code class="docutils literal notranslate"><span class="pre">uint16</span></code>, while
+this tells you the range of the values held in it. So it is what you
+shift or scale by to reach a range of your own -
+<code class="docutils literal notranslate"><span class="pre">y</span> <span class="pre">&gt;&gt;</span> <span class="pre">(frame.bit_depth</span> <span class="pre">-</span> <span class="pre">8)</span></code> for 8 bits, or
+<code class="docutils literal notranslate"><span class="pre">y</span> <span class="pre">/</span> <span class="pre">(2</span> <span class="pre">**</span> <span class="pre">frame.bit_depth</span> <span class="pre">-</span> <span class="pre">1)</span></code> to normalise.</p>
+<p>Two CUDA surface formats report more than their source: a 10-bit 4:4:4
+source is uploaded as <code class="docutils literal notranslate"><span class="pre">yuv444p16le</span></code>, and a 12-bit source is tagged
+<code class="docutils literal notranslate"><span class="pre">p016le</span></code> on FFmpeg &lt; 6, which has no <code class="docutils literal notranslate"><span class="pre">p012le</span></code>. Both report 16 where
+CPU decoding would report 10 and 12. Their samples are msb-aligned, so
+they genuinely are 16-bit values with zeroed low bits, and the
+arithmetic above still holds.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawFrame.color_range">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">color_range</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawFrame.color_range" title="Link to this definition">#</a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">&quot;tv&quot;</span></code> for limited range, <code class="docutils literal notranslate"><span class="pre">&quot;pc&quot;</span></code> for full range.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawFrame.colorspace">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">colorspace</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawFrame.colorspace" title="Link to this definition">#</a></dt>
+<dd><p>The FFmpeg colorspace name, e.g. <code class="docutils literal notranslate"><span class="pre">&quot;bt709&quot;</span></code>.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawFrame.duration_seconds">
+<span class="sig-name descname"><span class="pre">duration_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawFrame.duration_seconds" title="Link to this definition">#</a></dt>
+<dd><p>How long this frame is displayed for, in seconds.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawFrame.height">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawFrame.height" title="Link to this definition">#</a></dt>
+<dd><p>The height of the decoded samples, before rotation.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawFrame.pix_fmt">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">pix_fmt</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawFrame.pix_fmt" title="Link to this definition">#</a></dt>
+<dd><p>The FFmpeg pixel-format name, e.g. <code class="docutils literal notranslate"><span class="pre">&quot;yuv420p&quot;</span></code>.</p>
+<p>On CPU this is the source’s own format. On CUDA it is always one of the
+NVDEC surface formats: <code class="docutils literal notranslate"><span class="pre">&quot;nv12&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;p010le&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;p012le&quot;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">&quot;p016le&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;yuv444p&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;yuv444p16le&quot;</span></code>.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawFrame.planes">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">planes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="(in Python v3.14)"><span class="pre">tuple</span></a><span class="p"><span class="pre">[</span></span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawFrame.planes" title="Link to this definition">#</a></dt>
+<dd><p>The decoder’s own samples, as 2D tensor views.</p>
+<p>There is exactly one tensor per <em>component</em>
+of <a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.pix_fmt" title="torchcodec.decoders._blocks.RawFrame.pix_fmt"><code class="xref py py-attr docutils literal notranslate"><span class="pre">pix_fmt</span></code></a>, in the order that format describes, of dtype
+<code class="docutils literal notranslate"><span class="pre">uint8</span></code> or <code class="docutils literal notranslate"><span class="pre">uint16</span></code> depending on <a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.bit_depth" title="torchcodec.decoders._blocks.RawFrame.bit_depth"><code class="xref py py-attr docutils literal notranslate"><span class="pre">bit_depth</span></code></a>. So <code class="docutils literal notranslate"><span class="pre">yuv420p</span></code>
+and <code class="docutils literal notranslate"><span class="pre">nv12</span></code> both give three (<code class="docutils literal notranslate"><span class="pre">y,</span> <span class="pre">u,</span> <span class="pre">v</span> <span class="pre">=</span> <span class="pre">planes</span></code>), <code class="docutils literal notranslate"><span class="pre">yuva420p</span></code> four
+(<code class="docutils literal notranslate"><span class="pre">y,</span> <span class="pre">u,</span> <span class="pre">v,</span> <span class="pre">a</span> <span class="pre">=</span> <span class="pre">planes</span></code>) and <code class="docutils literal notranslate"><span class="pre">gray</span></code> one (<code class="docutils literal notranslate"><span class="pre">(y,)</span> <span class="pre">=</span> <span class="pre">planes</span></code>).</p>
+<p>They are always on the device that was passed to
+<a class="reference internal" href="torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.make_decoder" title="torchcodec.decoders._blocks.VideoStream.make_decoder"><code class="xref py py-meth docutils literal notranslate"><span class="pre">VideoStream.make_decoder()</span></code></a>, including when a CUDA decoder has to
+fall back to decoding on the CPU: it uploads those frames before handing
+them out.</p>
+<p>Only the luma and alpha components are <a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.height" title="torchcodec.decoders._blocks.RawFrame.height"><code class="xref py py-attr docutils literal notranslate"><span class="pre">height</span></code></a> by <a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.width" title="torchcodec.decoders._blocks.RawFrame.width"><code class="xref py py-attr docutils literal notranslate"><span class="pre">width</span></code></a>.
+The chroma ones are subsampled by whatever <a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.pix_fmt" title="torchcodec.decoders._blocks.RawFrame.pix_fmt"><code class="xref py py-attr docutils literal notranslate"><span class="pre">pix_fmt</span></code></a> says: half in
+both directions for a 4:2:0 format, half the width for 4:2:2, full size
+for 4:4:4 and for the RGB formats. Odd sizes round up, so the chroma of
+a 4:2:0 frame 481 samples wide is 241 wide.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>None of these views is contiguous in general. FFmpeg pads each row
+out to a line size of its own choosing, so even a luma plane is
+usually strided, and the semi-planar formats (<code class="docutils literal notranslate"><span class="pre">nv12</span></code>, <code class="docutils literal notranslate"><span class="pre">p010le</span></code>,
+and the other NVDEC surface formats) store U and V interleaved in a
+single allocation, which forces those two to be strided views into
+it.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/builtins/exceptions.html#RuntimeError" title="(in Python v3.14)"><strong>RuntimeError</strong></a> – For the pixel formats that can’t be viewed without a
+    copy - sub-byte-packed, palettised and float ones - and for
+    frames stored bottom-up. Check <a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.pix_fmt" title="torchcodec.decoders._blocks.RawFrame.pix_fmt"><code class="xref py py-attr docutils literal notranslate"><span class="pre">pix_fmt</span></code></a> first if you are
+    decoding something exotic.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawFrame.pts_seconds">
+<span class="sig-name descname"><span class="pre">pts_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawFrame.pts_seconds" title="Link to this definition">#</a></dt>
+<dd><p>The <a class="reference internal" href="../glossary.html#term-pts"><span class="xref std std-term">pts</span></a> of this frame, in seconds.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawFrame.record_stream">
+<span class="sig-name descname"><span class="pre">record_stream</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">stream</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/generated/torch.cuda.streams.Stream.html#torch.cuda.streams.Stream" title="(in PyTorch v2.14)"><span class="pre">Stream</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_frame.html#RawFrame.record_stream"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.RawFrame.record_stream" title="Link to this definition">#</a></dt>
+<dd><p>Tell the CUDA caching allocator that <code class="docutils literal notranslate"><span class="pre">stream</span></code> is still reading this
+frame’s samples.</p>
+<p><strong>A CUDA consumer that reads the frame on a stream other than the one
+the decoder ran on must call this</strong>, right after queueing its reads.
+Without it, the decoder’s next frame can be handed the same buffer and
+overwrite these samples while those reads are still pending.
+<a class="reference internal" href="torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter" title="torchcodec.decoders._blocks.ColorConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ColorConverter</span></code></a> does it for you, but you will have to call this
+yourself if you consume <a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.planes" title="torchcodec.decoders._blocks.RawFrame.planes"><code class="xref py py-attr docutils literal notranslate"><span class="pre">planes</span></code></a> directly on a different stream.</p>
+<p>See <a class="reference external" href="https://zdevito.github.io/2022/08/04/cuda-caching-allocator.html">this post</a> for
+what the allocator is doing and why this is needed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>stream</strong> (<a class="reference external" href="https://docs.pytorch.org/docs/stable/generated/torch.cuda.Stream_class.html#torch.cuda.Stream" title="(in PyTorch v2.14)"><em>torch.cuda.Stream</em></a>) – The stream that is reading the samples.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawFrame.rotation_degrees">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">rotation_degrees</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawFrame.rotation_degrees" title="Link to this definition">#</a></dt>
+<dd><p>How many degrees counter-clockwise the frame has to be rotated to be
+upright, or 0 if the container asks for no rotation.</p>
+<p>This is <em>not</em> applied to <a class="reference internal" href="#torchcodec.decoders._blocks.RawFrame.planes" title="torchcodec.decoders._blocks.RawFrame.planes"><code class="xref py py-attr docutils literal notranslate"><span class="pre">planes</span></code></a>. A <a class="reference internal" href="torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter" title="torchcodec.decoders._blocks.ColorConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ColorConverter</span></code></a>
+applies it, rounded to the nearest multiple of 90, to its output.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawFrame.width">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">width</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawFrame.width" title="Link to this definition">#</a></dt>
+<dd><p>The width of the decoded samples, before rotation.</p>
+</dd></dl>
+
+</dd></dl>
 
 </section>
 
@@ -1330,7 +1486,20 @@ document.write(`
   </div>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.RawFrame"><code class="docutils literal notranslate"><span class="pre">RawFrame</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.RawFrame"><code class="docutils literal notranslate"><span class="pre">RawFrame</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.RawFrame.bit_depth"><code class="docutils literal notranslate"><span class="pre">RawFrame.bit_depth</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.RawFrame.color_range"><code class="docutils literal notranslate"><span class="pre">RawFrame.color_range</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.RawFrame.colorspace"><code class="docutils literal notranslate"><span class="pre">RawFrame.colorspace</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.RawFrame.duration_seconds"><code class="docutils literal notranslate"><span class="pre">RawFrame.duration_seconds</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.RawFrame.height"><code class="docutils literal notranslate"><span class="pre">RawFrame.height</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.RawFrame.pix_fmt"><code class="docutils literal notranslate"><span class="pre">RawFrame.pix_fmt</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.RawFrame.planes"><code class="docutils literal notranslate"><span class="pre">RawFrame.planes</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.RawFrame.pts_seconds"><code class="docutils literal notranslate"><span class="pre">RawFrame.pts_seconds</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.RawFrame.record_stream"><code class="docutils literal notranslate"><span class="pre">RawFrame.record_stream()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.RawFrame.rotation_degrees"><code class="docutils literal notranslate"><span class="pre">RawFrame.rotation_degrees</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.RawFrame.width"><code class="docutils literal notranslate"><span class="pre">RawFrame.width</span></code></a></li>
+</ul>
+</li>
 </ul>
   </nav></div>
     
@@ -1556,7 +1725,7 @@ document.write(`
        "headline": "RawFrame",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders._blocks.RawFrame.html",
-       "articleBody": "RawFrame# class torchcodec.decoders._blocks.RawFrame(handle: Tensor, pts_seconds: float, duration_seconds: float, storage: Tensor | None = None)[source]# TODO_API_BREAKDOWN DOC Examples using RawFrame: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline",
+       "articleBody": "RawFrame# class torchcodec.decoders._blocks.RawFrame(handle: Tensor, pts_seconds: float, duration_seconds: float, storage: Tensor | None = None)[source]# One decoded video frame, exactly as the decoder produced it. You cannot build one yourself: a VideoPacketDecoder creates them. Use a ColorConverter to turn them into RGB Frames, or you can read and transform the raw samples directly from planes: for packet in demuxer: for raw_frame in packet_decoder.decode(packet): y, u, v = raw_frame.planes # For a 480x270 yuv420p frame, y is [270, 480] uint8, and the # chroma is subsampled: u and v are [135, 240] each. print(y.shape, u.shape, v.shape) Nothing here has been converted. The samples are in the codec\u2019s own pixel format (typically YUV), on the device that was passed to VideoStream.make_decoder(), and width, height and planes are all pre-rotation: rotation_degrees is what a ColorConverter applies for you, and what you have to apply yourself if you convert planes on your own. Important On CUDA, anything that reads the samples on a stream other than the one the decoder ran on must call record_stream(), or the decoder may overwrite them while those reads are still pending. A ColorConverter does this for you. Examples using RawFrame: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline property bit_depth: int# How many bits of each planes sample are meaningful. In almost every case this is just the bit depth of the source: 8 for an 8-bit video, 10 for a 10-bit one. It is worth having because a plane\u2019s dtype only tells you its storage width, uint8 or uint16, while this tells you the range of the values held in it. So it is what you shift or scale by to reach a range of your own - y \u003e\u003e (frame.bit_depth - 8) for 8 bits, or y / (2 ** frame.bit_depth - 1) to normalise. Two CUDA surface formats report more than their source: a 10-bit 4:4:4 source is uploaded as yuv444p16le, and a 12-bit source is tagged p016le on FFmpeg \u003c 6, which has no p012le. Both report 16 where CPU decoding would report 10 and 12. Their samples are msb-aligned, so they genuinely are 16-bit values with zeroed low bits, and the arithmetic above still holds. property color_range: str# \"tv\" for limited range, \"pc\" for full range. property colorspace: str# The FFmpeg colorspace name, e.g. \"bt709\". duration_seconds: float# How long this frame is displayed for, in seconds. property height: int# The height of the decoded samples, before rotation. property pix_fmt: str# The FFmpeg pixel-format name, e.g. \"yuv420p\". On CPU this is the source\u2019s own format. On CUDA it is always one of the NVDEC surface formats: \"nv12\", \"p010le\", \"p012le\", \"p016le\", \"yuv444p\" or \"yuv444p16le\". property planes: tuple[Tensor, ...]# The decoder\u2019s own samples, as 2D tensor views. There is exactly one tensor per component of pix_fmt, in the order that format describes, of dtype uint8 or uint16 depending on bit_depth. So yuv420p and nv12 both give three (y, u, v = planes), yuva420p four (y, u, v, a = planes) and gray one ((y,) = planes). They are always on the device that was passed to VideoStream.make_decoder(), including when a CUDA decoder has to fall back to decoding on the CPU: it uploads those frames before handing them out. Only the luma and alpha components are height by width. The chroma ones are subsampled by whatever pix_fmt says: half in both directions for a 4:2:0 format, half the width for 4:2:2, full size for 4:4:4 and for the RGB formats. Odd sizes round up, so the chroma of a 4:2:0 frame 481 samples wide is 241 wide. Note None of these views is contiguous in general. FFmpeg pads each row out to a line size of its own choosing, so even a luma plane is usually strided, and the semi-planar formats (nv12, p010le, and the other NVDEC surface formats) store U and V interleaved in a single allocation, which forces those two to be strided views into it. Raises: RuntimeError \u2013 For the pixel formats that can\u2019t be viewed without a copy - sub-byte-packed, palettised and float ones - and for frames stored bottom-up. Check pix_fmt first if you are decoding something exotic. pts_seconds: float# The pts of this frame, in seconds. record_stream(stream: Stream) \u2192 None[source]# Tell the CUDA caching allocator that stream is still reading this frame\u2019s samples. A CUDA consumer that reads the frame on a stream other than the one the decoder ran on must call this, right after queueing its reads. Without it, the decoder\u2019s next frame can be handed the same buffer and overwrite these samples while those reads are still pending. ColorConverter does it for you, but you will have to call this yourself if you consume planes directly on a different stream. See this post for what the allocator is doing and why this is needed. Parameters: stream (torch.cuda.Stream) \u2013 The stream that is reading the samples. property rotation_degrees: float# How many degrees counter-clockwise the frame has to be rotated to be upright, or 0 if the container asks for no rotation. This is not applied to planes. A ColorConverter applies it, rounded to the nearest multiple of 90, to its output. property width: int# The width of the decoded samples, before rotation.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",
