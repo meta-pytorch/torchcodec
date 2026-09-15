@@ -67,6 +67,22 @@ class _BasePacketDecoder(Generic[_Decoded]):
         raise NotImplementedError
 
     def decode(self, packet: Packet) -> list[_Decoded]:
+        """Send one :class:`Packet` to the codec and return whatever is ready.
+
+        The result is often empty, and it is not "the decoding of that packet":
+        a codec that is buffering B-frames, or still priming itself, emits what
+        it owes you on a later call.
+
+        Args:
+            packet (Packet): A packet of this decoder's own stream.
+
+        Returns:
+            What the codec had ready, in presentation order. Possibly nothing.
+
+        Raises:
+            RuntimeError: If this decoder has been drained, or if the demuxer
+                seeked without it being :meth:`reset` afterwards.
+        """
         if self._drained:
             raise RuntimeError(
                 "This decoder has been drained, and a codec that has been told "
@@ -88,20 +104,78 @@ class _BasePacketDecoder(Generic[_Decoded]):
         return self._receive_ready_frames()
 
     def drain(self) -> list[_Decoded]:
+        """Tell the codec the stream has ended, and return what it was still
+        holding.
+
+        Skipping this loses the tail of the stream. A drained decoder refuses
+        any further packet; :meth:`reset` makes it usable again.
+
+        Returns:
+            The last of what the codec had buffered, in presentation order.
+        """
         _blocks_packet_decoder_send_eof(self._handle)
         frames = self._receive_ready_frames()
         self._drained = True
         return frames
 
     def reset(self) -> None:
-        """TODO_API_BREAKDOWN DOC"""
+        """Drop the codec's buffered state and start over.
+
+        Needed after a :meth:`Demuxer.seek`, and after :meth:`drain`.
+        """
         _blocks_packet_decoder_reset(self._handle)
         self._drained = False
         self._generation = None
 
 
 class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
-    """TODO_API_BREAKDOWN DOC"""
+    """Decodes the compressed :class:`Packet`\\ s of one video stream into
+    :class:`RawFrame`\\ s.
+
+    You should not build one yourself: :meth:`VideoStream.make_decoder` is what
+    creates it. Frames come out on the device given there.
+
+    It is stateful. It holds the codec's reference-frame buffer, so it expects
+    the packets of its own stream, in the order the demuxer produced them.
+    """
+
+    # methods calling super() only to pin the return type down to RawFrame. The
+    # base class is generic over _Decoded, which isn't ideal for the rendered
+    # docs.
+    def decode(self, packet: Packet) -> list[RawFrame]:
+        """Send one :class:`Packet` to the codec and return the
+        :class:`RawFrame`\\ s that are ready.
+
+        **This can return zero, one, or more than one** :class:`RawFrame`. What
+        comes back is not the decoding of the packet you just passed: a codec
+        that is buffering B-frames, or still priming itself, will emit what it owes
+        you on a later call.
+
+        Args:
+            packet (Packet): A packet of this decoder's own stream.
+
+        Returns:
+            The possibly empty list of :class:`RawFrame`\\ s that the codec has
+            ready, in presentation order.
+
+        Raises:
+            RuntimeError: If this decoder has been drained, or if the demuxer
+                seeked without it being :meth:`reset` afterwards.
+        """
+        return super().decode(packet)
+
+    def drain(self) -> list[RawFrame]:
+        """Tell the codec the stream has ended, and return the
+        :class:`RawFrame`\\ s it was still holding.
+
+        Skipping this loses the tail of the stream. A drained decoder refuses
+        any further packet; :meth:`reset` makes it usable again.
+
+        Returns:
+            The possibly empty list of :class:`RawFrame`\\ s that the codec was
+            still holding, in presentation order.
+        """
+        return super().drain()
 
     def _receive_ready_frames(self) -> list[RawFrame]:
         frames = []
@@ -124,6 +198,13 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
 
 class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
     """TODO_API_BREAKDOWN DOC"""
+
+    # See VideoPacketDecoder: pinning the return type down to RawAudioSamples.
+    def decode(self, packet: Packet) -> list[RawAudioSamples]:
+        return super().decode(packet)
+
+    def drain(self) -> list[RawAudioSamples]:
+        return super().drain()
 
     def _receive_ready_frames(self) -> list[RawAudioSamples]:
         samples = []
