@@ -1,0 +1,11 @@
+﻿.. role:: hidden
+    :class: hidden-section
+.. currentmodule:: torchcodec.decoders._blocks
+
+
+AudioPacketDecoder
+==================
+
+.. autoclass:: AudioPacketDecoder
+    :members:
+    :inherited-members:

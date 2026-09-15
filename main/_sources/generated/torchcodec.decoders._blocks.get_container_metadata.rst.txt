@@ -1,0 +1,9 @@
+﻿.. role:: hidden
+    :class: hidden-section
+.. currentmodule:: torchcodec.decoders._blocks
+
+
+get_container_metadata
+======================
+
+.. autofunction:: get_container_metadata

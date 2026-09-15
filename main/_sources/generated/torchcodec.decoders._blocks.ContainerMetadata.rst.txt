@@ -1,0 +1,12 @@
+﻿.. role:: hidden
+    :class: hidden-section
+.. currentmodule:: torchcodec.decoders._blocks
+
+
+ContainerMetadata
+=================
+
+.. autoclass:: ContainerMetadata
+    :members:
+    :undoc-members: __init__
+    :inherited-members:
