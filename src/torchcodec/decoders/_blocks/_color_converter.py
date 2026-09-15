@@ -18,32 +18,6 @@ from ._frame import RawFrame
 
 
 class ColorConverter:
-    """Color-conversion building block: turns a decoded (YUV)
-    :class:`RawFrame` into an RGB :class:`~torchcodec._frame.Frame` (CHW).
-
-    Not bound to anything: everything it needs (dims, pixel format, colorspace)
-    comes from the frame itself, so one converter can process frames from any
-    video. Passive and *not* thread-safe: use one ``ColorConverter`` per thread.
-
-    ``output_dtype`` takes the same values as ``VideoDecoder``'s:
-    ``torch.uint8`` (default, ``[0, 255]``), ``torch.float32`` (``[0, 1]``), or
-    ``"auto"`` (uint8 for 8-bit sources, float32 for higher bit depths).
-    Because this block is unbound, ``"auto"`` is resolved per frame rather than
-    once per stream, so feeding it a mix of SDR and HDR frames yields a mix of
-    dtypes.
-
-    Rotation is applied too, so the output matches ``VideoDecoder``'s. The angle
-    is part of the frame, like its dims and colorspace, so honoring it doesn't
-    bind the converter to a stream either.
-
-    ``device`` accepts a string or a ``torch.device``. It defaults to ``None``,
-    which means the current default device (see ``torch.set_default_device``).
-    It must be the device the frames are already on: converting raises rather
-    than move samples between devices behind your back, since a transfer costs
-    as much as the conversion itself. To end up on another device, convert on
-    the frame's device and move the RGB output yourself.
-    """
-
     def __init__(
         self,
         device: str | torch.device | None = None,
