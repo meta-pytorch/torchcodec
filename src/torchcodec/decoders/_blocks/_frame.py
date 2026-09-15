@@ -244,19 +244,40 @@ class RawFrame:
 
 @dataclass
 class RawAudioSamples:
-    """TODO_API_BREAKDOWN DOC"""
+    """One decoded audio frame's samples, exactly as the decoder produced them.
+
+    You cannot build one yourself: an :class:`AudioPacketDecoder` creates them.
+    Use an :class:`AudioConverter` to turn them into normalised float32
+    :class:`~torchcodec.AudioSamples`, or read :attr:`data` directly.
+
+    Unlike :class:`RawFrame`, this is not a handle. Audio frames are small, so
+    the samples are copied out of FFmpeg's frame rather than viewed, and that is
+    what lets :attr:`data` be ``[num_channels, num_samples]`` whatever the
+    source's layout - a planar format keeps each channel in its own allocation
+    and a packed one interleaves them, so neither is that shape as it stands.
+    """
 
     data: torch.Tensor
+    """``[num_channels, num_samples]``, in whichever dtype holds the source's
+    samples exactly - ``uint8`` for ``u8``, ``int16`` for ``s16``, ``int32`` for
+    ``s32``, ``int64`` for ``s64``, ``float32`` for ``flt`` and ``float64`` for
+    ``dbl``. The integer ones are *not* normalised to ``[-1, 1]``; that is what
+    an :class:`AudioConverter` does."""
     sample_rate: int
+    """The source's sample rate, in Hz."""
     pts_seconds: float
+    """The :term:`pts` of the first sample, in seconds."""
     duration_seconds: float
+    """How long these samples last, in seconds."""
     # See Packet._generation.
     _generation: int = 0
 
     @property
     def num_channels(self) -> int:
+        """The number of channels, i.e. ``data.shape[0]``."""
         return self.data.shape[0]
 
     @property
     def num_samples(self) -> int:
+        """The number of samples per channel, i.e. ``data.shape[1]``."""
         return self.data.shape[1]

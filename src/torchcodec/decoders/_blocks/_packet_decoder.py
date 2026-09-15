@@ -67,22 +67,6 @@ class _BasePacketDecoder(Generic[_Decoded]):
         raise NotImplementedError
 
     def decode(self, packet: Packet) -> list[_Decoded]:
-        """Send one :class:`Packet` to the codec and return whatever is ready.
-
-        The result is often empty, and it is not "the decoding of that packet":
-        a codec that is buffering B-frames, or still priming itself, emits what
-        it owes you on a later call.
-
-        Args:
-            packet (Packet): A packet of this decoder's own stream.
-
-        Returns:
-            What the codec had ready, in presentation order. Possibly nothing.
-
-        Raises:
-            RuntimeError: If this decoder has been drained, or if the demuxer
-                seeked without it being :meth:`reset` afterwards.
-        """
         if self._drained:
             raise RuntimeError(
                 "This decoder has been drained, and a codec that has been told "
@@ -104,15 +88,6 @@ class _BasePacketDecoder(Generic[_Decoded]):
         return self._receive_ready_frames()
 
     def drain(self) -> list[_Decoded]:
-        """Tell the codec the stream has ended, and return what it was still
-        holding.
-
-        Skipping this loses the tail of the stream. A drained decoder refuses
-        any further packet; :meth:`reset` makes it usable again.
-
-        Returns:
-            The last of what the codec had buffered, in presentation order.
-        """
         _blocks_packet_decoder_send_eof(self._handle)
         frames = self._receive_ready_frames()
         self._drained = True
