@@ -27,7 +27,8 @@ if TYPE_CHECKING:
     from ._demuxer import _Stream
 
 
-# TODO_API_BREAKDOWN DOC P1 revisit every single docstring / comments at some point.
+# TODO_API_BREAKDOWN DOC P1 revisit every single comment across all Blocks APIs
+# TODO_API_BREAKDOWN DOC P1 Write tutorials.
 
 _Decoded = TypeVar("_Decoded", RawFrame, RawAudioSamples)
 _Self = TypeVar("_Self", bound="_BasePacketDecoder")
