@@ -62,7 +62,7 @@ class VideoStreamHeaderMetadata(StreamMetadata):
     """Height of the frames (int or None)."""
     num_frames_from_header: int | None
     """Number of frames, from the stream's metadata. This is potentially
-    inaccurate. We recommend using the ``num_frames`` attribute instead.
+    inaccurate.
     (int or None)."""
     average_fps_from_header: float | None
     """Averate fps of the stream, obtained from the header (float or None).
