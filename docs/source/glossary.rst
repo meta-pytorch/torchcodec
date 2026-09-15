@@ -19,7 +19,10 @@ Glossary
        not involve decoding**, so it is a lot cheaper than decoding the file.
        The :class:`~torchcodec.decoders.VideoDecoder` performs a scan when using
        ``seek_mode="exact"``, and doesn't scan when using
-       ``seek_mode="approximate"``.
+       ``seek_mode="approximate"``. A scan can also be triggered explicitly
+       with :meth:`~torchcodec.decoders._blocks.VideoStream.scan` on a
+       :class:`~torchcodec.decoders._blocks.VideoStream`, which hands back what
+       it found as a :class:`~torchcodec.decoders._blocks.FrameIndex`.
 
     clips
         A clip is a sequence of frames, usually in :term:`pts` order. The frames

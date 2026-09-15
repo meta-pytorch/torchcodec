@@ -12,6 +12,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
+from typing import cast
 
 import torch
 from torch import Tensor
@@ -19,8 +20,11 @@ from torch import Tensor
 from torchcodec._core._decoder_utils import create_demuxer
 from torchcodec._core._metadata import (
     _stream_metadata_from_dict,
+    AudioStreamHeaderMetadata,
     ContainerMetadata,
     DemuxerMetadata,
+    StreamMetadata,
+    VideoStreamHeaderMetadata,
 )
 from torchcodec._core.ops import (
     _blocks_demuxer_add_stream,
@@ -44,39 +48,77 @@ from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
 
 @dataclass
 class FrameIndex:
-    """TODO_API_BREAKDOWN DOC"""
+    """What the packets of a video stream say about its frames, as returned by
+    a :term:`scan` (:meth:`VideoStream.scan`).
+
+    Its members come in three shapes:
+
+    - **Per-frame tensors**, of shape ``[N]`` where ``N`` is the number of
+      frames: one entry per frame, in presentation order. These are
+      :attr:`is_key_frame`, :attr:`pts_seconds` and :attr:`duration_seconds`.
+    - **Keyframe positions**, :attr:`key_frame_indices`, of shape ``[K]`` where
+      ``K`` is the number of keyframes. These are indices into the per-frame
+      tensors, not frames themselves.
+    - **Stream-level metadata scalars**, one value for the whole stream:
+      :attr:`num_frames_from_content`,
+      :attr:`begin_stream_seconds_from_content`,
+      :attr:`end_stream_seconds_from_content` and
+      :attr:`average_fps_from_content`.
+
+    :meth:`index_at` and :meth:`key_frame_seconds_for` are convenience methods
+    that search those tensors so that you don't have to.
+
+    Everything here is derived from the stream's packets rather than from the
+    container header, so it is exact where the header is only a claim. That is
+    what the ``_from_content`` suffixes mark, against the ``_from_header`` ones
+    on :attr:`VideoStream.metadata`.
+    """
 
     is_key_frame: Tensor
+    """Bool tensor of shape ``[N]``, whether each frame is a keyframe."""
     _pts: Tensor
     _duration: Tensor
     _time_base_num: int
     _time_base_den: int
 
     def __len__(self) -> int:
+        """The number of frames in the stream."""
         return self.is_key_frame.shape[0]
 
     @property
     def num_frames_from_content(self) -> int:
+        """The number of frames in the stream."""
         return len(self)
 
     @cached_property
     def pts_seconds(self) -> Tensor:
+        """Float64 tensor of shape ``[N]``, the :term:`pts` of each frame."""
         return self._to_seconds(self._pts)
 
     @cached_property
     def duration_seconds(self) -> Tensor:
+        """Float64 tensor of shape ``[N]``, how long each frame is displayed
+        for."""
         return self._to_seconds(self._duration)
 
     @cached_property
     def key_frame_indices(self) -> Tensor:
+        """Int64 tensor of shape ``[K]``, the indices of the keyframes."""
         return self.is_key_frame.nonzero().squeeze(1)
 
     @cached_property
     def begin_stream_seconds_from_content(self) -> float:
+        """The :term:`pts` of the first frame."""
         return float(self.pts_seconds[0])
 
     @cached_property
     def end_stream_seconds_from_content(self) -> float:
+        """The time at which the last frame stops being displayed.
+
+        This is the largest ``pts + duration`` across the stream, not the last
+        frame's own end time. Durations vary, so the frame that finishes last
+        isn't necessarily the one that starts last.
+        """
         # max(), not [-1]: durations vary, so the frame that finishes last
         # isn't necessarily the one that starts last. This is how
         # end_stream_pts_from_content is accumulated in SingleStreamDecoder.
@@ -84,12 +126,26 @@ class FrameIndex:
 
     @property
     def average_fps_from_content(self) -> float:
+        """The average number of frames per second over the stream."""
         return len(self) / (
             self.end_stream_seconds_from_content
             - self.begin_stream_seconds_from_content
         )
 
+    # TODO_API_BREAKDOWN DESIGN P1: Do we still need this?
     def index_at(self, seconds: float) -> int:
+        """The index of the frame being displayed at ``seconds``.
+
+        A frame is displayed from its own :term:`pts` until that plus its
+        duration, so this is the frame whose interval contains ``seconds``.
+
+        Args:
+            seconds (float): The timestamp to look up. A value outside the
+                stream gives the closest frame, i.e. the first or the last one.
+
+        Returns:
+            int: The index of that frame.
+        """
         # First frame that hasn't finished playing by `seconds`, which is
         # get_frame_played_at()'s criterion (frame_start <= t < frame_end,
         # SingleStreamDecoder.cpp) expressed as a search rather than a scan of
@@ -101,6 +157,14 @@ class FrameIndex:
 
     # TODO_API_BREAKDOWN DESIGN P1: Still kinda hate this name
     def key_frame_seconds_for(self, seconds: float) -> float:
+        """The timestamp of the last keyframe at or before ``seconds``.
+
+        Args:
+            seconds (float): The timestamp you want to reach.
+
+        Returns:
+            float: The timestamp to seek to.
+        """
         # Same search as get_key_frame_index_for_pts_using_scanned_index()
         # (SingleStreamDecoder.cpp): upper_bound minus one, i.e. the last
         # keyframe at or before the target, and -1 when there is none.
@@ -138,8 +202,7 @@ class _Stream:
         self._demuxer = demuxer
         self.index = index
 
-    @cached_property
-    def metadata(self):
+    def _read_metadata(self) -> StreamMetadata:
         return _stream_metadata_from_dict(
             json.loads(
                 _blocks_demuxer_stream_json_metadata(self._demuxer._handle, self.index)
@@ -152,7 +215,15 @@ class _Stream:
 
 
 class VideoStream(_Stream):
-    """TODO_API_BREAKDOWN DOC"""
+    """A video stream followed by a :class:`Demuxer`.
+
+    You should not build one yourself: a ``Demuxer`` creates one for you.
+
+    Attributes:
+        index (int): The stream's index within the container, absolute across
+            all media types. This is what a :class:`Packet`'s ``stream_index``
+            can be compared against.
+    """
 
     _media_type = "video"
 
@@ -160,7 +231,37 @@ class VideoStream(_Stream):
         super().__init__(demuxer, index)
         self._frame_index: FrameIndex | None = None
 
+    @cached_property
+    def metadata(self) -> VideoStreamHeaderMetadata:
+        """What the container header says about this video stream.
+
+        From the header only. This stream's exact frame count, timestamps and
+        keyframe positions aren't in there - those come from :meth:`scan`, and
+        that is the distinction the ``_from_header`` and ``_from_content``
+        suffixes mark.
+        """
+        return cast(VideoStreamHeaderMetadata, self._read_metadata())
+
     def scan(self) -> FrameIndex:
+        """Demux this stream from end to end, without decoding it (a
+        :term:`scan`), and return its :class:`FrameIndex`.
+
+        This is the only way to know a stream's exact frame count, timestamps
+        and keyframe positions: the container header can be wrong about all
+        three.
+
+        You can call this on multiple video streams from the same demuxer. The
+        first call scans the entire video once, and subsequent calls on other
+        streams are free.
+
+        .. important::
+
+            If called, then this must be called before any packets are read from
+            the demuxer.
+
+        Returns:
+            FrameIndex: the frame index for this stream, describing its keyframes and frame positions.
+        """
         if self._frame_index is None:
             pts, duration, is_key_frame, time_base_num, time_base_den = (
                 _blocks_demuxer_scan(self._demuxer._handle, self.index)
@@ -177,15 +278,60 @@ class VideoStream(_Stream):
     def make_decoder(
         self, device: str | torch.device | None = None
     ) -> VideoPacketDecoder:
+        """Build the :class:`VideoPacketDecoder` for this stream.
+
+        This is the only way to build one: it is what binds the decoder to the
+        codec parameters of the stream whose packets it will decode.
+
+        Args:
+            device (str or torch.device, optional): The device to decode on (cpu or CUDA).
+                If ``None`` (default), the current default device is used (see
+                ``torch.set_default_device``).
+
+        Returns:
+            VideoPacketDecoder: A decoder for this stream's packets.
+        """
         return VideoPacketDecoder._from_stream(self, convert_device_to_str(device))
 
 
 class AudioStream(_Stream):
-    """TODO_API_BREAKDOWN DOC"""
+    """An audio stream followed by a :class:`Demuxer`.
+
+    Not built directly: a ``Demuxer`` creates one per stream it follows and
+    exposes them as :attr:`Demuxer.streams`. Holding on to one keeps that
+    demuxer, and so the container it opened, alive.
+
+    There is no ``scan()``: a :class:`FrameIndex` describes keyframes and frame
+    positions, and audio has neither.
+
+    Attributes:
+        index (int): The stream's index within the container, absolute across
+            all media types. This is what a :class:`Packet`'s ``stream_index``
+            is compared against.
+    """
 
     _media_type = "audio"
 
+    @cached_property
+    def metadata(self) -> AudioStreamHeaderMetadata:
+        """What the container header says about this audio stream.
+
+        The header only, and that is all there is for audio: there is no
+        ``scan()`` to derive anything from the stream's own content.
+        """
+        return cast(AudioStreamHeaderMetadata, self._read_metadata())
+
     def make_decoder(self) -> AudioPacketDecoder:
+        """Build the :class:`AudioPacketDecoder` for this stream.
+
+        This is the only way to build one: it is what binds the decoder to the
+        codec parameters of the stream whose packets it will decode. Audio is
+        always decoded on the CPU, so there is no ``device`` parameter, and
+        ``torch.set_default_device`` doesn't change that.
+
+        Returns:
+            AudioPacketDecoder: A decoder for this stream's packets.
+        """
         return AudioPacketDecoder._from_stream(self, "cpu")
 
 
@@ -333,6 +479,12 @@ class Demuxer:
         re-primes. This is especially true when resampling is involved (via an
         :class:`AudioConverter`). Pre-rolling a margin of audio before the
         target is up to you.
+
+        There is no ``seek_mode`` to choose from: seeking straight to
+        ``seconds`` is what :class:`~torchcodec.decoders.VideoDecoder` calls
+        ``seek_mode="approximate"``. To get the ``seek_mode="exact"`` behavior,
+        :term:`scan` the stream and seek to
+        :meth:`FrameIndex.key_frame_seconds_for` of your target instead.
 
         .. important::
 
