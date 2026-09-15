@@ -3810,7 +3810,7 @@ class TestBlocks:
         ),
     )
     def test_stream_selection_errors(self, streams, match):
-        with pytest.raises((ValueError, RuntimeError), match=match):
+        with pytest.raises(ValueError, match=match):
             Demuxer(NASA_VIDEO.path, streams=streams)
 
     def test_audio_stream_has_no_scan(self):
