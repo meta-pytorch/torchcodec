@@ -110,6 +110,17 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
     You should not build one yourself: :meth:`VideoStream.make_decoder` is what
     creates it. Frames come out on the device given there.
 
+    Feed it one packet at a time, and drain it at the end::
+
+        demuxer = Demuxer("video.mp4")
+        decoder = demuxer.streams[0].make_decoder()
+
+        for packet in demuxer:
+            for raw_frame in decoder.decode(packet):
+                ...
+        for raw_frame in decoder.drain():
+            ...
+
     It is stateful. It holds the codec's reference-frame buffer, so it expects
     the packets of its own stream, in the order the demuxer produced them.
     """
@@ -177,6 +188,17 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
 
     You should not build one yourself: :meth:`AudioStream.make_decoder` is what
     creates it. Audio is always decoded on the CPU.
+
+    Feed it one packet at a time, and drain it at the end::
+
+        demuxer = Demuxer("audio.mp3", streams="audio")
+        decoder = demuxer.streams[0].make_decoder()
+
+        for packet in demuxer:
+            for raw_samples in decoder.decode(packet):
+                ...
+        for raw_samples in decoder.drain():
+            ...
 
     It is stateful. A lossy codec carries state from one frame to the next, so
     it expects the packets of its own stream, in the order the demuxer produced

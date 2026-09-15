@@ -248,21 +248,25 @@ class RawAudioSamples:
 
     You cannot build one yourself: an :class:`AudioPacketDecoder` creates them.
     Use an :class:`AudioConverter` to turn them into normalised float32
-    :class:`~torchcodec.AudioSamples`, or read :attr:`data` directly.
+    :class:`~torchcodec.AudioSamples`, or read :attr:`data` directly::
 
-    Unlike :class:`RawFrame`, this is not a handle. Audio frames are small, so
-    the samples are copied out of FFmpeg's frame rather than viewed, and that is
-    what lets :attr:`data` be ``[num_channels, num_samples]`` whatever the
-    source's layout - a planar format keeps each channel in its own allocation
-    and a packed one interleaves them, so neither is that shape as it stands.
+        for packet in demuxer:
+            for raw_samples in audio_packet_decoder.decode(packet):
+                print(raw_samples.data.shape)   # e.g. [2, 1024]
+                print(raw_samples.data.dtype)   # e.g. float32, for an fltp source
+                print(raw_samples.sample_rate)  # e.g. 16000
     """
 
     data: torch.Tensor
-    """``[num_channels, num_samples]``, in whichever dtype holds the source's
-    samples exactly - ``uint8`` for ``u8``, ``int16`` for ``s16``, ``int32`` for
-    ``s32``, ``int64`` for ``s64``, ``float32`` for ``flt`` and ``float64`` for
-    ``dbl``. The integer ones are *not* normalised to ``[-1, 1]``; that is what
-    an :class:`AudioConverter` does."""
+    """Always a contiguous ``[num_channels, num_samples]`` tensor, whatever the
+    source's sample format. Planar and packed sources alike come out with that
+    same shape and layout (they are copied).
+
+    The dtype is whichever one holds the source's samples exactly: ``uint8``
+    for ``u8``, ``int16`` for ``s16``, ``int32`` for ``s32``, ``int64`` for
+    ``s64``, ``float32`` for ``flt`` and ``float64`` for ``dbl``. The integer
+    ones are *not* normalised to ``[-1, 1]``; that is what an
+    :class:`AudioConverter` does."""
     sample_rate: int
     """The source's sample rate, in Hz."""
     pts_seconds: float
