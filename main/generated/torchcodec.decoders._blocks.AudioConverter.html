@@ -1204,15 +1204,67 @@ document.write(`
 <dl class="py class">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.AudioConverter">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">torchcodec.decoders._blocks.</span></span><span class="sig-name descname"><span class="pre">AudioConverter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_rate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_channels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_audio_converter.html#AudioConverter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.AudioConverter" title="Link to this definition">#</a></dt>
-<dd><p>TODO_API_BREAKDOWN DOC</p>
+<dd><p>Turn <a class="reference internal" href="torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples" title="torchcodec.decoders._blocks.RawAudioSamples"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawAudioSamples</span></code></a> into normalised float32
+<a class="reference internal" href="torchcodec.AudioSamples.html#torchcodec.AudioSamples" title="torchcodec.AudioSamples"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioSamples</span></code></a>, optionally resampling and remixing
+channels.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">converter</span> <span class="o">=</span> <span class="n">AudioConverter</span><span class="p">(</span><span class="n">sample_rate</span><span class="o">=</span><span class="mi">16_000</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">packet</span> <span class="ow">in</span> <span class="n">demuxer</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">raw_samples</span> <span class="ow">in</span> <span class="n">packet_decoder</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">packet</span><span class="p">):</span>
+        <span class="n">samples</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">raw_samples</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">raw_samples</span> <span class="ow">in</span> <span class="n">packet_decoder</span><span class="o">.</span><span class="n">drain</span><span class="p">():</span>
+    <span class="n">samples</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">raw_samples</span><span class="p">)</span>
+<span class="n">samples</span> <span class="o">=</span> <span class="n">converter</span><span class="o">.</span><span class="n">drain</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>Unlike a <a class="reference internal" href="torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter" title="torchcodec.decoders._blocks.ColorConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ColorConverter</span></code></a>, this object is a stateful stream
+processor, and it is bound to an audio stream: feed it the stream’s samples
+in order. When resampling, it holds samples back between calls, so you won’t
+necessarily get the same number of samples out as you put in for a given
+call to <a class="reference internal" href="#torchcodec.decoders._blocks.AudioConverter.convert" title="torchcodec.decoders._blocks.AudioConverter.convert"><code class="xref py py-meth docutils literal notranslate"><span class="pre">convert()</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>sample_rate</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><em>optional</em>) – The output sample rate. Defaults to the
+source’s own, i.e. no resampling.</p></li>
+<li><p><strong>num_channels</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><em>optional</em>) – The output number of channels. Defaults
+to the source’s own.</p></li>
+</ul>
+</dd>
+</dl>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">AudioConverter</span></code>:</p>
 <div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_blocks_thumb.png" />
 <p><a class="reference internal" href="../generated_examples/decoding/blocks.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
   <div class="sphx-glr-thumbnail-title">Blocks: build your own decoding pipeline</div>
 </div></div><dl class="py method">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.AudioConverter.convert">
+<span class="sig-name descname"><span class="pre">convert</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raw_samples</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples" title="torchcodec.decoders._blocks._frame.RawAudioSamples"><span class="pre">RawAudioSamples</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="torchcodec.AudioSamples.html#torchcodec.AudioSamples" title="torchcodec._frame.AudioSamples"><span class="pre">AudioSamples</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_audio_converter.html#AudioConverter.convert"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.AudioConverter.convert" title="Link to this definition">#</a></dt>
+<dd><p>Convert one <a class="reference internal" href="torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples" title="torchcodec.decoders._blocks.RawAudioSamples"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawAudioSamples</span></code></a> into normalised float32
+<a class="reference internal" href="torchcodec.AudioSamples.html#torchcodec.AudioSamples" title="torchcodec.AudioSamples"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioSamples</span></code></a>.</p>
+<p>You may not get the same number of samples out as you put in, especially
+if you are resampling.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The converted samples, normalised float32 in <code class="docutils literal notranslate"><span class="pre">[-1,</span> <span class="pre">1]</span></code>. When
+resampling, fewer than were passed in, possibly none.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="torchcodec.decoders._blocks.AudioConverter.drain">
+<span class="sig-name descname"><span class="pre">drain</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="torchcodec.AudioSamples.html#torchcodec.AudioSamples" title="torchcodec._frame.AudioSamples"><span class="pre">AudioSamples</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_audio_converter.html#AudioConverter.drain"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.AudioConverter.drain" title="Link to this definition">#</a></dt>
+<dd><p>Return the samples the resampler was still holding on to.</p>
+<p>Empty unless you are resampling. This is not the codec’s own buffer,
+which <a class="reference internal" href="torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder.drain" title="torchcodec.decoders._blocks.AudioPacketDecoder.drain"><code class="xref py py-meth docutils literal notranslate"><span class="pre">AudioPacketDecoder.drain()</span></code></a> takes care of.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.AudioConverter.reset">
 <span class="sig-name descname"><span class="pre">reset</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_audio_converter.html#AudioConverter.reset"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.AudioConverter.reset" title="Link to this definition">#</a></dt>
-<dd><p>TODO_API_BREAKDOWN DOC</p>
+<dd><p>Drop the resampler’s state and start over.</p>
+<p>Needed after a <a class="reference internal" href="torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer.seek" title="torchcodec.decoders._blocks.Demuxer.seek"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Demuxer.seek()</span></code></a>, after <a class="reference internal" href="#torchcodec.decoders._blocks.AudioConverter.drain" title="torchcodec.decoders._blocks.AudioConverter.drain"><code class="xref py py-meth docutils literal notranslate"><span class="pre">drain()</span></code></a>, and before
+converting a different stream.</p>
 </dd></dl>
 
 </dd></dl>
@@ -1337,6 +1389,8 @@ document.write(`
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.AudioConverter"><code class="docutils literal notranslate"><span class="pre">AudioConverter</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.AudioConverter.convert"><code class="docutils literal notranslate"><span class="pre">AudioConverter.convert()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.AudioConverter.drain"><code class="docutils literal notranslate"><span class="pre">AudioConverter.drain()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders._blocks.AudioConverter.reset"><code class="docutils literal notranslate"><span class="pre">AudioConverter.reset()</span></code></a></li>
 </ul>
 </li>
@@ -1565,7 +1619,7 @@ document.write(`
        "headline": "AudioConverter",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders._blocks.AudioConverter.html",
-       "articleBody": "AudioConverter# class torchcodec.decoders._blocks.AudioConverter(sample_rate: int | None = None, num_channels: int | None = None)[source]# TODO_API_BREAKDOWN DOC Examples using AudioConverter: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline reset() \u2192 None[source]# TODO_API_BREAKDOWN DOC",
+       "articleBody": "AudioConverter# class torchcodec.decoders._blocks.AudioConverter(sample_rate: int | None = None, num_channels: int | None = None)[source]# Turn RawAudioSamples into normalised float32 AudioSamples, optionally resampling and remixing channels. converter = AudioConverter(sample_rate=16_000) for packet in demuxer: for raw_samples in packet_decoder.decode(packet): samples = converter.convert(raw_samples) for raw_samples in packet_decoder.drain(): samples = converter.convert(raw_samples) samples = converter.drain() Unlike a ColorConverter, this object is a stateful stream processor, and it is bound to an audio stream: feed it the stream\u2019s samples in order. When resampling, it holds samples back between calls, so you won\u2019t necessarily get the same number of samples out as you put in for a given call to convert(). Parameters: sample_rate (int, optional) \u2013 The output sample rate. Defaults to the source\u2019s own, i.e. no resampling. num_channels (int, optional) \u2013 The output number of channels. Defaults to the source\u2019s own. Examples using AudioConverter: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline convert(raw_samples: RawAudioSamples) \u2192 AudioSamples[source]# Convert one RawAudioSamples into normalised float32 AudioSamples. You may not get the same number of samples out as you put in, especially if you are resampling. Returns: The converted samples, normalised float32 in [-1, 1]. When resampling, fewer than were passed in, possibly none. drain() \u2192 AudioSamples[source]# Return the samples the resampler was still holding on to. Empty unless you are resampling. This is not the codec\u2019s own buffer, which AudioPacketDecoder.drain() takes care of. reset() \u2192 None[source]# Drop the resampler\u2019s state and start over. Needed after a Demuxer.seek(), after drain(), and before converting a different stream.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

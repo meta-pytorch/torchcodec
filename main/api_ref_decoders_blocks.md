@@ -26,9 +26,9 @@ For a tutorial, see:
 
 ## Conversion
 
-| [`ColorConverter`](generated/torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) | TODO_API_BREAKDOWN DOC |
+| [`ColorConverter`](generated/torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) | Turn a [`RawFrame`](generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame) (typically YUV) into an RGB [`Frame`](generated/torchcodec.Frame.html#torchcodec.Frame). |
 | --- | --- |
-| [`AudioConverter`](generated/torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter) | TODO_API_BREAKDOWN DOC |
+| [`AudioConverter`](generated/torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter) | Turn [`RawAudioSamples`](generated/torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples) into normalised float32 [`AudioSamples`](generated/torchcodec.AudioSamples.html#torchcodec.AudioSamples), optionally resampling and remixing channels. |
 
 ## Data types
 
