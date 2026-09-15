@@ -462,6 +462,32 @@ class TestVideoDecoderOps:
         )
         assert_frames_equal(frame_time6, reference_frame_time6.to(device))
 
+    @pytest.mark.parametrize(
+        "input_format, allowed_decoders, expected_error",
+        (
+            (
+                "mov\0concat",
+                ["h264"],
+                "input_format must name exactly one FFmpeg demuxer",
+            ),
+            (
+                "mov",
+                ["h264\0tdsc"],
+                "Invalid decoder name in decoder restrictions",
+            ),
+        ),
+    )
+    def test_create_from_tensor_rejects_embedded_nulls(
+        self, input_format, allowed_decoders, expected_error
+    ):
+        with pytest.raises(RuntimeError, match=expected_error):
+            create_from_tensor(
+                NASA_VIDEO.to_tensor(),
+                "exact",
+                input_format,
+                allowed_decoders,
+            )
+
     # Keeping the metadata tests below for now, but we should remove them
     # once we remove get_json_metadata().
     def test_video_get_json_metadata(self):

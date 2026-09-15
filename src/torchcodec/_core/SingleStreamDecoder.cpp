@@ -6,6 +6,7 @@
 
 #include "SingleStreamDecoder.h"
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -14,16 +15,141 @@
 #include <numeric>
 #include <sstream>
 #include <string_view>
+#include <utility>
 #include "Demuxer.h"
 #include "Metadata.h"
 #include "PacketDecoder.h"
 #include "StableABICompat.h"
 
 extern "C" {
+#include <libavutil/avstring.h>
 #include <libavutil/pixdesc.h>
 }
 
 namespace facebook::torchcodec {
+namespace {
+
+constexpr std::string_view kDecoderRestrictionRejection =
+    "Restricted media decode rejected: ";
+constexpr std::string_view kNoAllowedProtocols =
+    "__torchcodec_no_allowed_protocols__";
+
+using InputFormatPointer = decltype(av_find_input_format(nullptr));
+
+struct ValidatedDecoderRestrictions {
+  InputFormatPointer input_format;
+  std::string codec_whitelist;
+  std::vector<AVCodecID> allowed_codec_ids;
+};
+
+bool is_valid_ffmpeg_component_name(std::string_view name) {
+  return !name.empty() && name.find(',') == std::string_view::npos &&
+      name.find('\0') == std::string_view::npos;
+}
+
+bool is_codec_id_allowed(
+    AVCodecID codec_id,
+    const std::vector<AVCodecID>& allowed_codec_ids) {
+  return std::find(
+             allowed_codec_ids.begin(), allowed_codec_ids.end(), codec_id) !=
+      allowed_codec_ids.end();
+}
+
+ValidatedDecoderRestrictions validate_decoder_restrictions(
+    const DecoderRestrictions& decoder_restrictions) {
+  STD_TORCH_CHECK(
+      is_valid_ffmpeg_component_name(decoder_restrictions.input_format),
+      kDecoderRestrictionRejection,
+      "input_format must name exactly one FFmpeg demuxer");
+  STD_TORCH_CHECK(
+      !decoder_restrictions.allowed_decoders.empty(),
+      kDecoderRestrictionRejection,
+      "allowed_decoders must contain at least one name");
+
+  std::string codec_whitelist;
+  std::vector<AVCodecID> allowed_codec_ids;
+  allowed_codec_ids.reserve(decoder_restrictions.allowed_decoders.size());
+  for (const auto& decoder_name : decoder_restrictions.allowed_decoders) {
+    STD_TORCH_CHECK(
+        is_valid_ffmpeg_component_name(decoder_name),
+        kDecoderRestrictionRejection,
+        "Invalid decoder name in decoder restrictions: '",
+        decoder_name,
+        "'");
+    const AVCodec* decoder = avcodec_find_decoder_by_name(decoder_name.c_str());
+    STD_TORCH_CHECK(
+        decoder != nullptr,
+        kDecoderRestrictionRejection,
+        "Unknown FFmpeg decoder in decoder restrictions: ",
+        decoder_name);
+    if (!codec_whitelist.empty()) {
+      codec_whitelist += ',';
+    }
+    codec_whitelist += decoder_name;
+    allowed_codec_ids.push_back(decoder->id);
+  }
+
+  auto input_format =
+      av_find_input_format(decoder_restrictions.input_format.c_str());
+  STD_TORCH_CHECK(
+      input_format != nullptr,
+      kDecoderRestrictionRejection,
+      "Unknown FFmpeg input format in decoder restrictions: ",
+      decoder_restrictions.input_format);
+  STD_TORCH_CHECK(
+      !(input_format->flags & AVFMT_NOFILE),
+      kDecoderRestrictionRejection,
+      "Decoder restrictions do not support AVFMT_NOFILE input formats: ",
+      decoder_restrictions.input_format);
+  return {
+      input_format, std::move(codec_whitelist), std::move(allowed_codec_ids)};
+}
+
+int reject_nested_io_open(
+    AVFormatContext*,
+    AVIOContext**,
+    const char*,
+    int,
+    AVDictionary**) {
+  // Defense in depth for demuxers that use AVFormatContext::io_open. Some
+  // demuxers open resources through other paths, so callers must still select
+  // only security-reviewed input formats.
+  return AVERROR(EACCES);
+}
+
+void apply_decoder_restrictions(
+    AVFormatContext& format_context,
+    const DecoderRestrictions& restrictions,
+    const ValidatedDecoderRestrictions& validated_restrictions) {
+  format_context.flags |= AVFMT_FLAG_CUSTOM_IO;
+  STD_TORCH_CHECK(
+      av_opt_set(
+          &format_context,
+          "format_whitelist",
+          restrictions.input_format.c_str(),
+          /*search_flags=*/0) >= 0,
+      kDecoderRestrictionRejection,
+      "Failed to set FFmpeg format whitelist");
+  STD_TORCH_CHECK(
+      av_opt_set(
+          &format_context,
+          "codec_whitelist",
+          validated_restrictions.codec_whitelist.c_str(),
+          /*search_flags=*/0) >= 0,
+      kDecoderRestrictionRejection,
+      "Failed to set FFmpeg codec whitelist");
+  STD_TORCH_CHECK(
+      av_opt_set(
+          &format_context,
+          "protocol_whitelist",
+          kNoAllowedProtocols.data(),
+          /*search_flags=*/0) >= 0,
+      kDecoderRestrictionRejection,
+      "Failed to disable FFmpeg input protocols");
+  format_context.io_open = reject_nested_io_open;
+}
+
+} // namespace
 
 // --------------------------------------------------------------------------
 // CONSTRUCTORS, INITIALIZATION, DESTRUCTORS
@@ -51,25 +177,53 @@ SingleStreamDecoder::SingleStreamDecoder(
 SingleStreamDecoder::SingleStreamDecoder(
     std::unique_ptr<AVIOContextHolder> context,
     SeekMode seek_mode)
-    : seek_mode_(seek_mode), avio_context_holder_(std::move(context)) {
+    : SingleStreamDecoder(std::move(context), seek_mode, std::nullopt) {}
+
+SingleStreamDecoder::SingleStreamDecoder(
+    std::unique_ptr<AVIOContextHolder> context,
+    SeekMode seek_mode,
+    std::optional<DecoderRestrictions> decoder_restrictions)
+    : seek_mode_(seek_mode),
+      decoder_restrictions_(std::move(decoder_restrictions)),
+      avio_context_holder_(std::move(context)) {
   set_ffmpeg_log_level();
 
   STD_TORCH_CHECK(avio_context_holder_, "Context holder cannot be null");
 
-  // Because FFmpeg requires a reference to a pointer in the call to open, we
-  // can't use a unique pointer here. Note that means we must call free if open
-  // fails.
-  AVFormatContext* raw_context = avformat_alloc_context();
+  std::optional<ValidatedDecoderRestrictions> validated_restrictions;
+  if (decoder_restrictions_.has_value()) {
+    validated_restrictions =
+        validate_decoder_restrictions(*decoder_restrictions_);
+  }
+
+  UniqueEncodingAVFormatContext unopened_context(avformat_alloc_context());
+  AVFormatContext* raw_context = unopened_context.get();
   STD_TORCH_CHECK(raw_context != nullptr, "Unable to alloc avformat context");
 
   raw_context->pb = avio_context_holder_->get_avio_context();
-  int status = avformat_open_input(&raw_context, nullptr, nullptr, nullptr);
+  const auto input_format = validated_restrictions.has_value()
+      ? validated_restrictions->input_format
+      : nullptr;
+  if (validated_restrictions.has_value()) {
+    apply_decoder_restrictions(
+        *raw_context, *decoder_restrictions_, *validated_restrictions);
+    allowed_codec_ids_ = std::move(validated_restrictions->allowed_codec_ids);
+  }
+
+  // avformat_open_input() takes ownership of a caller-allocated context and
+  // may free it on failure, so release it immediately before the call.
+  raw_context = unopened_context.release();
+  int status =
+      avformat_open_input(&raw_context, nullptr, input_format, nullptr);
   if (status != 0) {
     avformat_free_context(raw_context);
     STD_TORCH_CHECK(
         false,
-        "Failed to open input buffer: " +
-            get_ffmpeg_error_string_from_error_code(status));
+        decoder_restrictions_.has_value()
+            ? std::string(kDecoderRestrictionRejection) +
+                "failed to open input buffer: "
+            : "Failed to open input buffer: ",
+        get_ffmpeg_error_string_from_error_code(status));
   }
 
   format_context_.reset(raw_context);
@@ -80,6 +234,9 @@ SingleStreamDecoder::SingleStreamDecoder(
 void SingleStreamDecoder::initialize_decoder() {
   STD_TORCH_CHECK(!initialized_, "Attempted double initialization.");
 
+  validate_restricted_format_context();
+  validate_restricted_stream_codecs(/*allow_unresolved_codec_ids=*/true);
+
   is_mpeg_ps_ = std::string_view(format_context_->iformat->name) == "mpeg";
 
   // In principle, the AVFormatContext should be filled in by the call to
@@ -88,6 +245,9 @@ void SingleStreamDecoder::initialize_decoder() {
   // which decodes a few frames to get missing info. For more, see:
   //   https://ffmpeg.org/doxygen/7.0/group__lavf__decoding.html
   int status = avformat_find_stream_info(format_context_.get(), nullptr);
+  if (status >= 0) {
+    validate_restricted_stream_codecs(/*allow_unresolved_codec_ids=*/false);
+  }
   STD_TORCH_CHECK(
       status >= 0,
       "Failed to find stream info: ",
@@ -374,6 +534,8 @@ void SingleStreamDecoder::add_stream(
             .value_or(av_codec));
   }
 
+  validate_restricted_decoder(av_codec);
+
   // Create + configure + open the codec context (shared with PacketDecoder).
   stream_info.codec_context = create_and_open_codec_context(
       stream_info.stream,
@@ -396,6 +558,94 @@ void SingleStreamDecoder::add_stream(
       format_context_->streams[i]->discard = AVDISCARD_ALL;
     }
   }
+}
+
+void SingleStreamDecoder::validate_restricted_format_context() const {
+  if (!decoder_restrictions_.has_value()) {
+    return;
+  }
+
+  const auto& restrictions = *decoder_restrictions_;
+  STD_TORCH_CHECK(
+      format_context_ && format_context_->iformat &&
+          av_match_name(
+              restrictions.input_format.c_str(),
+              format_context_->iformat->name),
+      kDecoderRestrictionRejection,
+      "input format does not match the configured demuxer");
+  STD_TORCH_CHECK(
+      !(format_context_->iformat->flags & AVFMT_NOFILE),
+      kDecoderRestrictionRejection,
+      "demuxers that do not consume the supplied bytes are not allowed");
+  STD_TORCH_CHECK(
+      !(format_context_->ctx_flags & AVFMTCTX_NOHEADER),
+      kDecoderRestrictionRejection,
+      "demuxers that can add streams after header parsing are not allowed");
+}
+
+void SingleStreamDecoder::validate_restricted_stream_codecs(
+    bool allow_unresolved_codec_ids) const {
+  if (!decoder_restrictions_.has_value()) {
+    return;
+  }
+
+  for (unsigned int i = 0; i < format_context_->nb_streams; ++i) {
+    const AVCodecParameters* codec_parameters =
+        format_context_->streams[i]->codecpar;
+    if (allow_unresolved_codec_ids &&
+        codec_parameters->codec_id == AV_CODEC_ID_NONE) {
+      continue;
+    }
+    const bool is_non_decodable_metadata =
+        avcodec_find_decoder(codec_parameters->codec_id) == nullptr &&
+        (codec_parameters->codec_type == AVMEDIA_TYPE_DATA ||
+         codec_parameters->codec_type == AVMEDIA_TYPE_ATTACHMENT);
+    if (is_non_decodable_metadata) {
+      continue;
+    }
+    const AVCodecDescriptor* codec_descriptor =
+        avcodec_descriptor_get(codec_parameters->codec_id);
+    STD_TORCH_CHECK(
+        codec_descriptor != nullptr,
+        kDecoderRestrictionRejection,
+        "stream ",
+        i,
+        " has no descriptor for codec ",
+        avcodec_get_name(codec_parameters->codec_id));
+    STD_TORCH_CHECK(
+        codec_descriptor->type == codec_parameters->codec_type,
+        kDecoderRestrictionRejection,
+        "stream ",
+        i,
+        " has inconsistent codec and media types");
+    STD_TORCH_CHECK(
+        is_codec_id_allowed(codec_parameters->codec_id, allowed_codec_ids_),
+        kDecoderRestrictionRejection,
+        "stream ",
+        i,
+        " uses disallowed codec ",
+        avcodec_get_name(codec_parameters->codec_id));
+  }
+}
+
+void SingleStreamDecoder::validate_restricted_decoder(
+    const AVCodec* decoder) const {
+  if (!decoder_restrictions_.has_value()) {
+    return;
+  }
+
+  STD_TORCH_CHECK(
+      decoder != nullptr,
+      kDecoderRestrictionRejection,
+      "decoder is unavailable");
+  STD_TORCH_CHECK(
+      is_codec_id_allowed(decoder->id, allowed_codec_ids_),
+      kDecoderRestrictionRejection,
+      "decoder ",
+      decoder->name,
+      " for codec ",
+      avcodec_get_name(decoder->id),
+      " is not allowed");
 }
 
 void SingleStreamDecoder::add_video_stream(

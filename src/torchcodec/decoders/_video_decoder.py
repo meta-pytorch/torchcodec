@@ -165,6 +165,19 @@ class VideoDecoder:
             Alternative field names "pkt_pts" and "pkt_duration" are also supported.
             Read more about this parameter in:
             :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py`
+        input_format (str, optional): The single FFmpeg demuxer used to open an
+            in-memory source. This bypasses automatic format probing. Must be
+            set together with ``allowed_decoders`` and currently supports only
+            ``bytes`` and ``torch.Tensor`` sources. This is not a sandbox: the
+            configured demuxer must be security-reviewed for nested I/O, and
+            FFmpeg still processes generic metadata, parsers, and bitstreams.
+        allowed_decoders (sequence of str, optional): FFmpeg decoder names whose
+            codec IDs are allowed for every decodable stream in the input,
+            including auxiliary audio or subtitle streams. A device backend may
+            select another implementation of the same codec. Must be set
+            together with ``input_format``. A decoder may initialize helper
+            decoders internally, so callers must review those transitive
+            dependencies.
 
     Attributes:
         metadata (VideoStreamMetadata): Metadata of the video stream.
@@ -191,6 +204,8 @@ class VideoDecoder:
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
         ) = None,
+        input_format: str | None = None,
+        allowed_decoders: Sequence[str] | None = None,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
         allowed_seek_modes = ("exact", "approximate")
@@ -256,6 +271,8 @@ class VideoDecoder:
             transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
             output_dtype=output_dtype,
+            input_format=input_format,
+            allowed_decoders=allowed_decoders,
         )
 
         assert self.metadata.begin_stream_seconds is not None  # mypy.
