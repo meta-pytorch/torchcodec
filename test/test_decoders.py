@@ -48,6 +48,7 @@ from torchcodec.decoders._blocks import (
     AudioStream,
     ColorConverter,
     Demuxer,
+    FrameIndex,
     get_container_metadata,
     Packet,
     RawAudioSamples,
@@ -5310,6 +5311,81 @@ class TestBlocks:
                 expected = video_decoder.get_frame_played_at(seconds).pts_seconds
                 got = float(index.pts_seconds[index.index_at(seconds)])
                 assert got == expected, f"frame {i}, {description} ({seconds}s)"
+
+    @pytest.mark.parametrize("video", (NASA_VIDEO, TEST_SRC_2_720P_VP9))
+    def test_index_at_tensor(self, video):
+        index = Demuxer(video.path).streams[0].scan()
+        seconds = index.pts_seconds + index.duration_seconds / 2
+
+        expected = [index.index_at(float(s)) for s in seconds]
+        assert index.index_at(seconds).tolist() == expected
+        # Shape is the query's, and a tensor in gives a tensor out even when
+        # there's a single value in it.
+        assert index.index_at(seconds.reshape(-1, 1)).shape == seconds.shape + (1,)
+        assert index.index_at(seconds[:1]).tolist() == expected[:1]
+        assert index.index_at(seconds[0]) == expected[0]
+        assert isinstance(index.index_at(seconds[0]), torch.Tensor)
+
+    @staticmethod
+    def _make_frame_index(pts, duration, time_base_den=1000):
+        return FrameIndex(
+            is_key_frame=torch.zeros(len(pts), dtype=torch.bool),
+            _pts=torch.tensor(pts),
+            _duration=torch.tensor(duration),
+            _time_base_num=1,
+            _time_base_den=time_base_den,
+        )
+
+    @staticmethod
+    def _index_at_reference(index, seconds):
+        # What get_frame_played_at() does: walk the frames in presentation
+        # order and stop on the first one still on screen, falling back to the
+        # last frame when the target is past the end of the stream.
+        end_seconds = index.pts_seconds + index.duration_seconds
+        for i in range(len(index)):
+            if float(end_seconds[i]) > seconds:
+                return i
+        return len(index) - 1
+
+    def test_index_at_with_overlapping_frames(self):
+        # Non-regression test for index_at when a frame's duration overruns the
+        # start of the next one.
+        index = self._make_frame_index(pts=[0, 10, 20], duration=[100, 1, 1])
+        assert index.duration_seconds.tolist() == [0.1, 0.001, 0.001]
+
+        for seconds in (-1, 0, 0.005, 0.0105, 0.02, 0.0205, 0.05, 0.1, 1):
+            assert index.index_at(seconds) == self._index_at_reference(index, seconds)
+
+        # The stream still ends when its longest-lived frame does.
+        assert index.end_stream_seconds_from_content == 0.1
+
+    @pytest.mark.parametrize(
+        "pts, duration",
+        (
+            pytest.param([0, 10, 20], [10, 10, 10], id="contiguous"),
+            pytest.param([0, 10, 20], [4, 4, 4], id="gaps"),
+            pytest.param([0, 10, 20], [0, 0, 0], id="zero_durations"),
+            pytest.param([0, 10, 20], [100, 1, 1], id="overlapping"),
+            pytest.param([0, 10, 20], [4, 0, 100], id="mixed"),
+            pytest.param([7], [3], id="single_frame"),
+        ),
+    )
+    def test_index_at_frame_layouts(self, pts, duration):
+        # index_at() is a binary search standing in for the linear scan that
+        # get_frame_played_at() makes over decoded frames. The two must agree
+        # however the frames are laid out.
+        index = self._make_frame_index(pts, duration)
+
+        targets = [-0.001, 0, 1]
+        for frame_pts, frame_duration in zip(pts, duration):
+            targets += [
+                frame_pts / 1000,  # the frame's first instant
+                (frame_pts + frame_duration / 2) / 1000,
+                (frame_pts + frame_duration) / 1000,  # the instant it's gone
+            ]
+
+        for seconds in targets:
+            assert index.index_at(seconds) == self._index_at_reference(index, seconds)
 
     def test_scan_skips_discarded_packets(self):
         # This file's mp4 edit list flags its first packets - including the
