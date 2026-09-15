@@ -189,6 +189,9 @@ class AudioStream(_Stream):
         return AudioPacketDecoder._from_stream(self, "cpu")
 
 
+# TODO_API_BREAKDOWN DESIGN P1: streams param raises ValueError or RuntimeError
+# depending on where the validation lives. We should align to ValueError if
+# possible.
 class Demuxer:
     """Reads one or more video and audio streams from a container, and produces their compressed :class:`Packet`\\ s.
 
