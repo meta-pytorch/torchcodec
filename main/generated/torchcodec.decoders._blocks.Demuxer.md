@@ -53,32 +53,22 @@ Examples using `Demuxer`:
 
 Blocks: build your own decoding pipeline
 
-next_packet() → [Packet](torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet) | [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#Demuxer.next_packet)
+__next__() → [Packet](torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#Demuxer.__next__)
 
 Read and return the next [`Packet`](torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet).
 
 Packets come out interleaved across the streams being followed, in the
 order the container stores them, so this is where
 [`Packet.stream_index`](torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet.stream_index) matters: it is what routes each packet to
-the decoder of its own stream. Iterating over a `Demuxer` calls this
-until it returns `None`.
-
-`None` means the *container* is exhausted, not a stream: it only
-comes once no followed stream has a packet left. An individual stream
-usually runs dry before that - an audio stream shorter than the video
-it accompanies simply stops appearing - and nothing announces that it
-did. Its decoder is finished off with `drain()`, not by watching for
-`None`. Once exhausted, further calls keep returning `None`; a read
-error raises instead.
+the decoder of its own stream.
 
 Returns:
 
-The next packet, or `None` once the container is
-exhausted.
+The next packet.
 
 Return type:
 
-[Packet](torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet) or None
+[Packet](torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet)
 
 seek(*seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, ***, *stream: [VideoStream](torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream) | [AudioStream](torchcodec.decoders._blocks.AudioStream.html#torchcodec.decoders._blocks.AudioStream) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#Demuxer.seek)
 

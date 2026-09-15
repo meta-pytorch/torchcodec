@@ -79,7 +79,7 @@ Boilerplate: a test video, and the device we'll run on.
 
     device = 'cuda'
 
-    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmph_ep2p8r/video.mp4'], returncode=0)
+    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpvit4nglb/video.mp4'], returncode=0)
 
 
 
@@ -752,7 +752,7 @@ the codec's own sample type, as a ``[num_channels, num_samples]`` tensor.
 
     demuxer = Demuxer(audio_path, streams="audio")
     packet_decoder = demuxer.streams[0].make_decoder()
-    raw = next(iter(packet_decoder.decode(next(iter(demuxer)))))
+    raw = next(iter(packet_decoder.decode(next(demuxer))))
     print(f"{raw.data.dtype = }, {raw.data.shape = }, {raw.sample_rate = }")
 
 
@@ -918,7 +918,7 @@ several streams of one container instead, in one pass.
  .. code-block:: none
 
 
-    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmph_ep2p8r/video.mp4', '-i', '/tmp/tmph_ep2p8r/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmph_ep2p8r/av.mp4'], returncode=0)
+    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpvit4nglb/video.mp4', '-i', '/tmp/tmpvit4nglb/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpvit4nglb/av.mp4'], returncode=0)
 
 
 
@@ -1017,7 +1017,7 @@ and has to be called before any packet is demuxed.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 2.317 seconds)
+   **Total running time of the script:** (0 minutes 2.326 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_blocks.py:
