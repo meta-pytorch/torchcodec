@@ -18,6 +18,8 @@ from ._frame import RawAudioSamples
 
 
 class AudioConverter:
+    """TODO_API_BREAKDOWN DOC"""
+
     def __init__(self, sample_rate: int | None = None, num_channels: int | None = None):
         self._handle = _blocks_create_audio_converter(
             sample_rate=sample_rate, num_channels=num_channels

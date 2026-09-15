@@ -44,6 +44,8 @@ from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
 
 @dataclass
 class FrameIndex:
+    """TODO_API_BREAKDOWN DOC"""
+
     is_key_frame: Tensor
     _pts: Tensor
     _duration: Tensor
@@ -150,6 +152,8 @@ class _Stream:
 
 
 class VideoStream(_Stream):
+    """TODO_API_BREAKDOWN DOC"""
+
     _media_type = "video"
 
     def __init__(self, demuxer: Demuxer, index: int):
@@ -177,6 +181,8 @@ class VideoStream(_Stream):
 
 
 class AudioStream(_Stream):
+    """TODO_API_BREAKDOWN DOC"""
+
     _media_type = "audio"
 
     def make_decoder(self) -> AudioPacketDecoder:
@@ -184,6 +190,31 @@ class AudioStream(_Stream):
 
 
 class Demuxer:
+    """Reads one or more video and audio streams from a container, and produces their compressed :class:`Packet`\\ s.
+
+    Args:
+        source (str, ``Pathlib.path``, bytes, ``torch.Tensor`` or file-like object): The source of the media:
+
+            - If ``str``: a local path or a URL to a media file.
+            - If ``Pathlib.path``: a path to a local media file.
+            - If ``bytes`` object or ``torch.Tensor``: the raw encoded data.
+            - If file-like object: we read data from the object on demand. The
+              object must expose the methods `read(self, size: int) -> bytes`
+              and `seek(self, offset: int, whence: int) -> int`.
+        streams (str, int or tuple, optional): Which streams to follow, as a
+            single selector or a tuple of them. A selector is either
+            ``"video"`` or ``"audio"`` for the :term:`best stream` of that
+            type, or an ``int`` for a stream index, absolute across all media
+            types. ``"all"`` follows every audio and video stream in container
+            order, skipping the rest, and can only be used on its own. Default:
+            ``"video"``.
+
+    Attributes:
+        streams (tuple): The :class:`VideoStream` and :class:`AudioStream`
+            objects being followed, in the order the ``streams`` parameter
+            named them. Packet decoders are built from these.
+    """
+
     def __init__(
         self,
         source: str | Path | bytes | Tensor | io.RawIOBase | io.BufferedReader,
@@ -279,6 +310,8 @@ def _container_fields(handle: Tensor) -> dict:
 def get_container_metadata(
     source: str | Path | bytes | Tensor | io.RawIOBase | io.BufferedReader,
 ) -> ContainerMetadata:
+    """TODO_API_BREAKDOWN DOC"""
+
     handle = create_demuxer(source=source)
     container_dict = json.loads(_blocks_demuxer_container_json_metadata(handle))
     streams = [
