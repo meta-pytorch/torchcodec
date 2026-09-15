@@ -3860,6 +3860,26 @@ class TestBlocks:
         assert seen[video.index] > 0
         assert seen[audio.index] > 0
 
+    def test_demuxer_is_its_own_iterator(self):
+        demuxer = Demuxer(NASA_VIDEO.path)
+        assert iter(demuxer) is demuxer
+
+        # Iterating is a position in the container, not a pass over a
+        # collection: a new loop resumes where the previous one stopped.
+        first = next(demuxer)
+        rest = list(demuxer)
+        assert len(rest) > 0
+
+        for _ in range(2):
+            with pytest.raises(StopIteration):
+                next(demuxer)
+
+        # A seek puts an exhausted demuxer back within the container, and
+        # next() picks it up from there - no need to re-iter() it.
+        demuxer.seek(0)
+        assert next(demuxer).stream_index == first.stream_index
+        assert len(list(demuxer)) == len(rest)
+
     # ===== metadata =====
 
     def test_stream_metadata_matches_the_decoders(self):
@@ -3973,7 +3993,7 @@ class TestBlocks:
         # reachable underneath it - but the demuxer is what enforces it, and a
         # stream added late would start from wherever the container now is.
         demuxer = Demuxer(NASA_VIDEO.path)
-        demuxer.next_packet()
+        next(demuxer)
 
         with pytest.raises(RuntimeError, match="before the first packet"):
             _blocks_demuxer_add_stream(demuxer._handle, 4)
@@ -5191,7 +5211,7 @@ class TestBlocks:
         # nothing, say so.
         demuxer = Demuxer(H265_VIDEO.path)
         decoder = demuxer.streams[0].make_decoder(device)
-        packet = demuxer.next_packet()
+        packet = next(demuxer)
         decoder.decode(packet)
         decoder.drain()
 
@@ -5385,7 +5405,7 @@ class TestBlocks:
         # The scan rewinds the container, which would silently desynchronise
         # every decoder already being fed from it.
         demuxer = Demuxer(NASA_VIDEO.path)
-        demuxer.next_packet()
+        next(demuxer)
 
         with pytest.raises(RuntimeError, match="before any packet is demuxed"):
             demuxer.streams[0].scan()
@@ -5695,7 +5715,7 @@ class TestBlocks:
             # A codec needs more than one packet before it outputs anything.
             decoded = []
             while not decoded:
-                decoded = decoder.decode(demuxer.next_packet())
+                decoded = decoder.decode(next(demuxer))
             assert isinstance(decoded[0], expected_type)
 
     def test_audio_decoder_takes_no_device(self):
