@@ -67,7 +67,7 @@ This is the largest `pts + duration` across the stream, not the last
 frame's own end time. Durations vary, so the frame that finishes last
 isn't necessarily the one that starts last.
 
-index_at(*seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*) → [int](https://docs.python.org/3/builtins/functions.html#int)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#FrameIndex.index_at)
+index_at(*seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*) → [int](https://docs.python.org/3/builtins/functions.html#int) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#FrameIndex.index_at)
 
 The index of the frame being displayed at `seconds`.
 
@@ -76,16 +76,18 @@ duration, so this is the frame whose interval contains `seconds`.
 
 Parameters:
 
-**seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)) - The timestamp to look up. A value outside the
-stream gives the closest frame, i.e. the first or the last one.
+**seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)*or**Tensor*) - The timestamp(s) to look up. A value
+outside the stream gives the closest frame, i.e. the first or
+the last one.
 
 Returns:
 
-The index of that frame.
+The index of that frame. A tensor of timestamps
+gives an int64 tensor of indices of the same shape.
 
 Return type:
 
-[int](https://docs.python.org/3/builtins/functions.html#int)
+[int](https://docs.python.org/3/builtins/functions.html#int) or Tensor
 
 is_key_frame*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
 
