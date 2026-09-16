@@ -3700,7 +3700,7 @@ _PLANES_VIDEOS = (
 # them - monochrome, planar RGB and FFV1 all send it to the CPU fallback - and
 # the fallback converts to an NVDEC surface format before uploading, so on CUDA
 # they are three YUV planes like everything else. That conversion is what
-# RawFrame.pix_fmt promises ("on CUDA it is always an NVDEC surface format"). It
+# RawFrame.pixel_format promises ("on CUDA it is always an NVDEC surface format"). It
 # keeps the pixels where they were - see test_cpu_fallback_matches_cpu - but not
 # what YUV has no room for: grayscale gains neutral chroma, and alpha is dropped
 # outright.
@@ -4356,7 +4356,7 @@ class TestBlocks:
     def test_planes_structure(self, case, device):
         # planes shape/dtype/device and the accompanying metadata.
         frame, converter = self._first_frame(case.video.path, device)
-        planes, pix_fmt = frame.planes, frame.pix_fmt
+        planes, pix_fmt = frame.planes, frame.pixel_format
 
         expected_pix_fmt = case.pix_fmt(device)
         if (
@@ -4373,8 +4373,6 @@ class TestBlocks:
         )
 
         assert pix_fmt == expected_pix_fmt
-        assert frame.colorspace in ("bt709", "bt2020nc", "smpte170m", "gbr", "unknown")
-        assert frame.color_range in ("tv", "pc", "unknown")  # FFmpeg has only these
 
         # All planes are 2D views living on the frame's own device.
         assert len(planes) == case.num_planes(device)
@@ -4421,19 +4419,25 @@ class TestBlocks:
         # The planes are views on the decoder's own memory, so they're in the
         # source's pre-rotation geometry, and so are the dims the frame reports.
         # Only the converted frame is rotated.
-        frame, converter = self._first_frame(NASA_VIDEO_ROTATED.path, device)
+        demuxer, decoder, converter = self._make_blocks(NASA_VIDEO_ROTATED.path, device)
+        frame = next(self._decode(decoder, self._demux(demuxer)))
         Y = frame.planes[0]
 
         height = NASA_VIDEO_ROTATED.get_height()  # post-rotation
         width = NASA_VIDEO_ROTATED.get_width()
         assert Y.shape == (width, height) == (frame.height, frame.width)
-        assert frame.rotation_degrees == 90
+        assert demuxer.streams[0].metadata.rotation == 90
         assert converter.convert(frame).data.shape == (3, height, width)
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_no_rotation(self, device):
-        frame, _ = self._first_frame(NASA_VIDEO.path, device)
-        assert frame.rotation_degrees == 0
+        demuxer, decoder, converter = self._make_blocks(NASA_VIDEO.path, device)
+        frame = next(self._decode(decoder, self._demux(demuxer)))
+        assert demuxer.streams[0].metadata.rotation is None
+        assert converter.convert(frame).data.shape[1:] == (
+            NASA_VIDEO.get_height(),
+            NASA_VIDEO.get_width(),
+        )
 
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize("record_stream", (True, False))
@@ -4535,11 +4539,10 @@ class TestBlocks:
         # a sample carries and where they sit: misreading either sends both ends
         # to the same extreme.
         frame, converter = self._first_frame(case.video.path, device)
-        assert frame.color_range in ("tv", "unknown")  # unknown is treated as tv
 
         def sample(value_8bit):
             value = value_8bit << (frame.bit_depth - 8)
-            if _is_msb_aligned(frame.pix_fmt):
+            if _is_msb_aligned(frame.pixel_format):
                 value <<= 16 - frame.bit_depth
             return value
 
@@ -4646,32 +4649,28 @@ class TestBlocks:
         assert VideoDecoder(video.path, device="cuda").cpu_fallback
 
         frame, _ = self._first_frame(video.path, "cuda")
-        assert frame.pix_fmt == expected_pix_fmt
+        assert frame.pixel_format == expected_pix_fmt
         assert all(plane.device.type == "cuda" for plane in frame.planes)
 
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize(
-        "video, expected_colorspace, has_luma",
+        "video, has_luma",
         (
-            pytest.param(TESTSRC2_GRAY_HEVC, "unknown", True, id="gray"),
-            pytest.param(TESTSRC2_GBRP_HEVC, "smpte170m", False, id="gbrp"),
-            pytest.param(TESTSRC2_FULL_RANGE_422, "unknown", True, id="422"),
+            pytest.param(TESTSRC2_GRAY_HEVC, True, id="gray"),
+            pytest.param(TESTSRC2_GBRP_HEVC, False, id="gbrp"),
+            pytest.param(TESTSRC2_FULL_RANGE_422, True, id="422"),
         ),
     )
-    def test_cpu_fallback_upload_keeps_full_range(
-        self, video, expected_colorspace, has_luma
-    ):
+    def test_cpu_fallback_upload_keeps_full_range(self, video, has_luma):
         if ffmpeg_major_version <= 6:
             pytest.skip("don't know, don't care.")
 
         # Full-range sources NVDEC can't decode, so they go through the CPU
-        # fallback and its conversion to an NVDEC surface format.
+        # fallback and its conversion to an NVDEC surface format. Converting on
+        # both devices and comparing is what pins the range: losing it would
+        # shift the output far beyond the tolerance below.
         cpu_frame, cpu_converter = self._first_frame(video.path, "cpu")
         cuda_frame, cuda_converter = self._first_frame(video.path, "cuda")
-
-        assert cpu_frame.color_range == "pc"
-        assert cuda_frame.color_range == "pc"
-        assert cuda_frame.colorspace == expected_colorspace
 
         if has_luma:
             # A source that already has luma keeps it sample for sample: only
@@ -4716,7 +4715,7 @@ class TestBlocks:
         )  # fmt: skip
 
         frame, _ = self._first_frame(path, "cpu")
-        assert frame.pix_fmt == pix_fmt
+        assert frame.pixel_format == pix_fmt
         assert (frame.width, frame.height) == (64, 48)
         with pytest.raises(RuntimeError, match=f"Cannot expose {pix_fmt} as a view"):
             frame.planes

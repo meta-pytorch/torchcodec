@@ -301,8 +301,7 @@ packet_decoder = demuxer.streams[0].make_decoder(device=device)
 raw_frame = next(decode(packet_decoder, demux(demuxer)))
 
 Y, U, V = raw_frame.planes
-print(f"{raw_frame.pix_fmt = }, {raw_frame.bit_depth = }, "
-      f"{raw_frame.colorspace = }, {raw_frame.color_range = }")
+print(f"{raw_frame.pixel_format = }, {raw_frame.bit_depth = }")
 print(f"{Y.shape = }, {U.shape = }, {Y.dtype = }, {Y.stride() = }")
 
 # %%
@@ -312,14 +311,14 @@ print(f"{Y.shape = }, {U.shape = }, {Y.dtype = }, {Y.stride() = }")
 #
 # Being the decoder's own planes, they are also never rotated - a video whose
 # container asks for a rotation gives you the samples as they were encoded, and
-# ``raw_frame.rotation_degrees`` tells you what to apply. ``ColorConverter``
-# applies it for you.
+# ``demuxer.streams[0].metadata.rotation`` tells you what to apply.
+# ``ColorConverter`` applies it for you.
 #
 # So we can do the color conversion ourselves. Here it's plain PyTorch ops -
 # it could just as well be a Triton or CUDA kernel, fused with whatever your
 # model needs next.
-assert raw_frame.pix_fmt in ("yuv420p", "nv12")  # 8-bit 4:2:0, on CPU and CUDA
-assert raw_frame.colorspace == "bt709" and raw_frame.color_range == "tv"
+assert raw_frame.pixel_format in ("yuv420p", "nv12")  # 8-bit 4:2:0, on CPU and CUDA
+assert demuxer.streams[0].metadata.color_space == "bt709"
 
 
 def yuv420_to_rgb(Y, U, V):
@@ -373,8 +372,7 @@ hdr_packet_decoder = hdr_demuxer.streams[0].make_decoder(device=device)
 hdr_raw = next(decode(hdr_packet_decoder, demux(hdr_demuxer)))
 
 hdr_Y = hdr_raw.planes[0]
-print(f"{hdr_raw.pix_fmt = }, {hdr_raw.bit_depth = }, "
-      f"{hdr_raw.colorspace = }, {hdr_Y.dtype = }")
+print(f"{hdr_raw.pixel_format = }, {hdr_raw.bit_depth = }, {hdr_Y.dtype = }")
 
 # NVDEC surfaces are 16-bit containers holding the samples msb-aligned, so the
 # 10 bits sit at the top and the low 6 are zero. Shift them back down to read

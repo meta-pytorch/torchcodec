@@ -16,13 +16,10 @@ from torchcodec._core.ops import _blocks_frame_metadata, _blocks_frame_planes
 
 class _Metadata(NamedTuple):
     # The fields of the `_blocks_frame_metadata` op, in order.
-    pix_fmt: str
-    colorspace: str
-    color_range: str
+    pixel_format: str
     bit_depth: int
     width: int
     height: int
-    rotation_degrees: float
 
 
 class Packet:
@@ -73,9 +70,10 @@ class RawFrame:
     format (typically YUV), on the device that was passed to
     :meth:`VideoStream.make_decoder`, and
     :attr:`width`, :attr:`height` and :attr:`planes` are all pre-rotation:
-    :attr:`rotation_degrees` is what a :class:`ColorConverter` applies for
-    you, and what you have to apply yourself if you convert :attr:`planes` on
-    your own.
+    :attr:`VideoStreamHeaderMetadata.rotation
+    <torchcodec.decoders.VideoStreamMetadata.rotation>` is what a
+    :class:`ColorConverter` applies for you, and what you have to apply
+    yourself if you convert :attr:`planes` on your own.
 
     .. important::
 
@@ -138,24 +136,14 @@ class RawFrame:
         return self._metadata
 
     @property
-    def pix_fmt(self) -> str:
+    def pixel_format(self) -> str:
         """The FFmpeg pixel-format name, e.g. ``"yuv420p"``.
 
         On CPU this is the source's own format. On CUDA it is always one of the
         NVDEC surface formats: ``"nv12"``, ``"p010le"``, ``"p012le"``,
         ``"p016le"``, ``"yuv444p"`` or ``"yuv444p16le"``.
         """
-        return self._get_metadata().pix_fmt
-
-    @property
-    def colorspace(self) -> str:
-        """The FFmpeg colorspace name, e.g. ``"bt709"``."""
-        return self._get_metadata().colorspace
-
-    @property
-    def color_range(self) -> str:
-        """``"tv"`` for limited range, ``"pc"`` for full range."""
-        return self._get_metadata().color_range
+        return self._get_metadata().pixel_format
 
     @property
     def bit_depth(self) -> int:
@@ -189,21 +177,11 @@ class RawFrame:
         return self._get_metadata().height
 
     @property
-    def rotation_degrees(self) -> float:
-        """How many degrees counter-clockwise the frame has to be rotated to be
-        upright, or 0 if the container asks for no rotation.
-
-        This is *not* applied to :attr:`planes`. A :class:`ColorConverter`
-        applies it, rounded to the nearest multiple of 90, to its output.
-        """
-        return self._get_metadata().rotation_degrees
-
-    @property
     def planes(self) -> tuple[torch.Tensor, ...]:
         """The decoder's own samples, as 2D tensor views.
 
         There is exactly one tensor per *component*
-        of :attr:`pix_fmt`, in the order that format describes, of dtype
+        of :attr:`pixel_format`, in the order that format describes, of dtype
         ``uint8`` or ``uint16`` depending on :attr:`bit_depth`. So ``yuv420p``
         and ``nv12`` both give three (``y, u, v = planes``), ``yuva420p`` four
         (``y, u, v, a = planes``) and ``gray`` one (``(y,) = planes``).
@@ -214,7 +192,7 @@ class RawFrame:
         them out.
 
         Only the luma and alpha components are :attr:`height` by :attr:`width`.
-        The chroma ones are subsampled by whatever :attr:`pix_fmt` says: half in
+        The chroma ones are subsampled by whatever :attr:`pixel_format` says: half in
         both directions for a 4:2:0 format, half the width for 4:2:2, full size
         for 4:4:4 and for the RGB formats. Odd sizes round up, so the chroma of
         a 4:2:0 frame 481 samples wide is 241 wide.
@@ -231,7 +209,7 @@ class RawFrame:
         Raises:
             RuntimeError: For the pixel formats that can't be viewed without a
                 copy - sub-byte-packed, palettised and float ones - and for
-                frames stored bottom-up. Check :attr:`pix_fmt` first if you are
+                frames stored bottom-up. Check :attr:`pixel_format` first if you are
                 decoding something exotic.
         """
         if self._planes is None:

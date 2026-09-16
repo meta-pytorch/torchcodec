@@ -30,7 +30,7 @@ class ColorConverter:
                 frame.data  # uint8 [3, height, width], RGB
 
     Unlike the other blocks this one isn't tied to a specific video stream.
-    Everything it needs (dimensions, pixel format, colorspace, rotation) comes
+    Everything it needs (dimensions, pixel format, color space, rotation) comes
     from the :class:`RawFrame` itself, so the same converter instance can
     process frames from any video stream, provided that they share the same
     device.
@@ -72,8 +72,8 @@ class ColorConverter:
     def convert(self, raw_frame: RawFrame) -> Frame:
         """Convert one :class:`RawFrame` to an RGB :class:`~torchcodec.Frame`.
 
-        :attr:`RawFrame.rotation_degrees` is applied, so the output is upright
-        and matches what a :class:`~torchcodec.decoders.VideoDecoder` gives you.
+        The stream's rotation is applied, so the output is upright and matches
+        what a :class:`~torchcodec.decoders.VideoDecoder` gives you.
 
         Args:
             raw_frame (RawFrame): The frame to convert. It has to be on this
