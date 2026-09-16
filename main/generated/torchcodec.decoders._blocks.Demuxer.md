@@ -47,11 +47,21 @@ container itself. What it says about a given stream is on
 
 Examples using `Demuxer`:
 
-![](../_images/sphx_glr_blocks_thumb.png)
+![](../_images/sphx_glr_basics_thumb.png)
 
-[Blocks: build your own decoding pipeline](../generated_examples/decoding/blocks.html)
+[Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
 
 Blocks: build your own decoding pipeline
+![](../_images/sphx_glr_pipelines_thumb.png)
+
+[Composing pipelines: threads, devices and endless streams](../generated_examples/blocks/pipelines.html)
+
+Composing pipelines: threads, devices and endless streams
+![](../_images/sphx_glr_raw_data_thumb.png)
+
+[Raw frames and raw audio samples](../generated_examples/blocks/raw_data.html)
+
+Raw frames and raw audio samples
 
 __next__() → [Packet](torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#Demuxer.__next__)
 

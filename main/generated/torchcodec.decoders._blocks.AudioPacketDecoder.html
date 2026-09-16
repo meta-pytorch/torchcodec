@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>AudioPacketDecoder &#8212; TorchCodec 0.17.0.dev20260915+cu130 Documentation</title>
+    <title>AudioPacketDecoder &#8212; TorchCodec 0.17.0.dev20260916+cu130 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=12ff8c86"></script>
+    <script src="../_static/documentation_options.js?v=2230c5d4"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -531,6 +531,12 @@ document.write(`
               </li>
             
               <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/blocks/index.html">
+                  Decoding blocks (experimental)
+                </a>
+              </li>
+            
+              <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="../generated_examples/encoding/index.html">
                   Encoding
                 </a>
@@ -820,6 +826,12 @@ document.write(`
               <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="../generated_examples/decoding/index.html">
                   Decoding
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/blocks/index.html">
+                  Decoding blocks (experimental)
                 </a>
               </li>
             
@@ -1225,9 +1237,9 @@ them. After a <a class="reference internal" href="torchcodec.decoders._blocks.De
 sufficient: the first samples that come out are subtly wrong until the codec
 re-primes, so decode a margin before your target and throw it away.</p>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">AudioPacketDecoder</span></code>:</p>
-<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_blocks_thumb.png" />
-<p><a class="reference internal" href="../generated_examples/decoding/blocks.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
-  <div class="sphx-glr-thumbnail-title">Blocks: build your own decoding pipeline</div>
+<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_raw_data_thumb.png" />
+<p><a class="reference internal" href="../generated_examples/blocks/raw_data.html"><span class="doc">Raw frames and raw audio samples</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Raw frames and raw audio samples</div>
 </div></div><dl class="py method">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.AudioPacketDecoder.decode">
 <span class="sig-name descname"><span class="pre">decode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">packet</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet" title="torchcodec.decoders._blocks._frame.Packet"><span class="pre">Packet</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#list" title="(in Python v3.14)"><span class="pre">list</span></a><span class="p"><span class="pre">[</span></span><a class="reference internal" href="torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples" title="torchcodec.decoders._blocks._frame.RawAudioSamples"><span class="pre">RawAudioSamples</span></a><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_packet_decoder.html#AudioPacketDecoder.decode"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.AudioPacketDecoder.decode" title="Link to this definition">#</a></dt>
@@ -1626,7 +1638,7 @@ was still holding, in presentation order.</p>
        "headline": "AudioPacketDecoder",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders._blocks.AudioPacketDecoder.html",
-       "articleBody": "AudioPacketDecoder# class torchcodec.decoders._blocks.AudioPacketDecoder(*args, **kwargs)[source]# Decodes the compressed Packets of one audio stream into RawAudioSamples. You should not build one yourself: AudioStream.make_decoder() is what creates it. Audio is always decoded on the CPU. Feed it one packet at a time, and drain it at the end: demuxer = Demuxer(\"audio.mp3\", streams=\"audio\") decoder = demuxer.streams[0].make_decoder() for packet in demuxer: for raw_samples in decoder.decode(packet): ... for raw_samples in decoder.drain(): ... It is stateful. A lossy codec carries state from one frame to the next, so it expects the packets of its own stream, in the order the demuxer produced them. After a Demuxer.seek(), reset() is necessary but not sufficient: the first samples that come out are subtly wrong until the codec re-primes, so decode a margin before your target and throw it away. Examples using AudioPacketDecoder: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline decode(packet: Packet) \u2192 list[RawAudioSamples][source]# Send one Packet to the codec and return the RawAudioSamples that are ready. This can return zero, one, or more than one RawAudioSamples. What comes back is not the decoding of the packet you just passed: a codec that is still priming itself will emit what it owes you on a later call. Parameters: packet (Packet) \u2013 A packet of this decoder\u2019s own stream. Returns: The possibly empty list of RawAudioSamples that the codec has ready, in presentation order. Raises: RuntimeError \u2013 If this decoder has been drained, or if the demuxer seeked without it being reset() afterwards. drain() \u2192 list[RawAudioSamples][source]# Tell the codec the stream has ended, and return the RawAudioSamples it was still holding. Skipping this loses the tail of the stream. A drained decoder refuses any further packet; reset() makes it usable again. Returns: The possibly empty list of RawAudioSamples that the codec was still holding, in presentation order. reset() \u2192 None# Drop the codec\u2019s buffered state and start over. Needed after a Demuxer.seek(), and after drain().",
+       "articleBody": "AudioPacketDecoder# class torchcodec.decoders._blocks.AudioPacketDecoder(*args, **kwargs)[source]# Decodes the compressed Packets of one audio stream into RawAudioSamples. You should not build one yourself: AudioStream.make_decoder() is what creates it. Audio is always decoded on the CPU. Feed it one packet at a time, and drain it at the end: demuxer = Demuxer(\"audio.mp3\", streams=\"audio\") decoder = demuxer.streams[0].make_decoder() for packet in demuxer: for raw_samples in decoder.decode(packet): ... for raw_samples in decoder.drain(): ... It is stateful. A lossy codec carries state from one frame to the next, so it expects the packets of its own stream, in the order the demuxer produced them. After a Demuxer.seek(), reset() is necessary but not sufficient: the first samples that come out are subtly wrong until the codec re-primes, so decode a margin before your target and throw it away. Examples using AudioPacketDecoder: Raw frames and raw audio samples Raw frames and raw audio samples decode(packet: Packet) \u2192 list[RawAudioSamples][source]# Send one Packet to the codec and return the RawAudioSamples that are ready. This can return zero, one, or more than one RawAudioSamples. What comes back is not the decoding of the packet you just passed: a codec that is still priming itself will emit what it owes you on a later call. Parameters: packet (Packet) \u2013 A packet of this decoder\u2019s own stream. Returns: The possibly empty list of RawAudioSamples that the codec has ready, in presentation order. Raises: RuntimeError \u2013 If this decoder has been drained, or if the demuxer seeked without it being reset() afterwards. drain() \u2192 list[RawAudioSamples][source]# Tell the codec the stream has ended, and return the RawAudioSamples it was still holding. Skipping this loses the tail of the stream. A drained decoder refuses any further packet; reset() makes it usable again. Returns: The possibly empty list of RawAudioSamples that the codec was still holding, in presentation order. reset() \u2192 None# Drop the codec\u2019s buffered state and start over. Needed after a Demuxer.seek(), and after drain().",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

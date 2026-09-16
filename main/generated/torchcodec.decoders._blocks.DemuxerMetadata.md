@@ -7,6 +7,14 @@ Container-level metadata, as reported by the header.
 This is what a [`Demuxer`](torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer) can say about
 the container itself.
 
+Examples using `DemuxerMetadata`:
+
+![](../_images/sphx_glr_basics_thumb.png)
+
+[Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
+
+Blocks: build your own decoding pipeline
+
 best_audio_stream_index*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Index of the [best stream](../glossary.html#term-best-stream) of audio type (int or None).

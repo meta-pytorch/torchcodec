@@ -28,8 +28,8 @@ Return type:
 
 Examples using `get_container_metadata`:
 
-![](../_images/sphx_glr_blocks_thumb.png)
+![](../_images/sphx_glr_basics_thumb.png)
 
-[Blocks: build your own decoding pipeline](../generated_examples/decoding/blocks.html)
+[Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
 
 Blocks: build your own decoding pipeline

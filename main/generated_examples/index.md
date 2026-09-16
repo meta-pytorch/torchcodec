@@ -62,11 +62,24 @@ Decoder Transforms: Applying transforms during decoding
 [Decoding HDR videos](decoding/hdr_decoding.html)
 
 Decoding HDR videos
-![](../_images/sphx_glr_blocks_thumb.png)
 
-[Blocks: build your own decoding pipeline](decoding/blocks.html)
+## Decoding blocks (experimental)
+
+![](../_images/sphx_glr_basics_thumb.png)
+
+[Blocks: build your own decoding pipeline](blocks/basics.html)
 
 Blocks: build your own decoding pipeline
+![](../_images/sphx_glr_pipelines_thumb.png)
+
+[Composing pipelines: threads, devices and endless streams](blocks/pipelines.html)
+
+Composing pipelines: threads, devices and endless streams
+![](../_images/sphx_glr_raw_data_thumb.png)
+
+[Raw frames and raw audio samples](blocks/raw_data.html)
+
+Raw frames and raw audio samples
 
 ## Encoding
 

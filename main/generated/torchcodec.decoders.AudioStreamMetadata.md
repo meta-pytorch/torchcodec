@@ -6,6 +6,11 @@ Metadata of a single audio stream.
 
 Examples using `AudioStreamMetadata`:
 
+![](../_images/sphx_glr_basics_thumb.png)
+
+[Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
+
+Blocks: build your own decoding pipeline
 ![](../_images/sphx_glr_audio_decoding_thumb.jpg)
 
 [Decoding audio streams with AudioDecoder](../generated_examples/decoding/audio_decoding.html)

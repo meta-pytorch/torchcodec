@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>DemuxerMetadata &#8212; TorchCodec 0.17.0.dev20260915+cu130 Documentation</title>
+    <title>DemuxerMetadata &#8212; TorchCodec 0.17.0.dev20260916+cu130 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=12ff8c86"></script>
+    <script src="../_static/documentation_options.js?v=2230c5d4"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -531,6 +531,12 @@ document.write(`
               </li>
             
               <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/blocks/index.html">
+                  Decoding blocks (experimental)
+                </a>
+              </li>
+            
+              <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="../generated_examples/encoding/index.html">
                   Encoding
                 </a>
@@ -820,6 +826,12 @@ document.write(`
               <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="../generated_examples/decoding/index.html">
                   Decoding
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/blocks/index.html">
+                  Decoding blocks (experimental)
                 </a>
               </li>
             
@@ -1207,7 +1219,11 @@ document.write(`
 <dd><p>Container-level metadata, as reported by the header.</p>
 <p>This is what a <a class="reference internal" href="torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer" title="torchcodec.decoders._blocks.Demuxer"><code class="xref py py-class docutils literal notranslate"><span class="pre">Demuxer</span></code></a> can say about
 the container itself.</p>
-<dl class="py attribute">
+<p>Examples using <code class="docutils literal notranslate"><span class="pre">DemuxerMetadata</span></code>:</p>
+<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_basics_thumb.png" />
+<p><a class="reference internal" href="../generated_examples/blocks/basics.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Blocks: build your own decoding pipeline</div>
+</div></div><dl class="py attribute">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.DemuxerMetadata.best_audio_stream_index">
 <span class="sig-name descname"><span class="pre">best_audio_stream_index</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.DemuxerMetadata.best_audio_stream_index" title="Link to this definition">#</a></dt>
 <dd><p>Index of the <a class="reference internal" href="../glossary.html#term-best-stream"><span class="xref std std-term">best stream</span></a> of audio type (int or None).</p>
@@ -1585,7 +1601,7 @@ or None).</p>
        "headline": "DemuxerMetadata",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders._blocks.DemuxerMetadata.html",
-       "articleBody": "DemuxerMetadata# class torchcodec.decoders._blocks.DemuxerMetadata(duration_seconds_from_header: float | None, bit_rate_from_header: float | None, best_video_stream_index: int | None, best_audio_stream_index: int | None)[source]# Container-level metadata, as reported by the header. This is what a Demuxer can say about the container itself. best_audio_stream_index: int | None# Index of the best stream of audio type (int or None). best_video_stream_index: int | None# Index of the best stream of video type (int or None). bit_rate_from_header: float | None# Overall bit rate of the container (float or None). duration_seconds_from_header: float | None# Duration of the container, in seconds, obtained from the header (float or None).",
+       "articleBody": "DemuxerMetadata# class torchcodec.decoders._blocks.DemuxerMetadata(duration_seconds_from_header: float | None, bit_rate_from_header: float | None, best_video_stream_index: int | None, best_audio_stream_index: int | None)[source]# Container-level metadata, as reported by the header. This is what a Demuxer can say about the container itself. Examples using DemuxerMetadata: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline best_audio_stream_index: int | None# Index of the best stream of audio type (int or None). best_video_stream_index: int | None# Index of the best stream of video type (int or None). bit_rate_from_header: float | None# Overall bit rate of the container (float or None). duration_seconds_from_header: float | None# Duration of the container, in seconds, obtained from the header (float or None).",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

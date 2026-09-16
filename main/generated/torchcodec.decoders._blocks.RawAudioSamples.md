@@ -18,11 +18,11 @@ for packet in demuxer:
 
 Examples using `RawAudioSamples`:
 
-![](../_images/sphx_glr_blocks_thumb.png)
+![](../_images/sphx_glr_raw_data_thumb.png)
 
-[Blocks: build your own decoding pipeline](../generated_examples/decoding/blocks.html)
+[Raw frames and raw audio samples](../generated_examples/blocks/raw_data.html)
 
-Blocks: build your own decoding pipeline
+Raw frames and raw audio samples
 
 data*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
 

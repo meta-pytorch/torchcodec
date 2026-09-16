@@ -29,11 +29,11 @@ re-primes, so decode a margin before your target and throw it away.
 
 Examples using `AudioPacketDecoder`:
 
-![](../_images/sphx_glr_blocks_thumb.png)
+![](../_images/sphx_glr_raw_data_thumb.png)
 
-[Blocks: build your own decoding pipeline](../generated_examples/decoding/blocks.html)
+[Raw frames and raw audio samples](../generated_examples/blocks/raw_data.html)
 
-Blocks: build your own decoding pipeline
+Raw frames and raw audio samples
 
 decode(*packet: [Packet](torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet)*) → [list](https://docs.python.org/3/builtins/stdtypes.html#list)[[RawAudioSamples](torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples)][[source]](../_modules/torchcodec/decoders/_blocks/_packet_decoder.html#AudioPacketDecoder.decode)
 

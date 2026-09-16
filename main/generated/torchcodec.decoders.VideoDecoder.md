@@ -111,6 +111,21 @@ determined after at least one frame has been decoded.
 
 Examples using `VideoDecoder`:
 
+![](../_images/sphx_glr_basics_thumb.png)
+
+[Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
+
+Blocks: build your own decoding pipeline
+![](../_images/sphx_glr_pipelines_thumb.png)
+
+[Composing pipelines: threads, devices and endless streams](../generated_examples/blocks/pipelines.html)
+
+Composing pipelines: threads, devices and endless streams
+![](../_images/sphx_glr_raw_data_thumb.png)
+
+[Raw frames and raw audio samples](../generated_examples/blocks/raw_data.html)
+
+Raw frames and raw audio samples
 ![](../_images/sphx_glr_approximate_mode_thumb.jpg)
 
 [Exact vs Approximate seek mode: Performance and accuracy comparison](../generated_examples/decoding/approximate_mode.html)
@@ -126,11 +141,6 @@ Accelerated video decoding on GPUs with CUDA and NVDEC
 [Decoding a video with VideoDecoder](../generated_examples/decoding/basic_example.html)
 
 Decoding a video with VideoDecoder
-![](../_images/sphx_glr_blocks_thumb.png)
-
-[Blocks: build your own decoding pipeline](../generated_examples/decoding/blocks.html)
-
-Blocks: build your own decoding pipeline
 ![](../_images/sphx_glr_custom_frame_mappings_thumb.jpg)
 
 [Decoding with custom frame mappings](../generated_examples/decoding/custom_frame_mappings.html)

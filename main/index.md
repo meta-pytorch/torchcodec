@@ -88,11 +88,28 @@ How to decode HDR videos with the `output_dtype` parameter
 
 [generated_examples/decoding/hdr_decoding.html](generated_examples/decoding/hdr_decoding.html)
 
-Blocks (experimental)
+## Decoding blocks (experimental)
 
-A preview of the unreleased building-block decoding APIs
+A preview of the unreleased building-block decoding APIs, which expose
+demuxing, decoding and conversion as separate stages.
 
-[generated_examples/decoding/blocks.html](generated_examples/decoding/blocks.html)
+Build your own decoding pipeline
+
+The three stages, video and audio, metadata, seeking and scanning
+
+[generated_examples/blocks/basics.html](generated_examples/blocks/basics.html)
+
+Composing pipelines
+
+How to overlap the stages on several threads, and decode endless streams
+
+[generated_examples/blocks/pipelines.html](generated_examples/blocks/pipelines.html)
+
+Raw frames and samples
+
+How to read the decoder's own YUV planes and audio samples
+
+[generated_examples/blocks/raw_data.html](generated_examples/blocks/raw_data.html)
 
 ## Encoding
 

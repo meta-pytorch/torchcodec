@@ -5,8 +5,11 @@ Warning
 **The Blocks APIs are under active construction.** They are private and
 unreleased. Signatures and semantics may change without notice.
 
-For a tutorial, see:
-[Blocks: build your own decoding pipeline](generated_examples/decoding/blocks.html#sphx-glr-generated-examples-decoding-blocks-py).
+For tutorials, see:
+
+- [Blocks: build your own decoding pipeline](generated_examples/blocks/basics.html#sphx-glr-generated-examples-blocks-basics-py)
+- [Composing pipelines: threads, devices and endless streams](generated_examples/blocks/pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py)
+- [Raw frames and raw audio samples](generated_examples/blocks/raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py)
 
 ## Demuxing
 

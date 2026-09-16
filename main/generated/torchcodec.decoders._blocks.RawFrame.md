@@ -35,11 +35,11 @@ overwrite them while those reads are still pending. A
 
 Examples using `RawFrame`:
 
-![](../_images/sphx_glr_blocks_thumb.png)
+![](../_images/sphx_glr_raw_data_thumb.png)
 
-[Blocks: build your own decoding pipeline](../generated_examples/decoding/blocks.html)
+[Raw frames and raw audio samples](../generated_examples/blocks/raw_data.html)
 
-Blocks: build your own decoding pipeline
+Raw frames and raw audio samples
 
 *property*bit_depth*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 

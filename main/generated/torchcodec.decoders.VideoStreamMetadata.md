@@ -6,6 +6,11 @@ Metadata of a single video stream.
 
 Examples using `VideoStreamMetadata`:
 
+![](../_images/sphx_glr_basics_thumb.png)
+
+[Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
+
+Blocks: build your own decoding pipeline
 ![](../_images/sphx_glr_basic_example_thumb.png)
 
 [Decoding a video with VideoDecoder](../generated_examples/decoding/basic_example.html)

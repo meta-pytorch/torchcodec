@@ -1,0 +1,2107 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Blocks: build your own decoding pipeline &#8212; TorchCodec 0.17.0.dev20260916+cu130 Documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=a6c16915" />
+    <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery.css?v=fd6457a4" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery-binder.css?v=f4aeca0c" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery-dataframe.css?v=2082cf3c" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery-rendered-html.css?v=1277b6f3" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sphinx-design.min.css?v=95c83b7e" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="../../_static/documentation_options.js?v=2230c5d4"></script>
+    <script src="../../_static/doctools.js?v=888ff710"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/sg-tags.js?v=d80f6fa4"></script>
+    <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../_static/js/search-tuning.js?v=87be1517"></script>
+    <script src="../../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'generated_examples/blocks/basics';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.17';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
+        </script>
+    <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/generated_examples/blocks/basics.html" />
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Composing pipelines: threads, devices and endless streams" href="pipelines.html" />
+    <link rel="prev" title="Decoding blocks (experimental)" href="index.html" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+
+<!-- LLM/AI Agent: See /llms.txt for comprehensive navigation guidance -->
+<!-- Machine-readable LLM metadata -->
+<meta name="llm:site-type" content="documentation">
+<meta name="llm:framework" content="PyTorch">
+
+<meta name="llm:description" content="Blocks: build your own decoding pipeline - Documentation for Python, part of the PyTorch ecosystem.">
+
+
+
+
+
+<meta name="llm:navigation-file" content="/llms.txt">
+<meta name="llm:sitemap" content="/sitemap.xml">
+<meta name="llm:version" content="0.17">
+<meta name="llm:project" content="Python">
+<meta name="llm:page-type" content="api">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Navigation Guide">
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/list.js/2.3.1/list.min.js"></script>
+<script>
+  if (window.location.hostname === 'docs.pytorch.org' || window.location.hostname === 'docs-preview.pytorch.org') {
+    const script = document.createElement('script');
+    script.src = 'https://cmp.osano.com/16A0DbT9yDNIaQkvZ/31b1b91a-e0b6-47ea-bde2-7f2bd13dbe5c/osano.js?variant=one';
+    document.head.appendChild(script);
+  }
+</script>
+<script>
+  // Cookie banner for non-LF projects
+  document.addEventListener('DOMContentLoaded', function () {
+    // Hide cookie banner on local environments and LF owned docs
+    if (window.location.hostname === 'localhost' ||
+      window.location.hostname === '0.0.0.0' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname === 'docs.pytorch.org' ||
+      window.location.hostname === 'docs-preview.pytorch.org' ||
+      window.location.hostname.startsWith('192.168.')) {
+      const banner = document.querySelector('.cookie-banner-wrapper');
+      if (banner) {
+        banner.style.display = 'none';
+      }
+    }
+  });
+</script>
+<!-- Conditional CSS for header and footer height adjustment -->
+
+<style>
+  :root {
+    --header-height: 0px !important;
+    --header-height-desktop: 0px !important;
+  }
+  /* Ensure proper mobile layout when LF header is hidden */
+  @media (max-width: 960px) {
+    .bd-header {
+      top: 0 !important;
+      position: sticky !important;
+      z-index: 1020 !important;
+    }
+    .bd-main {
+      padding-top: 0 !important;
+      margin-top: 0 !important;
+    }
+    .bd-article-container {
+      padding-top: 0 !important;
+    }
+    .header-article__inner {
+      padding-top: 1rem !important;
+    }
+
+  }
+</style>
+
+
+<link rel="stylesheet" type="text/css" href="../../_static/css/theme.css" crossorigin="anonymous">
+<script type="text/javascript" src="../../_static/js/theme.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
+<meta property="og:image" content="https://docs.pytorch.org/docs/stable/_static/img/pytorch_seo.png" />
+<link rel="stylesheet" href="../../_static/webfonts/all.min.css" crossorigin="anonymous">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; style-src * 'unsafe-inline'; script-src * 'unsafe-inline' 'unsafe-eval' blob:;">
+<meta name="pytorch_project" content="">
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-T8XT4PS" height="0" width="0"
+    style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+<!-- Google Tag Manager -->
+<script>(function (w, d, s, l, i) {
+    w[l] = w[l] || []; w[l].push({
+      'gtm.start':
+        new Date().getTime(), event: 'gtm.js'
+    }); var f = d.getElementsByTagName(s)[0],
+      j = d.createElement(s), dl = l != 'dataLayer' ? '&l=' + l : ''; j.async = true; j.src =
+        'https://www.googletagmanager.com/gtm.js?id=' + i + dl; f.parentNode.insertBefore(j, f);
+    j.onload = function () {
+      window.dispatchEvent(new Event('gtm_loaded'));
+      console.log('GTM loaded successfully');
+    };
+  })(window, document, 'script', 'dataLayer', 'GTM-T8XT4PS');
+</script>
+<!-- End Google Tag Manager -->
+<!-- Facebook Pixel Code -->
+<script>
+  !function (f, b, e, v, n, t, s) {
+    if (f.fbq) return; n = f.fbq = function () {
+      n.callMethod ?
+        n.callMethod.apply(n, arguments) : n.queue.push(arguments)
+    };
+    if (!f._fbq) f._fbq = n; n.push = n; n.loaded = !0; n.version = '2.0';
+    n.queue = []; t = b.createElement(e); t.async = !0;
+    t.src = v; s = b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t, s)
+  }(window, document, 'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+  fbq('init', '243028289693773');
+  fbq('track', 'PageView');
+</script>
+<script>
+  document.documentElement.setAttribute('data-version', '0.17');
+</script>
+<noscript>
+  <img height="1" width="1" src="https://www.facebook.com/tr?id=243028289693773&ev=PageView&noscript=1" />
+</noscript>
+<script>
+  function gtag() {
+    window.dataLayer.push(arguments);
+  }
+</script>
+<!-- End Facebook Pixel Code -->
+<!-- Repository configuration for tutorials -->
+
+
+<!-- Script to Fix scrolling with fast fixed-duration animation -->
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const SCROLL_DURATION = 150; // Fixed duration in ms regardless of distance
+    let lockedTargetId = null; // Lock the TOC to this target until user scrolls manually
+    let isUpdatingToc = false; // Guard against infinite loops
+
+    function smoothScrollTo(targetY, duration, onComplete) {
+      const startY = window.pageYOffset;
+      const difference = targetY - startY;
+      const startTime = performance.now();
+
+      function step(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        // Ease-out cubic for smooth deceleration
+        const easeOut = 1 - Math.pow(1 - progress, 3);
+        window.scrollTo(0, startY + difference * easeOut);
+        if (progress < 1) {
+          requestAnimationFrame(step);
+        } else if (onComplete) {
+          onComplete();
+        }
+      }
+      requestAnimationFrame(step);
+    }
+
+    function updateTocHighlight(targetId) {
+      if (isUpdatingToc) return; // Prevent infinite loop
+      isUpdatingToc = true;
+
+      // Find the TOC link that points to this target
+      const tocNav = document.querySelector('.bd-toc-nav');
+      if (!tocNav) {
+        isUpdatingToc = false;
+        return;
+      }
+
+      // Remove active class from all TOC items
+      tocNav.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+        link.parentElement.classList.remove('active');
+      });
+
+      // Add active class to the matching link and all its ancestor TOC items
+      const matchingLink = tocNav.querySelector(`a[href="#${CSS.escape(targetId)}"]`);
+      if (matchingLink) {
+        matchingLink.classList.add('active');
+        matchingLink.parentElement.classList.add('active');
+
+        // Walk up the DOM to activate parent TOC entries (e.g. h2 parent of h3)
+        let ancestor = matchingLink.parentElement.parentElement;
+        while (ancestor && ancestor !== tocNav) {
+          if (ancestor.classList.contains('toc-entry')) {
+            ancestor.classList.add('active');
+            const parentLink = ancestor.querySelector(':scope > a.nav-link');
+            if (parentLink) {
+              parentLink.classList.add('active');
+            }
+          }
+          ancestor = ancestor.parentElement;
+        }
+      }
+
+      // Use setTimeout to reset the guard after the current call stack
+      setTimeout(function() {
+        isUpdatingToc = false;
+      }, 0);
+    }
+
+    // Watch for ScrollSpy trying to change the active state and override it
+    const tocNav = document.querySelector('.bd-toc-nav');
+    if (tocNav) {
+      const observer = new MutationObserver(function(mutations) {
+        if (lockedTargetId && !isUpdatingToc) {
+          // Force our target to stay highlighted
+          updateTocHighlight(lockedTargetId);
+        }
+      });
+      observer.observe(tocNav, {
+        attributes: true,
+        attributeFilter: ['class'],
+        subtree: true
+      });
+    }
+
+    // Release the lock when user scrolls manually (not programmatically)
+    window.addEventListener('wheel', function() {
+      lockedTargetId = null;
+    });
+    window.addEventListener('touchmove', function() {
+      lockedTargetId = null;
+    });
+
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function (e) {
+        const targetId = this.getAttribute('href').substring(1);
+        if (!targetId) return; // Skip empty hash links
+        const targetElement = document.getElementById(targetId);
+
+        if (targetElement) {
+          e.preventDefault();
+
+          // Lock the TOC to this target
+          lockedTargetId = targetId;
+
+          const headerHeight =
+            (document.querySelector('.header-holder') ? document.querySelector('.header-holder').offsetHeight : 0) +
+            (document.querySelector('.bd-header') ? document.querySelector('.bd-header').offsetHeight : 0) + 20;
+
+          const targetPosition = targetElement.getBoundingClientRect().top + window.pageYOffset - headerHeight;
+
+          // Update TOC highlight immediately
+          updateTocHighlight(targetId);
+
+          smoothScrollTo(targetPosition, SCROLL_DURATION, function() {
+            // Keep it highlighted after scroll
+            updateTocHighlight(targetId);
+          });
+
+          // Update URL hash without scrolling
+          history.pushState(null, null, '#' + targetId);
+        }
+      });
+    });
+  });
+</script>
+
+<script async src="https://cse.google.com/cse.js?cx=e65585f8c3ea1440e"></script>
+<!-- RunLLM Widget Configuration -->
+
+
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+
+  </head>
+
+<body data-feedback-url="https://github.com/meta-pytorch/torchcodec" class="pytorch-body">
+  
+
+
+  
+  
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+
+  
+  <div class="navbar-header-items__mobile-logo">
+    
+
+
+
+
+
+
+
+  
+  
+  
+
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+    <span class="logo__title">TorchCodec</span>
+  
+</a>
+  </div>
+
+  
+  
+  <div class=" navbar-header-items__start">
+    
+      
+      
+        <div class="navbar-item">
+          
+
+
+
+
+
+
+
+  
+  
+  
+
+
+<a class="navbar-brand logo" href="../../index.html">
+  
+    <span class="logo__title">TorchCodec</span>
+  
+</a>
+        </div>
+      
+    
+      
+      
+        
+        <div class="navbar-item desktop-only-version">
+          
+<script>
+document.write(`
+  <div class="version-switcher__container dropdown">
+    <button id="pst-version-switcher-button-2"
+      type="button"
+      class="version-switcher__button btn btn-sm dropdown-toggle"
+      data-bs-toggle="dropdown"
+      aria-haspopup="listbox"
+      aria-controls="pst-version-switcher-list-2"
+      aria-label="Version switcher list"
+    >
+      Choose version  <!-- this text may get changed later by javascript -->
+      <span class="caret"></span>
+    </button>
+    <div id="pst-version-switcher-list-2"
+      class="version-switcher__menu dropdown-menu list-group-flush py-0"
+      role="listbox" aria-labelledby="pst-version-switcher-button-2">
+      <!-- dropdown will be populated by javascript on page load -->
+    </div>
+  </div>
+`);
+</script>
+        </div>
+      
+    
+  </div>
+  
+  <div class=" navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+    
+      <li class="nav-item">
+        
+          
+          <a class="nav-link" href="https://github.com/meta-pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec" target="_blank" rel="noopener noreferrer">
+            Installation&nbsp;<i class="fa-solid fa-arrow-up-right-from-square external-icon"></i>
+          </a>
+        
+      </li>
+    
+      <li class="nav-item dropdown current active">
+        
+          
+          <div class="nav-item-with-toggle">
+            <a class="nav-link nav-internal active" href="../index.html">
+              Interactive examples
+            </a>
+          </div>
+          <ul class="dropdown-menu" id="dropdown-2">
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../decoding/index.html">
+                  Decoding
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="index.html">
+                  Decoding blocks (experimental)
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../encoding/index.html">
+                  Encoding
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../migration/index.html">
+                  Migrating from torchvision
+                </a>
+              </li>
+            
+          </ul>
+        
+      </li>
+    
+      <li class="nav-item dropdown">
+        
+          
+          <div class="nav-item-with-toggle">
+            <a class="nav-link nav-internal" href="../../api_ref.html">
+              API Reference
+            </a>
+          </div>
+          <ul class="dropdown-menu" id="dropdown-3">
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../../api_ref_torchcodec.html">
+                  torchcodec
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../../api_ref_decoders.html">
+                  torchcodec.decoders
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../../api_ref_decoders_blocks.html">
+                  torchcodec.decoders._blocks
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../../api_ref_encoders.html">
+                  torchcodec.encoders
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../../api_ref_samplers.html">
+                  torchcodec.samplers
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../../api_ref_transforms.html">
+                  torchcodec.transforms
+                </a>
+              </li>
+            
+          </ul>
+        
+      </li>
+    
+      <li class="nav-item">
+        
+          
+          <a class="nav-link nav-internal" href="../../glossary.html">
+            Glossary
+          </a>
+        
+      </li>
+    
+
+    
+    
+  </ul>
+</nav>
+</div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+      
+      
+        <div class="navbar-item"><!-- PyTorch.org site link - desktop only, two-line layout -->
+<!-- Note: The show_pytorch_org_link check is handled in layout.html's navbar_end block -->
+<a href="https://pytorch.org" class="pytorch-site-link nav-link nav-external" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="Go to PyTorch.org">
+  <span class="pytorch-site-link-text">
+    <span>Go to</span>
+    <span>pytorch.org <i class="fa-solid fa-arrow-up-right-from-square external-icon"></i></span>
+  </span>
+</a></div>
+      
+      
+        <div class="navbar-item">
+  
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+</div>
+      
+        <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://x.com/PyTorch" title="X" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-x-twitter fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">X</span></a>
+        </li>
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/meta-pytorch/torchcodec" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://dev-discuss.pytorch.org/" title="Discourse" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-discourse fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">Discourse</span></a>
+        </li>
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://pypi.org/project/torchcodec/" title="PyPi" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-python fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">PyPi</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+
+
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    <div class="sidebar-header-items__start">
+      <div class="navbar-item">
+        
+<script>
+document.write(`
+  <div class="version-switcher__container dropdown">
+    <button id="pst-version-switcher-button-3"
+      type="button"
+      class="version-switcher__button btn btn-sm dropdown-toggle"
+      data-bs-toggle="dropdown"
+      aria-haspopup="listbox"
+      aria-controls="pst-version-switcher-list-3"
+      aria-label="Version switcher list"
+    >
+      Choose version  <!-- this text may get changed later by javascript -->
+      <span class="caret"></span>
+    </button>
+    <div id="pst-version-switcher-list-3"
+      class="version-switcher__menu dropdown-menu list-group-flush py-0"
+      role="listbox" aria-labelledby="pst-version-switcher-button-3">
+      <!-- dropdown will be populated by javascript on page load -->
+    </div>
+  </div>
+`);
+</script>
+      </div>
+    </div>
+    
+
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+    
+      <li class="nav-item">
+        
+          
+          <a class="nav-link" href="https://github.com/meta-pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec" target="_blank" rel="noopener noreferrer">
+            Installation&nbsp;<i class="fa-solid fa-arrow-up-right-from-square external-icon"></i>
+          </a>
+        
+      </li>
+    
+      <li class="nav-item dropdown current active">
+        
+          
+          <div class="nav-item-with-toggle">
+            <a class="nav-link nav-internal active" href="../index.html">
+              Interactive examples
+            </a>
+          </div>
+          <ul class="dropdown-menu" id="dropdown-2">
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../decoding/index.html">
+                  Decoding
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="index.html">
+                  Decoding blocks (experimental)
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../encoding/index.html">
+                  Encoding
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../migration/index.html">
+                  Migrating from torchvision
+                </a>
+              </li>
+            
+          </ul>
+        
+      </li>
+    
+      <li class="nav-item dropdown">
+        
+          
+          <div class="nav-item-with-toggle">
+            <a class="nav-link nav-internal" href="../../api_ref.html">
+              API Reference
+            </a>
+          </div>
+          <ul class="dropdown-menu" id="dropdown-3">
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../../api_ref_torchcodec.html">
+                  torchcodec
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../../api_ref_decoders.html">
+                  torchcodec.decoders
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../../api_ref_decoders_blocks.html">
+                  torchcodec.decoders._blocks
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../../api_ref_encoders.html">
+                  torchcodec.encoders
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../../api_ref_samplers.html">
+                  torchcodec.samplers
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../../api_ref_transforms.html">
+                  torchcodec.transforms
+                </a>
+              </li>
+            
+          </ul>
+        
+      </li>
+    
+      <li class="nav-item">
+        
+          
+          <a class="nav-link nav-internal" href="../../glossary.html">
+            Glossary
+          </a>
+        
+      </li>
+    
+
+    
+    
+  </ul>
+</nav>
+</div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+        
+          <div class="navbar-item"><!-- PyTorch.org site link - desktop only, two-line layout -->
+<!-- Note: The show_pytorch_org_link check is handled in layout.html's navbar_end block -->
+<a href="https://pytorch.org" class="pytorch-site-link nav-link nav-external" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="Go to PyTorch.org">
+  <span class="pytorch-site-link-text">
+    <span>Go to</span>
+    <span>pytorch.org <i class="fa-solid fa-arrow-up-right-from-square external-icon"></i></span>
+  </span>
+</a></div>
+        
+        
+          <div class="navbar-item">
+  
+<form class="bd-search d-flex align-items-center"
+      action="../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+</div>
+        
+          <div class="navbar-item">
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://x.com/PyTorch" title="X" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-x-twitter fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">X</span></a>
+        </li>
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/meta-pytorch/torchcodec" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">GitHub</span></a>
+        </li>
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://dev-discuss.pytorch.org/" title="Discourse" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-discourse fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">Discourse</span></a>
+        </li>
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://pypi.org/project/torchcodec/" title="PyPi" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-python fa-lg" aria-hidden="true"></i>
+            <span class="sr-only">PyPi</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../decoding/index.html">Decoding</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../decoding/basic_example.html">Decoding a video with VideoDecoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../decoding/image_decoding.html">Decoding images</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../decoding/audio_decoding.html">Decoding audio streams with AudioDecoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../decoding/basic_cuda_example.html">Accelerated video decoding on GPUs with CUDA and NVDEC</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../decoding/file_like.html">Streaming data through file-like support</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../decoding/approximate_mode.html">Exact vs Approximate seek mode: Performance and accuracy comparison</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../decoding/sampling.html">How to sample video clips</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../decoding/parallel_decoding.html">Parallel video decoding: multi-processing and multi-threading</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../decoding/performance_tips.html">TorchCodec Performance Tips and Best Practices</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../decoding/custom_frame_mappings.html">Decoding with custom frame mappings</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../decoding/transforms.html">Decoder Transforms: Applying transforms during decoding</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../decoding/hdr_decoding.html">Decoding HDR videos</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Decoding blocks (experimental)</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Blocks: build your own decoding pipeline</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pipelines.html">Composing pipelines: threads, devices and endless streams</a></li>
+<li class="toctree-l2"><a class="reference internal" href="raw_data.html">Raw frames and raw audio samples</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../encoding/index.html">Encoding</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../encoding/image_encoding.html">Encoding images</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../encoding/audio_encoding.html">Encoding audio samples with AudioEncoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../encoding/video_encoding.html">Encoding video with the Encoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../encoding/multi_stream_encoding.html">Encoding audio and video streams with the Encoder</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../migration/index.html">Migrating from torchvision</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../migration/torchvision_migration.html">Migrating from TorchVision to TorchCodec</a></li>
+</ul>
+</details></li>
+</ul>
+</div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+
+
+
+<div id="rtd-footer-container"></div>
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+
+
+
+<nav aria-label="Breadcrumb" class="d-print-none">
+  <ul class="bd-breadcrumbs">
+    
+    <li class="breadcrumb-item breadcrumb-home">
+      <a href="../../index.html" class="nav-link" aria-label="Home">
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+    
+    <li class="breadcrumb-item"><a href="../index.html" class="nav-link">Interactive examples</a></li>
+    
+    
+    <li class="breadcrumb-item"><a href="index.html" class="nav-link">Decoding blocks (experimental)</a></li>
+    
+    <li class="breadcrumb-item active" aria-current="page">Blocks:...</li>
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+<div class="rating">
+    Rate this Page
+    <div class="stars">
+        
+        <span class="star" data-behavior="tutorial-rating" data-count="1" data-value="1">★</span>
+        
+        <span class="star" data-behavior="tutorial-rating" data-count="2" data-value="2">★</span>
+        
+        <span class="star" data-behavior="tutorial-rating" data-count="3" data-value="3">★</span>
+        
+        <span class="star" data-behavior="tutorial-rating" data-count="4" data-value="4">★</span>
+        
+        <span class="star" data-behavior="tutorial-rating" data-count="5" data-value="5">★</span>
+        
+    </div>
+</div>
+</div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="searchbox"></div>
+<div id="pytorch-article">
+  <!-- Hidden breadcrumb schema for SEO only -->
+  <div style="display:none;" itemscope itemtype="https://schema.org/BreadcrumbList">
+    
+    <div itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+      <link itemprop="item" href="../index.html">
+      <meta itemprop="name" content="Interactive examples">
+      <meta itemprop="position" content="1">
+    </div>
+    
+    <div itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+      <link itemprop="item" href="index.html">
+      <meta itemprop="name" content="Decoding blocks (experimental)">
+      <meta itemprop="position" content="2">
+    </div>
+    
+    <div itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+      <meta itemprop="name" content="Blocks: build your own decoding pipeline">
+      <meta itemprop="position" content="3">
+    </div>
+  </div>
+
+  
+  
+
+  
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section class="sphx-glr-example-title" id="blocks-build-your-own-decoding-pipeline">
+<span id="sphx-glr-generated-examples-blocks-basics-py"></span><h1>Blocks: build your own decoding pipeline<a class="headerlink" href="#blocks-build-your-own-decoding-pipeline" title="Link to this heading">#</a></h1>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><strong>The Blocks APIs are under active construction.</strong> They are private
+and unreleased. Signatures and semantics may change without notice. This
+tutorial only exists to show what they will eventually make possible.</p>
+</div>
+<p>In this tutorial, we’ll take a tour of the Blocks APIs: the three decoding
+stages for video and audio, following several streams of a container at once,
+seeking, scanning, and what the metadata means.</p>
+<p><a class="reference internal" href="../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a> and
+<a class="reference internal" href="../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder" title="torchcodec.decoders.AudioDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioDecoder</span></code></a> are each a single box that does
+demuxing, decoding and conversion for you. The Blocks APIs expose those three
+stages separately, one chain per media type:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Demuxer</span>  <span class="o">-&gt;</span>  <span class="n">VideoPacketDecoder</span>  <span class="o">-&gt;</span>  <span class="n">ColorConverter</span>
+ <span class="n">Packet</span>         <span class="n">RawFrame</span>               <span class="n">RGB</span> <span class="n">Frame</span>
+
+<span class="n">Demuxer</span>  <span class="o">-&gt;</span>  <span class="n">AudioPacketDecoder</span>  <span class="o">-&gt;</span>  <span class="n">AudioConverter</span>
+ <span class="n">Packet</span>        <span class="n">RawAudioSamples</span>          <span class="n">AudioSamples</span>
+</pre></div>
+</div>
+<p>Two companion tutorials go further:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py"><span class="std std-ref">Composing pipelines: threads, devices and endless streams</span></a>, on running the stages
+concurrently and on decoding sources that never end.</p></li>
+<li><p><a class="reference internal" href="raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py"><span class="std std-ref">Raw frames and raw audio samples</span></a>, on reading the
+decoder’s own YUV planes and audio samples instead of converting them.</p></li>
+</ul>
+<p>First, a bit of boilerplate: a test video, and the device we’ll run on.</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <a href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="pathlib.Path" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class"><span class="n">Path</span></a>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+
+<a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a> <span class="o">=</span> <span class="s2">&quot;cuda&quot;</span> <span class="k">if</span> <a href="https://docs.pytorch.org/docs/stable/generated/torch.cuda.is_available.html#torch.cuda.is_available" title="torch.cuda.is_available" class="sphx-glr-backref-module-torch-cuda sphx-glr-backref-type-py-function"><span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span></a><span class="p">()</span> <span class="k">else</span> <span class="s2">&quot;cpu&quot;</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="w"> </span><span class="si">= }</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">temp_dir</span></a> <span class="o">=</span> <a href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="pathlib.Path" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class"><span class="n">Path</span></a><span class="p">(</span><a href="https://docs.python.org/3/library/tempfile.html#tempfile.mkdtemp" title="tempfile.mkdtemp" class="sphx-glr-backref-module-tempfile sphx-glr-backref-type-py-function"><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span></a><span class="p">())</span>
+<a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">video_path</span></a> <span class="o">=</span> <a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">temp_dir</span></a> <span class="o">/</span> <span class="s2">&quot;video.mp4&quot;</span>
+<a href="https://docs.python.org/3/library/subprocess.html#subprocess.run" title="subprocess.run" class="sphx-glr-backref-module-subprocess sphx-glr-backref-type-py-function"><span class="n">subprocess</span><span class="o">.</span><span class="n">run</span></a><span class="p">(</span>
+    <span class="p">[</span>
+        <span class="s2">&quot;ffmpeg&quot;</span><span class="p">,</span> <span class="s2">&quot;-y&quot;</span><span class="p">,</span> <span class="s2">&quot;-hide_banner&quot;</span><span class="p">,</span> <span class="s2">&quot;-loglevel&quot;</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;-f&quot;</span><span class="p">,</span> <span class="s2">&quot;lavfi&quot;</span><span class="p">,</span> <span class="s2">&quot;-i&quot;</span><span class="p">,</span> <span class="s2">&quot;testsrc2=size=1280x720:rate=30:duration=5&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;-c:v&quot;</span><span class="p">,</span> <span class="s2">&quot;libx264&quot;</span><span class="p">,</span> <span class="s2">&quot;-pix_fmt&quot;</span><span class="p">,</span> <span class="s2">&quot;yuv420p&quot;</span><span class="p">,</span> <span class="s2">&quot;-g&quot;</span><span class="p">,</span> <span class="s2">&quot;30&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;-colorspace&quot;</span><span class="p">,</span> <span class="s2">&quot;bt709&quot;</span><span class="p">,</span> <span class="s2">&quot;-color_primaries&quot;</span><span class="p">,</span> <span class="s2">&quot;bt709&quot;</span><span class="p">,</span> <span class="s2">&quot;-color_trc&quot;</span><span class="p">,</span> <span class="s2">&quot;bt709&quot;</span><span class="p">,</span>
+        <span class="nb">str</span><span class="p">(</span><a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">video_path</span></a><span class="p">),</span>
+    <span class="p">],</span>
+    <span class="n">check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>device = &#39;cuda&#39;
+
+CompletedProcess(args=[&#39;ffmpeg&#39;, &#39;-y&#39;, &#39;-hide_banner&#39;, &#39;-loglevel&#39;, &#39;error&#39;, &#39;-f&#39;, &#39;lavfi&#39;, &#39;-i&#39;, &#39;testsrc2=size=1280x720:rate=30:duration=5&#39;, &#39;-c:v&#39;, &#39;libx264&#39;, &#39;-pix_fmt&#39;, &#39;yuv420p&#39;, &#39;-g&#39;, &#39;30&#39;, &#39;-colorspace&#39;, &#39;bt709&#39;, &#39;-color_primaries&#39;, &#39;bt709&#39;, &#39;-color_trc&#39;, &#39;bt709&#39;, &#39;/tmp/tmp0siuivzi/video.mp4&#39;], returncode=0)
+</pre></div>
+</div>
+<section id="the-three-blocks">
+<h2>The three blocks<a class="headerlink" href="#the-three-blocks" title="Link to this heading">#</a></h2>
+<section id="one-video-stream">
+<h3>One video stream<a class="headerlink" href="#one-video-stream" title="Link to this heading">#</a></h3>
+<p>Here is a complete video pipeline, which is equivalent to
+<a class="reference internal" href="../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_all_frames" title="torchcodec.decoders.VideoDecoder.get_all_frames"><code class="xref py py-meth docutils literal notranslate"><span class="pre">VideoDecoder.get_all_frames()</span></code></a></p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec.decoders._blocks</span><span class="w"> </span><span class="kn">import</span> <span class="n">ColorConverter</span><span class="p">,</span> <span class="n">Demuxer</span>
+
+<span class="n">demuxer</span> <span class="o">=</span> <span class="n">Demuxer</span><span class="p">(</span><a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">video_path</span></a><span class="p">)</span>
+<span class="p">(</span><span class="n">video_stream</span><span class="p">,)</span> <span class="o">=</span> <a href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="builtins.tuple" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">demuxer</span><span class="o">.</span><span class="n">streams</span></a>
+<span class="n">packet_decoder</span> <span class="o">=</span> <span class="n">video_stream</span><span class="o">.</span><span class="n">make_decoder</span><span class="p">(</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="o">=</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="p">)</span>
+<span class="n">color_converter</span> <span class="o">=</span> <span class="n">ColorConverter</span><span class="p">(</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="o">=</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">decode_frames</span><span class="p">(</span><span class="n">demuxer</span><span class="p">,</span> <span class="n">packet_decoder</span><span class="p">,</span> <span class="n">color_converter</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">packet</span> <span class="ow">in</span> <span class="n">demuxer</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">raw_frame</span> <span class="ow">in</span> <span class="n">packet_decoder</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">packet</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="n">color_converter</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">raw_frame</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">raw_frame</span> <span class="ow">in</span> <span class="n">packet_decoder</span><span class="o">.</span><span class="n">drain</span><span class="p">():</span>
+        <span class="k">yield</span> <span class="n">color_converter</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">raw_frame</span><span class="p">)</span>
+
+
+<span class="n">frames</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">decode_frames</span><span class="p">(</span><span class="n">demuxer</span><span class="p">,</span> <span class="n">packet_decoder</span><span class="p">,</span> <span class="n">color_converter</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">frames</span><span class="p">)</span><span class="si">}</span><span class="s2"> frames, </span><span class="si">{</span><span class="n">frames</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><a href="https://docs.pytorch.org/docs/stable/size.html#torch.Size" title="torch.Size" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">data</span><span class="o">.</span><span class="n">shape</span></a><span class="w"> </span><span class="si">= }</span><span class="s2">, &quot;</span>
+      <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">frames</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">pts_seconds</span><span class="w"> </span><span class="si">= }</span><span class="s2">, </span><span class="si">{</span><span class="n">frames</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">data</span></a><span class="o">.</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="w"> </span><span class="si">= }</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>150 frames, frames[0].data.shape = torch.Size([3, 720, 1280]), frames[0].pts_seconds = 0.0, frames[0].data.device = device(type=&#39;cuda&#39;, index=0)
+</pre></div>
+</div>
+<p>We create a <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer" title="torchcodec.decoders._blocks.Demuxer"><code class="xref py py-class docutils literal notranslate"><span class="pre">Demuxer</span></code></a> over the file
+and let it follow the default video stream, which comes back as a
+<a class="reference internal" href="../../generated/torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream" title="torchcodec.decoders._blocks.VideoStream"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoStream</span></code></a>. From that stream we build a <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder" title="torchcodec.decoders._blocks.VideoPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoPacketDecoder</span></code></a>,
+which decodes the demuxer’s <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet" title="torchcodec.decoders._blocks.Packet"><code class="xref py py-class docutils literal notranslate"><span class="pre">Packet</span></code></a> objects into <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame" title="torchcodec.decoders._blocks.RawFrame"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawFrame</span></code></a>
+objects. A <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame" title="torchcodec.decoders._blocks.RawFrame"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawFrame</span></code></a> typically contains raw YUV data that you can
+access: see <a class="reference internal" href="raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py"><span class="std std-ref">Raw frames and raw audio samples</span></a> for more
+details. Finally, a <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter" title="torchcodec.decoders._blocks.ColorConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ColorConverter</span></code></a> turns
+each of those into an RGB <a class="reference internal" href="../../generated/torchcodec.Frame.html#torchcodec.Frame" title="torchcodec.Frame"><code class="xref py py-class docutils literal notranslate"><span class="pre">Frame</span></code></a>, the same object a
+<a class="reference internal" href="../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a> would have handed you.</p>
+<p>Importantly, <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder.decode" title="torchcodec.decoders._blocks.VideoPacketDecoder.decode"><code class="xref py py-meth docutils literal notranslate"><span class="pre">VideoPacketDecoder.decode()</span></code></a> returns a list of
+<a class="reference internal" href="../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame" title="torchcodec.decoders._blocks.RawFrame"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawFrame</span></code></a> objects: depending on how the video was encoded, a single
+packet may contain a single frame, several frames, or even a partial frame.
+That’s why the returned list can be empty, or contain more than one frame, and
+you must iterate over it.  For the same reason, you must call
+<a class="reference internal" href="../../generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder.drain" title="torchcodec.decoders._blocks.VideoPacketDecoder.drain"><code class="xref py py-meth docutils literal notranslate"><span class="pre">drain()</span></code></a> at the end to retrieve any remaining frames
+that the decoder may be holding.</p>
+<p>Both <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.make_decoder" title="torchcodec.decoders._blocks.VideoStream.make_decoder"><code class="xref py py-meth docutils literal notranslate"><span class="pre">VideoStream.make_decoder()</span></code></a> and <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter" title="torchcodec.decoders._blocks.ColorConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ColorConverter</span></code></a> accept a
+<code class="docutils literal notranslate"><span class="pre">device</span></code> parameter so you can run them on CPU or CUDA (they must match!),
+and the demuxing stage is always CPU only.</p>
+</section>
+<section id="one-audio-stream">
+<h3>One audio stream<a class="headerlink" href="#one-audio-stream" title="Link to this heading">#</a></h3>
+<p>Audio decoding has the same three stages. The following pipeline is equivalent
+to <a class="reference internal" href="../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder.get_all_samples" title="torchcodec.decoders.AudioDecoder.get_all_samples"><code class="xref py py-meth docutils literal notranslate"><span class="pre">AudioDecoder.get_all_samples()</span></code></a>:</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec.decoders._blocks</span><span class="w"> </span><span class="kn">import</span> <span class="n">AudioConverter</span>
+
+<a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">audio_path</span></a> <span class="o">=</span> <a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">temp_dir</span></a> <span class="o">/</span> <span class="s2">&quot;audio.wav&quot;</span>
+<a href="https://docs.python.org/3/library/subprocess.html#subprocess.run" title="subprocess.run" class="sphx-glr-backref-module-subprocess sphx-glr-backref-type-py-function"><span class="n">subprocess</span><span class="o">.</span><span class="n">run</span></a><span class="p">(</span>
+    <span class="p">[</span>
+        <span class="s2">&quot;ffmpeg&quot;</span><span class="p">,</span> <span class="s2">&quot;-y&quot;</span><span class="p">,</span> <span class="s2">&quot;-hide_banner&quot;</span><span class="p">,</span> <span class="s2">&quot;-loglevel&quot;</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;-f&quot;</span><span class="p">,</span> <span class="s2">&quot;lavfi&quot;</span><span class="p">,</span> <span class="s2">&quot;-i&quot;</span><span class="p">,</span> <span class="s2">&quot;sine=frequency=440:sample_rate=44100:duration=5&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;-c:a&quot;</span><span class="p">,</span> <span class="s2">&quot;pcm_s16le&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">audio_path</span></a><span class="p">),</span>
+    <span class="p">],</span>
+    <span class="n">check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">demuxer</span> <span class="o">=</span> <span class="n">Demuxer</span><span class="p">(</span><a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">audio_path</span></a><span class="p">,</span> <span class="n">streams</span><span class="o">=</span><span class="s2">&quot;audio&quot;</span><span class="p">)</span>
+<span class="n">packet_decoder</span> <span class="o">=</span> <a href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="builtins.tuple" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">demuxer</span><span class="o">.</span><span class="n">streams</span></a><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">make_decoder</span><span class="p">()</span>
+<span class="n">audio_converter</span> <span class="o">=</span> <span class="n">AudioConverter</span><span class="p">(</span><span class="n">sample_rate</span><span class="o">=</span><span class="mi">16_000</span><span class="p">,</span> <span class="n">num_channels</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+<a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">samples</span></a> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">packet</span> <span class="ow">in</span> <span class="n">demuxer</span><span class="p">:</span>
+    <a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">samples</span></a> <span class="o">+=</span> <span class="p">[</span><span class="n">audio_converter</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span> <span class="k">for</span> <span class="n">raw</span> <span class="ow">in</span> <span class="n">packet_decoder</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">packet</span><span class="p">)]</span>
+<a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">samples</span></a> <span class="o">+=</span> <span class="p">[</span><span class="n">audio_converter</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span> <span class="k">for</span> <span class="n">raw</span> <span class="ow">in</span> <span class="n">packet_decoder</span><span class="o">.</span><span class="n">drain</span><span class="p">()]</span>
+<a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">samples</span></a><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">audio_converter</span><span class="o">.</span><span class="n">drain</span><span class="p">())</span>  <span class="c1"># don&#39;t forget me</span>
+
+<a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">data</span></a> <span class="o">=</span> <a href="https://docs.pytorch.org/docs/stable/generated/torch.cat.html#torch.cat" title="torch.cat" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-function"><span class="n">torch</span><span class="o">.</span><span class="n">cat</span></a><span class="p">([</span><span class="n">s</span><span class="o">.</span><a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">data</span></a> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">samples</span></a><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><a href="https://docs.pytorch.org/docs/stable/size.html#torch.Size" title="torch.Size" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">data</span><span class="o">.</span><span class="n">shape</span></a><span class="w"> </span><span class="si">= }</span><span class="s2">, </span><span class="si">{</span><a href="https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype" title="torch.dtype" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">data</span><span class="o">.</span><span class="n">dtype</span></a><span class="w"> </span><span class="si">= }</span><span class="s2">, &quot;</span>
+      <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">samples</span></a><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><a href="https://docs.pytorch.org/docs/stable/size.html#torch.Size" title="torch.Size" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">data</span><span class="o">.</span><span class="n">shape</span></a><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2"> samples came out of drain()&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>data.shape = torch.Size([1, 80000]), data.dtype = torch.float32, 16 samples came out of drain()
+</pre></div>
+</div>
+<p>An <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.AudioStream.html#torchcodec.decoders._blocks.AudioStream" title="torchcodec.decoders._blocks.AudioStream"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioStream</span></code></a> builds an <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder" title="torchcodec.decoders._blocks.AudioPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioPacketDecoder</span></code></a>, which decodes
+<a class="reference internal" href="../../generated/torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet" title="torchcodec.decoders._blocks.Packet"><code class="xref py py-class docutils literal notranslate"><span class="pre">Packet</span></code></a> objects into <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples" title="torchcodec.decoders._blocks.RawAudioSamples"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawAudioSamples</span></code></a>: the codec’s own
+samples, in the codec’s own sample type, as a <code class="docutils literal notranslate"><span class="pre">[num_channels,</span> <span class="pre">num_samples]</span></code>
+tensor. Those are the true source samples - 16-bit integers for the file
+above, not floats in <code class="docutils literal notranslate"><span class="pre">[-1,</span> <span class="pre">1]</span></code>. <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter" title="torchcodec.decoders._blocks.AudioConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioConverter</span></code></a> is what normalizes
+them, and it can resample and change the channel count on the way.</p>
+<p>The <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter" title="torchcodec.decoders._blocks.AudioConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioConverter</span></code></a> differs from <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter" title="torchcodec.decoders._blocks.ColorConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ColorConverter</span></code></a> in one
+important way: it is a stateful stream processor (much like the
+<a class="reference internal" href="../../generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder" title="torchcodec.decoders._blocks.VideoPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoPacketDecoder</span></code></a> and <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder" title="torchcodec.decoders._blocks.AudioPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioPacketDecoder</span></code></a> are), while the
+color converter is mainly stateless. The reason is that resampling is an
+interpolation filter, so the sample it emits at a given instant depends on
+input samples before and after it. The converter therefore holds the tail
+of each <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples" title="torchcodec.decoders._blocks.RawAudioSamples"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawAudioSamples</span></code></a> until the next one arrives, so that it can
+correctly interpolate them. Make sure to call <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter.drain" title="torchcodec.decoders._blocks.AudioConverter.drain"><code class="xref py py-meth docutils literal notranslate"><span class="pre">AudioConverter.drain()</span></code></a> at
+the end of the pipeline to retrieve the last samples.</p>
+</section>
+<section id="several-streams-at-once">
+<h3>Several streams at once<a class="headerlink" href="#several-streams-at-once" title="Link to this heading">#</a></h3>
+<p>The examples above followed a single stream each. But a <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer" title="torchcodec.decoders._blocks.Demuxer"><code class="xref py py-class docutils literal notranslate"><span class="pre">Demuxer</span></code></a> can
+follow multiple video streams, multiple audio streams, or a mix of both at
+once!</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">av_path</span></a> <span class="o">=</span> <a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">temp_dir</span></a> <span class="o">/</span> <span class="s2">&quot;av.mp4&quot;</span>
+<a href="https://docs.python.org/3/library/subprocess.html#subprocess.run" title="subprocess.run" class="sphx-glr-backref-module-subprocess sphx-glr-backref-type-py-function"><span class="n">subprocess</span><span class="o">.</span><span class="n">run</span></a><span class="p">(</span>
+    <span class="p">[</span>
+        <span class="s2">&quot;ffmpeg&quot;</span><span class="p">,</span> <span class="s2">&quot;-y&quot;</span><span class="p">,</span> <span class="s2">&quot;-hide_banner&quot;</span><span class="p">,</span> <span class="s2">&quot;-loglevel&quot;</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;-i&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">video_path</span></a><span class="p">),</span> <span class="s2">&quot;-i&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">audio_path</span></a><span class="p">),</span>
+        <span class="s2">&quot;-c:v&quot;</span><span class="p">,</span> <span class="s2">&quot;copy&quot;</span><span class="p">,</span> <span class="s2">&quot;-c:a&quot;</span><span class="p">,</span> <span class="s2">&quot;aac&quot;</span><span class="p">,</span> <span class="s2">&quot;-shortest&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">av_path</span></a><span class="p">),</span>
+    <span class="p">],</span>
+    <span class="n">check</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>CompletedProcess(args=[&#39;ffmpeg&#39;, &#39;-y&#39;, &#39;-hide_banner&#39;, &#39;-loglevel&#39;, &#39;error&#39;, &#39;-i&#39;, &#39;/tmp/tmp0siuivzi/video.mp4&#39;, &#39;-i&#39;, &#39;/tmp/tmp0siuivzi/audio.wav&#39;, &#39;-c:v&#39;, &#39;copy&#39;, &#39;-c:a&#39;, &#39;aac&#39;, &#39;-shortest&#39;, &#39;/tmp/tmp0siuivzi/av.mp4&#39;], returncode=0)
+</pre></div>
+</div>
+<p>Which streams to follow is specified at construction time of the
+<a class="reference internal" href="../../generated/torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer" title="torchcodec.decoders._blocks.Demuxer"><code class="xref py py-class docutils literal notranslate"><span class="pre">Demuxer</span></code></a> via the <code class="docutils literal notranslate"><span class="pre">streams</span></code> parameter. <code class="docutils literal notranslate"><span class="pre">streams</span></code> takes one selector
+or a tuple of them: <code class="docutils literal notranslate"><span class="pre">&quot;video&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;audio&quot;</span></code> for the <a class="reference internal" href="../../glossary.html#term-best-stream"><span class="xref std std-term">best stream</span></a> of
+that type, an <code class="docutils literal notranslate"><span class="pre">int</span></code> for a stream index - which is how you reach the second
+video stream, or the fourth audio track - or <code class="docutils literal notranslate"><span class="pre">&quot;all&quot;</span></code> on its own for every
+audio and video stream in the file.  <code class="docutils literal notranslate"><span class="pre">demuxer.streams</span></code> comes back in the
+order you asked for, and each of them builds its own decoder.</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="n">demuxer</span> <span class="o">=</span> <span class="n">Demuxer</span><span class="p">(</span><a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">av_path</span></a><span class="p">,</span> <span class="n">streams</span><span class="o">=</span><span class="p">(</span><span class="s2">&quot;video&quot;</span><span class="p">,</span> <span class="s2">&quot;audio&quot;</span><span class="p">))</span>
+<span class="n">video_stream</span><span class="p">,</span> <span class="n">audio_stream</span> <span class="o">=</span> <a href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="builtins.tuple" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">demuxer</span><span class="o">.</span><span class="n">streams</span></a>
+
+<a href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="builtins.dict" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">decoders</span></a> <span class="o">=</span> <span class="p">{</span>
+    <a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">video_stream</span><span class="o">.</span><span class="n">index</span></a><span class="p">:</span> <span class="n">video_stream</span><span class="o">.</span><span class="n">make_decoder</span><span class="p">(</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="o">=</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="p">),</span>
+    <a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">audio_stream</span><span class="o">.</span><span class="n">index</span></a><span class="p">:</span> <span class="n">audio_stream</span><span class="o">.</span><span class="n">make_decoder</span><span class="p">(),</span>
+<span class="p">}</span>
+<span class="n">color_converter</span> <span class="o">=</span> <span class="n">ColorConverter</span><span class="p">(</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="o">=</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="p">)</span>
+<span class="n">audio_converter</span> <span class="o">=</span> <span class="n">AudioConverter</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>The packets come out interleaved, in the order the container stores them, and
+<a class="reference internal" href="../../generated/torchcodec.decoders._blocks.Packet.html#torchcodec.decoders._blocks.Packet.stream_index" title="torchcodec.decoders._blocks.Packet.stream_index"><code class="xref py py-attr docutils literal notranslate"><span class="pre">Packet.stream_index</span></code></a> says which stream each belongs to: use it to match
+a packet to its decoder. Each decoder is drained at the end, as always.</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="n">frames</span><span class="p">,</span> <a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">samples</span></a> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">packet</span> <span class="ow">in</span> <span class="n">demuxer</span><span class="p">:</span>
+    <a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">outputs</span></a> <span class="o">=</span> <a href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="builtins.dict" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">decoders</span></a><span class="p">[</span><a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">packet</span><span class="o">.</span><span class="n">stream_index</span></a><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">packet</span><span class="p">)</span>
+    <span class="k">if</span> <a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">packet</span><span class="o">.</span><span class="n">stream_index</span></a> <span class="o">==</span> <a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">video_stream</span><span class="o">.</span><span class="n">index</span></a><span class="p">:</span>
+        <span class="n">frames</span> <span class="o">+=</span> <span class="p">[</span><span class="n">color_converter</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span> <span class="k">for</span> <span class="n">raw</span> <span class="ow">in</span> <a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">outputs</span></a><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">samples</span></a> <span class="o">+=</span> <span class="p">[</span><span class="n">audio_converter</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span> <span class="k">for</span> <span class="n">raw</span> <span class="ow">in</span> <a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">outputs</span></a><span class="p">]</span>
+
+<span class="n">frames</span> <span class="o">+=</span> <span class="p">[</span><span class="n">color_converter</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+           <span class="k">for</span> <span class="n">raw</span> <span class="ow">in</span> <a href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="builtins.dict" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">decoders</span></a><span class="p">[</span><a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">video_stream</span><span class="o">.</span><span class="n">index</span></a><span class="p">]</span><span class="o">.</span><span class="n">drain</span><span class="p">()]</span>
+<a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">samples</span></a> <span class="o">+=</span> <span class="p">[</span><span class="n">audio_converter</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">raw</span> <span class="ow">in</span> <a href="https://docs.python.org/3/builtins/stdtypes.html#dict" title="builtins.dict" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">decoders</span></a><span class="p">[</span><a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">audio_stream</span><span class="o">.</span><span class="n">index</span></a><span class="p">]</span><span class="o">.</span><span class="n">drain</span><span class="p">()]</span>
+<a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">samples</span></a><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">audio_converter</span><span class="o">.</span><span class="n">drain</span><span class="p">())</span>
+
+<a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">data</span></a> <span class="o">=</span> <a href="https://docs.pytorch.org/docs/stable/generated/torch.cat.html#torch.cat" title="torch.cat" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-function"><span class="n">torch</span><span class="o">.</span><span class="n">cat</span></a><span class="p">([</span><span class="n">s</span><span class="o">.</span><a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">data</span></a> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">samples</span></a><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">frames</span><span class="p">)</span><span class="si">}</span><span class="s2"> frames up to </span><span class="si">{</span><span class="n">frames</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">pts_seconds</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">s, &quot;</span>
+      <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><a href="https://docs.pytorch.org/docs/stable/size.html#torch.Size" title="torch.Size" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">data</span><span class="o">.</span><span class="n">shape</span></a><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2"> samples in one pass over the file&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>150 frames up to 4.97s, 221184 samples in one pass over the file
+</pre></div>
+</div>
+</section>
+</section>
+<section id="seeking">
+<h2>Seeking<a class="headerlink" href="#seeking" title="Link to this heading">#</a></h2>
+<p><a class="reference internal" href="../../generated/torchcodec.decoders._blocks.Demuxer.html#torchcodec.decoders._blocks.Demuxer.seek" title="torchcodec.decoders._blocks.Demuxer.seek"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Demuxer.seek()</span></code></a> moves the demuxer to a timestamp. For videos, a decoder
+can only start on a keyframe, so the seek lands on the keyframe at or before
+the target, and the first frames that come out usually precede it: keep
+decoding forward and drop them until you reach the timestamp you asked for.</p>
+<p>The seek also invalidates the frames the decoder is holding on to, so the
+<a class="reference internal" href="../../generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder" title="torchcodec.decoders._blocks.VideoPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoPacketDecoder</span></code></a> must be <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder.reset" title="torchcodec.decoders._blocks.VideoPacketDecoder.reset"><code class="xref py py-meth docutils literal notranslate"><span class="pre">reset()</span></code></a>. So must
+every other decoder fed by that demuxer, and every <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter" title="torchcodec.decoders._blocks.AudioConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioConverter</span></code></a>,
+whose resampler carries state across calls just the same.</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="n">demuxer</span> <span class="o">=</span> <span class="n">Demuxer</span><span class="p">(</span><a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">video_path</span></a><span class="p">)</span>
+<span class="n">packet_decoder</span> <span class="o">=</span> <a href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="builtins.tuple" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">demuxer</span><span class="o">.</span><span class="n">streams</span></a><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">make_decoder</span><span class="p">(</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="o">=</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="p">)</span>
+<span class="n">color_converter</span> <span class="o">=</span> <span class="n">ColorConverter</span><span class="p">(</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="o">=</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="p">)</span>
+
+<a href="https://docs.python.org/3/builtins/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">seconds</span></a> <span class="o">=</span> <span class="mf">2.5</span>
+<span class="n">demuxer</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><a href="https://docs.python.org/3/builtins/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">seconds</span></a><span class="p">)</span>
+<span class="n">packet_decoder</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>  <span class="c1"># An error is raised if you forget this!</span>
+
+<span class="n">frames</span> <span class="o">=</span> <span class="n">decode_frames</span><span class="p">(</span><span class="n">demuxer</span><span class="p">,</span> <span class="n">packet_decoder</span><span class="p">,</span> <span class="n">color_converter</span><span class="p">)</span>
+<span class="n">landed_on</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">frames</span><span class="p">)</span>
+<span class="c1"># The frame *playing* at a timestamp is the first one that hasn&#39;t finished</span>
+<span class="c1"># playing by then.</span>
+<span class="n">target</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span>
+    <span class="n">frame</span>
+    <span class="k">for</span> <span class="n">frame</span> <span class="ow">in</span> <span class="n">frames</span>
+    <span class="k">if</span> <span class="n">frame</span><span class="o">.</span><span class="n">pts_seconds</span> <span class="o">+</span> <span class="n">frame</span><span class="o">.</span><span class="n">duration_seconds</span> <span class="o">&gt;</span> <a href="https://docs.python.org/3/builtins/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">seconds</span></a>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;asked for </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">seconds</span></a><span class="si">}</span><span class="s2">s, landed on </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">landed_on</span><span class="o">.</span><span class="n">pts_seconds</span></a><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">s, &quot;</span>
+      <span class="sa">f</span><span class="s2">&quot;target frame at </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">target</span><span class="o">.</span><span class="n">pts_seconds</span></a><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">s&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>asked for 2.5s, landed on 2.000s, target frame at 2.500s
+</pre></div>
+</div>
+<p>That is what <a class="reference internal" href="../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_frame_played_at" title="torchcodec.decoders.VideoDecoder.get_frame_played_at"><code class="xref py py-meth docutils literal notranslate"><span class="pre">VideoDecoder.get_frame_played_at()</span></code></a> does for you - the
+seek, the decoding forward, and the dropping - except that we did it in the
+decoder’s <code class="docutils literal notranslate"><span class="pre">seek_mode=&quot;approximate&quot;</span></code> flavour. The <code class="docutils literal notranslate"><span class="pre">&quot;exact&quot;</span></code> one needs a
+<a class="reference internal" href="../../glossary.html#term-scan"><span class="xref std std-term">scan</span></a>, which the next section gets to.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Important for audio: these blocks do no pre-roll. A lossy codec’s first
+frames after a seek are subtly wrong until it re-primes, especially when
+resampling is involved. Decoding a margin before and after your target and
+discarding it is up to you. <a class="reference internal" href="../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder" title="torchcodec.decoders.AudioDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioDecoder</span></code></a> does
+all of this for you.</p>
+</div>
+</section>
+<section id="scanning">
+<h2>Scanning<a class="headerlink" href="#scanning" title="Link to this heading">#</a></h2>
+<p><a class="reference internal" href="../../generated/torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.scan" title="torchcodec.decoders._blocks.VideoStream.scan"><code class="xref py py-meth docutils literal notranslate"><span class="pre">VideoStream.scan()</span></code></a> demuxes the whole stream once, without decoding
+anything, and returns a <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex" title="torchcodec.decoders._blocks.FrameIndex"><code class="xref py py-class docutils literal notranslate"><span class="pre">FrameIndex</span></code></a>: one entry per frame, in
+presentation order.
+This is the only way to know a stream’s exact frame count, timestamps and
+keyframe positions - a container header can be wrong about all of them. It
+costs one pass over the file, and it leaves the demuxer back at the start.</p>
+<p>If you call <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.scan" title="torchcodec.decoders._blocks.VideoStream.scan"><code class="xref py py-meth docutils literal notranslate"><span class="pre">VideoStream.scan()</span></code></a>, it has to happen before any packet is
+read from the demuxer.</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="n">demuxer</span> <span class="o">=</span> <span class="n">Demuxer</span><span class="p">(</span><a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">video_path</span></a><span class="p">)</span>
+<span class="p">(</span><span class="n">video_stream</span><span class="p">,)</span> <span class="o">=</span> <a href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="builtins.tuple" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">demuxer</span><span class="o">.</span><span class="n">streams</span></a>
+<span class="n">index</span> <span class="o">=</span> <span class="n">video_stream</span><span class="o">.</span><span class="n">scan</span><span class="p">()</span>
+<span class="n">packet_decoder</span> <span class="o">=</span> <span class="n">video_stream</span><span class="o">.</span><span class="n">make_decoder</span><span class="p">(</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="o">=</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="p">)</span>
+<span class="n">color_converter</span> <span class="o">=</span> <span class="n">ColorConverter</span><span class="p">(</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="o">=</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">device</span></a><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">index</span><span class="o">.</span><span class="n">num_frames_from_content</span><span class="si">}</span><span class="s2"> frames at &quot;</span>
+      <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">index</span><span class="o">.</span><span class="n">average_fps_from_content</span><span class="si">}</span><span class="s2"> fps, &quot;</span>
+      <span class="sa">f</span><span class="s2">&quot;from </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">index</span><span class="o">.</span><span class="n">begin_stream_seconds_from_content</span></a><span class="si">}</span><span class="s2">s &quot;</span>
+      <span class="sa">f</span><span class="s2">&quot;to </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">index</span><span class="o">.</span><span class="n">end_stream_seconds_from_content</span></a><span class="si">}</span><span class="s2">s&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>150 frames at 30.0 fps, from 0.0s to 5.0s
+</pre></div>
+</div>
+<p>The index is also what gives the blocks frame <em>indices</em>, which they otherwise
+don’t have at all: <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex.index_at" title="torchcodec.decoders._blocks.FrameIndex.index_at"><code class="xref py py-meth docutils literal notranslate"><span class="pre">FrameIndex.index_at()</span></code></a> maps a timestamp to the frame
+on screen then, and <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex.pts_seconds" title="torchcodec.decoders._blocks.FrameIndex.pts_seconds"><code class="xref py py-attr docutils literal notranslate"><span class="pre">FrameIndex.pts_seconds</span></code></a> maps back. That’s enough to
+build <a class="reference internal" href="../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_frame_at" title="torchcodec.decoders.VideoDecoder.get_frame_at"><code class="xref py py-meth docutils literal notranslate"><span class="pre">get_frame_at()</span></code></a>, or a clip
+sampler, on top of the blocks.</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">i</span></a> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">index_at</span><span class="p">(</span><a href="https://docs.python.org/3/builtins/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">seconds</span></a><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;frame </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">i</span></a><span class="si">}</span><span class="s2"> is on screen at </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">seconds</span></a><span class="si">}</span><span class="s2">s, and starts at </span><span class="si">{</span><a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">index</span><span class="o">.</span><span class="n">pts_seconds</span></a><span class="p">[</span><a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">i</span></a><span class="p">]</span><span class="si">}</span><span class="s2">s&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>frame 75 is on screen at 2.5s, and starts at 2.5s
+</pre></div>
+</div>
+<p>If you’re following more than one video stream, you can call <code class="xref py py-meth docutils literal notranslate"><span class="pre">scan()</span></code> on
+each of them. You only pay the scan cost once, for the first stream: the other
+streams’ scan resuts are cached and returned when you call scan on them.</p>
+<section id="keyframes">
+<h3>Keyframes<a class="headerlink" href="#keyframes" title="Link to this heading">#</a></h3>
+<p><a class="reference internal" href="../../generated/torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex.is_key_frame" title="torchcodec.decoders._blocks.FrameIndex.is_key_frame"><code class="xref py py-attr docutils literal notranslate"><span class="pre">FrameIndex.is_key_frame</span></code></a> is a mask over all the frames, and
+<a class="reference internal" href="../../generated/torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex.key_frame_indices" title="torchcodec.decoders._blocks.FrameIndex.key_frame_indices"><code class="xref py py-attr docutils literal notranslate"><span class="pre">FrameIndex.key_frame_indices</span></code></a> the same thing as a list of indices.</p>
+<p>A keyframe is the cheapest kind of frame to decode on its own, because every
+non-keyframe needs a keyframe to be decoded first before it can itself be
+decoded. Reaching an arbitrary frame therefore means seeking to the keyframe
+before it and decoding everything in between, while reaching a keyframe costs
+exactly one frame: the seek lands right on it, and it is the very next frame
+out of the decoder - nothing to decode forward, nothing to drop.</p>
+<p>That makes keyframes attractive whenever you need <em>some</em> frames of a video
+rather than specific ones - thumbnails, coarse previews, or a cheap sampler
+for training.</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">key_frame_indices</span></a> <span class="o">=</span> <a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">index</span><span class="o">.</span><span class="n">key_frame_indices</span></a>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">key_frame_indices</span></a><span class="p">)</span><span class="si">}</span><span class="s2"> keyframes out of </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">index</span><span class="p">)</span><span class="si">}</span><span class="s2"> frames, &quot;</span>
+      <span class="sa">f</span><span class="s2">&quot;at </span><span class="si">{</span><a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">index</span><span class="o">.</span><span class="n">pts_seconds</span></a><span class="p">[</span><a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">key_frame_indices</span></a><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">keyframe_sampler</span><span class="p">(</span><span class="n">demuxer</span><span class="p">,</span> <span class="n">packet_decoder</span><span class="p">,</span> <span class="n">color_converter</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">index</span><span class="o">.</span><span class="n">key_frame_indices</span></a><span class="o">.</span><span class="n">tolist</span><span class="p">():</span>
+        <span class="n">demuxer</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">index</span><span class="o">.</span><span class="n">pts_seconds</span></a><span class="p">[</span><span class="n">k</span><span class="p">])</span>
+        <span class="n">packet_decoder</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
+        <span class="c1"># The seek landed on the keyframe itself, so the first frame out of the</span>
+        <span class="c1"># decoder is the one we want.</span>
+        <span class="k">yield</span> <span class="nb">next</span><span class="p">(</span><span class="n">decode_frames</span><span class="p">(</span><span class="n">demuxer</span><span class="p">,</span> <span class="n">packet_decoder</span><span class="p">,</span> <span class="n">color_converter</span><span class="p">))</span>
+
+
+<a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">key_frames</span></a> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span>
+    <span class="n">keyframe_sampler</span><span class="p">(</span><span class="n">demuxer</span><span class="p">,</span> <span class="n">packet_decoder</span><span class="p">,</span> <span class="n">color_converter</span><span class="p">,</span> <span class="n">index</span><span class="p">)</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;decoded </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">key_frames</span></a><span class="p">)</span><span class="si">}</span><span class="s2"> keyframes at &quot;</span>
+      <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="p">[</span><span class="nb">round</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">pts_seconds</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><a href="https://docs.python.org/3/builtins/stdtypes.html#list" title="builtins.list" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">key_frames</span></a><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>5 keyframes out of 150 frames, at [0.0, 1.0, 2.0, 3.0, 4.0]
+decoded 5 keyframes at [0.0, 1.0, 2.0, 3.0, 4.0]
+</pre></div>
+</div>
+</section>
+<section id="exact-seeking">
+<h3>Exact seeking<a class="headerlink" href="#exact-seeking" title="Link to this heading">#</a></h3>
+<p>One last thing the index buys you, which most files never need.
+<code class="docutils literal notranslate"><span class="pre">seek(seconds)</span></code> already lands on the keyframe at or before the target - but
+without a scan, FFmpeg resolves a seek against metadata that might not be
+fully accurate. In rare cases, you might land on a keyframe that is <em>after</em>
+the one you wanted.  <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex.key_frame_seconds_for" title="torchcodec.decoders._blocks.FrameIndex.key_frame_seconds_for"><code class="xref py py-meth docutils literal notranslate"><span class="pre">FrameIndex.key_frame_seconds_for()</span></code></a> gives you that
+keyframe’s own timestamp instead, which always lands where you meant.</p>
+<p>The two are the same call on the majority of files. This is what separates
+<a class="reference internal" href="../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a>’s <code class="docutils literal notranslate"><span class="pre">seek_mode=&quot;exact&quot;</span></code> from
+<code class="docutils literal notranslate"><span class="pre">&quot;approximate&quot;</span></code> for a timestamp lookup.</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="n">demuxer</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="n">index</span><span class="o">.</span><span class="n">key_frame_seconds_for</span><span class="p">(</span><a href="https://docs.python.org/3/builtins/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">seconds</span></a><span class="p">))</span>
+<span class="n">packet_decoder</span><span class="o">.</span><span class="n">reset</span><span class="p">()</span>
+
+<span class="n">frames</span> <span class="o">=</span> <span class="n">decode_frames</span><span class="p">(</span><span class="n">demuxer</span><span class="p">,</span> <span class="n">packet_decoder</span><span class="p">,</span> <span class="n">color_converter</span><span class="p">)</span>
+<span class="n">target</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">f</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">frames</span> <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">pts_seconds</span> <span class="o">&gt;=</span> <a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">index</span><span class="o">.</span><span class="n">pts_seconds</span></a><span class="p">[</span><a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">i</span></a><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;frame </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">i</span></a><span class="si">}</span><span class="s2"> at </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">target</span><span class="o">.</span><span class="n">pts_seconds</span></a><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">s&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>frame 75 at 2.500s
+</pre></div>
+</div>
+</section>
+</section>
+<section id="metadata">
+<h2>Metadata<a class="headerlink" href="#metadata" title="Link to this heading">#</a></h2>
+<p>Metadata comes in three tiers, and the blocks never merge them:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Where</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>What it describes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">demuxer.metadata</span></code></p></td>
+<td><p><a class="reference internal" href="../../generated/torchcodec.decoders._blocks.DemuxerMetadata.html#torchcodec.decoders._blocks.DemuxerMetadata" title="torchcodec.decoders._blocks.DemuxerMetadata"><code class="xref py py-class docutils literal notranslate"><span class="pre">DemuxerMetadata</span></code></a></p></td>
+<td><p>the container</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">stream.metadata</span></code></p></td>
+<td><p><a class="reference internal" href="../../generated/torchcodec.decoders._blocks.VideoStreamHeaderMetadata.html#torchcodec.decoders._blocks.VideoStreamHeaderMetadata" title="torchcodec.decoders._blocks.VideoStreamHeaderMetadata"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoStreamHeaderMetadata</span></code></a> or
+<a class="reference internal" href="../../generated/torchcodec.decoders._blocks.AudioStreamHeaderMetadata.html#torchcodec.decoders._blocks.AudioStreamHeaderMetadata" title="torchcodec.decoders._blocks.AudioStreamHeaderMetadata"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioStreamHeaderMetadata</span></code></a></p></td>
+<td><p>what the header claims about one stream</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">video_stream.scan()</span></code></p></td>
+<td><p><a class="reference internal" href="../../generated/torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex" title="torchcodec.decoders._blocks.FrameIndex"><code class="xref py py-class docutils literal notranslate"><span class="pre">FrameIndex</span></code></a></p></td>
+<td><p>what that stream’s packets actually say</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The name of a field tells you which tier it came from, so a header value is
+never mistaken for an exact one:</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="n">demuxer</span> <span class="o">=</span> <span class="n">Demuxer</span><span class="p">(</span><a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">video_path</span></a><span class="p">)</span>
+<span class="p">(</span><span class="n">video</span><span class="p">,)</span> <span class="o">=</span> <a href="https://docs.python.org/3/builtins/stdtypes.html#tuple" title="builtins.tuple" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">demuxer</span><span class="o">.</span><span class="n">streams</span></a>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;container: </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">demuxer</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">duration_seconds_from_header</span></a><span class="si">}</span><span class="s2">s&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;header:    </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">video</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">width</span></a><span class="si">}</span><span class="s2">x</span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">video</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">height</span></a><span class="si">}</span><span class="s2">, &quot;</span>
+      <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">video</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">num_frames_from_header</span></a><span class="si">}</span><span class="s2"> frames &quot;</span>
+      <span class="sa">f</span><span class="s2">&quot;at </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">video</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">average_fps_from_header</span></a><span class="si">}</span><span class="s2"> fps&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;content:   </span><span class="si">{</span><span class="n">video</span><span class="o">.</span><span class="n">scan</span><span class="p">()</span><span class="o">.</span><span class="n">num_frames_from_content</span><span class="si">}</span><span class="s2"> frames &quot;</span>
+      <span class="sa">f</span><span class="s2">&quot;at </span><span class="si">{</span><span class="n">video</span><span class="o">.</span><span class="n">scan</span><span class="p">()</span><span class="o">.</span><span class="n">average_fps_from_content</span><span class="si">}</span><span class="s2"> fps&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>container: 5s
+header:    1280x720, 150 frames at 30 fps
+content:   150 frames at 30.0 fps
+</pre></div>
+</div>
+<section id="comparing-with-videodecoder-and-audiodecoder">
+<h3>Comparing with VideoDecoder and AudioDecoder<a class="headerlink" href="#comparing-with-videodecoder-and-audiodecoder" title="Link to this heading">#</a></h3>
+<p>A <a class="reference internal" href="../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a>’s <code class="docutils literal notranslate"><span class="pre">metadata</span></code> is a
+<a class="reference internal" href="../../generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata" title="torchcodec.decoders.VideoStreamMetadata"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoStreamMetadata</span></code></a>, which holds two kinds of
+fields:</p>
+<ul class="simple">
+<li><p>The <strong>raw</strong> ones, suffixed <code class="docutils literal notranslate"><span class="pre">_from_header</span></code> or <code class="docutils literal notranslate"><span class="pre">_from_content</span></code>. Every one
+of them is available from the blocks too, on <code class="docutils literal notranslate"><span class="pre">demuxer.metadata</span></code>, on
+<code class="docutils literal notranslate"><span class="pre">stream.metadata</span></code>, or on the <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex" title="torchcodec.decoders._blocks.FrameIndex"><code class="xref py py-class docutils literal notranslate"><span class="pre">FrameIndex</span></code></a> a <a class="reference internal" href="../../glossary.html#term-scan"><span class="xref std std-term">scan</span></a> returns.
+Same values, same names.</p></li>
+<li><p>A fourth, <strong>“magic”</strong> set with no suffix - <code class="docutils literal notranslate"><span class="pre">num_frames</span></code>,
+<code class="docutils literal notranslate"><span class="pre">average_fps</span></code>, <code class="docutils literal notranslate"><span class="pre">duration_seconds</span></code>, <code class="docutils literal notranslate"><span class="pre">begin_stream_seconds</span></code>,
+<code class="docutils literal notranslate"><span class="pre">end_stream_seconds</span></code>. These don’t exist in the file: each one runs a
+<em>fallback chain</em> over the raw fields and hands you the first thing that
+isn’t <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+<p><strong>The blocks run no fallback logic at all</strong>, so the magic set has no blocks
+equivalent. What you get instead is every input those chains read from, which
+you are free to combine yourself:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p><a class="reference internal" href="../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder.metadata</span></code></a></p></th>
+<th class="head"><p>Blocks equivalent</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">width</span></code>, <code class="docutils literal notranslate"><span class="pre">height</span></code>, <code class="docutils literal notranslate"><span class="pre">codec</span></code>, …</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">stream.metadata.&lt;same</span> <span class="pre">name&gt;</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">num_frames_from_header</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">stream.metadata.num_frames_from_header</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">num_frames_from_content</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">stream.scan().num_frames_from_content</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">num_frames</span></code></p></td>
+<td><p><em>(none)</em> - <code class="docutils literal notranslate"><span class="pre">stream.scan().num_frames_from_content</span></code> if scanned, else
+<code class="docutils literal notranslate"><span class="pre">stream.metadata.num_frames_from_header</span></code>, else computed from
+<code class="docutils literal notranslate"><span class="pre">duration_seconds</span></code> and <code class="docutils literal notranslate"><span class="pre">average_fps</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">average_fps</span></code></p></td>
+<td><p><em>(none)</em> - <code class="docutils literal notranslate"><span class="pre">stream.scan().average_fps_from_content</span></code> if scanned, else
+<code class="docutils literal notranslate"><span class="pre">stream.metadata.average_fps_from_header</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">duration_seconds</span></code></p></td>
+<td><p><em>(none)</em> - from the scan if scanned, else
+<code class="docutils literal notranslate"><span class="pre">stream.metadata.duration_seconds_from_header</span></code>, else computed from
+<code class="docutils literal notranslate"><span class="pre">stream.metadata.num_frames_from_header</span></code> and
+<code class="docutils literal notranslate"><span class="pre">stream.metadata.average_fps_from_header</span></code>, else
+<code class="docutils literal notranslate"><span class="pre">demuxer.metadata.duration_seconds_from_header</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">begin_stream_seconds</span></code></p></td>
+<td><p><em>(none)</em> - <code class="docutils literal notranslate"><span class="pre">stream.scan().begin_stream_seconds_from_content</span></code> if
+scanned, else <code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">end_stream_seconds</span></code></p></td>
+<td><p><em>(none)</em> - <code class="docutils literal notranslate"><span class="pre">stream.scan().end_stream_seconds_from_content</span></code> if
+scanned, else <code class="docutils literal notranslate"><span class="pre">duration_seconds</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Note how often “if scanned” shows up. Whether a
+<a class="reference internal" href="../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a> scanned is a consequence of its
+<code class="docutils literal notranslate"><span class="pre">seek_mode</span></code>: <code class="docutils literal notranslate"><span class="pre">&quot;exact&quot;</span></code> (the default) scans up-front, <code class="docutils literal notranslate"><span class="pre">&quot;approximate&quot;</span></code>
+never does. So <code class="docutils literal notranslate"><span class="pre">metadata.num_frames</span></code> silently means a different thing
+depending on how the decoder was built, and that is exactly the ambiguity the
+blocks refuse to introduce.</p>
+<p><a class="reference internal" href="../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder" title="torchcodec.decoders.AudioDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioDecoder</span></code></a> works the same way, with a smaller
+magic set on <a class="reference internal" href="../../generated/torchcodec.decoders.AudioStreamMetadata.html#torchcodec.decoders.AudioStreamMetadata" title="torchcodec.decoders.AudioStreamMetadata"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioStreamMetadata</span></code></a>:
+<code class="docutils literal notranslate"><span class="pre">sample_rate</span></code>, <code class="docutils literal notranslate"><span class="pre">num_channels</span></code> and <code class="docutils literal notranslate"><span class="pre">sample_format</span></code> are raw header fields
+and are on <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.AudioStream.html#torchcodec.decoders._blocks.AudioStream.metadata" title="torchcodec.decoders._blocks.AudioStream.metadata"><code class="xref py py-attr docutils literal notranslate"><span class="pre">AudioStream.metadata</span></code></a> too, while <code class="docutils literal notranslate"><span class="pre">duration_seconds</span></code> and
+<code class="docutils literal notranslate"><span class="pre">begin_stream_seconds</span></code> are computed.</p>
+</section>
+<section id="reading-metadata-of-a-file-before-opening-it">
+<h3>Reading metadata of a file before opening it<a class="headerlink" href="#reading-metadata-of-a-file-before-opening-it" title="Link to this heading">#</a></h3>
+<p>A demuxer’s streams are fixed when you construct it, so to decide which ones
+to ask for you need to know what is in the file first. That’s
+<a class="reference internal" href="../../generated/torchcodec.decoders._blocks.get_container_metadata.html#torchcodec.decoders._blocks.get_container_metadata" title="torchcodec.decoders._blocks.get_container_metadata"><code class="xref py py-func docutils literal notranslate"><span class="pre">get_container_metadata()</span></code></a>: it reads the header and no packets, and it
+also reports the streams a demuxer cannot follow, such as subtitles. It hands
+back a <a class="reference internal" href="../../generated/torchcodec.decoders._blocks.ContainerMetadata.html#torchcodec.decoders._blocks.ContainerMetadata" title="torchcodec.decoders._blocks.ContainerMetadata"><code class="xref py py-class docutils literal notranslate"><span class="pre">ContainerMetadata</span></code></a>.</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec.decoders._blocks</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_container_metadata</span>
+
+<span class="k">for</span> <span class="n">stream</span> <span class="ow">in</span> <span class="n">get_container_metadata</span><span class="p">(</span><a href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath" class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">av_path</span></a><span class="p">)</span><span class="o">.</span><span class="n">streams</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  stream </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">stream</span><span class="o">.</span><span class="n">stream_index</span></a><span class="si">}</span><span class="s2">: </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">stream</span><span class="o">.</span><span class="n">media_type</span></a><span class="si">}</span><span class="s2">, </span><span class="si">{</span><a href="https://docs.python.org/3/builtins/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">stream</span><span class="o">.</span><span class="n">codec</span></a><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>stream 0: video, h264
+stream 1: audio, aac
+</pre></div>
+</div>
+</section>
+</section>
+<section id="where-to-go-next">
+<h2>Where to go next<a class="headerlink" href="#where-to-go-next" title="Link to this heading">#</a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py"><span class="std std-ref">Composing pipelines: threads, devices and endless streams</span></a> runs the stages
+concurrently on several threads, and decodes a live source that has no
+duration, no frame count and no end - something
+<a class="reference internal" href="../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a> cannot open at all.</p></li>
+<li><p><a class="reference internal" href="raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py"><span class="std std-ref">Raw frames and raw audio samples</span></a> skips the converters
+and reads the decoder’s own YUV planes and audio samples, at the source’s
+own precision.</p></li>
+</ul>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 1.407 seconds)</p>
+<div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-generated-examples-blocks-basics-py">
+<div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
+<p><a class="reference download internal" download="" href="../../_downloads/cdae7c17b717a2c62f0675ad148787ce/basics.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">basics.ipynb</span></code></a></p>
+</div>
+<div class="sphx-glr-download sphx-glr-download-python docutils container">
+<p><a class="reference download internal" download="" href="../../_downloads/1661ee49c88602100df40bd9839099d1/basics.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">basics.py</span></code></a></p>
+</div>
+<div class="sphx-glr-download sphx-glr-download-zip docutils container">
+<p><a class="reference download internal" download="" href="../../_downloads/b5a82a778b6587fb1a2c4e556876f778/basics.zip"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">zipped:</span> <span class="pre">basics.zip</span></code></a></p>
+</div>
+</div>
+<p class="sphx-glr-signature"><a class="reference external" href="https://sphinx-gallery.github.io">Gallery generated by Sphinx-Gallery</a></p>
+</section>
+</section>
+
+
+                </article>
+              
+</div>
+
+              
+              
+                <footer class="bd-footer-article">
+                  <div class="footer-article-items footer-article__inner">
+  
+    <div class="footer-article-item">
+<div class="feedback">
+  
+<div class="rating">
+    Rate this Page
+    <div class="stars">
+        
+        <span class="star" data-behavior="tutorial-rating" data-count="1" data-value="1">★</span>
+        
+        <span class="star" data-behavior="tutorial-rating" data-count="2" data-value="2">★</span>
+        
+        <span class="star" data-behavior="tutorial-rating" data-count="3" data-value="3">★</span>
+        
+        <span class="star" data-behavior="tutorial-rating" data-count="4" data-value="4">★</span>
+        
+        <span class="star" data-behavior="tutorial-rating" data-count="5" data-value="5">★</span>
+        
+    </div>
+</div>
+
+  <div class="feedback-send">
+    <button class="feedback-btn"
+            onclick="openGitHubIssue()"
+            data-bs-title="Create a GitHub Issue"
+            data-bs-placement="bottom"
+            data-bs-toggle="tooltip"
+            data-gtm="feedback-btn-click">Send Feedback
+    </button>
+  </div>
+</div>
+
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="index.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Decoding blocks (experimental)</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="pipelines.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Composing pipelines: threads, devices and endless streams</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+
+<div class="footer-info">
+  <p class="copyright">
+    
+  </p>
+
+  <p class="theme-version">
+    Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.4.
+  </p>
+</div>
+</div>
+  
+</div>
+                </footer>
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="index.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">Decoding blocks (experimental)</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="pipelines.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Composing pipelines: threads, devices and endless streams</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc">
+<div class="sidebar-secondary-items sidebar-secondary__inner">
+    
+       <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#the-three-blocks">The three blocks</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#one-video-stream">One video stream</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#one-audio-stream">One audio stream</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#several-streams-at-once">Several streams at once</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#seeking">Seeking</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#scanning">Scanning</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#keyframes">Keyframes</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#exact-seeking">Exact seeking</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#metadata">Metadata</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#comparing-with-videodecoder-and-audiodecoder">Comparing with VideoDecoder and AudioDecoder</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#reading-metadata-of-a-file-before-opening-it">Reading metadata of a file before opening it</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#where-to-go-next">Where to go next</a></li>
+</ul>
+  </nav></div>
+    
+       <div class="sidebar-secondary-item">
+
+  
+  <div class="tocsection editthispage">
+    <a href="https://github.com/meta-pytorch/torchcodec/edit/main/docs/source/generated_examples/blocks/basics.rst">
+      <i class="fa-solid fa-pencil"></i>
+      
+      
+        
+          Edit on GitHub
+        
+      
+    </a>
+  </div>
+</div>
+    
+       <div class="sidebar-secondary-item">
+    <div class="tocsection sourcelink">
+      <a href="../../_sources/generated_examples/blocks/basics.rst.txt">
+        <i class="fa-solid fa-file-lines"></i> Show Source
+      </a>
+    </div>
+</div>
+    
+
+
+
+
+</div>
+</div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  
+
+<div class="container-fluid docs-tutorials-resources" id="docs-tutorials-resources">
+  <div class="container">
+    <div class="row">
+      <div class="col-md-4">
+        <h2>Docs</h2>
+        <p>Access comprehensive developer documentation for PyTorch</p>
+        <a class="with-right-arrow" href="https://docs.pytorch.org/docs/stable/index.html">View Docs</a>
+      </div>
+
+      <div class="col-md-4">
+        <h2>Tutorials</h2>
+        <p>Get in-depth tutorials for beginners and advanced developers</p>
+        <a class="with-right-arrow" href="https://docs.pytorch.org/tutorials">View Tutorials</a>
+      </div>
+
+      <div class="col-md-4">
+        <h2>Resources</h2>
+        <p>Find development resources and get your questions answered</p>
+        <a class="with-right-arrow" href="https://pytorch.org/resources">View Resources</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+
+<footer class="site-footer">
+
+  <div class="container footer-container">
+
+    <div class="newsletter" id="newsletter">
+
+      <p class="newsletter__title is-style-max-width-800"><strong>Stay in touch</strong> for updates, event info, and
+        the latest news</p>
+
+
+      <script charset="utf-8" type="text/javascript" src="//js.hsforms.net/forms/embed/v2.js"></script>
+      <script>
+        hbspt.forms.create({
+          region: "na1",
+          portalId: "8112310",
+          formId: "2fb2231c-000b-4ec5-88a0-1ab242549c9e"
+        });
+      </script>
+
+
+      <p class="newsletter__privacy">By submitting this form, I consent to receive marketing emails from the LF and its
+        projects regarding their events, training, research, developments, and related announcements. I understand that
+        I can unsubscribe at any time using the links in the footers of the emails I receive. <a
+          href="https://www.linuxfoundation.org/privacy/">Privacy Policy</a>.</p>
+
+    </div>
+
+    <div class="lf-grid">
+      <ul class="social-links">
+        <li><a href="https://www.facebook.com/pytorch" target="_blank" title="PyTorch on Facebook">
+            <svg xmlns="http://www.w3.org/2000/svg" viewbox="-0.51 -0.26 26.45 26.45" aria-label="Facebook">
+              <path fill="currentColor"
+                d="M25.497 13.075c0-2.45-.698-4.848-2.011-6.911a12.765 12.765 0 0 0-5.398-4.73A12.671 12.671 0 0 0 11.008.38a12.705 12.705 0 0 0-6.529 2.95A12.827 12.827 0 0 0 .563 9.358a12.896 12.896 0 0 0-.07 7.201 12.831 12.831 0 0 0 3.801 6.103 12.709 12.709 0 0 0 6.471 3.078v-8.957H7.53v-3.708h3.235v-2.824c0-3.213 1.903-4.988 4.813-4.988.956.014 1.909.097 2.852.25V8.67h-1.607a1.83 1.83 0 0 0-1.518.497 1.854 1.854 0 0 0-.561 1.505v2.404h3.535l-.563 3.708h-2.97v8.957a12.725 12.725 0 0 0 7.697-4.337 12.87 12.87 0 0 0 3.054-8.328z" />
+            </svg>
+          </a></li>
+        <li><a href="https://twitter.com/pytorch" target="_blank" title="PyTorch on X">
+            <svg xmlns="http://www.w3.org/2000/svg" viewbox="0 0 300 300" aria-label="X">
+              <path fill="currentColor"
+                d="M178.57 127.15 290.27 0h-26.46l-97.03 110.38L89.34 0H0l117.13 166.93L0 300.25h26.46l102.4-116.59 81.8 116.59h89.34M36.01 19.54H76.66l187.13 262.13h-40.66" />
+            </svg>
+          </a></li>
+        <li><a href="https://www.youtube.com/pytorch" target="_blank" title="PyTorch on YouTube">
+            <svg xmlns="http://www.w3.org/2000/svg" viewbox="0.21 0.27 34.45 25.07" aria-label="YouTube">
+              <path fill="currentColor"
+                d="M33.729 6.084s-.327-2.33-1.317-3.356a4.691 4.691 0 0 0-3.32-1.432c-4.634-.34-11.589-.34-11.589-.34h-.014s-6.954 0-11.59.342a4.692 4.692 0 0 0-3.32 1.432c-.993 1.025-1.315 3.354-1.315 3.354a52.189 52.189 0 0 0-.331 5.473v2.566c.014 1.829.125 3.656.331 5.472 0 0 .322 2.33 1.316 3.36 1.26 1.345 2.916 1.3 3.653 1.445 2.65.26 11.263.34 11.263.34s6.96-.01 11.597-.353a4.691 4.691 0 0 0 3.32-1.432c.993-1.026 1.316-3.356 1.316-3.356.206-1.817.316-3.644.33-5.473v-2.57a52.26 52.26 0 0 0-.33-5.472zM14.076 17.232V7.729l8.951 4.768-8.95 4.735z" />
+            </svg>
+          </a></li>
+        <li><a href="https://www.linkedin.com/company/pytorch" target="_blank" title="PyTorch on LinkedIn">
+            <svg xmlns="http://www.w3.org/2000/svg" viewbox="-10.23 -10.23 531.96 531.96" aria-label="LinkedIn">
+              <rect width="512" height="512" rx="0" fill="currentColor" />
+              <circle fill="#000" cx="142" cy="138" r="37" />
+              <path stroke="#000" stroke-width="66" d="M244 194v198M142 194v198" />
+              <path fill="#000"
+                d="M276 282c0-20 13-40 36-40 24 0 33 18 33 45v105h66V279c0-61-32-89-76-89-34 0-51 19-59 32" />
+            </svg>
+          </a></li>
+        <li><a href="https://pytorch.slack.com" target="_blank" title="PyTorch Slack">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0.16 -0.03 21.19 21.19" aria-label="Slack">
+              <path fill="currentColor"
+                d="M4.896 13.27a2.147 2.147 0 0 1-2.141 2.142A2.147 2.147 0 0 1 .613 13.27c0-1.178.963-2.141 2.142-2.141h2.141v2.141zm1.08 0c0-1.178.962-2.141 2.141-2.141s2.142.963 2.142 2.141v5.363a2.147 2.147 0 0 1-2.142 2.141 2.147 2.147 0 0 1-2.141-2.142V13.27zm2.141-8.6a2.147 2.147 0 0 1-2.141-2.14c0-1.18.962-2.142 2.141-2.142s2.142.963 2.142 2.141v2.142H8.117zm0 1.08c1.179 0 2.141.962 2.141 2.141a2.147 2.147 0 0 1-2.141 2.142H2.755A2.147 2.147 0 0 1 .613 7.89c0-1.179.963-2.141 2.142-2.141h5.362zm8.599 2.141c0-1.179.963-2.141 2.141-2.141 1.179 0 2.143.962 2.143 2.14a2.147 2.147 0 0 1-2.142 2.142h-2.141V7.89zm-1.08 0a2.147 2.147 0 0 1-2.141 2.142 2.147 2.147 0 0 1-2.141-2.142V2.53c0-1.178.962-2.141 2.141-2.141s2.142.963 2.142 2.141v5.362zm-2.141 8.6c1.179 0 2.142.962 2.142 2.14a2.147 2.147 0 0 1-2.142 2.142 2.147 2.147 0 0 1-2.141-2.141V16.49h2.141zm0-1.08a2.147 2.147 0 0 1-2.141-2.141c0-1.179.962-2.142 2.141-2.142h5.362c1.179 0 2.142.963 2.142 2.142a2.147 2.147 0 0 1-2.142 2.142h-5.362z">
+              </path>
+            </svg>
+          </a></li>
+        <li><a href="https://pytorch.org/wechat" title="PyTorch on WeChat">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0.14 -0.17 38.02 33.02" aria-label="WeChat">
+              <path fill="currentColor"
+                d="M26.289 10.976a12.972 12.972 0 0 0-8.742 3.53 10.386 10.386 0 0 0-3.224 8.795c-1.326-.164-2.535-.345-3.75-.448a2.332 2.332 0 0 0-1.273.216c-1.18.666-2.311 1.418-3.652 2.255.246-1.112.405-2.087.687-3.024a1.15 1.15 0 0 0-.523-1.52C1.737 17.902.02 13.601 1.307 9.165c1.189-4.1 4.11-6.587 8.077-7.884A13.54 13.54 0 0 1 24.18 5.617a10.135 10.135 0 0 1 2.109 5.359zM10.668 9.594a1.564 1.564 0 0 0-2.095-1.472 1.52 1.52 0 0 0-.895 1.964 1.502 1.502 0 0 0 1.391.966 1.545 1.545 0 0 0 1.598-1.46v.002zm8.15-1.566a1.567 1.567 0 0 0-1.528 1.543 1.528 1.528 0 0 0 1.571 1.492 1.52 1.52 0 0 0 1.375-2.117 1.518 1.518 0 0 0-1.415-.919l-.003.001z">
+              </path>
+              <path fill="currentColor"
+                d="M33.914 32.137c-1.075-.478-2.062-1.196-3.11-1.306-1.049-.11-2.145.494-3.24.605a10.821 10.821 0 0 1-8.781-2.864c-4.682-4.33-4.013-10.97 1.403-14.518 4.811-3.154 11.874-2.102 15.268 2.273a8.671 8.671 0 0 1-1.002 12.095c-1.046.929-1.422 1.693-.751 2.917.102.257.174.525.213.798zM21.68 20.292a1.264 1.264 0 1 0 .01-2.528 1.264 1.264 0 0 0-.01 2.528zm7.887-2.526a1.266 1.266 0 0 0-1.256 1.21 1.247 1.247 0 1 0 1.256-1.21z">
+              </path>
+            </svg>
+          </a></li>
+      </ul>
+    </div>
+    
+    <div class="privacy-policy">
+      <div class="copyright">
+      
+        <p>
+          &copy; PyTorch. Copyright © The Linux Foundation®. All rights reserved. The Linux Foundation has registered
+          trademarks and uses trademarks. For more information, including terms of use, privacy policy, and trademark
+          usage, please see our <a href="https://www.linuxfoundation.org/legal/policies">Policies</a> page. <a
+            href="https://www.linuxfoundation.org/trademark-usage">Trademark Usage</a>. <a
+            href="http://www.linuxfoundation.org/privacy">Privacy Policy</a>.
+        </p>
+        
+      </div>
+    </div>
+
+
+  </div>
+</footer>
+
+<div class="cookie-banner-wrapper" data-nosnippet>
+  <div class="container">
+    <p class="gdpr-notice">To analyze traffic and optimize your experience, we serve cookies on this site. By clicking or navigating, you agree to allow our usage of cookies. As the current maintainers of this site, Facebook’s Cookies Policy applies. Learn more, including about available controls: <a href="https://opensource.fb.com/legal/cookie-policy">Cookies Policy</a>.</p>
+    <button class="close-button" aria-label="Close cookie banner"></button>
+  </div>
+</div>
+  
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2023-present, TorchCodec Contributors.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 7.2.6.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<p class="theme-version">
+  Built with the <a href="https://pydata-sphinx-theme.readthedocs.io/en/stable/index.html">PyData Sphinx Theme</a> 0.15.4.
+</p></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  <script type="application/ld+json">
+    {
+       "@context": "https://schema.org",
+       "@type": "Article",
+       "name": "Blocks: build your own decoding pipeline",
+       "headline": "Blocks: build your own decoding pipeline",
+       "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
+       "url": "/generated_examples/blocks/basics.html",
+       "articleBody": "Blocks: build your own decoding pipeline# Warning The Blocks APIs are under active construction. They are private and unreleased. Signatures and semantics may change without notice. This tutorial only exists to show what they will eventually make possible. In this tutorial, we\u2019ll take a tour of the Blocks APIs: the three decoding stages for video and audio, following several streams of a container at once, seeking, scanning, and what the metadata means. VideoDecoder and AudioDecoder are each a single box that does demuxing, decoding and conversion for you. The Blocks APIs expose those three stages separately, one chain per media type: Demuxer -\u003e VideoPacketDecoder -\u003e ColorConverter Packet RawFrame RGB Frame Demuxer -\u003e AudioPacketDecoder -\u003e AudioConverter Packet RawAudioSamples AudioSamples Two companion tutorials go further: Composing pipelines: threads, devices and endless streams, on running the stages concurrently and on decoding sources that never end. Raw frames and raw audio samples, on reading the decoder\u2019s own YUV planes and audio samples instead of converting them. First, a bit of boilerplate: a test video, and the device we\u2019ll run on. import subprocess import tempfile from pathlib import Path import torch device = \"cuda\" if torch.cuda.is_available() else \"cpu\" print(f\"{device = }\") temp_dir = Path(tempfile.mkdtemp()) video_path = temp_dir / \"video.mp4\" subprocess.run( [ \"ffmpeg\", \"-y\", \"-hide_banner\", \"-loglevel\", \"error\", \"-f\", \"lavfi\", \"-i\", \"testsrc2=size=1280x720:rate=30:duration=5\", \"-c:v\", \"libx264\", \"-pix_fmt\", \"yuv420p\", \"-g\", \"30\", \"-colorspace\", \"bt709\", \"-color_primaries\", \"bt709\", \"-color_trc\", \"bt709\", str(video_path), ], check=True, ) device = \u0027cuda\u0027 CompletedProcess(args=[\u0027ffmpeg\u0027, \u0027-y\u0027, \u0027-hide_banner\u0027, \u0027-loglevel\u0027, \u0027error\u0027, \u0027-f\u0027, \u0027lavfi\u0027, \u0027-i\u0027, \u0027testsrc2=size=1280x720:rate=30:duration=5\u0027, \u0027-c:v\u0027, \u0027libx264\u0027, \u0027-pix_fmt\u0027, \u0027yuv420p\u0027, \u0027-g\u0027, \u002730\u0027, \u0027-colorspace\u0027, \u0027bt709\u0027, \u0027-color_primaries\u0027, \u0027bt709\u0027, \u0027-color_trc\u0027, \u0027bt709\u0027, \u0027/tmp/tmp0siuivzi/video.mp4\u0027], returncode=0) The three blocks# One video stream# Here is a complete video pipeline, which is equivalent to VideoDecoder.get_all_frames() from torchcodec.decoders._blocks import ColorConverter, Demuxer demuxer = Demuxer(video_path) (video_stream,) = demuxer.streams packet_decoder = video_stream.make_decoder(device=device) color_converter = ColorConverter(device=device) def decode_frames(demuxer, packet_decoder, color_converter): for packet in demuxer: for raw_frame in packet_decoder.decode(packet): yield color_converter.convert(raw_frame) for raw_frame in packet_decoder.drain(): yield color_converter.convert(raw_frame) frames = list(decode_frames(demuxer, packet_decoder, color_converter)) print(f\"{len(frames)} frames, {frames[0].data.shape = }, \" f\"{frames[0].pts_seconds = }, {frames[0].data.device = }\") 150 frames, frames[0].data.shape = torch.Size([3, 720, 1280]), frames[0].pts_seconds = 0.0, frames[0].data.device = device(type=\u0027cuda\u0027, index=0) We create a Demuxer over the file and let it follow the default video stream, which comes back as a VideoStream. From that stream we build a VideoPacketDecoder, which decodes the demuxer\u2019s Packet objects into RawFrame objects. A RawFrame typically contains raw YUV data that you can access: see Raw frames and raw audio samples for more details. Finally, a ColorConverter turns each of those into an RGB Frame, the same object a VideoDecoder would have handed you. Importantly, VideoPacketDecoder.decode() returns a list of RawFrame objects: depending on how the video was encoded, a single packet may contain a single frame, several frames, or even a partial frame. That\u2019s why the returned list can be empty, or contain more than one frame, and you must iterate over it. For the same reason, you must call drain() at the end to retrieve any remaining frames that the decoder may be holding. Both VideoStream.make_decoder() and ColorConverter accept a device parameter so you can run them on CPU or CUDA (they must match!), and the demuxing stage is always CPU only. One audio stream# Audio decoding has the same three stages. The following pipeline is equivalent to AudioDecoder.get_all_samples(): from torchcodec.decoders._blocks import AudioConverter audio_path = temp_dir / \"audio.wav\" subprocess.run( [ \"ffmpeg\", \"-y\", \"-hide_banner\", \"-loglevel\", \"error\", \"-f\", \"lavfi\", \"-i\", \"sine=frequency=440:sample_rate=44100:duration=5\", \"-c:a\", \"pcm_s16le\", str(audio_path), ], check=True, ) demuxer = Demuxer(audio_path, streams=\"audio\") packet_decoder = demuxer.streams[0].make_decoder() audio_converter = AudioConverter(sample_rate=16_000, num_channels=1) samples = [] for packet in demuxer: samples += [audio_converter.convert(raw) for raw in packet_decoder.decode(packet)] samples += [audio_converter.convert(raw) for raw in packet_decoder.drain()] samples.append(audio_converter.drain()) # don\u0027t forget me data = torch.cat([s.data for s in samples], dim=1) print(f\"{data.shape = }, {data.dtype = }, \" f\"{samples[-1].data.shape[1]} samples came out of drain()\") data.shape = torch.Size([1, 80000]), data.dtype = torch.float32, 16 samples came out of drain() An AudioStream builds an AudioPacketDecoder, which decodes Packet objects into RawAudioSamples: the codec\u2019s own samples, in the codec\u2019s own sample type, as a [num_channels, num_samples] tensor. Those are the true source samples - 16-bit integers for the file above, not floats in [-1, 1]. AudioConverter is what normalizes them, and it can resample and change the channel count on the way. The AudioConverter differs from ColorConverter in one important way: it is a stateful stream processor (much like the VideoPacketDecoder and AudioPacketDecoder are), while the color converter is mainly stateless. The reason is that resampling is an interpolation filter, so the sample it emits at a given instant depends on input samples before and after it. The converter therefore holds the tail of each RawAudioSamples until the next one arrives, so that it can correctly interpolate them. Make sure to call AudioConverter.drain() at the end of the pipeline to retrieve the last samples. Several streams at once# The examples above followed a single stream each. But a Demuxer can follow multiple video streams, multiple audio streams, or a mix of both at once! av_path = temp_dir / \"av.mp4\" subprocess.run( [ \"ffmpeg\", \"-y\", \"-hide_banner\", \"-loglevel\", \"error\", \"-i\", str(video_path), \"-i\", str(audio_path), \"-c:v\", \"copy\", \"-c:a\", \"aac\", \"-shortest\", str(av_path), ], check=True, ) CompletedProcess(args=[\u0027ffmpeg\u0027, \u0027-y\u0027, \u0027-hide_banner\u0027, \u0027-loglevel\u0027, \u0027error\u0027, \u0027-i\u0027, \u0027/tmp/tmp0siuivzi/video.mp4\u0027, \u0027-i\u0027, \u0027/tmp/tmp0siuivzi/audio.wav\u0027, \u0027-c:v\u0027, \u0027copy\u0027, \u0027-c:a\u0027, \u0027aac\u0027, \u0027-shortest\u0027, \u0027/tmp/tmp0siuivzi/av.mp4\u0027], returncode=0) Which streams to follow is specified at construction time of the Demuxer via the streams parameter. streams takes one selector or a tuple of them: \"video\" or \"audio\" for the best stream of that type, an int for a stream index - which is how you reach the second video stream, or the fourth audio track - or \"all\" on its own for every audio and video stream in the file. demuxer.streams comes back in the order you asked for, and each of them builds its own decoder. demuxer = Demuxer(av_path, streams=(\"video\", \"audio\")) video_stream, audio_stream = demuxer.streams decoders = { video_stream.index: video_stream.make_decoder(device=device), audio_stream.index: audio_stream.make_decoder(), } color_converter = ColorConverter(device=device) audio_converter = AudioConverter() The packets come out interleaved, in the order the container stores them, and Packet.stream_index says which stream each belongs to: use it to match a packet to its decoder. Each decoder is drained at the end, as always. frames, samples = [], [] for packet in demuxer: outputs = decoders[packet.stream_index].decode(packet) if packet.stream_index == video_stream.index: frames += [color_converter.convert(raw) for raw in outputs] else: samples += [audio_converter.convert(raw) for raw in outputs] frames += [color_converter.convert(raw) for raw in decoders[video_stream.index].drain()] samples += [audio_converter.convert(raw) for raw in decoders[audio_stream.index].drain()] samples.append(audio_converter.drain()) data = torch.cat([s.data for s in samples], dim=1) print(f\"{len(frames)} frames up to {frames[-1].pts_seconds:.2f}s, \" f\"{data.shape[1]} samples in one pass over the file\") 150 frames up to 4.97s, 221184 samples in one pass over the file Seeking# Demuxer.seek() moves the demuxer to a timestamp. For videos, a decoder can only start on a keyframe, so the seek lands on the keyframe at or before the target, and the first frames that come out usually precede it: keep decoding forward and drop them until you reach the timestamp you asked for. The seek also invalidates the frames the decoder is holding on to, so the VideoPacketDecoder must be reset(). So must every other decoder fed by that demuxer, and every AudioConverter, whose resampler carries state across calls just the same. demuxer = Demuxer(video_path) packet_decoder = demuxer.streams[0].make_decoder(device=device) color_converter = ColorConverter(device=device) seconds = 2.5 demuxer.seek(seconds) packet_decoder.reset() # An error is raised if you forget this! frames = decode_frames(demuxer, packet_decoder, color_converter) landed_on = next(frames) # The frame *playing* at a timestamp is the first one that hasn\u0027t finished # playing by then. target = next( frame for frame in frames if frame.pts_seconds + frame.duration_seconds \u003e seconds ) print(f\"asked for {seconds}s, landed on {landed_on.pts_seconds:.3f}s, \" f\"target frame at {target.pts_seconds:.3f}s\") asked for 2.5s, landed on 2.000s, target frame at 2.500s That is what VideoDecoder.get_frame_played_at() does for you - the seek, the decoding forward, and the dropping - except that we did it in the decoder\u2019s seek_mode=\"approximate\" flavour. The \"exact\" one needs a scan, which the next section gets to. Warning Important for audio: these blocks do no pre-roll. A lossy codec\u2019s first frames after a seek are subtly wrong until it re-primes, especially when resampling is involved. Decoding a margin before and after your target and discarding it is up to you. AudioDecoder does all of this for you. Scanning# VideoStream.scan() demuxes the whole stream once, without decoding anything, and returns a FrameIndex: one entry per frame, in presentation order. This is the only way to know a stream\u2019s exact frame count, timestamps and keyframe positions - a container header can be wrong about all of them. It costs one pass over the file, and it leaves the demuxer back at the start. If you call VideoStream.scan(), it has to happen before any packet is read from the demuxer. demuxer = Demuxer(video_path) (video_stream,) = demuxer.streams index = video_stream.scan() packet_decoder = video_stream.make_decoder(device=device) color_converter = ColorConverter(device=device) print(f\"{index.num_frames_from_content} frames at \" f\"{index.average_fps_from_content} fps, \" f\"from {index.begin_stream_seconds_from_content}s \" f\"to {index.end_stream_seconds_from_content}s\") 150 frames at 30.0 fps, from 0.0s to 5.0s The index is also what gives the blocks frame indices, which they otherwise don\u2019t have at all: FrameIndex.index_at() maps a timestamp to the frame on screen then, and FrameIndex.pts_seconds maps back. That\u2019s enough to build get_frame_at(), or a clip sampler, on top of the blocks. i = index.index_at(seconds) print(f\"frame {i} is on screen at {seconds}s, and starts at {index.pts_seconds[i]}s\") frame 75 is on screen at 2.5s, and starts at 2.5s If you\u2019re following more than one video stream, you can call scan() on each of them. You only pay the scan cost once, for the first stream: the other streams\u2019 scan resuts are cached and returned when you call scan on them. Keyframes# FrameIndex.is_key_frame is a mask over all the frames, and FrameIndex.key_frame_indices the same thing as a list of indices. A keyframe is the cheapest kind of frame to decode on its own, because every non-keyframe needs a keyframe to be decoded first before it can itself be decoded. Reaching an arbitrary frame therefore means seeking to the keyframe before it and decoding everything in between, while reaching a keyframe costs exactly one frame: the seek lands right on it, and it is the very next frame out of the decoder - nothing to decode forward, nothing to drop. That makes keyframes attractive whenever you need some frames of a video rather than specific ones - thumbnails, coarse previews, or a cheap sampler for training. key_frame_indices = index.key_frame_indices print(f\"{len(key_frame_indices)} keyframes out of {len(index)} frames, \" f\"at {index.pts_seconds[key_frame_indices].tolist()}\") def keyframe_sampler(demuxer, packet_decoder, color_converter, index): for k in index.key_frame_indices.tolist(): demuxer.seek(index.pts_seconds[k]) packet_decoder.reset() # The seek landed on the keyframe itself, so the first frame out of the # decoder is the one we want. yield next(decode_frames(demuxer, packet_decoder, color_converter)) key_frames = list( keyframe_sampler(demuxer, packet_decoder, color_converter, index) ) print(f\"decoded {len(key_frames)} keyframes at \" f\"{[round(f.pts_seconds, 3) for f in key_frames]}\") 5 keyframes out of 150 frames, at [0.0, 1.0, 2.0, 3.0, 4.0] decoded 5 keyframes at [0.0, 1.0, 2.0, 3.0, 4.0] Exact seeking# One last thing the index buys you, which most files never need. seek(seconds) already lands on the keyframe at or before the target - but without a scan, FFmpeg resolves a seek against metadata that might not be fully accurate. In rare cases, you might land on a keyframe that is after the one you wanted. FrameIndex.key_frame_seconds_for() gives you that keyframe\u2019s own timestamp instead, which always lands where you meant. The two are the same call on the majority of files. This is what separates VideoDecoder\u2019s seek_mode=\"exact\" from \"approximate\" for a timestamp lookup. demuxer.seek(index.key_frame_seconds_for(seconds)) packet_decoder.reset() frames = decode_frames(demuxer, packet_decoder, color_converter) target = next(f for f in frames if f.pts_seconds \u003e= index.pts_seconds[i]) print(f\"frame {i} at {target.pts_seconds:.3f}s\") frame 75 at 2.500s Metadata# Metadata comes in three tiers, and the blocks never merge them: Where Type What it describes demuxer.metadata DemuxerMetadata the container stream.metadata VideoStreamHeaderMetadata or AudioStreamHeaderMetadata what the header claims about one stream video_stream.scan() FrameIndex what that stream\u2019s packets actually say The name of a field tells you which tier it came from, so a header value is never mistaken for an exact one: demuxer = Demuxer(video_path) (video,) = demuxer.streams print(f\"container: {demuxer.metadata.duration_seconds_from_header}s\") print(f\"header: {video.metadata.width}x{video.metadata.height}, \" f\"{video.metadata.num_frames_from_header} frames \" f\"at {video.metadata.average_fps_from_header} fps\") print(f\"content: {video.scan().num_frames_from_content} frames \" f\"at {video.scan().average_fps_from_content} fps\") container: 5s header: 1280x720, 150 frames at 30 fps content: 150 frames at 30.0 fps Comparing with VideoDecoder and AudioDecoder# A VideoDecoder\u2019s metadata is a VideoStreamMetadata, which holds two kinds of fields: The raw ones, suffixed _from_header or _from_content. Every one of them is available from the blocks too, on demuxer.metadata, on stream.metadata, or on the FrameIndex a scan returns. Same values, same names. A fourth, \u201cmagic\u201d set with no suffix - num_frames, average_fps, duration_seconds, begin_stream_seconds, end_stream_seconds. These don\u2019t exist in the file: each one runs a fallback chain over the raw fields and hands you the first thing that isn\u2019t None. The blocks run no fallback logic at all, so the magic set has no blocks equivalent. What you get instead is every input those chains read from, which you are free to combine yourself: VideoDecoder.metadata Blocks equivalent width, height, codec, \u2026 stream.metadata.\u003csame name\u003e num_frames_from_header stream.metadata.num_frames_from_header num_frames_from_content stream.scan().num_frames_from_content num_frames (none) - stream.scan().num_frames_from_content if scanned, else stream.metadata.num_frames_from_header, else computed from duration_seconds and average_fps average_fps (none) - stream.scan().average_fps_from_content if scanned, else stream.metadata.average_fps_from_header duration_seconds (none) - from the scan if scanned, else stream.metadata.duration_seconds_from_header, else computed from stream.metadata.num_frames_from_header and stream.metadata.average_fps_from_header, else demuxer.metadata.duration_seconds_from_header begin_stream_seconds (none) - stream.scan().begin_stream_seconds_from_content if scanned, else 0 end_stream_seconds (none) - stream.scan().end_stream_seconds_from_content if scanned, else duration_seconds Note how often \u201cif scanned\u201d shows up. Whether a VideoDecoder scanned is a consequence of its seek_mode: \"exact\" (the default) scans up-front, \"approximate\" never does. So metadata.num_frames silently means a different thing depending on how the decoder was built, and that is exactly the ambiguity the blocks refuse to introduce. AudioDecoder works the same way, with a smaller magic set on AudioStreamMetadata: sample_rate, num_channels and sample_format are raw header fields and are on AudioStream.metadata too, while duration_seconds and begin_stream_seconds are computed. Reading metadata of a file before opening it# A demuxer\u2019s streams are fixed when you construct it, so to decide which ones to ask for you need to know what is in the file first. That\u2019s get_container_metadata(): it reads the header and no packets, and it also reports the streams a demuxer cannot follow, such as subtitles. It hands back a ContainerMetadata. from torchcodec.decoders._blocks import get_container_metadata for stream in get_container_metadata(av_path).streams: print(f\" stream {stream.stream_index}: {stream.media_type}, {stream.codec}\") stream 0: video, h264 stream 1: audio, aac Where to go next# Composing pipelines: threads, devices and endless streams runs the stages concurrently on several threads, and decodes a live source that has no duration, no frame count and no end - something VideoDecoder cannot open at all. Raw frames and raw audio samples skips the converters and reads the decoder\u2019s own YUV planes and audio samples, at the source\u2019s own precision. Total running time of the script: (0 minutes 1.407 seconds) Download Jupyter notebook: basics.ipynb Download Python source code: basics.py Download zipped: basics.zip Gallery generated by Sphinx-Gallery",
+       "author": {
+         "@type": "Organization",
+         "name": "PyTorch Contributors",
+         "url": "https://pytorch.org"
+       },
+       "image": "https://pytorch.org/docs/stable/_static/img/pytorch_seo.png",
+       "mainEntityOfPage": {
+         "@type": "WebPage",
+         "@id": "/generated_examples/blocks/basics.html"
+       },
+       "datePublished": "2023-01-01T00:00:00Z",
+       "dateModified": "2023-01-01T00:00:00Z"
+     }
+ </script>
+  <script>
+    // Tutorials Call to action event tracking
+    $("[data-behavior='call-to-action-event']").on('click', function () {
+      fbq('trackCustom', "Download", {
+        tutorialTitle: $('h1:first').text(),
+        downloadLink: this.href,
+        tutorialLink: window.location.href,
+        downloadTitle: $(this).attr("data-response")
+      });
+      if (typeof gtag === 'function') {
+        gtag('event', 'click', {
+          'event_category': $(this).attr("data-response"),
+          'event_label': $("h1").first().text(),
+          'tutorial_link': window.location.href
+        });
+      }
+    });
+  </script>
+  
+  </body>
+</html>

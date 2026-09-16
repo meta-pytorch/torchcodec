@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>RawAudioSamples &#8212; TorchCodec 0.17.0.dev20260915+cu130 Documentation</title>
+    <title>RawAudioSamples &#8212; TorchCodec 0.17.0.dev20260916+cu130 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=12ff8c86"></script>
+    <script src="../_static/documentation_options.js?v=2230c5d4"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -531,6 +531,12 @@ document.write(`
               </li>
             
               <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/blocks/index.html">
+                  Decoding blocks (experimental)
+                </a>
+              </li>
+            
+              <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="../generated_examples/encoding/index.html">
                   Encoding
                 </a>
@@ -820,6 +826,12 @@ document.write(`
               <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="../generated_examples/decoding/index.html">
                   Decoding
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/blocks/index.html">
+                  Decoding blocks (experimental)
                 </a>
               </li>
             
@@ -1216,9 +1228,9 @@ Use an <a class="reference internal" href="torchcodec.decoders._blocks.AudioConv
 </pre></div>
 </div>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">RawAudioSamples</span></code>:</p>
-<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_blocks_thumb.png" />
-<p><a class="reference internal" href="../generated_examples/decoding/blocks.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
-  <div class="sphx-glr-thumbnail-title">Blocks: build your own decoding pipeline</div>
+<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_raw_data_thumb.png" />
+<p><a class="reference internal" href="../generated_examples/blocks/raw_data.html"><span class="doc">Raw frames and raw audio samples</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Raw frames and raw audio samples</div>
 </div></div><dl class="py attribute">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.RawAudioSamples.data">
 <span class="sig-name descname"><span class="pre">data</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.14)"><span class="pre">Tensor</span></a></em><a class="headerlink" href="#torchcodec.decoders._blocks.RawAudioSamples.data" title="Link to this definition">#</a></dt>
@@ -1617,7 +1629,7 @@ ones are <em>not</em> normalised to <code class="docutils literal notranslate"><
        "headline": "RawAudioSamples",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders._blocks.RawAudioSamples.html",
-       "articleBody": "RawAudioSamples# class torchcodec.decoders._blocks.RawAudioSamples(data: Tensor, sample_rate: int, pts_seconds: float, duration_seconds: float, _generation: int = 0)[source]# One decoded audio frame\u2019s samples, exactly as the decoder produced them. You cannot build one yourself: an AudioPacketDecoder creates them. Use an AudioConverter to turn them into normalised float32 AudioSamples, or read data directly: for packet in demuxer: for raw_samples in audio_packet_decoder.decode(packet): print(raw_samples.data.shape) # e.g. [2, 1024] print(raw_samples.data.dtype) # e.g. float32, for an fltp source print(raw_samples.sample_rate) # e.g. 16000 Examples using RawAudioSamples: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline data: Tensor# Always a contiguous [num_channels, num_samples] tensor, whatever the source\u2019s sample format. Planar and packed sources alike come out with that same shape and layout (they are copied). The dtype is whichever one holds the source\u2019s samples exactly: uint8 for u8, int16 for s16, int32 for s32, int64 for s64, float32 for flt and float64 for dbl. The integer ones are not normalised to [-1, 1]; that is what an AudioConverter does. duration_seconds: float# How long these samples last, in seconds. property num_channels: int# The number of channels, i.e. data.shape[0]. property num_samples: int# The number of samples per channel, i.e. data.shape[1]. pts_seconds: float# The pts of the first sample, in seconds. sample_rate: int# The source\u2019s sample rate, in Hz.",
+       "articleBody": "RawAudioSamples# class torchcodec.decoders._blocks.RawAudioSamples(data: Tensor, sample_rate: int, pts_seconds: float, duration_seconds: float, _generation: int = 0)[source]# One decoded audio frame\u2019s samples, exactly as the decoder produced them. You cannot build one yourself: an AudioPacketDecoder creates them. Use an AudioConverter to turn them into normalised float32 AudioSamples, or read data directly: for packet in demuxer: for raw_samples in audio_packet_decoder.decode(packet): print(raw_samples.data.shape) # e.g. [2, 1024] print(raw_samples.data.dtype) # e.g. float32, for an fltp source print(raw_samples.sample_rate) # e.g. 16000 Examples using RawAudioSamples: Raw frames and raw audio samples Raw frames and raw audio samples data: Tensor# Always a contiguous [num_channels, num_samples] tensor, whatever the source\u2019s sample format. Planar and packed sources alike come out with that same shape and layout (they are copied). The dtype is whichever one holds the source\u2019s samples exactly: uint8 for u8, int16 for s16, int32 for s32, int64 for s64, float32 for flt and float64 for dbl. The integer ones are not normalised to [-1, 1]; that is what an AudioConverter does. duration_seconds: float# How long these samples last, in seconds. property num_channels: int# The number of channels, i.e. data.shape[0]. property num_samples: int# The number of samples per channel, i.e. data.shape[1]. pts_seconds: float# The pts of the first sample, in seconds. sample_rate: int# The source\u2019s sample rate, in Hz.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

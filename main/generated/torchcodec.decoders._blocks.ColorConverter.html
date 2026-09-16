@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>ColorConverter &#8212; TorchCodec 0.17.0.dev20260915+cu130 Documentation</title>
+    <title>ColorConverter &#8212; TorchCodec 0.17.0.dev20260916+cu130 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=12ff8c86"></script>
+    <script src="../_static/documentation_options.js?v=2230c5d4"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -531,6 +531,12 @@ document.write(`
               </li>
             
               <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/blocks/index.html">
+                  Decoding blocks (experimental)
+                </a>
+              </li>
+            
+              <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="../generated_examples/encoding/index.html">
                   Encoding
                 </a>
@@ -820,6 +826,12 @@ document.write(`
               <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="../generated_examples/decoding/index.html">
                   Decoding
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/blocks/index.html">
+                  Decoding blocks (experimental)
                 </a>
               </li>
             
@@ -1237,9 +1249,15 @@ feeding it a mix of SDR and HDR frames gives you a mix of dtypes.</p></li>
 </dd>
 </dl>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">ColorConverter</span></code>:</p>
-<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_blocks_thumb.png" />
-<p><a class="reference internal" href="../generated_examples/decoding/blocks.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
+<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_basics_thumb.png" />
+<p><a class="reference internal" href="../generated_examples/blocks/basics.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
   <div class="sphx-glr-thumbnail-title">Blocks: build your own decoding pipeline</div>
+</div><div class="sphx-glr-thumbcontainer" tooltip="How to overlap the decoding stages across threads, choose where to cut the pipeline on CPU and on CUDA, and decode a source that never ends."><img alt="" src="../_images/sphx_glr_pipelines_thumb.png" />
+<p><a class="reference internal" href="../generated_examples/blocks/pipelines.html"><span class="doc">Composing pipelines: threads, devices and endless streams</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Composing pipelines: threads, devices and endless streams</div>
+</div><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_raw_data_thumb.png" />
+<p><a class="reference internal" href="../generated_examples/blocks/raw_data.html"><span class="doc">Raw frames and raw audio samples</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Raw frames and raw audio samples</div>
 </div></div><dl class="py method">
 <dt class="sig sig-object py" id="torchcodec.decoders._blocks.ColorConverter.convert">
 <span class="sig-name descname"><span class="pre">convert</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raw_frame</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame" title="torchcodec.decoders._blocks._frame.RawFrame"><span class="pre">RawFrame</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="torchcodec.Frame.html#torchcodec.Frame" title="torchcodec._frame.Frame"><span class="pre">Frame</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_color_converter.html#ColorConverter.convert"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders._blocks.ColorConverter.convert" title="Link to this definition">#</a></dt>
@@ -1611,7 +1629,7 @@ converter’s device.</p>
        "headline": "ColorConverter",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders._blocks.ColorConverter.html",
-       "articleBody": "ColorConverter# class torchcodec.decoders._blocks.ColorConverter(device: str | device | None = None, output_dtype: dtype | Literal[\u0027auto\u0027] = torch.uint8)[source]# Turn a RawFrame (typically YUV) into an RGB Frame. converter = ColorConverter() for packet in demuxer: for raw_frame in packet_decoder.decode(packet): frame = converter.convert(raw_frame) frame.data # uint8 [3, height, width], RGB Unlike the other blocks this one isn\u2019t tied to a specific video stream. Everything it needs (dimensions, pixel format, colorspace, rotation) comes from the RawFrame itself, so the same converter instance can process frames from any video stream, provided that they share the same device. Parameters: device (str or torch.device, optional) \u2013 The device to convert on. If None (default), the current default device is used (see torch.set_default_device). It has to be the device the frames are already on, i.e. it must match what was passed to the VideoPacketDecoder that produced the RawFrame. output_dtype (torch.dtype or \"auto\", optional) \u2013 torch.uint8 (default) for values in [0, 255], torch.float32 for [0, 1], or \"auto\" for uint8 from 8-bit sources and float32 from deeper ones. Since this block isn\u2019t tied to a stream, \"auto\" is resolved per frame rather than once per video, so feeding it a mix of SDR and HDR frames gives you a mix of dtypes. Examples using ColorConverter: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline convert(raw_frame: RawFrame) \u2192 Frame[source]# Convert one RawFrame to an RGB Frame. RawFrame.rotation_degrees is applied, so the output is upright and matches what a VideoDecoder gives you. Parameters: raw_frame (RawFrame) \u2013 The frame to convert. It has to be on this converter\u2019s device. Returns: The RGB [3, height, width] frame in the converter\u2019s output_dtype. Raises: RuntimeError \u2013 If the frame is not on this converter\u2019s device.",
+       "articleBody": "ColorConverter# class torchcodec.decoders._blocks.ColorConverter(device: str | device | None = None, output_dtype: dtype | Literal[\u0027auto\u0027] = torch.uint8)[source]# Turn a RawFrame (typically YUV) into an RGB Frame. converter = ColorConverter() for packet in demuxer: for raw_frame in packet_decoder.decode(packet): frame = converter.convert(raw_frame) frame.data # uint8 [3, height, width], RGB Unlike the other blocks this one isn\u2019t tied to a specific video stream. Everything it needs (dimensions, pixel format, colorspace, rotation) comes from the RawFrame itself, so the same converter instance can process frames from any video stream, provided that they share the same device. Parameters: device (str or torch.device, optional) \u2013 The device to convert on. If None (default), the current default device is used (see torch.set_default_device). It has to be the device the frames are already on, i.e. it must match what was passed to the VideoPacketDecoder that produced the RawFrame. output_dtype (torch.dtype or \"auto\", optional) \u2013 torch.uint8 (default) for values in [0, 255], torch.float32 for [0, 1], or \"auto\" for uint8 from 8-bit sources and float32 from deeper ones. Since this block isn\u2019t tied to a stream, \"auto\" is resolved per frame rather than once per video, so feeding it a mix of SDR and HDR frames gives you a mix of dtypes. Examples using ColorConverter: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline Composing pipelines: threads, devices and endless streams Composing pipelines: threads, devices and endless streams Raw frames and raw audio samples Raw frames and raw audio samples convert(raw_frame: RawFrame) \u2192 Frame[source]# Convert one RawFrame to an RGB Frame. RawFrame.rotation_degrees is applied, so the output is upright and matches what a VideoDecoder gives you. Parameters: raw_frame (RawFrame) \u2013 The frame to convert. It has to be on this converter\u2019s device. Returns: The RGB [3, height, width] frame in the converter\u2019s output_dtype. Raises: RuntimeError \u2013 If the frame is not on this converter\u2019s device.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

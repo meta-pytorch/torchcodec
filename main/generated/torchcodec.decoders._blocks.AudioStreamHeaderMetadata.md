@@ -4,6 +4,14 @@
 
 Metadata of a single audio stream, as reported by the container header.
 
+Examples using `AudioStreamHeaderMetadata`:
+
+![](../_images/sphx_glr_basics_thumb.png)
+
+[Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
+
+Blocks: build your own decoding pipeline
+
 begin_stream_seconds_from_header*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Beginning of the stream, in seconds, obtained from the header (float or

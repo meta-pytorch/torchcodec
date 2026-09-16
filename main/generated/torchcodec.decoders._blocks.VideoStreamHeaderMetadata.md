@@ -4,6 +4,14 @@
 
 Metadata of a single video stream, as reported by the container header.
 
+Examples using `VideoStreamHeaderMetadata`:
+
+![](../_images/sphx_glr_basics_thumb.png)
+
+[Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
+
+Blocks: build your own decoding pipeline
+
 average_fps_from_header*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Averate fps of the stream, obtained from the header (float or None).
