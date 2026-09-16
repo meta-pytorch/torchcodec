@@ -6962,6 +6962,33 @@ class TestImageDecoder:
         )
 
     @needs_png
+    @pytest.mark.parametrize("bits", (1, 2, 4, 8))
+    @pytest.mark.parametrize("output_mode, pil_mode", (("RGB", "RGB"), ("GRAY", "L")))
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.uint16, "auto"))
+    def test_png_palette_trns_without_alpha(
+        self, tmp_path, bits, output_mode, pil_mode, output_dtype
+    ):
+        # Palette expansion also expands tRNS. Non-alpha output modes must
+        # strip that channel before libpng writes into the output tensor.
+        image = Image.new("P", (2, 1), color=0)
+        image.putpalette([17, 34, 51, 68, 85, 102])
+        image.putpixel((1, 0), 1)
+        path = tmp_path / "palette_trns.png"
+        image.save(path, bits=bits, transparency=bytes([0, 128]))
+
+        decoded = decode_png(path, mode=output_mode, output_dtype=output_dtype)
+        reference = self._pil_to_tensor(image.convert("RGB").convert(pil_mode))
+        expected_dtype = torch.uint16 if output_dtype == torch.uint16 else torch.uint8
+        assert decoded.dtype == expected_dtype
+        scale = 257 if expected_dtype == torch.uint16 else 1
+        torch.testing.assert_close(
+            decoded.to(torch.int32),
+            reference.to(torch.int32) * scale,
+            rtol=0,
+            atol=scale if output_mode == "GRAY" else 0,
+        )
+
+    @needs_png
     @pytest.mark.parametrize("shape", ((27, 27), (60, 60), (105, 105)))
     def test_1bit_png(self, tmp_path, shape):
         # 1-bit (black & white) PNGs are an edge case for the bit-depth handling:

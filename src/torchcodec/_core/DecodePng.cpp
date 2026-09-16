@@ -208,7 +208,8 @@ PngHeader read_header_and_configure(
             png_set_palette_to_rgb(png_ptr);
           }
 
-          if (has_alpha) {
+          // Expanding a palette also expands tRNS into an alpha channel.
+          if (has_alpha || has_trns) {
             png_set_strip_alpha(png_ptr);
           }
 
@@ -244,7 +245,8 @@ PngHeader read_header_and_configure(
             png_set_gray_to_rgb(png_ptr);
           }
 
-          if (has_alpha) {
+          // Expanding a palette also expands tRNS into an alpha channel.
+          if (has_alpha || has_trns) {
             png_set_strip_alpha(png_ptr);
           }
           num_output_channels = 3;
