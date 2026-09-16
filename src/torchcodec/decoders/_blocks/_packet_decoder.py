@@ -28,7 +28,6 @@ if TYPE_CHECKING:
 
 
 # TODO_API_BREAKDOWN DOC P1 revisit every single comment across all Blocks APIs
-# TODO_API_BREAKDOWN DOC P1 Write tutorials.
 
 _Decoded = TypeVar("_Decoded", RawFrame, RawAudioSamples)
 _Self = TypeVar("_Self", bound="_BasePacketDecoder")

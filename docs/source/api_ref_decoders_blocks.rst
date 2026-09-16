@@ -13,8 +13,11 @@ torchcodec.decoders._blocks
    **The Blocks APIs are under active construction.** They are private and
    unreleased. Signatures and semantics may change without notice.
 
-For a tutorial, see:
-:ref:`sphx_glr_generated_examples_decoding_blocks.py`.
+For tutorials, see:
+
+- :ref:`sphx_glr_generated_examples_blocks_basics.py`
+- :ref:`sphx_glr_generated_examples_blocks_pipelines.py`
+- :ref:`sphx_glr_generated_examples_blocks_raw_data.py`
 
 Demuxing
 --------
