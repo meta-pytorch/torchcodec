@@ -982,6 +982,15 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
       ? AVCOL_RANGE_JPEG
       : AVCOL_RANGE_MPEG;
 
+  // Unlike matrix_coefficients above, these two are plain H.273 code points,
+  // and FFmpeg's enums are defined to those same values, so they carry over
+  // directly. A value outside the enum ends up named "unknown" rather than
+  // mis-tagged, because av_color_*_name() returns nullptr for it.
+  av_frame->color_primaries = static_cast<AVColorPrimaries>(
+      video_format_.video_signal_description.color_primaries);
+  av_frame->color_trc = static_cast<AVColorTransferCharacteristic>(
+      video_format_.video_signal_description.transfer_characteristics);
+
   // NVDEC stacks the planes of the coded frame in a single allocation, all with
   // the same pitch, so consecutive planes start plane_stride bytes apart.
   // NVIDIA's own NvDecoder addresses the chroma plane the same way:

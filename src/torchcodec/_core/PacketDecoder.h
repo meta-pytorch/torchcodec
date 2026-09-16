@@ -88,16 +88,18 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
 // How a decoded frame's samples are laid out and how they should be
 // interpreted, before any color conversion.
 struct FrameMetadata {
-  std::string pix_fmt;
-  std::string colorspace;
+  std::string pixel_format;
+  std::string color_space;
   std::string color_range;
+  std::string color_primaries;
+  std::string color_transfer_characteristic;
   int64_t bit_depth = 8;
   // The dimensions of the samples as they were decoded, i.e. before rotation.
   int64_t width = 0;
   int64_t height = 0;
   // Degrees counter-clockwise needed to make the frame upright. 0 when the
   // frame carries no display matrix.
-  double rotation_degrees = 0;
+  double rotation = 0;
 };
 
 // Describes `av_frame` without touching its samples. Unlike get_frame_planes(),

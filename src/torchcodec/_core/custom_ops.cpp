@@ -112,7 +112,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "_blocks_convert_frame(Tensor(a!) converter, Tensor frame, Device device) -> Tensor");
   m.def(
-      "_blocks_frame_metadata(Tensor frame) -> (str, str, str, int, int, int, float)");
+      "_blocks_frame_metadata(Tensor frame) -> (str, str, str, str, str, int, int, int, float)");
   m.def(
       "_blocks_frame_planes(Tensor frame, Device device) -> (Tensor, Tensor, Tensor, Tensor)");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
@@ -1097,9 +1097,11 @@ void _blocks_audio_converter_reset(torch::stable::Tensor& converter) {
 }
 
 using OpsFrameMetadataOutput = std::tuple<
-    std::string, // pixel-format
-    std::string, // colorspace
+    std::string, // pixel format
+    std::string, // color space
     std::string, // color range
+    std::string, // color primaries
+    std::string, // color transfer characteristic
     int64_t, // bit depth
     int64_t, // width
     int64_t, // height
@@ -1110,13 +1112,15 @@ OpsFrameMetadataOutput _blocks_frame_metadata(
   FrameMetadata metadata =
       get_frame_metadata(*unwrap_tensor_to_pointer<AVFrame>(tensor_handle));
   return std::make_tuple(
-      metadata.pix_fmt,
-      metadata.colorspace,
+      metadata.pixel_format,
+      metadata.color_space,
       metadata.color_range,
+      metadata.color_primaries,
+      metadata.color_transfer_characteristic,
       metadata.bit_depth,
       metadata.width,
       metadata.height,
-      metadata.rotation_degrees);
+      metadata.rotation);
 }
 
 using OpsFramePlanesOutput = std::tuple<
