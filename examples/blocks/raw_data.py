@@ -73,18 +73,17 @@ def decode_raw(demuxer, packet_decoder):
 #
 # A :class:`VideoPacketDecoder` produces :class:`RawFrame` objects, and a
 # :class:`RawFrame` can hand out the decoder's own planes as tensor views, with
-# no copy and no conversion. It describes how they are laid out, and the
-# stream's metadata describes how to interpret the values in them.
+# no copy and no conversion. It also carries everything you need to interpret
+# them.
 from torchcodec.decoders._blocks import ColorConverter, Demuxer
 
 demuxer = Demuxer(video_path)
-stream_metadata = demuxer.streams[0].metadata
 packet_decoder = demuxer.streams[0].make_decoder(device=device)
 raw_frame = next(decode_raw(demuxer, packet_decoder))
 
 Y, U, V = raw_frame.planes
 print(f"{raw_frame.pixel_format = }, {raw_frame.bit_depth = }")
-print(f"{stream_metadata.color_space = }, {stream_metadata.color_primaries = }")
+print(f"{raw_frame.color_space = }, {raw_frame.color_range = }")
 print(f"{Y.shape = }, {U.shape = }, {Y.dtype = }, {Y.stride() = }")
 
 # %%
@@ -101,23 +100,25 @@ print(f"{Y.shape = }, {U.shape = }, {Y.dtype = }, {Y.stride() = }")
 #
 # Being the decoder's own planes, they are also never rotated - a video whose
 # container asks for a rotation gives you the samples as they were encoded, and
-# the stream's ``rotation`` tells you what to apply. A :class:`ColorConverter`
+# :attr:`RawFrame.rotation` tells you what to apply. A :class:`ColorConverter`
 # applies it for you.
 
 # %%
 # Doing the conversion yourself
 # -----------------------------
 #
-# With :attr:`RawFrame.planes`, :attr:`RawFrame.bit_depth` and the stream's
-# color metadata, the conversion is yours to write. Here it's plain PyTorch ops
-# - it could just as well be a Triton or CUDA kernel, fused with whatever your
-# model needs next.
+# With :attr:`RawFrame.planes` and the metadata beside it
+# (:attr:`~RawFrame.color_space`, :attr:`~RawFrame.color_range`,
+# :attr:`~RawFrame.bit_depth`), the conversion is yours to write. Here it's
+# plain PyTorch ops - it could just as well be a Triton or CUDA kernel, fused
+# with whatever your model needs next.
 #
-# On CUDA the planes come back in an NVDEC surface format, which is why the
-# pixel format is checked against the frame rather than against the stream: a
-# ``yuv420p`` source is handed to you as ``nv12``.
+# Read these off the frame rather than off the stream: they describe the buffer
+# you were handed, which is not always how the source is tagged. A ``yuv420p``
+# source arrives as ``nv12`` on CUDA, and an RGB one is retagged when the CUDA
+# fallback converts it to a YUV surface.
 assert raw_frame.pixel_format in ("yuv420p", "nv12")  # 8-bit 4:2:0, CPU and CUDA
-assert stream_metadata.color_space == "bt709"
+assert raw_frame.color_space == "bt709" and raw_frame.color_range == "tv"
 
 
 def yuv420_to_rgb(Y, U, V):
@@ -203,14 +204,13 @@ subprocess.run(
 )
 
 hdr_demuxer = Demuxer(hdr_video_path)
-hdr_metadata = hdr_demuxer.streams[0].metadata
 hdr_packet_decoder = hdr_demuxer.streams[0].make_decoder(device=device)
 hdr_raw = next(decode_raw(hdr_demuxer, hdr_packet_decoder))
 
 hdr_Y = hdr_raw.planes[0]
 print(f"{hdr_raw.pixel_format = }, {hdr_raw.bit_depth = }, {hdr_Y.dtype = }")
-print(f"{hdr_metadata.color_space = }, "
-      f"{hdr_metadata.color_transfer_characteristic = }")
+print(f"{hdr_raw.color_space = }, {hdr_raw.color_primaries = }, "
+      f"{hdr_raw.color_transfer_characteristic = }")
 
 # %%
 # A plane's dtype only tells you its storage width, ``uint8`` or ``uint16``;

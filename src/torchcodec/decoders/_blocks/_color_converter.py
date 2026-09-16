@@ -72,8 +72,8 @@ class ColorConverter:
     def convert(self, raw_frame: RawFrame) -> Frame:
         """Convert one :class:`RawFrame` to an RGB :class:`~torchcodec.Frame`.
 
-        The stream's rotation is applied, so the output is upright and matches
-        what a :class:`~torchcodec.decoders.VideoDecoder` gives you.
+        :attr:`RawFrame.rotation` is applied, so the output is upright and
+        matches what a :class:`~torchcodec.decoders.VideoDecoder` gives you.
 
         Args:
             raw_frame (RawFrame): The frame to convert. It has to be on this

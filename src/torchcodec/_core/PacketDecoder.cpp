@@ -180,11 +180,25 @@ std::string get_pix_fmt_name(const AVFrame& av_frame) {
 FrameMetadata get_frame_metadata(const AVFrame& av_frame) {
   const AVPixFmtDescriptor* desc = get_pix_fmt_desc(av_frame);
 
+  // These all return a static string, or nullptr for a value outside the enum.
+  const char* color_space_name = av_color_space_name(av_frame.colorspace);
+  const char* color_range_name = av_color_range_name(av_frame.color_range);
+  const char* color_primaries_name =
+      av_color_primaries_name(av_frame.color_primaries);
+  const char* color_trc_name = av_color_transfer_name(av_frame.color_trc);
+
   FrameMetadata result;
   result.pixel_format = get_pix_fmt_name(av_frame);
+  result.color_space = color_space_name ? color_space_name : "unknown";
+  result.color_range = color_range_name ? color_range_name : "unknown";
+  result.color_primaries =
+      color_primaries_name ? color_primaries_name : "unknown";
+  result.color_transfer_characteristic =
+      color_trc_name ? color_trc_name : "unknown";
   result.bit_depth = desc->comp[0].depth;
   result.width = av_frame.width;
   result.height = av_frame.height;
+  result.rotation = get_rotation_from_frame(av_frame).value_or(0);
   return result;
 }
 

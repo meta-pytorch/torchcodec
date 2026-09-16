@@ -17,9 +17,14 @@ from torchcodec._core.ops import _blocks_frame_metadata, _blocks_frame_planes
 class _Metadata(NamedTuple):
     # The fields of the `_blocks_frame_metadata` op, in order.
     pixel_format: str
+    color_space: str
+    color_range: str
+    color_primaries: str
+    color_transfer_characteristic: str
     bit_depth: int
     width: int
     height: int
+    rotation: float
 
 
 class Packet:
@@ -70,10 +75,8 @@ class RawFrame:
     format (typically YUV), on the device that was passed to
     :meth:`VideoStream.make_decoder`, and
     :attr:`width`, :attr:`height` and :attr:`planes` are all pre-rotation:
-    :attr:`VideoStreamHeaderMetadata.rotation
-    <torchcodec.decoders.VideoStreamMetadata.rotation>` is what a
-    :class:`ColorConverter` applies for you, and what you have to apply
-    yourself if you convert :attr:`planes` on your own.
+    :attr:`rotation` is what a :class:`ColorConverter` applies for you, and
+    what you have to apply yourself if you convert :attr:`planes` on your own.
 
     .. important::
 
@@ -146,6 +149,46 @@ class RawFrame:
         return self._get_metadata().pixel_format
 
     @property
+    def color_space(self) -> str:
+        """The FFmpeg color space name, e.g. ``"bt709"``, or ``"unspecified"``.
+
+        This describes :attr:`planes`, which is not always how the source is
+        tagged: a CUDA decoder that falls back to the CPU converts an RGB frame
+        into a YUV surface format, and this reports the color space of that
+        conversion. Prefer it over
+        :attr:`VideoStreamHeaderMetadata.color_space
+        <torchcodec.decoders.VideoStreamMetadata.color_space>` when you convert
+        the samples yourself.
+        """
+        return self._get_metadata().color_space
+
+    @property
+    def color_range(self) -> str:
+        """``"tv"`` for limited range, ``"pc"`` for full range.
+
+        Like :attr:`color_space`, this describes :attr:`planes` rather than the
+        source."""
+        return self._get_metadata().color_range
+
+    @property
+    def color_primaries(self) -> str:
+        """The FFmpeg color primaries name, e.g. ``"bt709"``, ``"bt2020"``, or
+        ``"unspecified"``.
+
+        Unlike :attr:`color_space` and :attr:`color_range`, nothing in the
+        decode path rewrites this, so it is the source's own tag."""
+        return self._get_metadata().color_primaries
+
+    @property
+    def color_transfer_characteristic(self) -> str:
+        """The FFmpeg transfer characteristic name, e.g. ``"bt709"``,
+        ``"smpte2084"`` (PQ), ``"arib-std-b67"`` (HLG), or ``"unspecified"``.
+
+        This is what tells you a frame is HDR. Like :attr:`color_primaries`, it
+        is the source's own tag."""
+        return self._get_metadata().color_transfer_characteristic
+
+    @property
     def bit_depth(self) -> int:
         """How many bits of each :attr:`planes` sample are meaningful.
 
@@ -175,6 +218,16 @@ class RawFrame:
     def height(self) -> int:
         """The height of the decoded samples, before rotation."""
         return self._get_metadata().height
+
+    @property
+    def rotation(self) -> float:
+        """How many degrees counter-clockwise the frame has to be rotated to be
+        upright, or 0 if the container asks for no rotation.
+
+        This is *not* applied to :attr:`planes`. A :class:`ColorConverter`
+        applies it, rounded to the nearest multiple of 90, to its output.
+        """
+        return self._get_metadata().rotation
 
     @property
     def planes(self) -> tuple[torch.Tensor, ...]:
