@@ -28,9 +28,10 @@ and audio samples in the codec's own sample type, with no conversion, no
 normalisation, and no copy.
 
 This is worth doing when the conversion you want isn't the one the converters
-perform. You may want to apply a custom colorspace, write a kernel fused with
-the first layer of your model, decode a 10-bit HDR source without flattening it
-to 8 bits, or scale integer audio samples yourself.
+perform. You may want to apply a custom colorspace, train a model directly in
+YUV space, write a kernel fused with the first layer of your model, decode a
+10-bit HDR source without flattening it to `uint8` or `float32`, or scale
+integer audio samples yourself.
 
 This tutorial assumes you are familiar with the three stages described in
 :ref:`sphx_glr_generated_examples_blocks_basics.py`.
@@ -112,11 +113,7 @@ print(f"{Y.shape = }, {U.shape = }, {Y.dtype = }, {Y.stride() = }")
 # :attr:`~RawFrame.bit_depth`), the conversion is yours to write. Here it's
 # plain PyTorch ops - it could just as well be a Triton or CUDA kernel, fused
 # with whatever your model needs next.
-#
-# Read these off the frame rather than off the stream: they describe the buffer
-# you were handed, which is not always how the source is tagged. A ``yuv420p``
-# source arrives as ``nv12`` on CUDA, and an RGB one is retagged when the CUDA
-# fallback converts it to a YUV surface.
+
 assert raw_frame.pixel_format in ("yuv420p", "nv12")  # 8-bit 4:2:0, CPU and CUDA
 assert raw_frame.color_space == "bt709" and raw_frame.color_range == "tv"
 
@@ -165,8 +162,7 @@ print(f"{ours.shape = }, mean abs diff vs ColorConverter: "
 #    Without it, the decoder's next frame can be given the same buffer and
 #    overwrite these samples while your reads are still pending - a race that
 #    shows up as occasional corrupted frames, not as an error.
-#    A :class:`ColorConverter` does this for you, which is why the comparison
-#    above needed nothing.
+#    A :class:`ColorConverter` does this for you.
 
 # %%
 # Formats that can't be viewed
@@ -229,11 +225,18 @@ print(f"luma range: [{samples.min()}, {samples.max()}], "
 # Raw audio samples
 # -----------------
 #
-# The audio side is the same idea with much less to say. An
+# The audio side is similar. An
 # :class:`AudioPacketDecoder` hands out :class:`RawAudioSamples` objects, whose
 # :attr:`~RawAudioSamples.data` is always a contiguous
 # ``[num_channels, num_samples]`` tensor - planar and packed sources alike - in
 # whichever dtype holds the source's samples exactly.
+#
+# One thing differs from video: these samples are a *copy*, not a view.
+# :attr:`RawFrame.planes` aliases the buffer of the frame as the decoder
+# produced it, whereas :attr:`~RawAudioSamples.data` is a copy so that all
+# samples come out as ``[num_channels, num_samples]``. It is still the tensor an
+# :class:`AudioConverter` reads, though, so mutating it in place does change
+# what the converter gives you.
 audio_path = temp_dir / "audio.wav"
 subprocess.run(
     [
@@ -256,9 +259,8 @@ print(f"value range: [{raw_samples.data.min()}, {raw_samples.data.max()}]")
 # An ``s16`` source gives ``int16``, an ``s32`` source ``int32``, an ``fltp``
 # source ``float32``, and so on. The integer ones are *not* normalised to
 # ``[-1, 1]``: that, along with resampling and remixing, is what an
-# :class:`AudioConverter` does. If normalising is all you need, it is one line,
-# and it saves you the converter's buffering and its mandatory
-# :meth:`~AudioConverter.drain`.
+# :class:`AudioConverter` does. If normalising is all you need, you can always
+# do it manually:
 normalised = raw_samples.data.to(torch.float32) / 2 ** 15
 # FFmpeg's `sine` source is a quiet tone, so this doesn't reach ±1.
 print(f"{normalised.dtype = }, "
