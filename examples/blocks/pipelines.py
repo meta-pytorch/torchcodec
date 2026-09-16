@@ -9,6 +9,8 @@
 Composing pipelines: threads, devices and endless streams
 =========================================================
 
+.. currentmodule:: torchcodec.decoders._blocks
+
 How to overlap the decoding stages across threads, choose where to cut the
 pipeline on CPU and on CUDA, and decode a source that never ends.
 
@@ -31,8 +33,6 @@ thread, never own a thread pool, and never decide when work happens: a block
 only does something when you call into it. And because each one releases the
 GIL while it is in C++, running two of them on two Python threads is real
 parallelism, not interleaving.
-
-.. currentmodule:: torchcodec.decoders._blocks
 """
 
 # %%

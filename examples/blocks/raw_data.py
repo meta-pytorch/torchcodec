@@ -9,8 +9,7 @@
 Raw frames and raw audio samples
 ================================
 
-How to skip the converters and read the decoder's own YUV planes and audio
-samples, at the source's own precision.
+.. currentmodule:: torchcodec.decoders._blocks
 
 .. warning::
 
@@ -18,21 +17,23 @@ samples, at the source's own precision.
    and unreleased. Signatures and semantics may change without notice. This
    tutorial only exists to show what they will eventually make possible.
 
+In this tutorial, we'll skip the conversion stage of a blocks pipeline and read
+the decoder's own YUV planes and audio samples directly, at the source's own
+precision.
+
 The last stage of a blocks pipeline - a :class:`ColorConverter` for video, an
-:class:`AudioConverter` for audio - is optional. Stop before it and you get what
-the decoder actually produced: YUV planes in the codec's own pixel format, and
-audio samples in the codec's own sample type, with no conversion, no
+:class:`AudioConverter` for audio - is optional. If you stop before it, you get
+what the decoder actually produced: YUV planes in the codec's own pixel format,
+and audio samples in the codec's own sample type, with no conversion, no
 normalisation, and no copy.
 
-That is worth doing when the conversion you want isn't the one the converter
-does: a custom colorspace, a kernel fused with the first layer of your model,
-a 10-bit HDR source you don't want flattened to 8 bits, or integer audio you
-would rather scale yourself.
+This is worth doing when the conversion you want isn't the one the converters
+perform. You may want to apply a custom colorspace, write a kernel fused with
+the first layer of your model, decode a 10-bit HDR source without flattening it
+to 8 bits, or scale integer audio samples yourself.
 
-This tutorial assumes the three stages from
+This tutorial assumes you are familiar with the three stages described in
 :ref:`sphx_glr_generated_examples_blocks_basics.py`.
-
-.. currentmodule:: torchcodec.decoders._blocks
 """
 
 # %%
@@ -88,14 +89,14 @@ print(f"{Y.shape = }, {U.shape = }, {Y.dtype = }, {Y.stride() = }")
 # %%
 # There is one tensor per component of :attr:`RawFrame.pix_fmt`, in the order
 # that format describes, and only the luma and alpha ones are full size: the
-# chroma planes
-# are subsampled by whatever the format says - half in both directions for the
-# 4:2:0 formats above.
+# chroma planes are subsampled by whatever the format says - half in both
+# directions for the 4:2:0 formats above.
 #
 # These are views into the frame's memory, so they are not contiguous in
 # general: the row stride is the decoder's own line size, and the chroma planes
 # of a semi-planar format such as an NVDEC ``nv12`` surface are two interleaved
-# views over a single allocation. Writing through them is visible downstream.
+# views over a single allocation. Writing through them is visible to whatever
+# reads the :class:`RawFrame` next.
 #
 # Being the decoder's own planes, they are also never rotated - a video whose
 # container asks for a rotation gives you the samples as they were encoded, and
@@ -106,9 +107,11 @@ print(f"{Y.shape = }, {U.shape = }, {Y.dtype = }, {Y.stride() = }")
 # Doing the conversion yourself
 # -----------------------------
 #
-# With the planes and the color metadata, the conversion is yours to write.
-# Here it's plain PyTorch ops - it could just as well be a Triton or CUDA
-# kernel, fused with whatever your model needs next.
+# With :attr:`RawFrame.planes` and the color metadata
+# (:attr:`~RawFrame.colorspace`, :attr:`~RawFrame.color_range`,
+# :attr:`~RawFrame.bit_depth`), the conversion is yours to write. Here it's
+# plain PyTorch ops - it could just as well be a Triton or CUDA kernel, fused
+# with whatever your model needs next.
 assert raw_frame.pix_fmt in ("yuv420p", "nv12")  # 8-bit 4:2:0, on CPU and CUDA
 assert raw_frame.colorspace == "bt709" and raw_frame.color_range == "tv"
 
@@ -167,10 +170,10 @@ print(f"{ours.shape = }, mean abs diff vs ColorConverter: "
 # Not every pixel format can be exposed as a tensor without a copy.
 # :attr:`RawFrame.planes` raises a ``RuntimeError`` for the sub-byte-packed,
 # palettised and float formats, and for frames stored bottom-up. Check
-# :attr:`~RawFrame.pix_fmt` first if
-# you are decoding something exotic; on CUDA you never have to, since NVDEC
-# only ever produces a handful of surface formats (``nv12``, ``p010le``,
-# ``p012le``, ``p016le``, ``yuv444p``, ``yuv444p16le``).
+# :attr:`~RawFrame.pix_fmt` first if you are decoding something exotic; on CUDA
+# you never have to, since NVDEC only ever produces a handful of surface
+# formats (``nv12``, ``p010le``, ``p012le``, ``p016le``, ``yuv444p``,
+# ``yuv444p16le``).
 
 # %%
 # Raw HDR frames
@@ -178,8 +181,8 @@ print(f"{ours.shape = }, mean abs diff vs ColorConverter: "
 #
 # Raw planes come at the source's own precision, so a 10-bit HDR video gives
 # ``uint16`` planes with all 10 bits intact - no clipping to 8 bits, and no
-# tone mapping. (For the ``VideoDecoder`` route to HDR, through the
-# ``output_dtype`` parameter, see
+# tone mapping. (For the :class:`~torchcodec.decoders.VideoDecoder` route to
+# HDR, through its ``output_dtype`` parameter, see
 # :ref:`sphx_glr_generated_examples_decoding_hdr_decoding.py`.)
 hdr_video_path = temp_dir / "hdr.mp4"
 subprocess.run(
@@ -221,7 +224,7 @@ print(f"luma range: [{samples.min()}, {samples.max()}], "
 # -----------------
 #
 # The audio side is the same idea with much less to say. An
-# :class:`AudioPacketDecoder` hands out :class:`RawAudioSamples`, whose
+# :class:`AudioPacketDecoder` hands out :class:`RawAudioSamples` objects, whose
 # :attr:`~RawAudioSamples.data` is always a contiguous
 # ``[num_channels, num_samples]`` tensor - planar and packed sources alike - in
 # whichever dtype holds the source's samples exactly.

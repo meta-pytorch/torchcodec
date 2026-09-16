@@ -9,6 +9,8 @@
 Blocks: build your own decoding pipeline
 ========================================
 
+.. currentmodule:: torchcodec.decoders._blocks
+
 .. warning::
 
    **The Blocks APIs are under active construction.** They are private
@@ -39,8 +41,6 @@ Two companion tutorials go further:
   concurrently and on decoding sources that never end.
 * :ref:`sphx_glr_generated_examples_blocks_raw_data.py`, on reading the
   decoder's own YUV planes and audio samples instead of converting them.
-
-.. currentmodule:: torchcodec.decoders._blocks
 """
 
 # %%
