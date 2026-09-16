@@ -4697,8 +4697,6 @@ class TestBlocks:
 
         assert cpu_frame.color_range == "pc"
         assert cuda_frame.color_range == "pc"
-        # The conversion to a YUV surface retags the frame, so this is the
-        # surface's color space, not the source's.
         assert cuda_frame.color_space == expected_color_space
 
         if has_luma:

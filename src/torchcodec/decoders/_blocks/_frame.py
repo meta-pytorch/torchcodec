@@ -164,28 +164,20 @@ class RawFrame:
 
     @property
     def color_range(self) -> str:
-        """``"tv"`` for limited range, ``"pc"`` for full range.
-
-        Like :attr:`color_space`, this describes :attr:`planes` rather than the
-        source."""
+        """``"tv"`` for limited range, ``"pc"`` for full range."""
         return self._get_metadata().color_range
 
     @property
     def color_primaries(self) -> str:
         """The FFmpeg color primaries name, e.g. ``"bt709"``, ``"bt2020"``, or
-        ``"unspecified"``.
+        ``"unspecified"``."""
 
-        Unlike :attr:`color_space` and :attr:`color_range`, nothing in the
-        decode path rewrites this, so it is the source's own tag."""
         return self._get_metadata().color_primaries
 
     @property
     def color_transfer_characteristic(self) -> str:
         """The FFmpeg transfer characteristic name, e.g. ``"bt709"``,
-        ``"smpte2084"`` (PQ), ``"arib-std-b67"`` (HLG), or ``"unspecified"``.
-
-        This is what tells you a frame is HDR. Like :attr:`color_primaries`, it
-        is the source's own tag."""
+        ``"smpte2084"`` (PQ), ``"arib-std-b67"`` (HLG), or ``"unspecified"``."""
         return self._get_metadata().color_transfer_characteristic
 
     @property
