@@ -22,9 +22,8 @@ Nothing here has been converted. The samples are in the codec's own pixel
 format (typically YUV), on the device that was passed to
 [`VideoStream.make_decoder()`](torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.make_decoder), and
 `width`, `height` and `planes` are all pre-rotation:
-`rotation_degrees` is what a [`ColorConverter`](torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) applies for
-you, and what you have to apply yourself if you convert `planes` on
-your own.
+`rotation` is what a [`ColorConverter`](torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) applies for you, and
+what you have to apply yourself if you convert `planes` on your own.
 
 Important
 
@@ -60,13 +59,30 @@ CPU decoding would report 10 and 12. Their samples are msb-aligned, so
 they genuinely are 16-bit values with zeroed low bits, and the
 arithmetic above still holds.
 
+*property*color_primaries*: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*
+
+The FFmpeg color primaries name, e.g. `"bt709"`, `"bt2020"`, or
+`"unspecified"`.
+
 *property*color_range*: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*
 
 `"tv"` for limited range, `"pc"` for full range.
 
-*property*colorspace*: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*
+*property*color_space*: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*
 
-The FFmpeg colorspace name, e.g. `"bt709"`.
+The FFmpeg color space name, e.g. `"bt709"`, or `"unspecified"`.
+
+This describes `planes`, which is not always how the source is
+tagged: a CUDA decoder that falls back to the CPU converts an RGB frame
+into a YUV surface format, and this reports the color space of that
+conversion. Prefer it over
+[`VideoStreamHeaderMetadata.color_space`](torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata.color_space) when you convert
+the samples yourself.
+
+*property*color_transfer_characteristic*: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*
+
+The FFmpeg transfer characteristic name, e.g. `"bt709"`,
+`"smpte2084"` (PQ), `"arib-std-b67"` (HLG), or `"unspecified"`.
 
 duration_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
@@ -76,7 +92,7 @@ How long this frame is displayed for, in seconds.
 
 The height of the decoded samples, before rotation.
 
-*property*pix_fmt*: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*
+*property*pixel_format*: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*
 
 The FFmpeg pixel-format name, e.g. `"yuv420p"`.
 
@@ -89,7 +105,7 @@ NVDEC surface formats: `"nv12"`, `"p010le"`, `"p012le"`,
 The decoder's own samples, as 2D tensor views.
 
 There is exactly one tensor per *component*
-of `pix_fmt`, in the order that format describes, of dtype
+of `pixel_format`, in the order that format describes, of dtype
 `uint8` or `uint16` depending on `bit_depth`. So `yuv420p`
 and `nv12` both give three (`y, u, v = planes`), `yuva420p` four
 (`y, u, v, a = planes`) and `gray` one (`(y,) = planes`).
@@ -100,7 +116,7 @@ fall back to decoding on the CPU: it uploads those frames before handing
 them out.
 
 Only the luma and alpha components are `height` by `width`.
-The chroma ones are subsampled by whatever `pix_fmt` says: half in
+The chroma ones are subsampled by whatever `pixel_format` says: half in
 both directions for a 4:2:0 format, half the width for 4:2:2, full size
 for 4:4:4 and for the RGB formats. Odd sizes round up, so the chroma of
 a 4:2:0 frame 481 samples wide is 241 wide.
@@ -118,7 +134,7 @@ Raises:
 
 [**RuntimeError**](https://docs.python.org/3/builtins/exceptions.html#RuntimeError) - For the pixel formats that can't be viewed without a
  copy - sub-byte-packed, palettised and float ones - and for
- frames stored bottom-up. Check `pix_fmt` first if you are
+ frames stored bottom-up. Check `pixel_format` first if you are
  decoding something exotic.
 
 pts_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
@@ -144,7 +160,7 @@ Parameters:
 
 **stream** ([*torch.cuda.Stream*](https://docs.pytorch.org/docs/stable/generated/torch.cuda.Stream_class.html#torch.cuda.Stream)) - The stream that is reading the samples.
 
-*property*rotation_degrees*: [float](https://docs.python.org/3/builtins/functions.html#float)*
+*property*rotation*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
 How many degrees counter-clockwise the frame has to be rotated to be
 upright, or 0 if the container asks for no rotation.

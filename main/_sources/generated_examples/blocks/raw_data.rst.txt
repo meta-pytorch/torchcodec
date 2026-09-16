@@ -33,18 +33,19 @@ and audio samples in the codec's own sample type, with no conversion, no
 normalisation, and no copy.
 
 This is worth doing when the conversion you want isn't the one the converters
-perform. You may want to apply a custom colorspace, write a kernel fused with
-the first layer of your model, decode a 10-bit HDR source without flattening it
-to 8 bits, or scale integer audio samples yourself.
+perform. You may want to apply a custom colorspace, train a model directly in
+YUV space, write a kernel fused with the first layer of your model, decode a
+10-bit HDR source without flattening it to `uint8` or `float32`, or scale
+integer audio samples yourself.
 
 This tutorial assumes you are familiar with the three stages described in
 :ref:`sphx_glr_generated_examples_blocks_basics.py`.
 
-.. GENERATED FROM PYTHON SOURCE LINES 40-41
+.. GENERATED FROM PYTHON SOURCE LINES 41-42
 
 Boilerplate: a test video, and the device we'll run on.
 
-.. GENERATED FROM PYTHON SOURCE LINES 41-70
+.. GENERATED FROM PYTHON SOURCE LINES 42-71
 
 .. code-block:: Python
 
@@ -90,7 +91,7 @@ Boilerplate: a test video, and the device we'll run on.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 71-78
+.. GENERATED FROM PYTHON SOURCE LINES 72-79
 
 Raw frames
 ----------
@@ -100,7 +101,7 @@ A :class:`VideoPacketDecoder` produces :class:`RawFrame` objects, and a
 no copy and no conversion. It also carries everything you need to interpret
 them.
 
-.. GENERATED FROM PYTHON SOURCE LINES 78-89
+.. GENERATED FROM PYTHON SOURCE LINES 79-90
 
 .. code-block:: Python
 
@@ -111,8 +112,8 @@ them.
     raw_frame = next(decode_raw(demuxer, packet_decoder))
 
     Y, U, V = raw_frame.planes
-    print(f"{raw_frame.pix_fmt = }, {raw_frame.bit_depth = }, "
-          f"{raw_frame.colorspace = }, {raw_frame.color_range = }")
+    print(f"{raw_frame.pixel_format = }, {raw_frame.bit_depth = }")
+    print(f"{raw_frame.color_space = }, {raw_frame.color_range = }")
     print(f"{Y.shape = }, {U.shape = }, {Y.dtype = }, {Y.stride() = }")
 
 
@@ -123,15 +124,16 @@ them.
 
  .. code-block:: none
 
-    raw_frame.pix_fmt = 'nv12', raw_frame.bit_depth = 8, raw_frame.colorspace = 'bt709', raw_frame.color_range = 'tv'
+    raw_frame.pixel_format = 'nv12', raw_frame.bit_depth = 8
+    raw_frame.color_space = 'bt709', raw_frame.color_range = 'tv'
     Y.shape = torch.Size([720, 1280]), U.shape = torch.Size([360, 640]), Y.dtype = torch.uint8, Y.stride() = (1536, 1)
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 90-105
+.. GENERATED FROM PYTHON SOURCE LINES 91-106
 
-There is one tensor per component of :attr:`RawFrame.pix_fmt`, in the order
+There is one tensor per component of :attr:`RawFrame.pixel_format`, in the order
 that format describes, and only the luma and alpha ones are full size: the
 chroma planes are subsampled by whatever the format says - half in both
 directions for the 4:2:0 formats above.
@@ -144,26 +146,27 @@ reads the :class:`RawFrame` next.
 
 Being the decoder's own planes, they are also never rotated - a video whose
 container asks for a rotation gives you the samples as they were encoded, and
-:attr:`RawFrame.rotation_degrees` tells you what to apply. A
-:class:`ColorConverter` applies it for you.
+:attr:`RawFrame.rotation` tells you what to apply. A :class:`ColorConverter`
+applies it for you.
 
-.. GENERATED FROM PYTHON SOURCE LINES 107-115
+.. GENERATED FROM PYTHON SOURCE LINES 108-116
 
 Doing the conversion yourself
 -----------------------------
 
-With :attr:`RawFrame.planes` and the color metadata
-(:attr:`~RawFrame.colorspace`, :attr:`~RawFrame.color_range`,
+With :attr:`RawFrame.planes` and the metadata beside it
+(:attr:`~RawFrame.color_space`, :attr:`~RawFrame.color_range`,
 :attr:`~RawFrame.bit_depth`), the conversion is yours to write. Here it's
 plain PyTorch ops - it could just as well be a Triton or CUDA kernel, fused
 with whatever your model needs next.
 
-.. GENERATED FROM PYTHON SOURCE LINES 115-144
+.. GENERATED FROM PYTHON SOURCE LINES 116-146
 
 .. code-block:: Python
 
-    assert raw_frame.pix_fmt in ("yuv420p", "nv12")  # 8-bit 4:2:0, on CPU and CUDA
-    assert raw_frame.colorspace == "bt709" and raw_frame.color_range == "tv"
+
+    assert raw_frame.pixel_format in ("yuv420p", "nv12")  # 8-bit 4:2:0, CPU and CUDA
+    assert raw_frame.color_space == "bt709" and raw_frame.color_range == "tv"
 
 
     def yuv420_to_rgb(Y, U, V):
@@ -204,7 +207,7 @@ with whatever your model needs next.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 145-165
+.. GENERATED FROM PYTHON SOURCE LINES 147-166
 
 Reading the planes on CUDA
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -224,10 +227,9 @@ Reading the planes on CUDA
    Without it, the decoder's next frame can be given the same buffer and
    overwrite these samples while your reads are still pending - a race that
    shows up as occasional corrupted frames, not as an error.
-   A :class:`ColorConverter` does this for you, which is why the comparison
-   above needed nothing.
+   A :class:`ColorConverter` does this for you.
 
-.. GENERATED FROM PYTHON SOURCE LINES 167-177
+.. GENERATED FROM PYTHON SOURCE LINES 168-178
 
 Formats that can't be viewed
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -235,12 +237,12 @@ Formats that can't be viewed
 Not every pixel format can be exposed as a tensor without a copy.
 :attr:`RawFrame.planes` raises a ``RuntimeError`` for the sub-byte-packed,
 palettised and float formats, and for frames stored bottom-up. Check
-:attr:`~RawFrame.pix_fmt` first if you are decoding something exotic; on CUDA
+:attr:`~RawFrame.pixel_format` first if you are decoding something exotic; on CUDA
 you never have to, since NVDEC only ever produces a handful of surface
 formats (``nv12``, ``p010le``, ``p012le``, ``p016le``, ``yuv444p``,
 ``yuv444p16le``).
 
-.. GENERATED FROM PYTHON SOURCE LINES 179-187
+.. GENERATED FROM PYTHON SOURCE LINES 180-188
 
 Raw HDR frames
 --------------
@@ -251,7 +253,7 @@ tone mapping. (For the :class:`~torchcodec.decoders.VideoDecoder` route to
 HDR, through its ``output_dtype`` parameter, see
 :ref:`sphx_glr_generated_examples_decoding_hdr_decoding.py`.)
 
-.. GENERATED FROM PYTHON SOURCE LINES 187-209
+.. GENERATED FROM PYTHON SOURCE LINES 188-211
 
 .. code-block:: Python
 
@@ -274,8 +276,9 @@ HDR, through its ``output_dtype`` parameter, see
     hdr_raw = next(decode_raw(hdr_demuxer, hdr_packet_decoder))
 
     hdr_Y = hdr_raw.planes[0]
-    print(f"{hdr_raw.pix_fmt = }, {hdr_raw.bit_depth = }, "
-          f"{hdr_raw.colorspace = }, {hdr_Y.dtype = }")
+    print(f"{hdr_raw.pixel_format = }, {hdr_raw.bit_depth = }, {hdr_Y.dtype = }")
+    print(f"{hdr_raw.color_space = }, {hdr_raw.color_primaries = }, "
+          f"{hdr_raw.color_transfer_characteristic = }")
 
 
 
@@ -285,12 +288,13 @@ HDR, through its ``output_dtype`` parameter, see
 
  .. code-block:: none
 
-    hdr_raw.pix_fmt = 'p010le', hdr_raw.bit_depth = 10, hdr_raw.colorspace = 'bt2020nc', hdr_Y.dtype = torch.uint16
+    hdr_raw.pixel_format = 'p010le', hdr_raw.bit_depth = 10, hdr_Y.dtype = torch.uint16
+    hdr_raw.color_space = 'bt2020nc', hdr_raw.color_primaries = 'bt2020', hdr_raw.color_transfer_characteristic = 'smpte2084'
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 210-217
+.. GENERATED FROM PYTHON SOURCE LINES 212-219
 
 A plane's dtype only tells you its storage width, ``uint8`` or ``uint16``;
 :attr:`RawFrame.bit_depth` is what tells you the range of the values held in
@@ -300,7 +304,7 @@ NVDEC surfaces are 16-bit containers holding the samples msb-aligned, so the
 10 bits sit at the top and the low 6 are zero. Shift them back down to read
 the sample values.
 
-.. GENERATED FROM PYTHON SOURCE LINES 217-222
+.. GENERATED FROM PYTHON SOURCE LINES 219-224
 
 .. code-block:: Python
 
@@ -322,18 +326,25 @@ the sample values.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 223-231
+.. GENERATED FROM PYTHON SOURCE LINES 225-240
 
 Raw audio samples
 -----------------
 
-The audio side is the same idea with much less to say. An
+The audio side is similar. An
 :class:`AudioPacketDecoder` hands out :class:`RawAudioSamples` objects, whose
 :attr:`~RawAudioSamples.data` is always a contiguous
 ``[num_channels, num_samples]`` tensor - planar and packed sources alike - in
 whichever dtype holds the source's samples exactly.
 
-.. GENERATED FROM PYTHON SOURCE LINES 231-249
+One thing differs from video: these samples are a *copy*, not a view.
+:attr:`RawFrame.planes` aliases the buffer of the frame as the decoder
+produced it, whereas :attr:`~RawAudioSamples.data` is a copy so that all
+samples come out as ``[num_channels, num_samples]``. It is still the tensor an
+:class:`AudioConverter` reads, though, so mutating it in place does change
+what the converter gives you.
+
+.. GENERATED FROM PYTHON SOURCE LINES 240-258
 
 .. code-block:: Python
 
@@ -369,16 +380,15 @@ whichever dtype holds the source's samples exactly.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 250-256
+.. GENERATED FROM PYTHON SOURCE LINES 259-264
 
 An ``s16`` source gives ``int16``, an ``s32`` source ``int32``, an ``fltp``
 source ``float32``, and so on. The integer ones are *not* normalised to
 ``[-1, 1]``: that, along with resampling and remixing, is what an
-:class:`AudioConverter` does. If normalising is all you need, it is one line,
-and it saves you the converter's buffering and its mandatory
-:meth:`~AudioConverter.drain`.
+:class:`AudioConverter` does. If normalising is all you need, you can always
+do it manually:
 
-.. GENERATED FROM PYTHON SOURCE LINES 256-260
+.. GENERATED FROM PYTHON SOURCE LINES 264-268
 
 .. code-block:: Python
 
@@ -402,7 +412,7 @@ and it saves you the converter's buffering and its mandatory
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 1.238 seconds)
+   **Total running time of the script:** (0 minutes 1.247 seconds)
 
 
 .. _sphx_glr_download_generated_examples_blocks_raw_data.py:

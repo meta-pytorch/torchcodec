@@ -17,9 +17,10 @@ and audio samples in the codec's own sample type, with no conversion, no
 normalisation, and no copy.
 
 This is worth doing when the conversion you want isn't the one the converters
-perform. You may want to apply a custom colorspace, write a kernel fused with
-the first layer of your model, decode a 10-bit HDR source without flattening it
-to 8 bits, or scale integer audio samples yourself.
+perform. You may want to apply a custom colorspace, train a model directly in
+YUV space, write a kernel fused with the first layer of your model, decode a
+10-bit HDR source without flattening it to uint8 or float32, or scale
+integer audio samples yourself.
 
 This tutorial assumes you are familiar with the three stages described in
 [Blocks: build your own decoding pipeline](basics.html#sphx-glr-generated-examples-blocks-basics-py).
@@ -74,17 +75,18 @@ packet_decoder = demuxer.streams[0].make_decoder(device=device)
 raw_frame = next(decode_raw(demuxer, packet_decoder))
 
 Y, U, V = raw_frame.planes
-print(f"{raw_frame.pix_fmt = }, {raw_frame.bit_depth = }, "
- f"{raw_frame.colorspace = }, {raw_frame.color_range = }")
+print(f"{raw_frame.pixel_format = }, {raw_frame.bit_depth = }")
+print(f"{raw_frame.color_space = }, {raw_frame.color_range = }")
 print(f"{Y.shape = }, {U.shape = }, {Y.dtype = }, {Y.stride() = }")
 ```
 
 ```
-raw_frame.pix_fmt = 'nv12', raw_frame.bit_depth = 8, raw_frame.colorspace = 'bt709', raw_frame.color_range = 'tv'
+raw_frame.pixel_format = 'nv12', raw_frame.bit_depth = 8
+raw_frame.color_space = 'bt709', raw_frame.color_range = 'tv'
 Y.shape = torch.Size([720, 1280]), U.shape = torch.Size([360, 640]), Y.dtype = torch.uint8, Y.stride() = (1536, 1)
 ```
 
-There is one tensor per component of [`RawFrame.pix_fmt`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.pix_fmt), in the order
+There is one tensor per component of [`RawFrame.pixel_format`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.pixel_format), in the order
 that format describes, and only the luma and alpha ones are full size: the
 chroma planes are subsampled by whatever the format says - half in both
 directions for the 4:2:0 formats above.
@@ -97,20 +99,20 @@ reads the [`RawFrame`](../../generated/torchcodec.decoders._blocks.RawFrame.html
 
 Being the decoder's own planes, they are also never rotated - a video whose
 container asks for a rotation gives you the samples as they were encoded, and
-[`RawFrame.rotation_degrees`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.rotation_degrees) tells you what to apply. A
-[`ColorConverter`](../../generated/torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) applies it for you.
+[`RawFrame.rotation`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.rotation) tells you what to apply. A [`ColorConverter`](../../generated/torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter)
+applies it for you.
 
 ## Doing the conversion yourself
 
-With [`RawFrame.planes`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.planes) and the color metadata
-([`colorspace`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.colorspace), [`color_range`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.color_range),
+With [`RawFrame.planes`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.planes) and the metadata beside it
+([`color_space`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.color_space), [`color_range`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.color_range),
 [`bit_depth`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.bit_depth)), the conversion is yours to write. Here it's
 plain PyTorch ops - it could just as well be a Triton or CUDA kernel, fused
 with whatever your model needs next.
 
 ```
-assert raw_frame.pix_fmt in ("yuv420p", "nv12") # 8-bit 4:2:0, on CPU and CUDA
-assert raw_frame.colorspace == "bt709" and raw_frame.color_range == "tv"
+assert raw_frame.pixel_format in ("yuv420p", "nv12") # 8-bit 4:2:0, CPU and CUDA
+assert raw_frame.color_space == "bt709" and raw_frame.color_range == "tv"
 
 def yuv420_to_rgb(Y, U, V):
  # BT.709, limited range. Chroma is upsampled by nearest neighbour.
@@ -160,15 +162,14 @@ with torch.cuda.stream(my_stream):
 Without it, the decoder's next frame can be given the same buffer and
 overwrite these samples while your reads are still pending - a race that
 shows up as occasional corrupted frames, not as an error.
-A [`ColorConverter`](../../generated/torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) does this for you, which is why the comparison
-above needed nothing.
+A [`ColorConverter`](../../generated/torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) does this for you.
 
 ### Formats that can't be viewed
 
 Not every pixel format can be exposed as a tensor without a copy.
 [`RawFrame.planes`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.planes) raises a `RuntimeError` for the sub-byte-packed,
 palettised and float formats, and for frames stored bottom-up. Check
-[`pix_fmt`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.pix_fmt) first if you are decoding something exotic; on CUDA
+[`pixel_format`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.pixel_format) first if you are decoding something exotic; on CUDA
 you never have to, since NVDEC only ever produces a handful of surface
 formats (`nv12`, `p010le`, `p012le`, `p016le`, `yuv444p`,
 `yuv444p16le`).
@@ -201,12 +202,14 @@ hdr_packet_decoder = hdr_demuxer.streams[0].make_decoder(device=device)
 hdr_raw = next(decode_raw(hdr_demuxer, hdr_packet_decoder))
 
 hdr_Y = hdr_raw.planes[0]
-print(f"{hdr_raw.pix_fmt = }, {hdr_raw.bit_depth = }, "
- f"{hdr_raw.colorspace = }, {hdr_Y.dtype = }")
+print(f"{hdr_raw.pixel_format = }, {hdr_raw.bit_depth = }, {hdr_Y.dtype = }")
+print(f"{hdr_raw.color_space = }, {hdr_raw.color_primaries = }, "
+ f"{hdr_raw.color_transfer_characteristic = }")
 ```
 
 ```
-hdr_raw.pix_fmt = 'p010le', hdr_raw.bit_depth = 10, hdr_raw.colorspace = 'bt2020nc', hdr_Y.dtype = torch.uint16
+hdr_raw.pixel_format = 'p010le', hdr_raw.bit_depth = 10, hdr_Y.dtype = torch.uint16
+hdr_raw.color_space = 'bt2020nc', hdr_raw.color_primaries = 'bt2020', hdr_raw.color_transfer_characteristic = 'smpte2084'
 ```
 
 A plane's dtype only tells you its storage width, `uint8` or `uint16`;
@@ -230,11 +233,18 @@ luma range: [15, 888], 1024 levels available
 
 ## Raw audio samples
 
-The audio side is the same idea with much less to say. An
+The audio side is similar. An
 [`AudioPacketDecoder`](../../generated/torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder) hands out [`RawAudioSamples`](../../generated/torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples) objects, whose
 [`data`](../../generated/torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples.data) is always a contiguous
 `[num_channels, num_samples]` tensor - planar and packed sources alike - in
 whichever dtype holds the source's samples exactly.
+
+One thing differs from video: these samples are a *copy*, not a view.
+[`RawFrame.planes`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.planes) aliases the buffer of the frame as the decoder
+produced it, whereas [`data`](../../generated/torchcodec.decoders._blocks.RawAudioSamples.html#torchcodec.decoders._blocks.RawAudioSamples.data) is a copy so that all
+samples come out as `[num_channels, num_samples]`. It is still the tensor an
+[`AudioConverter`](../../generated/torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter) reads, though, so mutating it in place does change
+what the converter gives you.
 
 ```
 audio_path = temp_dir / "audio.wav"
@@ -264,9 +274,8 @@ value range: [-4095, 4095]
 An `s16` source gives `int16`, an `s32` source `int32`, an `fltp`
 source `float32`, and so on. The integer ones are *not* normalised to
 `[-1, 1]`: that, along with resampling and remixing, is what an
-[`AudioConverter`](../../generated/torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter) does. If normalising is all you need, it is one line,
-and it saves you the converter's buffering and its mandatory
-[`drain()`](../../generated/torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter.drain).
+[`AudioConverter`](../../generated/torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter) does. If normalising is all you need, you can always
+do it manually:
 
 ```
 normalised = raw_samples.data.to(torch.float32) / 2 ** 15
@@ -279,7 +288,7 @@ print(f"{normalised.dtype = }, "
 normalised.dtype = torch.float32, range [-0.125, 0.125]
 ```
 
-**Total running time of the script:** (0 minutes 1.238 seconds)
+**Total running time of the script:** (0 minutes 1.247 seconds)
 
 [`Download Jupyter notebook: raw_data.ipynb`](../../_downloads/50b7daabc4b9e193429fc4a88177cd8a/raw_data.ipynb)
 

@@ -52,7 +52,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpouo3meuw/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpc05ebwj6/video.mp4'], returncode=0)
 ```
 
 ## One stage, one generator
@@ -286,7 +286,7 @@ generators. Walking away early is just not pulling from them again, and the
 is blocked in `q.put()` behind the bounded queue, and it is a daemon, so it
 goes away with the process.
 
-**Total running time of the script:** (0 minutes 1.548 seconds)
+**Total running time of the script:** (0 minutes 1.553 seconds)
 
 [`Download Jupyter notebook: pipelines.ipynb`](../../_downloads/1bd9c6e945e662bafe88b1687e2dfa61/pipelines.ipynb)
 

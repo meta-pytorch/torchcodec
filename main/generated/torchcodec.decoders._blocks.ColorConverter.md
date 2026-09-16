@@ -14,7 +14,7 @@ for packet in demuxer:
 ```
 
 Unlike the other blocks this one isn't tied to a specific video stream.
-Everything it needs (dimensions, pixel format, colorspace, rotation) comes
+Everything it needs (dimensions, pixel format, color space, rotation) comes
 from the [`RawFrame`](torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame) itself, so the same converter instance can
 process frames from any video stream, provided that they share the same
 device.
@@ -56,8 +56,8 @@ convert(*raw_frame: [RawFrame](torchcodec.decoders._blocks.RawFrame.html#torchco
 
 Convert one [`RawFrame`](torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame) to an RGB [`Frame`](torchcodec.Frame.html#torchcodec.Frame).
 
-[`RawFrame.rotation_degrees`](torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.rotation_degrees) is applied, so the output is upright
-and matches what a [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) gives you.
+[`RawFrame.rotation`](torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.rotation) is applied, so the output is upright and
+matches what a [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) gives you.
 
 Parameters:
 
