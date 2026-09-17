@@ -288,7 +288,7 @@ print(f"{normalised.dtype = }, "
 normalised.dtype = torch.float32, range [-0.125, 0.125]
 ```
 
-**Total running time of the script:** (0 minutes 1.234 seconds)
+**Total running time of the script:** (0 minutes 1.236 seconds)
 
 [`Download Jupyter notebook: raw_data.ipynb`](../../_downloads/50b7daabc4b9e193429fc4a88177cd8a/raw_data.ipynb)
 
