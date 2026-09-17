@@ -59,9 +59,13 @@ const AVCodec* find_decoder(
 
 PacketDecoder::PacketDecoder(
     const Demuxer& demuxer,
+    std::optional<int> stream_index,
     const StableDevice& device,
-    std::optional<int> ffmpeg_thread_count)
-    : media_type_(demuxer.media_type()) {
+    std::optional<int> ffmpeg_thread_count) {
+  AVStream* stream = demuxer.format_context()
+                         ->streams[demuxer.resolve_stream_index(stream_index)];
+  media_type_ = stream->codecpar->codec_type;
+
   bool is_audio = media_type_ == AVMEDIA_TYPE_AUDIO;
   STD_TORCH_CHECK(
       !is_audio || device.type() == kStableCPU,
@@ -72,7 +76,6 @@ PacketDecoder::PacketDecoder(
       device_interface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");
 
-  AVStream* stream = demuxer.active_stream();
   time_base_ = stream->time_base;
 
   is_mpeg_ps_ =
@@ -118,17 +121,8 @@ PacketDecoder::PacketDecoder(
       stream, demuxer.format_context(), options);
 }
 
-int PacketDecoder::send_packet(AVPacket* packet) {
-  // The decode seam expects a ReferenceAVPacket. Copy a reference of the
-  // caller- owned packet into a temporary one (cheap, refcount bump); the
-  // temporary is unref'd on scope exit while the caller retains ownership of
-  // `packet`.
-  AutoAVPacket auto_packet;
-  ReferenceAVPacket ref(auto_packet);
-  int status = av_packet_ref(ref.get(), packet);
-  STD_TORCH_CHECK(status >= AVSUCCESS, "av_packet_ref failed");
-
-  status = device_interface_->send_packet(ref);
+int PacketDecoder::send_packet(const AVPacket& packet) {
+  int status = device_interface_->send_packet(packet);
 
   if (status == AVERROR_INVALIDDATA && packet_data_may_be_misaligned_) {
     // Seeking in an MPEG program stream lands on a container-level byte offset,
@@ -183,23 +177,32 @@ std::string get_pix_fmt_name(const AVFrame& av_frame) {
 }
 } // namespace
 
-FrameMetadata frame_metadata(const AVFrame& av_frame) {
+FrameMetadata get_frame_metadata(const AVFrame& av_frame) {
   const AVPixFmtDescriptor* desc = get_pix_fmt_desc(av_frame);
-  const char* colorspace_name = av_color_space_name(av_frame.colorspace);
+
+  // These all return a static string, or nullptr for a value outside the enum.
+  const char* color_space_name = av_color_space_name(av_frame.colorspace);
   const char* color_range_name = av_color_range_name(av_frame.color_range);
+  const char* color_primaries_name =
+      av_color_primaries_name(av_frame.color_primaries);
+  const char* color_trc_name = av_color_transfer_name(av_frame.color_trc);
 
   FrameMetadata result;
-  result.pix_fmt = get_pix_fmt_name(av_frame);
-  result.colorspace = colorspace_name ? colorspace_name : "unknown";
+  result.pixel_format = get_pix_fmt_name(av_frame);
+  result.color_space = color_space_name ? color_space_name : "unknown";
   result.color_range = color_range_name ? color_range_name : "unknown";
+  result.color_primaries =
+      color_primaries_name ? color_primaries_name : "unknown";
+  result.color_transfer_characteristic =
+      color_trc_name ? color_trc_name : "unknown";
   result.bit_depth = desc->comp[0].depth;
   result.width = av_frame.width;
   result.height = av_frame.height;
-  result.rotation_degrees = get_rotation_from_frame(av_frame).value_or(0);
+  result.rotation = get_rotation_from_frame(av_frame).value_or(0);
   return result;
 }
 
-std::vector<torch::stable::Tensor> frame_planes(
+std::vector<torch::stable::Tensor> get_frame_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
     const torch::stable::Tensor& tensor_handle) {
@@ -288,7 +291,7 @@ void deinterleave(
 }
 } // namespace
 
-torch::stable::Tensor audio_samples(const AVFrame& av_frame) {
+torch::stable::Tensor get_audio_samples(const AVFrame& av_frame) {
   auto sample_format = static_cast<AVSampleFormat>(av_frame.format);
   int num_channels = get_num_channels(av_frame);
   int64_t num_samples = av_frame.nb_samples;

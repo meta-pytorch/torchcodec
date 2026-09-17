@@ -4,6 +4,7 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
+#include <limits>
 #include <map>
 #include <mutex>
 #include <vector>
@@ -171,10 +172,10 @@ static UniqueCUvideodecoder create_decoder(
   decoder_params.ulWidth = video_format->coded_width;
   decoder_params.ulMaxHeight = video_format->coded_height;
   decoder_params.ulMaxWidth = video_format->coded_width;
-  decoder_params.ulTargetHeight =
-      video_format->display_area.bottom - video_format->display_area.top;
-  decoder_params.ulTargetWidth =
-      video_format->display_area.right - video_format->display_area.left;
+  // We want coded dimensions everywhere. See [NVDEC surface
+  // dimensions and cropping].
+  decoder_params.ulTargetHeight = video_format->coded_height;
+  decoder_params.ulTargetWidth = video_format->coded_width;
   decoder_params.ulNumDecodeSurfaces = video_format->min_num_decode_surfaces;
   // We should only ever need 1 output surface, since we process frames
   // sequentially, and we always unmap the previous frame before mapping a new
@@ -182,10 +183,12 @@ static UniqueCUvideodecoder create_decoder(
   // TODONVDEC P3: set this to 2, allow for 2 frames to be mapped at a time, and
   // benchmark to see if this makes any difference.
   decoder_params.ulNumOutputSurfaces = 1;
-  decoder_params.display_area.left = video_format->display_area.left;
-  decoder_params.display_area.right = video_format->display_area.right;
-  decoder_params.display_area.top = video_format->display_area.top;
-  decoder_params.display_area.bottom = video_format->display_area.bottom;
+  decoder_params.display_area.left = 0;
+  decoder_params.display_area.right =
+      static_cast<short>(video_format->coded_width);
+  decoder_params.display_area.top = 0;
+  decoder_params.display_area.bottom =
+      static_cast<short>(video_format->coded_height);
 
   CUvideodecoder* decoder = new CUvideodecoder();
   CUresult result = cuvidCreateDecoder(decoder, &decoder_params);
@@ -343,7 +346,7 @@ std::optional<cudaVideoSurfaceFormat> get_nvdec_surface_format(
 void standalone_frame_free_callback(
     [[maybe_unused]] void* opaque,
     uint8_t* data) {
-  delete reinterpret_cast<StandAloneFrameAttachedData*>(data);
+  delete reinterpret_cast<OwnedFrameStorage*>(data);
 }
 
 class CudaContextGuard {
@@ -675,32 +678,28 @@ int BetaCudaDeviceInterface::stream_property_change(
 
 // Moral equivalent of avcodec_send_packet(). Here, we pass the AVPacket down to
 // the NVCUVID parser.
-int BetaCudaDeviceInterface::send_packet(ReferenceAVPacket& packet) {
+int BetaCudaDeviceInterface::send_packet(const AVPacket& packet) {
   CudaContextGuard context_guard(device_.index());
   if (decoding_on_cpu_) {
     return cpu_interface_->send_packet(packet);
   }
 
   STD_TORCH_CHECK(
-      packet.get() && packet->data && packet->size > 0,
+      packet.data && packet.size > 0,
       "sendPacket received an empty packet, this is unexpected, please report.");
 
-  // Apply BSF if needed. We want applyBSF to return a *new* filtered packet, or
-  // the original one if no BSF is needed. This new filtered packet must be
-  // allocated outside of applyBSF: if it were allocated inside applyBSF, it
-  // would be destroyed at the end of the function, leaving us with a dangling
-  // reference.
-  AutoAVPacket filtered_auto_packet;
-  ReferenceAVPacket filtered_packet(filtered_auto_packet);
-  ReferenceAVPacket& packet_to_send = apply_bsf(packet, filtered_packet);
+  // `filtered_packet` owns the filtered samples for as long as it's in scope,
+  // which covers the parser call below.
+  UniqueAVPacket filtered_packet = apply_bsf(packet);
+  const AVPacket& packet_to_send = filtered_packet ? *filtered_packet : packet;
 
   CUVIDSOURCEDATAPACKET cuvid_packet = {};
-  cuvid_packet.payload = packet_to_send->data;
-  cuvid_packet.payload_size = packet_to_send->size;
+  cuvid_packet.payload = packet_to_send.data;
+  cuvid_packet.payload_size = packet_to_send.size;
   cuvid_packet.flags = CUVID_PKT_TIMESTAMP;
-  cuvid_packet.timestamp = packet_to_send->pts;
+  cuvid_packet.timestamp = packet_to_send.pts;
 
-  if (packet_to_send->flags & AV_PKT_FLAG_DISCARD) {
+  if (packet_to_send.flags & AV_PKT_FLAG_DISCARD) {
     discarded_timestamps_.insert(cuvid_packet.timestamp);
   }
 
@@ -726,18 +725,30 @@ int BetaCudaDeviceInterface::send_cuvid_packet(
   return result == CUDA_SUCCESS ? AVSUCCESS : AVERROR_EXTERNAL;
 }
 
-ReferenceAVPacket& BetaCudaDeviceInterface::apply_bsf(
-    ReferenceAVPacket& packet,
-    ReferenceAVPacket& filtered_packet) {
+UniqueAVPacket BetaCudaDeviceInterface::apply_bsf(const AVPacket& packet) {
   if (!bitstream_filter_) {
-    return packet;
+    return nullptr;
   }
 
-  int ret_val = av_bsf_send_packet(bitstream_filter_.get(), packet.get());
+  // av_bsf_send_packet() takes ownership of what it is given: it moves the
+  // reference out of the packet, leaving it empty. Our caller only lends us
+  // theirs, so send a reference of our own instead.
+  UniqueAVPacket input_packet(av_packet_alloc());
+  STD_TORCH_CHECK(input_packet != nullptr, "Failed to allocate AVPacket");
+  int ret_val = av_packet_ref(input_packet.get(), &packet);
+  STD_TORCH_CHECK(
+      ret_val >= AVSUCCESS,
+      "Failed to reference packet for the bitstream filter: ",
+      get_ffmpeg_error_string_from_error_code(ret_val));
+
+  ret_val = av_bsf_send_packet(bitstream_filter_.get(), input_packet.get());
   STD_TORCH_CHECK(
       ret_val >= AVSUCCESS,
       "Failed to send packet to bitstream filter: ",
       get_ffmpeg_error_string_from_error_code(ret_val));
+
+  UniqueAVPacket filtered_packet(av_packet_alloc());
+  STD_TORCH_CHECK(filtered_packet != nullptr, "Failed to allocate AVPacket");
 
   // TODO P1: the docs mention there can theoretically be multiple output
   // packets for a single input, i.e. we may need to call av_bsf_receive_packet
@@ -878,14 +889,37 @@ void BetaCudaDeviceInterface::unmap_previous_frame() {
   previously_mapped_frame_ = 0;
 }
 
+// Where the display area starts within a plane of the surface, in bytes. See
+// Note: [NVDEC surface dimensions and cropping].
+BetaCudaDeviceInterface::CropOffsets BetaCudaDeviceInterface::get_crop_offsets(
+    unsigned int pitch) const {
+  int crop_left = video_format_.display_area.left;
+  int crop_top = video_format_.display_area.top;
+  bool is_444 = is_444_surface_format(surface_format_);
+  STD_TORCH_CHECK(
+      is_444 || (crop_left % 2 == 0 && crop_top % 2 == 0),
+      "Subsampled surface with an odd crop offset (",
+      crop_left,
+      ", ",
+      crop_top,
+      "), this is unexpected, please report.");
+
+  int bytes_per_sample = is_16bit_surface_format(surface_format_) ? 2 : 1;
+  unsigned int luma = crop_top * pitch + crop_left * bytes_per_sample;
+  unsigned int chroma =
+      is_444 ? luma : (crop_top / 2) * pitch + crop_left * bytes_per_sample;
+  return {luma, chroma};
+}
+
 UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
     CUdeviceptr frame_ptr,
     unsigned int pitch,
     const CUVIDPARSERDISPINFO& disp_info) {
   STD_TORCH_CHECK(frame_ptr != 0, "Invalid CUDA frame pointer");
 
-  // Get frame dimensions from video format display area (not coded dimensions)
-  // This matches DALI's approach and avoids padding issues
+  // The surface we're given is the entire coded frame; the frame we hand out is
+  // its display area, which we crop to below by offsetting the planes. See
+  // Note: [NVDEC surface dimensions and cropping].
   int width =
       video_format_.display_area.right - video_format_.display_area.left;
   int height =
@@ -948,23 +982,38 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
       ? AVCOL_RANGE_JPEG
       : AVCOL_RANGE_MPEG;
 
-  // NVDEC stacks the planes in a single allocation, all with the same pitch,
-  // and it rounds the Y plane's row count up to even. So consecutive planes
-  // start plane_stride bytes apart, which is more than pitch * height for an
-  // odd-height frame. NVIDIA's own NvDecoder addresses the chroma plane the
-  // same way: dpSrcFrame + srcPitch * ((surface_height + 1) & ~1).
-  unsigned int num_luma_plane_rows = round_up_to_even(height);
-  unsigned int plane_stride = pitch * num_luma_plane_rows;
-  auto plane = [&](unsigned int index) {
-    return reinterpret_cast<uint8_t*>(frame_ptr + (plane_stride * index));
-  };
+  // Unlike matrix_coefficients above, these two are plain H.273 code points,
+  // and FFmpeg's enums are defined to those same values, so they carry over
+  // directly. A value outside the enum ends up named "unknown" rather than
+  // mis-tagged, because av_color_*_name() returns nullptr for it.
+  av_frame->color_primaries = static_cast<AVColorPrimaries>(
+      video_format_.video_signal_description.color_primaries);
+  av_frame->color_trc = static_cast<AVColorTransferCharacteristic>(
+      video_format_.video_signal_description.transfer_characteristics);
+
+  // NVDEC stacks the planes of the coded frame in a single allocation, all with
+  // the same pitch, so consecutive planes start plane_stride bytes apart.
+  // NVIDIA's own NvDecoder addresses the chroma plane the same way:
+  // dpSrcFrame + srcPitch * ((surface_height + 1) & ~1).
+  unsigned int plane_stride = pitch * round_up_to_even(surface_height());
   bool is_444 = is_444_surface_format(surface_format_);
 
-  av_frame->data[0] = plane(0);
-  av_frame->data[1] = plane(1);
-  av_frame->data[2] = is_444 ? plane(2) : nullptr;
+  CropOffsets crop_offsets = get_crop_offsets(pitch);
+  auto plane = [&](unsigned int index, unsigned int crop_offset) {
+    return reinterpret_cast<uint8_t*>(
+        frame_ptr + (plane_stride * index) + crop_offset);
+  };
+
+  av_frame->data[0] = plane(0, crop_offsets.luma);
+  av_frame->data[1] = plane(1, crop_offsets.chroma);
+  av_frame->data[2] = is_444 ? plane(2, crop_offsets.chroma) : nullptr;
   av_frame->data[3] = nullptr;
-  // TODO_API_BREAKDOWN CC P2: Check range before cast?
+  STD_TORCH_CHECK(
+      pitch <= static_cast<unsigned int>(std::numeric_limits<int>::max()),
+      "NVDEC returned a pitch of ",
+      pitch,
+      " bytes, which doesn't fit in an AVFrame line size. This should never "
+      "happen, please report.");
   av_frame->linesize[0] = static_cast<int>(pitch);
   av_frame->linesize[1] = static_cast<int>(pitch);
   av_frame->linesize[2] = is_444 ? static_cast<int>(pitch) : 0;
@@ -1000,12 +1049,12 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
     storage = copy_nvdec_surface(av_frame, current_stream);
   }
 
-  auto attached_data = new StandAloneFrameAttachedData();
+  auto attached_data = new OwnedFrameStorage();
   attached_data->frame_ready.record(current_stream);
   attached_data->storage = std::move(storage);
   av_frame->opaque_ref = av_buffer_create(
       reinterpret_cast<uint8_t*>(attached_data),
-      sizeof(StandAloneFrameAttachedData),
+      sizeof(OwnedFrameStorage),
       standalone_frame_free_callback,
       nullptr,
       0);
@@ -1064,9 +1113,8 @@ std::optional<torch::stable::Tensor> BetaCudaDeviceInterface::get_frame_storage(
   // ColorConverter, on behalf of the user. But we still must expose the storage
   // for those users who would like to consume the frame with their own
   // consumer, i.e. not using the ColorConverter: they need to call
-  // frame.storage.record_stream(color_conversion_stream) themselves.
-  return reinterpret_cast<StandAloneFrameAttachedData*>(
-             av_frame.opaque_ref->data)
+  // frame.record_stream(color_conversion_stream) themselves.
+  return reinterpret_cast<OwnedFrameStorage*>(av_frame.opaque_ref->data)
       ->storage;
 }
 
@@ -1084,11 +1132,14 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
   // surface has two full-size chroma planes instead of one half-height one, so
   // it's num_pixels * 3.
   int64_t num_luma_plane_rows =
-      static_cast<int64_t>(round_up_to_even(av_frame->height));
+      static_cast<int64_t>(round_up_to_even(surface_height()));
   int64_t pitch = static_cast<int64_t>(av_frame->linesize[0]);
   bool is_444 = is_444_surface_format(surface_format_);
   int64_t num_bytes = is_444 ? pitch * num_luma_plane_rows * 3
                              : pitch * num_luma_plane_rows * 3 / 2;
+
+  auto* surface_base = av_frame->data[0] -
+      get_crop_offsets(static_cast<unsigned int>(pitch)).luma;
 
   auto storage =
       torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
@@ -1100,7 +1151,7 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
 
   cudaError_t err = cudaMemcpyAsync(
       storage.mutable_data_ptr(),
-      av_frame->data[0],
+      surface_base,
       static_cast<size_t>(num_bytes),
       cudaMemcpyDeviceToDevice,
       current_stream);
@@ -1112,12 +1163,13 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
   // The copy is async, so the next mapping must be ordered after it.
   record_surface_read(current_stream);
 
-  auto y_plane = static_cast<uint8_t*>(storage.mutable_data_ptr());
-  int64_t plane_stride = pitch * num_luma_plane_rows;
-  av_frame->data[0] = y_plane;
-  av_frame->data[1] = y_plane + plane_stride;
-  if (is_444) {
-    av_frame->data[2] = y_plane + (2 * plane_stride);
+  // Re-point the planes into the copy, preserving where they were within the
+  // surface: those offsets encode both the plane layout and the display area
+  // crop.
+  auto* storage_base = static_cast<uint8_t*>(storage.mutable_data_ptr());
+  int num_planes = is_444 ? 3 : 2;
+  for (int i = 0; i < num_planes; ++i) {
+    av_frame->data[i] = storage_base + (av_frame->data[i] - surface_base);
   }
 
   return storage;
@@ -1226,17 +1278,26 @@ GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu(
   // Source and destination dimensions are the same: this is a pixel format
   // conversion, not a rescale. sws_scale() writes into the even-sized buffer
   // allocated above but only fills the real width and height.
-  SwsConfig sws_config(
-      width,
-      height,
-      static_cast<AVPixelFormat>(cpu_frame.format),
-      cpu_frame.colorspace,
-      width,
-      height,
-      target_pix_fmt);
+  SwsConfig sws_config{
+      .input_width = width,
+      .input_height = height,
+      .input_format = static_cast<AVPixelFormat>(cpu_frame.format),
+      .input_colorspace = cpu_frame.colorspace,
+      .output_width = width,
+      .output_height = height,
+      .output_format = target_pix_fmt,
+      // We have to tell swscale to respect the source's color range because
+      // we're converting to a YUV format, and by default, swscale would assume
+      // limited range only.
+      .output_color_range = cpu_frame.color_range};
 
   if (!sws_context_ || prev_sws_config_ != sws_config) {
-    sws_context_ = create_sws_context(sws_config, SWS_BILINEAR);
+    // Nothing is rescaled here, so the flags only defines how chroma is
+    // resampled, which happens when the source is subsampled more finely than
+    // the target surface (4:2:2 into 4:4:4, say). SWS_POINT replicates the
+    // chroma, which is what we want here. SWS_BILINEAR would interpolate it,
+    // leading to results that aren't as close to the CPU ref.
+    sws_context_ = create_sws_context(sws_config, SWS_POINT);
     prev_sws_config_ = sws_config;
   }
 
@@ -1323,6 +1384,14 @@ GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu(
       "Failed to copy frame properties: ",
       get_ffmpeg_error_string_from_error_code(ret));
 
+  // The input CPU frame might be AVCOL_SPC_RGB, and the GPU frame we just
+  // produced is YUV. We set the colorspace of the GPU frame to BT.601, which is
+  // (hopefully??) what libswscale assumed. The alternative would be to let the
+  // GPU frame describe "RGB" as its colorspace which is probably more wrong.
+  if (cpu_frame.colorspace == AVCOL_SPC_RGB) {
+    gpu_frame->colorspace = AVCOL_SPC_SMPTE170M;
+  }
+
   return {std::move(gpu_frame), std::move(storage)};
 }
 
@@ -1369,8 +1438,8 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         gpu_frame.opaque_ref != nullptr,
         "ColorConverter received a non-standalone frame; frames fed to a "
         "standalone ColorConverter must come from a PacketDecoder.");
-    auto attached_data = reinterpret_cast<StandAloneFrameAttachedData*>(
-        gpu_frame.opaque_ref->data);
+    auto attached_data =
+        reinterpret_cast<OwnedFrameStorage*>(gpu_frame.opaque_ref->data);
     attached_data->frame_ready.make_stream_wait(current_stream);
   } else {
     STD_TORCH_CHECK(

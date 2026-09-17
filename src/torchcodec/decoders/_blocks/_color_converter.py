@@ -15,33 +15,41 @@ from torchcodec._frame import Frame
 
 from .._decoder_utils import convert_device_to_str, convert_output_dtype_to_str
 from ._frame import RawFrame
+from ._helpers import _process_local
 
 
+@_process_local("Construct one in each process.")
 class ColorConverter:
-    """Color-conversion building block: turns a decoded (YUV)
-    :class:`RawFrame` into an RGB :class:`~torchcodec._frame.Frame` (CHW).
+    """Turn a :class:`RawFrame` (typically YUV) into an RGB :class:`~torchcodec.Frame`.
 
-    Not bound to anything: everything it needs (dims, pixel format, colorspace)
-    comes from the frame itself, so one converter can process frames from any
-    video. Passive and *not* thread-safe: use one ``ColorConverter`` per thread.
+    .. code-block:: python
 
-    ``output_dtype`` takes the same values as ``VideoDecoder``'s:
-    ``torch.uint8`` (default, ``[0, 255]``), ``torch.float32`` (``[0, 1]``), or
-    ``"auto"`` (uint8 for 8-bit sources, float32 for higher bit depths).
-    Because this block is unbound, ``"auto"`` is resolved per frame rather than
-    once per stream, so feeding it a mix of SDR and HDR frames yields a mix of
-    dtypes.
+        converter = ColorConverter()
 
-    Rotation is applied too, so the output matches ``VideoDecoder``'s. The angle
-    is part of the frame, like its dims and colorspace, so honoring it doesn't
-    bind the converter to a stream either.
+        for packet in demuxer:
+            for raw_frame in packet_decoder.decode(packet):
+                frame = converter.convert(raw_frame)
+                frame.data  # uint8 [3, height, width], RGB
 
-    ``device`` accepts a string or a ``torch.device``. It defaults to ``None``,
-    which means the current default device (see ``torch.set_default_device``).
-    It must be the device the frames are already on: converting raises rather
-    than move samples between devices behind your back, since a transfer costs
-    as much as the conversion itself. To end up on another device, convert on
-    the frame's device and move the RGB output yourself.
+    Unlike the other blocks this one isn't tied to a specific video stream.
+    Everything it needs (dimensions, pixel format, color space, rotation) comes
+    from the :class:`RawFrame` itself, so the same converter instance can
+    process frames from any video stream, provided that they share the same
+    device.
+
+    Args:
+        device (str or torch.device, optional): The device to convert on. If
+            ``None`` (default), the current default device is used (see
+            ``torch.set_default_device``). It has to be the device the frames
+            are already on, i.e. it must match what was passed to the
+            :class:`~torchcodec.decoders._blocks.VideoPacketDecoder` that produced
+            the :class:`RawFrame`.
+        output_dtype (torch.dtype or ``"auto"``, optional): ``torch.uint8``
+            (default) for values in ``[0, 255]``, ``torch.float32`` for
+            ``[0, 1]``, or ``"auto"`` for uint8 from 8-bit sources and float32
+            from deeper ones. Since this block isn't tied to a stream,
+            ``"auto"`` is resolved per frame rather than once per video, so
+            feeding it a mix of SDR and HDR frames gives you a mix of dtypes.
     """
 
     def __init__(
@@ -64,10 +72,26 @@ class ColorConverter:
     # do the upload ourselves (the download makes no sense, it's super slow).
     # Anyway, that can be done later.
     def convert(self, raw_frame: RawFrame) -> Frame:
+        """Convert one :class:`RawFrame` to an RGB :class:`~torchcodec.Frame`.
+
+        :attr:`RawFrame.rotation` is applied, so the output is upright and
+        matches what a :class:`~torchcodec.decoders.VideoDecoder` gives you.
+
+        Args:
+            raw_frame (RawFrame): The frame to convert. It has to be on this
+                converter's device.
+
+        Returns:
+            The RGB ``[3, height, width]`` frame in the converter's
+            ``output_dtype``.
+
+        Raises:
+            RuntimeError: If the frame is not on this converter's device.
+        """
         data = _blocks_convert_frame(self._handle, raw_frame._handle, raw_frame._device)
-        if raw_frame.storage is not None:
+        if raw_frame._device.type == "cuda":
             # See [Standalone Frame Storage and the need for record_stream]
-            raw_frame.storage.record_stream(torch.cuda.current_stream())
+            raw_frame.record_stream(torch.cuda.current_stream())
         # The core op produces HWC; permute to CHW to match VideoDecoder (which
         # also returns a non-contiguous permuted view).
         data = data.permute(2, 0, 1)

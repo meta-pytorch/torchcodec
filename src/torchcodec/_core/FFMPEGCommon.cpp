@@ -91,6 +91,10 @@ AVPacket* ReferenceAVPacket::get() {
   return av_packet_;
 }
 
+AVPacket& ReferenceAVPacket::operator*() {
+  return *av_packet_;
+}
+
 AVPacket* ReferenceAVPacket::operator->() {
   return av_packet_;
 }
@@ -926,35 +930,46 @@ void set_display_matrix_on_frame(
   std::memcpy(side_data->data, display_matrix, kDisplayMatrixSize);
 }
 
-SwsConfig::SwsConfig(
-    int input_width,
-    int input_height,
-    AVPixelFormat input_format,
-    AVColorSpace input_colorspace,
-    int output_width,
-    int output_height,
-    AVPixelFormat output_format)
-    : input_width(input_width),
-      input_height(input_height),
-      input_format(input_format),
-      input_colorspace(input_colorspace),
-      output_width(output_width),
-      output_height(output_height),
-      output_format(output_format) {}
-
 bool SwsConfig::operator==(const SwsConfig& other) const {
   return input_width == other.input_width &&
       input_height == other.input_height &&
       input_format == other.input_format &&
       input_colorspace == other.input_colorspace &&
+      input_color_range == other.input_color_range &&
       output_width == other.output_width &&
       output_height == other.output_height &&
-      output_format == other.output_format;
+      output_format == other.output_format &&
+      output_color_range == other.output_color_range;
 }
 
 bool SwsConfig::operator!=(const SwsConfig& other) const {
   return !(*this == other);
 }
+
+namespace {
+#if FFMPEG_SWS_COLORSPACE_DETAILS_FAILS_ON_YUV_TO_YUV
+// Matches swscale's own isYUV() || isGray(): everything that isn't RGB,
+// palettised or a hardware format.
+bool is_yuv_or_gray(AVPixelFormat format) {
+  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(format);
+  return desc != nullptr &&
+      !(desc->flags &
+        (AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_PAL | AV_PIX_FMT_FLAG_HWACCEL));
+}
+
+void validate_sws_set_colorspace_details(int ret, const SwsConfig& sws_config) {
+  bool yuv_or_gray_to_yuv_or_gray = is_yuv_or_gray(sws_config.input_format) &&
+      is_yuv_or_gray(sws_config.output_format);
+  STD_TORCH_CHECK(
+      ret != -1 || yuv_or_gray_to_yuv_or_gray,
+      "sws_setColorspaceDetails returned -1");
+}
+#else
+void validate_sws_set_colorspace_details(int ret, const SwsConfig&) {
+  STD_TORCH_CHECK(ret != -1, "sws_setColorspaceDetails returned -1");
+}
+#endif
+} // namespace
 
 UniqueSwsContext create_sws_context(
     const SwsConfig& sws_config,
@@ -986,6 +1001,14 @@ UniqueSwsContext create_sws_context(
       &saturation);
   STD_TORCH_CHECK(ret != -1, "sws_getColorspaceDetails returned -1");
 
+  // swscale spells a range as an int: 1 is full (jpeg), 0 is limited.
+  if (sws_config.input_color_range != AVCOL_RANGE_UNSPECIFIED) {
+    src_range = sws_config.input_color_range == AVCOL_RANGE_JPEG;
+  }
+  if (sws_config.output_color_range != AVCOL_RANGE_UNSPECIFIED) {
+    dst_range = sws_config.output_color_range == AVCOL_RANGE_JPEG;
+  }
+
   const int* colorspace_table =
       sws_getCoefficients(sws_config.input_colorspace);
   ret = sws_setColorspaceDetails(
@@ -997,7 +1020,7 @@ UniqueSwsContext create_sws_context(
       brightness,
       contrast,
       saturation);
-  STD_TORCH_CHECK(ret != -1, "sws_setColorspaceDetails returned -1");
+  validate_sws_set_colorspace_details(ret, sws_config);
 
   return UniqueSwsContext(sws_context);
 }

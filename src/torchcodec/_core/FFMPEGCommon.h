@@ -61,6 +61,17 @@ extern "C" {
 #define FFMPEG_HAS_SUPPORTED_CONFIG 0
 #endif
 
+// FFmpeg 4's sws_setColorspaceDetails() returns -1 when the source and the
+// destination are both YUV or gray, as its way of saying it can't apply a
+// colorspace matrix between the two. It's not a failure: the color ranges it
+// was asked for are still honored, and FFmpeg 5 and above return 0 for the very
+// same conversion, with the very same output.
+#if LIBSWSCALE_VERSION_MAJOR < 6
+#define FFMPEG_SWS_COLORSPACE_DETAILS_FAILS_ON_YUV_TO_YUV 1
+#else
+#define FFMPEG_SWS_COLORSPACE_DETAILS_FAILS_ON_YUV_TO_YUV 0
+#endif
+
 // FFmpeg 6 renamed AVFrame.pkt_duration to AVFrame.duration.
 #if LIBAVUTIL_VERSION_MAJOR < 58
 #define FFMPEG_HAS_FRAME_DURATION 0
@@ -235,6 +246,7 @@ class ReferenceAVPacket {
   ReferenceAVPacket& operator=(const ReferenceAVPacket& other) = delete;
   ~ReferenceAVPacket();
   AVPacket* get();
+  AVPacket& operator*();
   AVPacket* operator->();
 };
 
@@ -405,19 +417,11 @@ struct SwsConfig {
   int input_height = 0;
   AVPixelFormat input_format = AV_PIX_FMT_NONE;
   AVColorSpace input_colorspace = AVCOL_SPC_UNSPECIFIED;
+  AVColorRange input_color_range = AVCOL_RANGE_UNSPECIFIED;
   int output_width = 0;
   int output_height = 0;
   AVPixelFormat output_format = AV_PIX_FMT_NONE;
-
-  SwsConfig() = default;
-  SwsConfig(
-      int input_width,
-      int input_height,
-      AVPixelFormat input_format,
-      AVColorSpace input_colorspace,
-      int output_width,
-      int output_height,
-      AVPixelFormat output_format);
+  AVColorRange output_color_range = AVCOL_RANGE_UNSPECIFIED;
 
   bool operator==(const SwsConfig& other) const;
   bool operator!=(const SwsConfig& other) const;

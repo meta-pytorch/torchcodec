@@ -15,52 +15,40 @@ from torchcodec._core.ops import (
 from torchcodec._frame import AudioSamples
 
 from ._frame import RawAudioSamples
+from ._helpers import _process_local
 
 
+@_process_local(
+    "A resampler carries filter history across calls that FFmpeg cannot "
+    "serialise. Construct one in each process."
+)
 class AudioConverter:
-    """Audio conversion building block: turns a decoded
-    :class:`RawAudioSamples` into normalized float32
-    :class:`~torchcodec._frame.AudioSamples`, optionally resampling and
-    changing the number of channels.
+    """Turn :class:`RawAudioSamples` into normalised float32
+    :class:`~torchcodec.AudioSamples`, optionally resampling and remixing
+    channels.
 
-    Not bound to anything: the input's sample type, rate and channel count all
-    come from the :class:`RawAudioSamples` itself, so one converter can process
-    any source. Passive and *not* thread-safe: use one ``AudioConverter`` per
-    thread.
+    .. code-block:: python
 
-    Unlike :class:`ColorConverter` this block is a *stream processor*, not a
-    function of its input, and that difference is worth understanding:
+        converter = AudioConverter(sample_rate=16_000)
 
-    - Resampling is an interpolation filter, so the sample it emits at a given
-      instant is a weighted sum of input samples on both sides of it. The tail
-      of each frame is therefore held back until the next one arrives, which
-      means :meth:`convert` returns fewer samples than it was given, sometimes
-      none at all, and you must call :meth:`drain` at the end or lose the end
-      of the stream.
-    - Frames must be fed in order, from one stream. Feeding two sources through
-      one converter is not the harmless thing it is for ``ColorConverter``.
-    - After a seek, call :meth:`reset`.
+        for packet in demuxer:
+            for raw_samples in packet_decoder.decode(packet):
+                samples = converter.convert(raw_samples)
+        for raw_samples in packet_decoder.drain():
+            samples = converter.convert(raw_samples)
+        samples = converter.drain()
 
-    None of that applies when you leave ``sample_rate`` unset: converting the
-    sample type and remixing channels are both frame-local, so the converter
-    holds nothing back, :meth:`drain` returns an empty result, and it is only
-    the rate change that makes any of the above true. :meth:`drain` and
-    :meth:`reset` are still the right thing to call, so that adding
-    ``sample_rate`` later doesn't silently change what your loop produces.
-
-    .. warning::
-
-        These blocks do no pre-roll. A lossy codec's first frames after a seek
-        are subtly wrong until it re-primes, and a resampler started mid-stream
-        emits samples on a grid of its own. So samples produced from a seek do
-        not line up, bit for bit, with those from decoding the whole file.
-        Decoding a margin before your target and discarding it is up to you.
+    Unlike a :class:`ColorConverter`, this object is a stateful stream
+    processor, and it is bound to an audio stream: feed it the stream's samples
+    in order. When resampling, it holds samples back between calls, so you won't
+    necessarily get the same number of samples out as you put in for a given
+    call to :meth:`convert`.
 
     Args:
-        sample_rate (int, optional): The desired output sample rate. By
-            default, the source's own rate is used, i.e. no resampling.
-        num_channels (int, optional): The desired output number of channels. By
-            default, the source's own count is used.
+        sample_rate (int, optional): The output sample rate. Defaults to the
+            source's own, i.e. no resampling.
+        num_channels (int, optional): The output number of channels. Defaults
+            to the source's own.
     """
 
     def __init__(self, sample_rate: int | None = None, num_channels: int | None = None):
@@ -73,6 +61,10 @@ class AudioConverter:
         self._first_frame_pts_seconds: float | None = None
         self._out_sample_rate: int | None = None
         self._num_emitted_samples = 0
+        # The demuxer position these samples come from. See Packet._generation:
+        # a resampler carries state across calls, so a seek invalidates it just
+        # as it invalidates the decoder's.
+        self._generation: int | None = None
 
     def _wrap(self, data) -> AudioSamples:
         assert self._out_sample_rate is not None  # mypy
@@ -95,11 +87,25 @@ class AudioConverter:
         )
 
     def convert(self, raw_samples: RawAudioSamples) -> AudioSamples:
-        """Convert one :class:`RawAudioSamples`.
+        """Convert one :class:`RawAudioSamples` into normalised float32
+        :class:`~torchcodec.AudioSamples`.
 
-        The result may be empty: when resampling, the converter needs the
-        following frame before it can emit the tail of this one.
+        You may not get the same number of samples out as you put in, especially
+        if you are resampling.
+
+        Returns:
+            The converted samples, normalised float32 in ``[-1, 1]``. When
+            resampling, fewer than were passed in, possibly none.
         """
+        if self._generation is None:
+            self._generation = raw_samples._generation
+        elif self._generation != raw_samples._generation:
+            raise RuntimeError(
+                "The demuxer seeked since this converter was last reset(), and "
+                "a resampler carries state across calls, so these samples "
+                "would be resampled against the wrong history. Call reset() on "
+                "every converter fed by that demuxer after a seek."
+            )
         if self._drained:
             raise RuntimeError(
                 "This AudioConverter has been drained. Call reset() to convert "
@@ -118,10 +124,10 @@ class AudioConverter:
         return self._wrap(data)
 
     def drain(self) -> AudioSamples:
-        """The samples the resampler was still holding on to.
+        """Return the samples the resampler was still holding on to.
 
-        Skipping this loses the end of the stream. It returns an empty result
-        when no resampling is being done, since nothing is held back then.
+        Empty unless you are resampling. This is not the codec's own buffer,
+        which :meth:`AudioPacketDecoder.drain` takes care of.
         """
         if self._first_frame_pts_seconds is None:
             raise RuntimeError(
@@ -133,10 +139,14 @@ class AudioConverter:
         return self._wrap(data)
 
     def reset(self) -> None:
-        """Drop the resampler's buffered state and start over. Needed after the
-        demuxer seeked, and after ``drain()``."""
+        """Drop the resampler's state and start over.
+
+        Needed after a :meth:`Demuxer.seek`, after :meth:`drain`, and before
+        converting a different stream.
+        """
         _blocks_audio_converter_reset(self._handle)
         self._drained = False
         self._first_frame_pts_seconds = None
         self._out_sample_rate = None
+        self._generation = None
         self._num_emitted_samples = 0

@@ -31,16 +31,17 @@ SharedAVCodecContext create_and_open_codec_context(
 
 // Decode building block: turns compressed packets into decoded frames - (YUV)
 // pictures for a video stream, samples in the codec's own format for an audio
-// one. Configured from a Demuxer's active stream; stateful. Not thread-safe.
+// one. Configured from one of a Demuxer's streams; stateful. Not thread-safe.
 class FORCE_PUBLIC_VISIBILITY PacketDecoder {
  public:
   explicit PacketDecoder(
       const Demuxer& demuxer,
+      std::optional<int> stream_index = std::nullopt,
       const StableDevice& device = StableDevice(kStableCPU),
       std::optional<int> ffmpeg_thread_count = std::nullopt);
 
   // Feed one packet to the decoder. Borrows `packet` (does not take ownership).
-  int send_packet(AVPacket* packet);
+  int send_packet(const AVPacket& packet);
   // Signal end-of-stream so the decoder flushes its remaining frames.
   int send_eof();
   // Pull one frame. Returns AVSUCCESS with `av_frame` filled, AVERROR(EAGAIN)
@@ -57,10 +58,6 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   std::optional<torch::stable::Tensor> get_frame_storage(
       const AVFrame& av_frame) const {
     return device_interface_->get_frame_storage(av_frame);
-  }
-
-  const StableDevice& device() const {
-    return device_interface_->device();
   }
 
   // The stream time base, used to convert frame pts/duration to seconds.
@@ -91,30 +88,31 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
 // How a decoded frame's samples are laid out and how they should be
 // interpreted, before any color conversion.
 struct FrameMetadata {
-  std::string pix_fmt;
-  std::string colorspace;
+  std::string pixel_format;
+  std::string color_space;
   std::string color_range;
+  std::string color_primaries;
+  std::string color_transfer_characteristic;
   int64_t bit_depth = 8;
   // The dimensions of the samples as they were decoded, i.e. before rotation.
   int64_t width = 0;
   int64_t height = 0;
   // Degrees counter-clockwise needed to make the frame upright. 0 when the
   // frame carries no display matrix.
-  double rotation_degrees = 0;
+  double rotation = 0;
 };
 
-// TODO_API_BREAKDOWN CC P1 these should bet get_*
-
-// Describes `av_frame` without touching its samples. Unlike frame_planes(),
+// Describes `av_frame` without touching its samples. Unlike get_frame_planes(),
 // this works for every pixel format, so callers can ask what a frame is before
 // asking for views they may not be able to get.
-FORCE_PUBLIC_VISIBILITY FrameMetadata frame_metadata(const AVFrame& av_frame);
+FORCE_PUBLIC_VISIBILITY FrameMetadata
+get_frame_metadata(const AVFrame& av_frame);
 
 // A decoded frame's own samples, before any color conversion: one view per
 // component, in the frame's native order: (Y, U, V) for YUV, (R, G, B) for RGB
 // codecs, (Y,) for grayscale, plus a trailing alpha view when the format has
 // one.
-FORCE_PUBLIC_VISIBILITY std::vector<torch::stable::Tensor> frame_planes(
+FORCE_PUBLIC_VISIBILITY std::vector<torch::stable::Tensor> get_frame_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
     const torch::stable::Tensor& tensor_handle);
@@ -126,9 +124,10 @@ FORCE_PUBLIC_VISIBILITY std::vector<torch::stable::Tensor> frame_planes(
 // interleave them, so neither is a [C, N] tensor as it stands. An audio frame
 // is a few kB, so normalizing here buys a uniform layout for the price of a
 // memcpy - and it means a converter can treat the result as planar-of-dtype.
-// TODO_API_BREAKDOWN DESIGN P1: do we want to copy? Should we just keep the
-// original layout?
-FORCE_PUBLIC_VISIBILITY torch::stable::Tensor audio_samples(
+// Copying is also what lets the samples be handed out as a plain tensor instead
+// of an opaque handle the way a video frame is, so nothing has to be kept alive
+// to keep them readable.
+FORCE_PUBLIC_VISIBILITY torch::stable::Tensor get_audio_samples(
     const AVFrame& av_frame);
 
 } // namespace facebook::torchcodec

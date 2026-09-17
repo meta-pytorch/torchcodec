@@ -7,4 +7,4 @@
 
 .. autoclass:: {{ name }}
     :members:
-    :special-members: __getitem__, __next__
+    :inherited-members:
