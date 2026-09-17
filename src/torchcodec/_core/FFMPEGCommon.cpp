@@ -740,28 +740,10 @@ void set_ffmpeg_log_level() {
   av_log_set_level(log_level);
 }
 
-// Stops the given AVFormatContext from opening URLs of its own.
-//
-// This is for contexts that read through an AVIOContext, i.e. whose every byte
-// comes from a file-like object, from bytes or from a tensor. FFmpeg picks a
-// demuxer by probing content, and some formats are manifests rather than media:
-// a DASH .mpd or an HLS .m3u8 holds no samples at all, only the URLs of the
-// segments that do, which its demuxer then goes and fetches. Bytes that merely
-// start like a manifest are therefore enough to make us send requests to any
-// host they name.
-//
-// Whether we want to support that at all is an open question. What is already
-// settled, by FFmpeg, is the answer for a local file: the file protocol hands
-// the demuxer a "file,crypto,data" whitelist, so segments are never fetched
-// from a path. A custom AVIOContext has no protocol to inherit a whitelist
-// from, and that accident alone shouldn't make the two disagree.
-//
-// Sources that FFmpeg opens itself, be they a path or a URL, are unaffected:
-// they go through the other constructors and keep FFmpeg's defaults.
 void forbid_nested_protocols(AVFormatContext* format_context) {
-  // An empty whitelist matches no protocol, so every nested open fails with
-  // "Protocol 'x' not on whitelist ''". The string is owned by the context and
-  // freed with it.
+  // See _assert_local_file_and_file_like_agree
+  // We call this explicitly so that the file-like behavior matches the default
+  // behavior of FFmpeg on local files.
   int status = av_opt_set(format_context, "protocol_whitelist", "", 0);
   STD_TORCH_CHECK(
       status == 0,

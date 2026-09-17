@@ -178,29 +178,18 @@ from .utils import (
 def _assert_local_file_and_file_like_agree(open_source, tmp_path):
     # Opens the very same DASH manifest twice, once as a local file and once as
     # a file-like, and asserts that neither reaches the network.
-    #
-    # A manifest holds no media at all: it only lists the URLs of the segments
-    # that do. FFmpeg picks a demuxer by probing content rather than by name, so
-    # any source starting with these bytes can send it off to the host they
-    # name, and the demuxer will happily fetch the segments from there.
-    #
-    # Whether we want to support that is an open question - nobody has decided.
-    # What is already decided, by FFmpeg, is the answer for a local file: the
-    # file protocol hands the demuxer a "file,crypto,data" whitelist, so
-    # segments are never fetched from a path. A file-like has no protocol to
-    # inherit a whitelist from, and this asserts we don't let that accident
-    # alone make the two disagree.
-    #
-    # Both sources fail to open either way - a manifest carries no media - so
-    # the error is not what we assert on. What we assert is that our socket
-    # never saw a connection.
+    # FFmpeg already denies support for mpeg-dash by default on files. This test
+    # is mainly here to ensure we also deny it by default on file-like. Whether
+    # this should be supported (consistently across input types) is an open
+    # question.
+
     with socket.socket() as server:
         server.bind(("127.0.0.1", 0))
         server.listen()
         port = server.getsockname()[1]
 
         manifest = f"""<?xml version="1.0" encoding="utf-8"?>
-<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-live:2011" type="static" mediaPresentationDuration="PT2.0S">
+<mpd xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-live:2011" type="static" mediapresentationduration="pt2.0s">
   <Period id="0" start="PT0.0S">
     <AdaptationSet id="0" contentType="audio" mimeType="audio/mp4">
       <Representation id="0" codecs="mp4a.40.2" bandwidth="64000" audioSamplingRate="44100">
@@ -219,9 +208,7 @@ def _assert_local_file_and_file_like_agree(open_source, tmp_path):
             with pytest.raises(RuntimeError, match="open input"):
                 open_source(source)
 
-        # The kernel completes the handshake on a listening socket on its own,
-        # so a connection attempt would already be queued here even though we
-        # never called accept().
+        # Assert that the demuxer never reached out to the network
         server.setblocking(False)
         with pytest.raises(BlockingIOError):
             server.accept()
@@ -5679,7 +5666,7 @@ class TestBlocks:
         assert_frames_equal(got.data, expected.data)
 
     def test_no_network_access(self, tmp_path):
-        _assert_local_file_and_file_like_agree(VideoDemuxer, tmp_path)
+        _assert_local_file_and_file_like_agree(Demuxer, tmp_path)
 
     # ===== stream_index =====
 
