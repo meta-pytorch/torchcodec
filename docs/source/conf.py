@@ -63,7 +63,7 @@ class CustomGalleryExampleSortKey:
     # See https://sphinx-gallery.github.io/stable/configuration.html#sorting-gallery-examples
     # and https://github.com/sphinx-gallery/sphinx-gallery/blob/master/sphinx_gallery/sorting.py
     def __init__(self, src_dir):
-        self.src_dir = src_dir
+        self.src_dir = str(src_dir)
 
     def __call__(self, filename):
         # We have four top-level galleries: decoding examples, encoding
