@@ -120,14 +120,15 @@ demuxing, decoding and conversion as separate stages.
         :link: generated_examples/blocks/basics.html
         :link-type: url
 
-        The three stages, video and audio, metadata, seeking and scanning
+        The three stages, video and audio, metadata, seeking, scanning, and
+        endless sources
 
      .. grid-item-card:: :octicon:`file-code;1em`
-        Composing pipelines
+        Multi-threaded pipelines
         :link: generated_examples/blocks/pipelines.html
         :link-type: url
 
-        How to overlap the stages on several threads, and decode endless streams
+        How to overlap the stages on several threads, and where to split them
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Raw frames and samples

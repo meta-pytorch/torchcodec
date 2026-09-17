@@ -19,7 +19,8 @@ Blocks: build your own decoding pipeline
 
 In this tutorial, we'll take a tour of the Blocks APIs: the three decoding
 stages for video and audio, following several streams of a container at once,
-seeking, scanning, and what the metadata means.
+seeking, scanning, what the metadata means, and decoding a source that never
+ends.
 
 :class:`~torchcodec.decoders.VideoDecoder` and
 :class:`~torchcodec.decoders.AudioDecoder` are each a single box that does
@@ -38,7 +39,7 @@ stages separately, one chain per media type:
 Two companion tutorials go further:
 
 * :ref:`sphx_glr_generated_examples_blocks_pipelines.py`, on running the stages
-  concurrently and on decoding sources that never end.
+  concurrently on several threads.
 * :ref:`sphx_glr_generated_examples_blocks_raw_data.py`, on reading the
   decoder's own YUV planes and audio samples instead of converting them.
 """
@@ -492,13 +493,54 @@ for stream in get_container_metadata(av_path).streams:
     print(f"  stream {stream.stream_index}: {stream.media_type}, {stream.codec}")
 
 # %%
+# Streams of unknown length
+# -------------------------
+#
+# One last thing the blocks make possible.
+# :class:`~torchcodec.decoders.VideoDecoder` needs a finite, seekable source: it
+# relies on the stream's duration and frame count, and in its default
+# ``seek_mode="exact"`` it scans the whole file up-front. The blocks never do
+# that: they consume packets as they arrive, so they can decode a source with no
+# duration, no frame count, and no end.
+#
+# Here is one such example where we generate an endless stream with FFmpeg, and
+# decode its first 100 frames:
+import os
+
+fifo_path = temp_dir / "live.ts"
+os.mkfifo(fifo_path)
+ffmpeg = subprocess.Popen(
+    [
+        "ffmpeg", "-hide_banner", "-loglevel", "error",
+        "-f", "lavfi", "-i", "testsrc2=size=640x480:rate=30",  # no duration!
+        "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+        "-g", "30", "-f", "mpegts", "-y", str(fifo_path),
+    ],
+)
+
+demuxer = Demuxer(fifo_path)
+packet_decoder = demuxer.streams[0].make_decoder(device=device)
+color_converter = ColorConverter(device=device)
+
+frames = []
+for frame in decode_frames(demuxer, packet_decoder, color_converter):
+    frames.append(frame)
+    if len(frames) == 100:
+        break
+
+print(f"{len(frames)} frames, from pts {frames[0].pts_seconds:.2f}s "
+      f"to {frames[-1].pts_seconds:.2f}s")
+
+ffmpeg.kill()
+ffmpeg.wait()
+
+# %%
 # Where to go next
 # ----------------
 #
 # * :ref:`sphx_glr_generated_examples_blocks_pipelines.py` runs the stages
-#   concurrently on several threads, and decodes a live source that has no
-#   duration, no frame count and no end - something
-#   :class:`~torchcodec.decoders.VideoDecoder` cannot open at all.
+#   concurrently on several threads, and shows where to split a pipeline on CPU
+#   and on CUDA.
 # * :ref:`sphx_glr_generated_examples_blocks_raw_data.py` skips the converters
 #   and reads the decoder's own YUV planes and audio samples, at the source's
 #   own precision.
