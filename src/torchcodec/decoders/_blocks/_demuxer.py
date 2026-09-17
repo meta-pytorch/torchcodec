@@ -39,6 +39,7 @@ from torchcodec._core.ops import (
 from .._decoder_utils import convert_device_to_str
 
 from ._frame import Packet
+from ._helpers import _process_local
 from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
 
 # TODO_API_BREAKDOWN FEAT PERF Do we want / need to support 'batch-like' APIs
@@ -210,6 +211,7 @@ class FrameIndex:
         return self.pts_seconds[self.key_frame_indices]
 
 
+@_process_local("Reach it through a Demuxer built in that process.")
 class _Stream:
     _media_type: str
 
@@ -336,6 +338,10 @@ class AudioStream(_Stream):
         return AudioPacketDecoder._from_stream(self, "cpu")
 
 
+@_process_local(
+    "It owns an open container and the file descriptor behind it. Construct "
+    "one in each process, from the same source."
+)
 class Demuxer:
     """Reads one or more video and audio streams from a container, and produces their compressed :class:`Packet`\\ s.
 

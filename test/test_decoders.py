@@ -6,15 +6,18 @@
 
 import concurrent.futures
 import contextlib
+import copy
 import gc
 import io
 import itertools
 import math
 import os
+import pickle
 import queue
 import subprocess
 import threading
 from functools import partial
+from multiprocessing.reduction import ForkingPickler
 from typing import NamedTuple
 
 import numpy
@@ -6109,6 +6112,75 @@ class TestBlocks:
         # file-like object from open()
         with pytest.raises(TypeError, match="binary reading?"):
             Demuxer(open(NASA_VIDEO.path))
+
+    # ===== process-locality =====
+
+    @pytest.mark.parametrize(
+        "serialize",
+        (
+            pickle.dumps,
+            # What a DataLoader worker or an mp.Queue uses. It goes further
+            # than pickle: it rewrites a tensor's storage into shared memory
+            # in place, which on a view over FFmpeg's memory would run the
+            # blob's deleter.
+            lambda obj: ForkingPickler(io.BytesIO()).dump(obj),
+            copy.copy,
+            copy.deepcopy,
+        ),
+        ids=("pickle", "forking_pickler", "copy", "deepcopy"),
+    )
+    def test_process_local_objects_refuse_serialization(self, serialize):
+        # These all hold a raw pointer as their payload, so we ensure we raise
+        # gracefully instead of segfaulting.
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        video, audio = demuxer.streams
+        objects = [
+            demuxer,
+            video,
+            audio,
+            video.make_decoder(),
+            audio.make_decoder(),
+            ColorConverter(),
+            AudioConverter(),
+            next(iter(demuxer)),
+            next(self._decoded_frames(NASA_VIDEO.path, "cpu")),
+        ]
+
+        for obj in objects:
+            with pytest.raises(TypeError, match="cannot be pickled"):
+                serialize(obj)
+
+    def test_pipeline_outputs_are_picklable(self):
+        # Some stuff are still pickleable (not necessarily by design). This is
+        # just for completeness.
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        video, audio = demuxer.streams
+        frame_index = video.scan()
+        video_decoder, audio_decoder = video.make_decoder(), audio.make_decoder()
+        color_converter, audio_converter = ColorConverter(), AudioConverter()
+
+        frame = raw_samples = None
+        for packet in demuxer:
+            if frame is None and packet.stream_index == video.index:
+                decoded = video_decoder.decode(packet)
+                if decoded:
+                    raw_frame = decoded[0]
+                    frame = color_converter.convert(raw_frame)
+            if raw_samples is None and packet.stream_index == audio.index:
+                decoded = audio_decoder.decode(packet)
+                raw_samples = decoded[0] if decoded else None
+            if frame is not None and raw_samples is not None:
+                break
+
+        for obj in (
+            frame,
+            audio_converter.convert(raw_samples),
+            raw_samples,
+            frame_index,
+            video.metadata,
+            tuple(plane.clone() for plane in raw_frame.planes),
+        ):
+            pickle.loads(pickle.dumps(obj))
 
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn

@@ -13,6 +13,8 @@ import torch
 
 from torchcodec._core.ops import _blocks_frame_metadata, _blocks_frame_planes
 
+from ._helpers import _process_local
+
 
 class _Metadata(NamedTuple):
     # The fields of the `_blocks_frame_metadata` op, in order.
@@ -27,6 +29,10 @@ class _Metadata(NamedTuple):
     rotation: float
 
 
+@_process_local(
+    "Build a Demuxer in each process instead, from the same source: a packet "
+    "is only decodable by a decoder built from its own stream."
+)
 class Packet:
     """One compressed packet of one stream, as a :class:`Demuxer` produced it.
 
@@ -55,6 +61,11 @@ class Packet:
         self._generation = generation
 
 
+@_process_local(
+    "Its planes are views on FFmpeg's own memory. To send the samples, copy "
+    "them out first - tuple(p.clone() for p in raw_frame.planes) - or convert "
+    "them with a ColorConverter and send the resulting Frame."
+)
 class RawFrame:
     """One decoded video frame, exactly as the decoder produced it.
 
