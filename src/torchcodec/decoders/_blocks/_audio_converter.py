@@ -15,8 +15,13 @@ from torchcodec._core.ops import (
 from torchcodec._frame import AudioSamples
 
 from ._frame import RawAudioSamples
+from ._helpers import _process_local
 
 
+@_process_local(
+    "A resampler carries filter history across calls that FFmpeg cannot "
+    "serialise. Construct one in each process."
+)
 class AudioConverter:
     """Turn :class:`RawAudioSamples` into normalised float32
     :class:`~torchcodec.AudioSamples`, optionally resampling and remixing

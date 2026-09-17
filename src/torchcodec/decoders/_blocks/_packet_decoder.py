@@ -20,6 +20,7 @@ from torchcodec._core.ops import (
 )
 
 from ._frame import Packet, RawAudioSamples, RawFrame
+from ._helpers import _process_local
 
 if TYPE_CHECKING:
     # Only for the annotation: _demuxer imports this module to build decoders,
@@ -33,6 +34,10 @@ _Decoded = TypeVar("_Decoded", RawFrame, RawAudioSamples)
 _Self = TypeVar("_Self", bound="_BasePacketDecoder")
 
 
+@_process_local(
+    "A codec context holds reference frames and entropy state that FFmpeg "
+    "cannot serialise. Call stream.make_decoder() in each process."
+)
 class _BasePacketDecoder(Generic[_Decoded]):
     _handle: torch.Tensor
     _drained: bool

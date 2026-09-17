@@ -15,8 +15,10 @@ from torchcodec._frame import Frame
 
 from .._decoder_utils import convert_device_to_str, convert_output_dtype_to_str
 from ._frame import RawFrame
+from ._helpers import _process_local
 
 
+@_process_local("Construct one in each process.")
 class ColorConverter:
     """Turn a :class:`RawFrame` (typically YUV) into an RGB :class:`~torchcodec.Frame`.
 
