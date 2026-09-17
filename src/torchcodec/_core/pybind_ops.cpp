@@ -49,7 +49,12 @@ int64_t create_file_like_context(py::object file_like, bool is_for_writing) {
 #error PYBIND_OPS_MODULE_NAME must be defined!
 #endif
 
-PYBIND11_MODULE(PYBIND_OPS_MODULE_NAME, m) {
+// mod_gil_not_used() tells a free-threaded CPython that this module doesn't
+// need the GIL to exist in order to function properly. Without it, CPython
+// re-enables the GIL process-wide when this module gets imported.
+// This is the only extension where we need to set it: the other libraries we
+// ship aren't Python modules.
+PYBIND11_MODULE(PYBIND_OPS_MODULE_NAME, m, py::mod_gil_not_used()) {
   m.def("create_file_like_context", &create_file_like_context);
 }
 

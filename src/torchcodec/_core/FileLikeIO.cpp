@@ -11,9 +11,6 @@ namespace facebook::torchcodec {
 
 FileLikeIO::FileLikeIO(const py::object& file_like, bool is_for_writing)
     : file_like_{UniquePyObject(new py::object(file_like))} {
-  // TODO: Is it necessary to acquire the GIL here? Is it maybe even
-  // harmful? At the moment, this is only called from within a pybind
-  // function, and pybind guarantees we have the GIL.
   py::gil_scoped_acquire gil;
 
   if (is_for_writing) {
@@ -31,6 +28,13 @@ FileLikeIO::FileLikeIO(const py::object& file_like, bool is_for_writing)
       "File like object must implement a seek method.");
 }
 
+// FFmpeg calls read(), write() and seek() from within the decoding and
+// encoding ops, which run with the GIL released. Releasing the GIL also
+// detaches the thread from the interpreter, and a detached thread cannot call
+// into Python. We thus re-acquire the GIL before calling into Python.  This
+// still applies to a free-threaded interpreter: the `py::gil_scoped_acquire`
+// statement won't acquire the GIL (there's none), but it re-attaches the
+// thread, which is needed in order to call into Python.
 int FileLikeIO::read(uint8_t* buf, int size) {
   py::gil_scoped_acquire gil;
 
