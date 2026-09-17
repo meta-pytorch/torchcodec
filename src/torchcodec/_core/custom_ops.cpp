@@ -13,7 +13,9 @@
 #include <pybind11/pybind11.h>
 #pragma pop_macro("TORCH_TARGET_VERSION")
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <vector>
 
 extern "C" {
 #include <libavutil/pixdesc.h>
@@ -49,7 +51,7 @@ namespace facebook::torchcodec {
 STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("create_from_file(str filename, str? seek_mode=None) -> Tensor");
   m.def(
-      "create_from_tensor(Tensor video_tensor, str? seek_mode=None) -> Tensor");
+      "create_from_tensor(Tensor video_tensor, str? seek_mode=None, str? input_format=None, str[]? allowed_decoders=None) -> Tensor");
   m.def(
       "_create_from_file_like(int file_like_context, str? seek_mode=None) -> Tensor");
   m.def(
@@ -530,7 +532,9 @@ torch::stable::Tensor create_from_file(
 // pointer in a tensor. The SingleStreamDecoder will decode the provided bytes.
 torch::stable::Tensor create_from_tensor(
     const torch::stable::Tensor& video_tensor,
-    std::optional<std::string> seek_mode = std::nullopt) {
+    std::optional<std::string> seek_mode = std::nullopt,
+    std::optional<std::string> input_format = std::nullopt,
+    std::optional<std::vector<std::string>> allowed_decoders = std::nullopt) {
   STD_TORCH_CHECK(
       video_tensor.is_contiguous(), "video_tensor must be contiguous");
   STD_TORCH_CHECK(
@@ -545,9 +549,20 @@ torch::stable::Tensor create_from_tensor(
   auto avio_context_holder = std::make_unique<AVIOContextHolder>(
       std::make_unique<TensorReadIO>(video_tensor), /*is_for_writing=*/false);
 
+  STD_TORCH_CHECK(
+      input_format.has_value() == allowed_decoders.has_value(),
+      "input_format and allowed_decoders must be set together");
+  std::optional<DecoderRestrictions> decoder_restrictions = std::nullopt;
+  if (input_format.has_value()) {
+    decoder_restrictions = DecoderRestrictions{
+        std::move(*input_format), std::move(*allowed_decoders)};
+  }
+
   std::unique_ptr<SingleStreamDecoder> unique_decoder =
       std::make_unique<SingleStreamDecoder>(
-          std::move(avio_context_holder), real_seek);
+          std::move(avio_context_holder),
+          real_seek,
+          std::move(decoder_restrictions));
   return wrap_decoder_pointer_to_tensor(std::move(unique_decoder));
 }
 

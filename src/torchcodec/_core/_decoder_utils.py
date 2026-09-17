@@ -40,14 +40,27 @@ _ERROR_REPORTING_INSTRUCTIONS = """
 This should never happen. Please report an issue following the steps in
 https://github.com/pytorch/torchcodec/issues/new?assignees=&labels=&projects=&template=bug-report.yml.
 """
+_DECODER_RESTRICTION_REJECTION = "Restricted media decode rejected: "
 
 
 def create_decoder(
     *,
     source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
     seek_mode: str,
+    input_format: str | None = None,
+    allowed_decoders: Sequence[str] | None = None,
 ) -> Tensor:
     load_core_libraries()
+    allowed_decoders = _validate_and_normalize_decoder_restrictions(
+        input_format, allowed_decoders
+    )
+    restrictions_enabled = input_format is not None
+    if restrictions_enabled and not isinstance(source, (bytes, Tensor)):
+        raise ValueError(
+            _DECODER_RESTRICTION_REJECTION
+            + "decoder restrictions support only bytes and Tensor sources"
+        )
+
     if isinstance(source, str):
         return create_from_file(source, seek_mode)
     elif isinstance(source, Path):
@@ -55,9 +68,9 @@ def create_decoder(
     elif isinstance(source, io.RawIOBase) or isinstance(source, io.BufferedReader):
         return create_from_file_like(source, seek_mode)
     elif isinstance(source, bytes):
-        return create_from_bytes(source, seek_mode)
+        return create_from_bytes(source, seek_mode, input_format, allowed_decoders)
     elif isinstance(source, Tensor):
-        return create_from_tensor(source, seek_mode)
+        return create_from_tensor(source, seek_mode, input_format, allowed_decoders)
     elif isinstance(source, io.TextIOBase):
         raise TypeError(
             "source is for reading text, likely from open(..., 'r'). Try with 'rb' for binary reading?"
@@ -104,6 +117,40 @@ def create_demuxer(
         "read(self, size: int) -> bytes and "
         "seek(self, offset: int, whence: int) -> int methods."
     )
+
+
+def _validate_and_normalize_decoder_restrictions(
+    input_format: str | None,
+    allowed_decoders: Sequence[str] | None,
+) -> list[str] | None:
+    if (input_format is None) != (allowed_decoders is None):
+        raise ValueError(
+            _DECODER_RESTRICTION_REJECTION
+            + "input_format and allowed_decoders must be set together"
+        )
+    if isinstance(allowed_decoders, str):
+        raise TypeError(
+            _DECODER_RESTRICTION_REJECTION
+            + "allowed_decoders must be a sequence of names, not a string"
+        )
+
+    normalized = list(allowed_decoders) if allowed_decoders is not None else None
+    if input_format is None:
+        return normalized
+    if not input_format or "," in input_format or "\0" in input_format:
+        raise ValueError(
+            _DECODER_RESTRICTION_REJECTION
+            + "input_format must name exactly one FFmpeg demuxer"
+        )
+    if not normalized or any(
+        not isinstance(name, str) or not name or "," in name or "\0" in name
+        for name in normalized
+    ):
+        raise ValueError(
+            _DECODER_RESTRICTION_REJECTION
+            + "allowed_decoders must contain non-empty FFmpeg decoder names"
+        )
+    return normalized
 
 
 def create_audio_decoder(
@@ -227,9 +274,16 @@ def create_video_decoder(
     transforms: Sequence[DecoderTransform | nn.Module] | None = None,
     custom_frame_mappings: tuple[Tensor, Tensor, Tensor] | None = None,
     output_dtype: str = "uint8",
+    input_format: str | None = None,
+    allowed_decoders: Sequence[str] | None = None,
 ) -> tuple[Tensor, int, VideoStreamMetadata]:
 
-    decoder = create_decoder(source=source, seek_mode=seek_mode)
+    decoder = create_decoder(
+        source=source,
+        seek_mode=seek_mode,
+        input_format=input_format,
+        allowed_decoders=allowed_decoders,
+    )
 
     (
         metadata,
