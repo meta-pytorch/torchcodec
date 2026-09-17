@@ -193,16 +193,10 @@ PngHeader read_header_and_configure(
         num_output_channels = 4;
       }
     } else if (has_trns) {
-      // Without this, png_set_expand_16() below would expand tRNS into an
-      // alpha channel, i.e. the number of output channels would depend on the
-      // requested output dtype.
       png_set_strip_alpha(png_ptr);
     }
   } else {
     bool has_color = (color_type & PNG_COLOR_MASK_COLOR) != 0;
-    // Both png_set_palette_to_rgb() and png_set_expand_16() turn a tRNS chunk
-    // into a real alpha channel, so a tRNS input must be handled exactly like
-    // an input that already has an alpha channel: libpng emits one either way.
     bool has_alpha = (color_type & PNG_COLOR_MASK_ALPHA) != 0 || has_trns;
 
     png_uint_32 opaque_alpha = output_16 ? 65535 : 255;
@@ -286,8 +280,7 @@ PngHeader read_header_and_configure(
 
   // png_read_row() writes as many bytes as libpng's own post-transformation
   // layout dictates, but we size the output tensor from num_output_channels,
-  // which we track by hand above. If the two ever disagree we would write past
-  // the end of the tensor, so we bail out instead.
+  // which we track by hand above. We make sure they agree.
   size_t expected_row_bytes = static_cast<size_t>(width) *
       static_cast<size_t>(num_output_channels) * (output_16 ? 2 : 1);
   size_t actual_row_bytes = png_get_rowbytes(png_ptr, info_ptr);
