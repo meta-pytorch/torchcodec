@@ -366,6 +366,8 @@ bool can_sws_scale_handle_unaligned_data();
 
 void set_ffmpeg_log_level();
 
+void forbid_nested_protocols(AVFormatContext* format_context);
+
 // These signatures are defined by FFmpeg.
 using AVIOReadFunction = int (*)(void*, uint8_t*, int);
 using AVIOWriteFunction = int (*)(void*, const uint8_t*, int); // FFmpeg >= 7

@@ -14,6 +14,7 @@ import math
 import os
 import pickle
 import queue
+import socket
 import subprocess
 import threading
 from functools import partial
@@ -174,6 +175,45 @@ from .utils import (
 )
 
 
+def _assert_local_file_and_file_like_agree(open_source, tmp_path):
+    # Opens the very same DASH manifest twice, once as a local file and once as
+    # a file-like, and asserts that neither reaches the network.
+    # FFmpeg already denies support for mpeg-dash by default on files. This test
+    # is mainly here to ensure we also deny it by default on file-like. Whether
+    # this should be supported (consistently across input types) is an open
+    # question.
+
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        port = server.getsockname()[1]
+
+        manifest = f"""<?xml version="1.0" encoding="utf-8"?>
+<mpd xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-live:2011" type="static" mediapresentationduration="pt2.0s">
+  <Period id="0" start="PT0.0S">
+    <AdaptationSet id="0" contentType="audio" mimeType="audio/mp4">
+      <Representation id="0" codecs="mp4a.40.2" bandwidth="64000" audioSamplingRate="44100">
+        <BaseURL>http://127.0.0.1:{port}/</BaseURL>
+        <SegmentTemplate timescale="1000000" duration="1000000" initialization="init.m4s" media="seg-$Number$.m4s" startNumber="1"/>
+      </Representation>
+    </AdaptationSet>
+  </Period>
+</MPD>
+""".encode()
+
+        local_file = tmp_path / "manifest.mpd"
+        local_file.write_bytes(manifest)
+
+        for source in (local_file, io.BytesIO(manifest)):
+            with pytest.raises(RuntimeError, match="open input"):
+                open_source(source)
+
+        # Assert that the demuxer never reached out to the network
+        server.setblocking(False)
+        with pytest.raises(BlockingIOError):
+            server.accept()
+
+
 class TestDecoder:
     @pytest.mark.parametrize(
         "Decoder, asset",
@@ -248,6 +288,10 @@ class TestDecoder:
         # like object from open()
         with pytest.raises(TypeError, match="binary reading?"):
             Decoder(open(NASA_VIDEO.path))
+
+    @pytest.mark.parametrize("Decoder", (VideoDecoder, AudioDecoder))
+    def test_no_network_access(self, Decoder, tmp_path):
+        _assert_local_file_and_file_like_agree(Decoder, tmp_path)
 
 
 class TestVideoDecoder:
@@ -5620,6 +5664,9 @@ class TestBlocks:
 
         assert got.pts_seconds == expected.pts_seconds == seconds
         assert_frames_equal(got.data, expected.data)
+
+    def test_no_network_access(self, tmp_path):
+        _assert_local_file_and_file_like_agree(Demuxer, tmp_path)
 
     # ===== stream_index =====
 

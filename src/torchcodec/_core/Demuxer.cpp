@@ -112,6 +112,7 @@ Demuxer::Demuxer(std::unique_ptr<AVIOContextHolder> avio_context_holder)
   AVFormatContext* raw_context = avformat_alloc_context();
   STD_TORCH_CHECK(raw_context != nullptr, "Failed to allocate AVFormatContext");
   raw_context->pb = avio_context_holder_->get_avio_context();
+  forbid_nested_protocols(raw_context);
 
   int status = avformat_open_input(&raw_context, nullptr, nullptr, nullptr);
   if (status != 0) {

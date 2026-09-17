@@ -740,6 +740,17 @@ void set_ffmpeg_log_level() {
   av_log_set_level(log_level);
 }
 
+void forbid_nested_protocols(AVFormatContext* format_context) {
+  // See _assert_local_file_and_file_like_agree
+  // We call this explicitly so that the file-like behavior matches the default
+  // behavior of FFmpeg on local files.
+  int status = av_opt_set(format_context, "protocol_whitelist", "", 0);
+  STD_TORCH_CHECK(
+      status == 0,
+      "Failed to set protocol whitelist: ",
+      get_ffmpeg_error_string_from_error_code(status));
+}
+
 AVIOContext* avio_alloc_context(
     uint8_t* buffer,
     int buffer_size,
