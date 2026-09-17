@@ -6296,7 +6296,7 @@ class TestImageDecoder:
             return torch.ops.torchcodec_ns.decode_avif(data, mode)
 
     @staticmethod
-    def _make_transparent_png(path, kind):
+    def _make_transparent_png(path, kind, bits=8):
         # A PNG can encode transparency via a tRNS chunk instead of a full alpha
         # channel: a transparent colorkey for gray/RGB images, or per-palette-
         # entry alpha for palette images. The left half is transparent.
@@ -6318,7 +6318,7 @@ class TestImageDecoder:
             im = Image.fromarray(px, "P")
             im.putpalette([10, 20, 30, 200, 100, 50])
             im.info["transparency"] = bytes([0, 255])  # per-index alpha
-            im.save(path)
+            im.save(path, bits=bits)
 
     # ===== cross-codec tests: basics & API =====
 
@@ -7104,6 +7104,50 @@ class TestImageDecoder:
             reference[:-1][visible],
             percentage=99,
             atol=2,
+        )
+
+    @needs_png
+    @pytest.mark.parametrize(
+        "kind, bits", (("rgb", 8), ("gray", 8), ("palette", 8), ("palette", 1))
+    )
+    @pytest.mark.parametrize("output_mode", ("UNCHANGED", "GRAY", "RGB"))
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.uint16, "auto"))
+    def test_png_trns_without_alpha(
+        self, tmp_path, kind, bits, output_mode, output_dtype
+    ):
+        # Non-regression test for
+        # https://github.com/meta-pytorch/torchcodec/issues/1731
+        # libpng expands a tRNS chunk into a full alpha channel as a side effect
+        # of png_set_palette_to_rgb() (palette sources) and of
+        # png_set_expand_16() (uint16 output). Output modes that don't want
+        # alpha must strip it!
+        path = tmp_path / f"{kind}.png"
+        self._make_transparent_png(path, kind, bits=bits)
+
+        decoded = decode_png(path, mode=output_mode, output_dtype=output_dtype)
+
+        expected_dtype = torch.uint16 if output_dtype is torch.uint16 else torch.uint8
+        assert decoded.dtype == expected_dtype
+
+        gray_output = output_mode == "GRAY" or (
+            output_mode == "UNCHANGED" and kind == "gray"
+        )
+        num_color_channels = 1 if gray_output else 3
+        keeps_alpha = output_mode == "UNCHANGED" and kind == "palette"
+        assert decoded.shape[0] == num_color_channels + keeps_alpha
+
+        # PIL ignores tRNS when converting to a mode without alpha, so this is
+        # the color the decoder must produce too. The alpha channel itself is
+        # covered by test_png_trns_transparency.
+        reference = self._pil_to_tensor(
+            Image.open(path).convert("L" if gray_output else "RGB")
+        )
+        scale = 257 if expected_dtype is torch.uint16 else 1
+        assert_tensor_close_on_at_least(
+            decoded[:num_color_channels].to(torch.int32),
+            reference.to(torch.int32) * scale,
+            percentage=99,
+            atol=2 * scale,
         )
 
     @needs_png
