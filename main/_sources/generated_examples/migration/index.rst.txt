@@ -19,7 +19,7 @@ Migrating from torchvision
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="The image decoders and encoders of torchvision.io now live in torchcodec. This is a short guide to porting your code over. Everything you could do with torchvision.io you can do with TorchCodec, usually with a very similar call. And TorchCodec supports many more features. To learn more about the image decoding and encoding features of TorchCodec, refer to the image decoding &lt;sphx_glr_generated_examples_decoding_image_decoding.py&gt; and image encoding &lt;sphx_glr_generated_examples_encoding_image_encoding.py&gt; tutorials.">
+    <div class="sphx-glr-thumbcontainer" tooltip="The image decoders and encoders of torchvision.io now live in torchcodec. This is a short guide to porting your code over. Everything you could do with torchvision.io you can do with TorchCodec, usually with a very similar call. And TorchCodec supports many more features. To learn more about the image decoding and encoding features of TorchCodec, refer to the image decoding and image encoding tutorials.">
 
 .. only:: html
 

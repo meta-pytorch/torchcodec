@@ -36,7 +36,7 @@ Decoding blocks (experimental)
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="How to overlap the decoding stages across threads, choose where to cut the pipeline on CPU and on CUDA, and decode a source that never ends.">
+    <div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible.">
 
 .. only:: html
 
@@ -47,7 +47,7 @@ Decoding blocks (experimental)
 
 .. raw:: html
 
-      <div class="sphx-glr-thumbnail-title">Composing pipelines: threads, devices and endless streams</div>
+      <div class="sphx-glr-thumbnail-title">Multi-threaded decoding pipelines</div>
     </div>
 
 

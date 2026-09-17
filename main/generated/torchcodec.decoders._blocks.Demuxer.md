@@ -54,9 +54,9 @@ Examples using `Demuxer`:
 Blocks: build your own decoding pipeline
 ![](../_images/sphx_glr_pipelines_thumb.png)
 
-[Composing pipelines: threads, devices and endless streams](../generated_examples/blocks/pipelines.html)
+[Multi-threaded decoding pipelines](../generated_examples/blocks/pipelines.html)
 
-Composing pipelines: threads, devices and endless streams
+Multi-threaded decoding pipelines
 ![](../_images/sphx_glr_raw_data_thumb.png)
 
 [Raw frames and raw audio samples](../generated_examples/blocks/raw_data.html)

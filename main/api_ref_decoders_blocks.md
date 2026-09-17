@@ -8,7 +8,7 @@ unreleased. Signatures and semantics may change without notice.
 For tutorials, see:
 
 - [Blocks: build your own decoding pipeline](generated_examples/blocks/basics.html#sphx-glr-generated-examples-blocks-basics-py)
-- [Composing pipelines: threads, devices and endless streams](generated_examples/blocks/pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py)
+- [Multi-threaded decoding pipelines](generated_examples/blocks/pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py)
 - [Raw frames and raw audio samples](generated_examples/blocks/raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py)
 
 ## Demuxing

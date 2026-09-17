@@ -95,13 +95,14 @@ demuxing, decoding and conversion as separate stages.
 
 Build your own decoding pipeline
 
-The three stages, video and audio, metadata, seeking and scanning
+The three stages, video and audio, metadata, seeking, scanning, and
+endless sources
 
 [generated_examples/blocks/basics.html](generated_examples/blocks/basics.html)
 
-Composing pipelines
+Multi-threaded pipelines
 
-How to overlap the stages on several threads, and decode endless streams
+How to overlap the stages on several threads, and where to split them
 
 [generated_examples/blocks/pipelines.html](generated_examples/blocks/pipelines.html)
 

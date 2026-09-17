@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>torchcodec.decoders._blocks &#8212; TorchCodec 0.17.0.dev20260916+cu130 Documentation</title>
+    <title>torchcodec.decoders._blocks &#8212; TorchCodec 0.17.0.dev20260917+cu130 Documentation</title>
   
   
   
@@ -31,7 +31,7 @@
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=a6c16915" />
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
-    <link rel="stylesheet" type="text/css" href="_static/sg_gallery.css?v=fd6457a4" />
+    <link rel="stylesheet" type="text/css" href="_static/sg_gallery.css?v=c83e6b79" />
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-binder.css?v=f4aeca0c" />
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-dataframe.css?v=2082cf3c" />
     <link rel="stylesheet" type="text/css" href="_static/sg_gallery-rendered-html.css?v=1277b6f3" />
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="_static/documentation_options.js?v=2230c5d4"></script>
+    <script src="_static/documentation_options.js?v=3275fd1a"></script>
     <script src="_static/doctools.js?v=888ff710"></script>
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/sg-tags.js?v=d80f6fa4"></script>
@@ -1212,7 +1212,7 @@ unreleased. Signatures and semantics may change without notice.</p>
 <p>For tutorials, see:</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="generated_examples/blocks/basics.html#sphx-glr-generated-examples-blocks-basics-py"><span class="std std-ref">Blocks: build your own decoding pipeline</span></a></p></li>
-<li><p><a class="reference internal" href="generated_examples/blocks/pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py"><span class="std std-ref">Composing pipelines: threads, devices and endless streams</span></a></p></li>
+<li><p><a class="reference internal" href="generated_examples/blocks/pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py"><span class="std std-ref">Multi-threaded decoding pipelines</span></a></p></li>
 <li><p><a class="reference internal" href="generated_examples/blocks/raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py"><span class="std std-ref">Raw frames and raw audio samples</span></a></p></li>
 </ul>
 <section id="demuxing">
@@ -1669,7 +1669,7 @@ unreleased. Signatures and semantics may change without notice.</p>
        "headline": "torchcodec.decoders._blocks",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/api_ref_decoders_blocks.html",
-       "articleBody": "torchcodec.decoders._blocks# Warning The Blocks APIs are under active construction. They are private and unreleased. Signatures and semantics may change without notice. For tutorials, see: Blocks: build your own decoding pipeline Composing pipelines: threads, devices and endless streams Raw frames and raw audio samples Demuxing# Demuxer Reads one or more video and audio streams from a container, and produces their compressed Packets. VideoStream A video stream followed by a Demuxer. AudioStream An audio stream followed by a Demuxer. get_container_metadata Describe a container and every stream in it, without decoding anything. Decoding# VideoPacketDecoder Decodes the compressed Packets of one video stream into RawFrames. AudioPacketDecoder Decodes the compressed Packets of one audio stream into RawAudioSamples. Conversion# ColorConverter Turn a RawFrame (typically YUV) into an RGB Frame. AudioConverter Turn RawAudioSamples into normalised float32 AudioSamples, optionally resampling and remixing channels. Data types# Packet One compressed packet of one stream, as a Demuxer produced it. RawFrame One decoded video frame, exactly as the decoder produced it. FrameIndex What the packets of a video stream say about its frames, as returned by a scan (VideoStream.scan()). RawAudioSamples One decoded audio frame\u0027s samples, exactly as the decoder produced them. Metadata# DemuxerMetadata Container-level metadata, as reported by the header. ContainerMetadata Metadata of a container and of every stream in it. VideoStreamHeaderMetadata Metadata of a single video stream, as reported by the container header. AudioStreamHeaderMetadata Metadata of a single audio stream, as reported by the container header. StreamMetadata Metadata of a single stream, as reported by the container header.",
+       "articleBody": "torchcodec.decoders._blocks# Warning The Blocks APIs are under active construction. They are private and unreleased. Signatures and semantics may change without notice. For tutorials, see: Blocks: build your own decoding pipeline Multi-threaded decoding pipelines Raw frames and raw audio samples Demuxing# Demuxer Reads one or more video and audio streams from a container, and produces their compressed Packets. VideoStream A video stream followed by a Demuxer. AudioStream An audio stream followed by a Demuxer. get_container_metadata Describe a container and every stream in it, without decoding anything. Decoding# VideoPacketDecoder Decodes the compressed Packets of one video stream into RawFrames. AudioPacketDecoder Decodes the compressed Packets of one audio stream into RawAudioSamples. Conversion# ColorConverter Turn a RawFrame (typically YUV) into an RGB Frame. AudioConverter Turn RawAudioSamples into normalised float32 AudioSamples, optionally resampling and remixing channels. Data types# Packet One compressed packet of one stream, as a Demuxer produced it. RawFrame One decoded video frame, exactly as the decoder produced it. FrameIndex What the packets of a video stream say about its frames, as returned by a scan (VideoStream.scan()). RawAudioSamples One decoded audio frame\u0027s samples, exactly as the decoder produced them. Metadata# DemuxerMetadata Container-level metadata, as reported by the header. ContainerMetadata Metadata of a container and of every stream in it. VideoStreamHeaderMetadata Metadata of a single video stream, as reported by the container header. AudioStreamHeaderMetadata Metadata of a single audio stream, as reported by the container header. StreamMetadata Metadata of a single stream, as reported by the container header.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

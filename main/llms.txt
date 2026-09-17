@@ -65,7 +65,7 @@
 - [Resize](https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.transforms.Resize.md)
 - [Blocks: build your own decoding pipeline](https://meta-pytorch.org/torchcodec/stable/generated_examples/blocks/basics.md)
 - [Decoding blocks (experimental)](https://meta-pytorch.org/torchcodec/stable/generated_examples/blocks/index.md)
-- [Composing pipelines: threads, devices and endless streams](https://meta-pytorch.org/torchcodec/stable/generated_examples/blocks/pipelines.md)
+- [Multi-threaded decoding pipelines](https://meta-pytorch.org/torchcodec/stable/generated_examples/blocks/pipelines.md)
 - [Raw frames and raw audio samples](https://meta-pytorch.org/torchcodec/stable/generated_examples/blocks/raw_data.md)
 - [Computation times](https://meta-pytorch.org/torchcodec/stable/generated_examples/blocks/sg_execution_times.md)
 - [Exact vs Approximate seek mode: Performance and accuracy comparison](https://meta-pytorch.org/torchcodec/stable/generated_examples/decoding/approximate_mode.md)

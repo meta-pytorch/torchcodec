@@ -5,14 +5,11 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-=========================================================
-Composing pipelines: threads, devices and endless streams
-=========================================================
+=================================
+Multi-threaded decoding pipelines
+=================================
 
 .. currentmodule:: torchcodec.decoders._blocks
-
-How to overlap the decoding stages across threads, choose where to cut the
-pipeline on CPU and on CUDA, and decode a source that never ends.
 
 .. warning::
 
@@ -20,23 +17,20 @@ pipeline on CPU and on CUDA, and decode a source that never ends.
    and unreleased. Signatures and semantics may change without notice. This
    tutorial only exists to show what they will eventually make possible.
 
-:ref:`sphx_glr_generated_examples_blocks_basics.py` ran the three stages -
-:class:`Demuxer`, :class:`VideoPacketDecoder`, :class:`ColorConverter` - back
-to back on the calling thread. That is the one pipeline shape
-:class:`~torchcodec.decoders.VideoDecoder` could have given you as well. This
-tutorial is about the ones it couldn't: running the stages concurrently,
-putting the thread boundary where your hardware wants it, wrapping the whole
-thing in an object of your own, and decoding a source that has no end.
+In this tutorial, we'll assemble the three decoding stages into pipelines of our
+own: running demuxing, decoding and color-conversion concurrently on several
+threads, choosing where to split them. Each of these steps individually release
+the GIL.
 
-All of that is possible because the blocks are *passive*. They never create a
-thread, never own a thread pool, and never decide when work happens: a block
-only does something when you call into it. And because each one releases the
-GIL while it is in C++, running two of them on two Python threads is real
-parallelism, not interleaving.
+.. important::
+
+   The Blocks objects can cross threads, but not processes, so multi-processing
+   is currently not supported. But it *can* be: if that's something you need,
+   please open an issue.
 """
 
 # %%
-# Boilerplate: a test video, and the device we'll run on.
+# Some boilerplate first: a test video, and the device we'll run on.
 import subprocess
 import tempfile
 from pathlib import Path
@@ -63,8 +57,8 @@ subprocess.run(
 # One stage, one generator
 # ------------------------
 #
-# Each stage is a generator: one over the :class:`Packet` objects a
-# :class:`Demuxer` produces, one over the :class:`RawFrame` objects a
+# Each stage can be written as a generator: one over the :class:`Packet` objects
+# a :class:`Demuxer` produces, one over the :class:`RawFrame` objects a
 # :class:`VideoPacketDecoder` decodes them into, and one over the RGB
 # :class:`~torchcodec.Frame` objects a :class:`ColorConverter` makes of those. A
 # pipeline is then a chain of generators, and inserting ``prefetch()`` between
@@ -93,8 +87,7 @@ def color_convert(color_converter, raw_frames):
 
 def prefetch(upstream, buffer_size=8):
     # Run `upstream` on a background thread, yielding its items through a
-    # bounded queue. The queue applies backpressure: the worker blocks in
-    # put() when the buffer is full, so it stays at most buffer_size ahead.
+    # bounded queue.
     q = queue.Queue(maxsize=buffer_size)
     eof = object()
 
@@ -113,12 +106,12 @@ def prefetch(upstream, buffer_size=8):
 
 
 # %%
-# Where to cut
-# ------------
+# Which stage to parallelize
+# --------------------------
 #
 # With those in hand, a pipeline is one expression, and moving the thread
 # boundary is moving one ``prefetch()`` call.
-def sequential():
+def sequential(device):
     # demux -> decode -> color-convert, all on the calling thread.
     demuxer = Demuxer(video_path)
     packet_decoder = demuxer.streams[0].make_decoder(device=device)
@@ -126,7 +119,7 @@ def sequential():
     return color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
 
 
-def convert_on_own_thread():
+def convert_on_own_thread(device):
     # [demux + decode] on one thread || [color-convert] on another.
     demuxer = Demuxer(video_path)
     packet_decoder = demuxer.streams[0].make_decoder(device=device)
@@ -135,7 +128,7 @@ def convert_on_own_thread():
     return color_convert(color_converter, raw_frames)
 
 
-def demux_on_own_thread():
+def demux_on_own_thread(device):
     # [demux] on one thread || [decode + color-convert] on another.
     demuxer = Demuxer(video_path)
     packet_decoder = demuxer.streams[0].make_decoder(device=device)
@@ -144,133 +137,65 @@ def demux_on_own_thread():
     return color_convert(color_converter, decode(packet_decoder, packets))
 
 
-for pipeline in (sequential, convert_on_own_thread, demux_on_own_thread):
-    frames = list(pipeline())
+def one_thread_each(device):
+    # [demux] || [decode] || [color-convert], a thread per stage.
+    demuxer = Demuxer(video_path)
+    packet_decoder = demuxer.streams[0].make_decoder(device=device)
+    color_converter = ColorConverter(device=device)
+    packets = prefetch(demux(demuxer))
+    raw_frames = prefetch(decode(packet_decoder, packets))
+    return color_convert(color_converter, raw_frames)
+
+
+PIPELINES = (sequential, convert_on_own_thread, demux_on_own_thread, one_thread_each)
+for pipeline in PIPELINES:
+    frames = list(pipeline(device))
     print(f"{pipeline.__name__}: {len(frames)} frames on {frames[0].data.device}")
 
 # %%
-# Which of the two splits is the good one depends on where the work is, and
-# that is a property of the device rather than of the file:
+# Which split is best depends on where the work is:
 #
-# * On the **CPU**, all three stages compete for the same cores, and color
-#   conversion is the expensive one. Giving it a thread of its own -
-#   ``convert_on_own_thread`` - is the split that pays.
-# * On **CUDA**, demuxing is CPU and I/O work, while decoding (NVDEC) and color
-#   conversion both happen on the GPU. Keeping the two GPU stages together and
-#   feeding them from a demuxing thread - ``demux_on_own_thread`` - is the
-#   natural shape: the CPU stays ahead of the GPU instead of taking turns with
-#   it.
+# * On the **CPU**, color conversion typically costs about as much as decoding,
+#   so ``convert_on_own_thread`` is usually the best one (see benchmarks below)
+# * On **CUDA**, color conversion is comparatively much cheaper and is dwarfed
+#   by the decoding time, so demuxing in parallel with ``demux_on_own_thread``
+#   may be the better split.
 #
-# Nothing stops you from doing something else entirely: one pipeline per file,
-# decoding on the CPU while color-converting on the GPU, several decoders
-# feeding one converter, or frames going straight into your own pre-fetching
-# data loader.
-
-# %%
-# .. note::
 #
-#    One CUDA rule comes with this freedom. A :class:`RawFrame` is a view into a
-#    buffer the decoder will reuse, so a consumer that reads its samples on a
-#    CUDA stream *other* than the one the decoder ran on must call
-#    :meth:`RawFrame.record_stream` before the frame goes out of scope. A
-#    :class:`ColorConverter` does it for you, so the pipelines above are safe;
-#    see
-#    :ref:`sphx_glr_generated_examples_blocks_raw_data.py` if you consume the
-#    planes yourself.
+# Let's compare the speedup that ``convert_on_own_thread`` on the CPU, vs the
+# sequential pipeline and the :meth:`VideoDecoder.get_all_frames() #
+# <torchcodec.decoders.VideoDecoder.get_all_frames>` method as baselines.
+from time import perf_counter_ns
 
-
-# %%
-# Making it an object
-# -------------------
-#
-# Chained generators are the shortest way to write a pipeline down, not
-# necessarily the way you want to ship one. The blocks are meant to be the
-# internals of your own class: it owns the three objects, keeps them alive
-# together, and exposes whatever interface the rest of your code wants -
-# ``__iter__`` here, but a ``torch.utils.data.IterableDataset``, an actor, or a
-# ``next_batch()`` method are all the same handful of lines.
-class VideoPipeline:
-    def __init__(self, path, *, device=None, prefetch_packets=True):
-        self._demuxer = Demuxer(path)
-        (stream,) = self._demuxer.streams
-        self._packet_decoder = stream.make_decoder(device=device)
-        self._color_converter = ColorConverter(device=device)
-        self._prefetch_packets = prefetch_packets
-
-    def __iter__(self):
-        packets = demux(self._demuxer)
-        if self._prefetch_packets:
-            packets = prefetch(packets)
-        raw_frames = decode(self._packet_decoder, packets)
-        yield from color_convert(self._color_converter, raw_frames)
-
-
-frames = list(VideoPipeline(video_path, device=device))
-print(f"{len(frames)} frames, up to {frames[-1].pts_seconds:.2f}s")
-
-# %%
-# Streams of unknown length
-# -------------------------
-#
-# :class:`~torchcodec.decoders.VideoDecoder` needs a finite, seekable source:
-# it relies on the stream's duration and frame count, and in its default
-# ``seek_mode="exact"`` it scans the entire file up-front. The blocks never do
-# that - they consume packets as they arrive - so they can decode a source
-# that has no duration, no frame count, and no end.
-#
-# Let's make one: FFmpeg generating frames forever into a named pipe.
-import os
-
-fifo_path = temp_dir / "live.ts"
-os.mkfifo(fifo_path)
-
-
-def start_live_stream():
-    return subprocess.Popen(
-        [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
-            "-f", "lavfi", "-i", "testsrc2=size=640x480:rate=30",  # no duration!
-            "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-            "-g", "30", "-f", "mpegts", "-y", str(fifo_path),
-        ],
-    )
-
-
-# %%
-# :class:`~torchcodec.decoders.VideoDecoder` can't do anything with that (we ask
-# for the approximate seek mode; the exact one would scan the stream forever):
 from torchcodec.decoders import VideoDecoder
 
-ffmpeg = start_live_stream()
-try:
-    VideoDecoder(fifo_path, seek_mode="approximate")
-except Exception as e:
-    print(f"{type(e).__name__}: {str(e).splitlines()[0]}")
-ffmpeg.kill()
-ffmpeg.wait()
+
+def bench(f, num_exp=3, warmup=1):
+    for _ in range(warmup):
+        f()
+    times = []
+    for _ in range(num_exp):
+        start = perf_counter_ns()
+        f()
+        times.append(perf_counter_ns() - start)
+    return torch.tensor(times).float().median().item() / 1e9
+
+
+def decode_all_with_videodecoder():
+    decoder = VideoDecoder(video_path, device="cpu", seek_mode="approximate")
+    return decoder.get_all_frames()
+
+
+baseline = bench(decode_all_with_videodecoder)
+print(f"{'VideoDecoder.get_all_frames()':<29}: {baseline:.2f}s")
+
+for pipeline in (sequential, convert_on_own_thread):
+    seconds = bench(lambda p=pipeline: list(p("cpu")))
+    print(f"{pipeline.__name__:<29}: {seconds:.2f}s "
+          f"({baseline / seconds:.2f}x vs VideoDecoder)")
 
 # %%
-# The blocks just stream it, and we stop whenever we want:
-ffmpeg = start_live_stream()
-demuxer = Demuxer(fifo_path)
-packet_decoder = demuxer.streams[0].make_decoder(device=device)
-color_converter = ColorConverter(device=device)
-
-frames = []
-for frame in color_convert(color_converter, decode(packet_decoder, demux(demuxer))):
-    frames.append(frame)
-    if len(frames) == 100:
-        break  # the stream is still going; we're the ones walking away
-
-print(f"{len(frames)} frames, from pts {frames[0].pts_seconds:.2f}s to "
-      f"{frames[-1].pts_seconds:.2f}s, {frames[0].data.shape = }")
-
-ffmpeg.kill()
-ffmpeg.wait()
-
-# %%
-# Nothing about the pipeline changed to make this work - it is the same three
-# generators. Walking away early is just not pulling from them again, and the
-# ``prefetch()`` boundaries above compose with it unchanged: the worker thread
-# is blocked in ``q.put()`` behind the bounded queue, and it is a daemon, so it
-# goes away with the process.
+# ``sequential`` lands on the baseline, as expected: the same work, in the same
+# order, on one thread. ``convert_on_own_thread`` is where the speedup is,
+# because it can overalp the two most expensive steps: decoding and
+# color-conversion.

@@ -9,7 +9,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta content="Learn how to optimize TorchCodec video decoding performance with batch APIs, approximate seeking, multi-threading, and CUDA acceleration." name="description" />
 
-    <title>TorchCodec Performance Tips and Best Practices &#8212; TorchCodec 0.17.0.dev20260916+cu130 Documentation</title>
+    <title>TorchCodec Performance Tips and Best Practices &#8212; TorchCodec 0.17.0.dev20260917+cu130 Documentation</title>
   
   
   
@@ -32,7 +32,7 @@
     <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=a6c16915" />
     <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
-    <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery.css?v=fd6457a4" />
+    <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery.css?v=c83e6b79" />
     <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery-binder.css?v=f4aeca0c" />
     <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery-dataframe.css?v=2082cf3c" />
     <link rel="stylesheet" type="text/css" href="../../_static/sg_gallery-rendered-html.css?v=1277b6f3" />
@@ -43,7 +43,7 @@
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../../_static/documentation_options.js?v=2230c5d4"></script>
+    <script src="../../_static/documentation_options.js?v=3275fd1a"></script>
     <script src="../../_static/doctools.js?v=888ff710"></script>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -1047,7 +1047,7 @@ document.write(`
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../blocks/index.html">Decoding blocks (experimental)</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="../blocks/basics.html">Blocks: build your own decoding pipeline</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../blocks/pipelines.html">Composing pipelines: threads, devices and endless streams</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../blocks/pipelines.html">Multi-threaded decoding pipelines</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../blocks/raw_data.html">Raw frames and raw audio samples</a></li>
 </ul>
 </details></li>
@@ -1276,9 +1276,8 @@ sequential, ffmpeg-based parallelism, multi-process, and multi-threaded approach
 (NVDEC) on supported hardware. This keeps decoded tensors in GPU memory,
 avoiding expensive CPU-GPU transfers for downstream GPU operations.</p>
 <p>Pass <code class="docutils literal notranslate"><span class="pre">device=&quot;cuda&quot;</span></code> to enable CUDA decoding:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">decoder</span> <span class="o">=</span> <span class="n">VideoDecoder</span><span class="p">(</span><span class="s2">&quot;file.mp4&quot;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
-</pre></div>
-</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span class="n">decoder</span> <span class="o">=</span> <span class="n">VideoDecoder</span><span class="p">(</span><span class="s2">&quot;</span><span class="s2">file.mp4</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">cuda</span><span class="s2">&quot;</span><span class="p">)</span><span class="w">
+</span></pre></div></div>
 <p><strong>When to use:</strong></p>
 <ul class="simple">
 <li><p>Decoding large resolution videos</p></li>
@@ -1298,12 +1297,11 @@ Actual speedup varies by hardware, resolution, and codec.</p>
 <p>In some cases, CUDA decoding may silently fall back to CPU decoding when the
 video codec or format is not supported by NVDEC. You can detect this using
 the <code class="xref py py-attr docutils literal notranslate"><span class="pre">cpu_fallback</span></code> attribute:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">decoder</span> <span class="o">=</span> <span class="n">VideoDecoder</span><span class="p">(</span><span class="s2">&quot;file.mp4&quot;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
-
-<span class="c1"># Print detailed fallback status</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">decoder</span><span class="o">.</span><span class="n">cpu_fallback</span><span class="p">)</span>
-</pre></div>
-</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span class="n">decoder</span> <span class="o">=</span> <span class="n">VideoDecoder</span><span class="p">(</span><span class="s2">&quot;</span><span class="s2">file.mp4</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;</span><span class="s2">cuda</span><span class="s2">&quot;</span><span class="p">)</span><span class="w">
+</span><span class="w">
+</span><span class="c1"># Print detailed fallback status</span><span class="w">
+</span><span class="nb">print</span><span class="p">(</span><span class="n">decoder</span><span class="o">.</span><span class="n">cpu_fallback</span><span class="p">)</span><span class="w">
+</span></pre></div></div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>Fallback status is determined upfront, so you can check
@@ -1324,15 +1322,14 @@ high-resolution videos that will be resized to smaller dimensions.</p>
 <a class="reference external" href="https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.v2.Transform.html#torchvision.transforms.v2.Transform" title="(in Torchvision v0.29)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Transform</span></code></a> objects as transform
 specifications. TorchVision is <strong>not required</strong> to use decoder transforms.</p>
 <p><strong>Example:</strong></p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec.decoders</span><span class="w"> </span><span class="kn">import</span> <span class="n">VideoDecoder</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec.transforms</span><span class="w"> </span><span class="kn">import</span> <span class="n">Resize</span>
-
-<span class="n">decoder</span> <span class="o">=</span> <span class="n">VideoDecoder</span><span class="p">(</span>
-    <span class="s2">&quot;file.mp4&quot;</span><span class="p">,</span>
-    <span class="n">transforms</span><span class="o">=</span><span class="p">[</span><span class="n">Resize</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">480</span><span class="p">,</span> <span class="mi">640</span><span class="p">))]</span>
-<span class="p">)</span>
-</pre></div>
-</div>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec</span><span class="nn">.</span><span class="nn">decoders</span><span class="w"> </span><span class="kn">import</span> <span class="n">VideoDecoder</span><span class="w">
+</span><span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec</span><span class="nn">.</span><span class="nn">transforms</span><span class="w"> </span><span class="kn">import</span> <span class="n">Resize</span><span class="w">
+</span><span class="w">
+</span><span class="n">decoder</span> <span class="o">=</span> <span class="n">VideoDecoder</span><span class="p">(</span><span class="w">
+</span>    <span class="s2">&quot;</span><span class="s2">file.mp4</span><span class="s2">&quot;</span><span class="p">,</span><span class="w">
+</span>    <span class="n">transforms</span><span class="o">=</span><span class="p">[</span><span class="n">Resize</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">480</span><span class="p">,</span> <span class="mi">640</span><span class="p">)</span><span class="p">)</span><span class="p">]</span><span class="w">
+</span><span class="p">)</span><span class="w">
+</span></pre></div></div>
 <p><strong>When to use:</strong></p>
 <ul class="simple">
 <li><p>If you are applying a transform pipeline that significantly reduces the

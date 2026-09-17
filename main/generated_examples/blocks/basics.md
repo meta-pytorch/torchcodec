@@ -8,7 +8,8 @@ tutorial only exists to show what they will eventually make possible.
 
 In this tutorial, we'll take a tour of the Blocks APIs: the three decoding
 stages for video and audio, following several streams of a container at once,
-seeking, scanning, and what the metadata means.
+seeking, scanning, what the metadata means, and decoding a source that never
+ends.
 
 [`VideoDecoder`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) and
 [`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) are each a single box that does
@@ -25,8 +26,8 @@ Demuxer -> AudioPacketDecoder -> AudioConverter
 
 Two companion tutorials go further:
 
-- [Composing pipelines: threads, devices and endless streams](pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py), on running the stages
-concurrently and on decoding sources that never end.
+- [Multi-threaded decoding pipelines](pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py), on running the stages
+concurrently on several threads.
 - [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py), on reading the
 decoder's own YUV planes and audio samples instead of converting them.
 
@@ -59,7 +60,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpiewmcasj/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpbooe8nk0/video.mp4'], returncode=0)
 ```
 
 ## The three blocks
@@ -188,7 +189,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpiewmcasj/video.mp4', '-i', '/tmp/tmpiewmcasj/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpiewmcasj/av.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpbooe8nk0/video.mp4', '-i', '/tmp/tmpbooe8nk0/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpbooe8nk0/av.mp4'], returncode=0)
 ```
 
 Which streams to follow is specified at construction time of the
@@ -500,17 +501,65 @@ stream 0: video, h264
 stream 1: audio, aac
 ```
 
+## Streams of unknown length
+
+One last thing the blocks make possible.
+[`VideoDecoder`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) needs a finite, seekable source: it
+relies on the stream's duration and frame count, and in its default
+`seek_mode="exact"` it scans the whole file up-front. The blocks never do
+that: they consume packets as they arrive, so they can decode a source with no
+duration, no frame count, and no end.
+
+Here is one such example where we generate an endless stream with FFmpeg, and
+decode its first 100 frames:
+
+```
+import os
+
+fifo_path = temp_dir / "live.ts"
+os.mkfifo(fifo_path)
+ffmpeg = subprocess.Popen(
+ [
+ "ffmpeg", "-hide_banner", "-loglevel", "error",
+ "-f", "lavfi", "-i", "testsrc2=size=640x480:rate=30", # no duration!
+ "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+ "-g", "30", "-f", "mpegts", "-y", str(fifo_path),
+ ],
+)
+
+demuxer = Demuxer(fifo_path)
+packet_decoder = demuxer.streams[0].make_decoder(device=device)
+color_converter = ColorConverter(device=device)
+
+frames = []
+for frame in decode_frames(demuxer, packet_decoder, color_converter):
+ frames.append(frame)
+ if len(frames) == 100:
+ break
+
+print(f"{len(frames)} frames, from pts {frames[0].pts_seconds:.2f}s "
+ f"to {frames[-1].pts_seconds:.2f}s")
+
+ffmpeg.kill()
+ffmpeg.wait()
+```
+
+```
+100 frames, from pts 1.40s to 4.70s
+
+-9
+```
+
 ## Where to go next
 
-- [Composing pipelines: threads, devices and endless streams](pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py) runs the stages
-concurrently on several threads, and decodes a live source that has no
-duration, no frame count and no end - something
-[`VideoDecoder`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) cannot open at all.
+- [Multi-threaded decoding pipelines](pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py) runs the stages
+concurrently on several threads, and shows where to split a pipeline on CPU
+and on CUDA.
 - [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py) skips the converters
 and reads the decoder's own YUV planes and audio samples, at the source's
 own precision.
 
-**Total running time of the script:** (0 minutes 1.397 seconds)
+**Total running time of the script:** (0 minutes 1.535 seconds)
 
 [`Download Jupyter notebook: basics.ipynb`](../../_downloads/cdae7c17b717a2c62f0675ad148787ce/basics.ipynb)
 

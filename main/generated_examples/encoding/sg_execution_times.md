@@ -1,10 +1,10 @@
 # Computation times
 
-**00:31.574** total execution time for 4 files **from generated_examples/encoding**:
+**00:32.278** total execution time for 4 files **from generated_examples/encoding**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Encoding video with the Encoder](video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`video_encoding.py`) | 00:25.299 | 0.0 |
-| [Encoding audio and video streams with the Encoder](multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`multi_stream_encoding.py`) | 00:06.054 | 0.0 |
-| [Encoding images](image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py) (`image_encoding.py`) | 00:00.191 | 0.0 |
+| [Encoding video with the Encoder](video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`video_encoding.py`) | 00:25.900 | 0.0 |
+| [Encoding audio and video streams with the Encoder](multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`multi_stream_encoding.py`) | 00:06.159 | 0.0 |
+| [Encoding images](image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py) (`image_encoding.py`) | 00:00.190 | 0.0 |
 | [Encoding audio samples with AudioEncoder](audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py) (`audio_encoding.py`) | 00:00.029 | 0.0 |

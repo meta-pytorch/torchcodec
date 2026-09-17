@@ -282,7 +282,7 @@ Decoding blocks (experimental)
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="How to overlap the decoding stages across threads, choose where to cut the pipeline on CPU and on CUDA, and decode a source that never ends.">
+    <div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible.">
 
 .. only:: html
 
@@ -293,7 +293,7 @@ Decoding blocks (experimental)
 
 .. raw:: html
 
-      <div class="sphx-glr-thumbnail-title">Composing pipelines: threads, devices and endless streams</div>
+      <div class="sphx-glr-thumbnail-title">Multi-threaded decoding pipelines</div>
     </div>
 
 
@@ -426,7 +426,7 @@ Migrating from torchvision
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="The image decoders and encoders of torchvision.io now live in torchcodec. This is a short guide to porting your code over. Everything you could do with torchvision.io you can do with TorchCodec, usually with a very similar call. And TorchCodec supports many more features. To learn more about the image decoding and encoding features of TorchCodec, refer to the image decoding &lt;sphx_glr_generated_examples_decoding_image_decoding.py&gt; and image encoding &lt;sphx_glr_generated_examples_encoding_image_encoding.py&gt; tutorials.">
+    <div class="sphx-glr-thumbcontainer" tooltip="The image decoders and encoders of torchvision.io now live in torchcodec. This is a short guide to porting your code over. Everything you could do with torchvision.io you can do with TorchCodec, usually with a very similar call. And TorchCodec supports many more features. To learn more about the image decoding and encoding features of TorchCodec, refer to the image decoding and image encoding tutorials.">
 
 .. only:: html
 
