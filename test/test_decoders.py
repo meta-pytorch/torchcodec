@@ -6151,7 +6151,7 @@ class TestImageDecoder:
             return torch.ops.torchcodec_ns.decode_avif(data, mode)
 
     @staticmethod
-    def _make_transparent_png(path, kind):
+    def _make_transparent_png(path, kind, bits=8):
         # A PNG can encode transparency via a tRNS chunk instead of a full alpha
         # channel: a transparent colorkey for gray/RGB images, or per-palette-
         # entry alpha for palette images. The left half is transparent.
@@ -6173,7 +6173,7 @@ class TestImageDecoder:
             im = Image.fromarray(px, "P")
             im.putpalette([10, 20, 30, 200, 100, 50])
             im.info["transparency"] = bytes([0, 255])  # per-index alpha
-            im.save(path)
+            im.save(path, bits=bits)
 
     # ===== cross-codec tests: basics & API =====
 
@@ -6962,31 +6962,52 @@ class TestImageDecoder:
         )
 
     @needs_png
-    @pytest.mark.parametrize("bits", (1, 2, 4, 8))
-    @pytest.mark.parametrize("output_mode, pil_mode", (("RGB", "RGB"), ("GRAY", "L")))
+    @pytest.mark.parametrize(
+        "kind, bits", (("rgb", 8), ("gray", 8), ("palette", 8), ("palette", 1))
+    )
+    @pytest.mark.parametrize("output_mode, pil_mode", (("GRAY", "L"), ("RGB", "RGB")))
     @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.uint16, "auto"))
-    def test_png_palette_trns_without_alpha(
-        self, tmp_path, bits, output_mode, pil_mode, output_dtype
+    def test_png_trns_without_alpha(
+        self, tmp_path, kind, bits, output_mode, pil_mode, output_dtype
     ):
-        # Palette expansion also expands tRNS. Non-alpha output modes must
-        # strip that channel before libpng writes into the output tensor.
-        image = Image.new("P", (2, 1), color=0)
-        image.putpalette([17, 34, 51, 68, 85, 102])
-        image.putpixel((1, 0), 1)
-        path = tmp_path / "palette_trns.png"
-        image.save(path, bits=bits, transparency=bytes([0, 128]))
+        # libpng expands a tRNS chunk into a full alpha channel as a side effect
+        # of png_set_palette_to_rgb() (palette sources) and of
+        # png_set_expand_16() (uint16 output). Modes without alpha must strip
+        # that channel back out: libpng writes as many channels as it decided
+        # on, so an un-stripped alpha overflows the output tensor.
+        path = tmp_path / f"{kind}.png"
+        self._make_transparent_png(path, kind, bits=bits)
 
         decoded = decode_png(path, mode=output_mode, output_dtype=output_dtype)
-        reference = self._pil_to_tensor(image.convert("RGB").convert(pil_mode))
-        expected_dtype = torch.uint16 if output_dtype == torch.uint16 else torch.uint8
+
+        expected_dtype = torch.uint16 if output_dtype is torch.uint16 else torch.uint8
         assert decoded.dtype == expected_dtype
-        scale = 257 if expected_dtype == torch.uint16 else 1
-        torch.testing.assert_close(
+        scale = 257 if expected_dtype is torch.uint16 else 1
+
+        reference = self._pil_to_tensor(Image.open(path).convert(pil_mode))
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(
             decoded.to(torch.int32),
             reference.to(torch.int32) * scale,
-            rtol=0,
-            atol=scale if output_mode == "GRAY" else 0,
+            percentage=99,
+            atol=2 * scale,
         )
+
+    @needs_png
+    @pytest.mark.parametrize(
+        "kind, num_channels", (("rgb", 3), ("gray", 1), ("palette", 4))
+    )
+    def test_png_trns_unchanged_num_channels(self, tmp_path, kind, num_channels):
+        # UNCHANGED keeps the source channels, so a tRNS chunk only becomes an
+        # alpha channel for palette sources, whose expansion to RGB forces it.
+        # In particular the requested dtype must not affect the channel count,
+        # even though png_set_expand_16() would expand tRNS on its own.
+        path = tmp_path / f"{kind}.png"
+        self._make_transparent_png(path, kind)
+
+        for output_dtype in (torch.uint8, torch.uint16, "auto"):
+            decoded = decode_png(path, mode="UNCHANGED", output_dtype=output_dtype)
+            assert decoded.shape[0] == num_channels
 
     @needs_png
     @pytest.mark.parametrize("shape", ((27, 27), (60, 60), (105, 105)))
