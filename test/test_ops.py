@@ -43,6 +43,9 @@ from torchcodec._core.ops import (
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
+    BT601_FULL_RANGE_10BIT,
+    BT601_FULL_RANGE_10BIT_RGB,
+    DISCARD_FIRST_KEYFRAME_VIDEO,
     get_python_version,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
@@ -91,6 +94,24 @@ class TestVideoDecoderOps:
         seek_to_pts(decoder, -1e-4)
         frame0, _, _ = get_next_frame(decoder)
         assert_frames_equal(frame0, reference_frame0.to(device))
+
+    @pytest.mark.parametrize("device", all_supported_devices())
+    def test_discard_first_keyframe(self, device):
+        # The leading GOP of this asset is trimmed by an mp4 edit list, so its
+        # packets are flagged AV_PKT_FLAG_DISCARD: they must be decoded (the
+        # frame at pts=0 references the discarded keyframe) but never output.
+        # We call get_next_frame() without seeking first, so nothing sets the
+        # decoder's cursor and nothing filters those frames out by pts: this
+        # only passes if the decoding backend drops them itself. In other words,
+        # we're exercising the decoder/interface, not the logic in
+        # SingleStreamDecoder.
+        decoder = create_from_file(str(DISCARD_FIRST_KEYFRAME_VIDEO.path))
+        device, device_variant = unsplit_device_str(device)
+        add_video_stream(decoder, device=device, device_variant=device_variant)
+
+        for expected_pts in (0.0, 0.04, 0.08):
+            _, pts_seconds, _ = get_next_frame(decoder)
+            assert pts_seconds.item() == pytest.approx(expected_pts, abs=1e-6)
 
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_frame_at_pts(self, device):
@@ -598,6 +619,19 @@ class TestVideoDecoderOps:
             INDEX_OF_FRAME_AT_6_SECONDS
         )
         assert_frames_equal(frame_time6, reference_frame_time6)
+
+    @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))
+    def test_color_conversion_library_full_range_10bit(self, color_conversion_library):
+        # Non regression test ensuring >8bit full range videos are decoded
+        # correctly on CPU and GPU. We used to not pass the color-range tag to
+        # libswscale (worked fine for 8 bit as it could be derived from pixel
+        # format), but didn't for >8bit.
+        decoder = create_from_file(str(BT601_FULL_RANGE_10BIT.path))
+        _add_video_stream(decoder, color_conversion_library=color_conversion_library)
+
+        frame, *_ = get_next_frame(decoder)
+        expected = torch.tensor(BT601_FULL_RANGE_10BIT_RGB, dtype=torch.float32)
+        assert (frame.float() - expected[:, None, None]).abs().max() <= 3
 
     @pytest.mark.parametrize("dimension_order", ("NHWC", "NCHW"))
     @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))

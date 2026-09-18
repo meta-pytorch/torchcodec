@@ -27,14 +27,23 @@
 #include <mutex>
 #include <queue>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "nvcuvid_include/cuviddec.h"
 #include "nvcuvid_include/nvcuvid.h"
 
 namespace facebook::torchcodec {
-struct StandAloneFrameAttachedData {
-  cudaStream_t producer_stream = nullptr;
+// The buffer a frame owns its samples in, hung off the AVFrame as opaque data.
+struct OwnedFrameStorage {
+  // Marks the point where the copy (or upload) that filled `storage` was
+  // enqueued. A consumer on another stream must wait on it.
+  CudaEvent frame_ready;
+  torch::stable::Tensor storage;
+};
+
+struct GpuFrameAndStorage {
+  UniqueAVFrame av_frame;
   torch::stable::Tensor storage;
 };
 
@@ -56,7 +65,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       const std::optional<FrameDims>& resized_output_dims) override;
 
   OutputDtype get_pre_allocation_dtype(
-      OutputDtype requested_dtype) const override;
+      [[maybe_unused]] OutputDtype requested_dtype) const override;
 
   void convert_av_frame_to_frame_output(
       const AVFrame& av_frame,
@@ -64,7 +73,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       std::optional<torch::stable::Tensor> pre_allocated_output_tensor)
       override;
 
-  int send_packet(ReferenceAVPacket& packet) override;
+  int send_packet(const AVPacket& packet) override;
   int send_eof_packet() override;
   int receive_frame(UniqueAVFrame& av_frame) override;
   void flush() override;
@@ -87,27 +96,60 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   void initialize_bsf(
       const AVCodecParameters* codec_par,
       const UniqueDecodingAVFormatContext& av_format_ctx);
-  // Apply bitstream filter, returns filtered packet or original if no filter
-  // needed.
-  ReferenceAVPacket& apply_bsf(
-      ReferenceAVPacket& packet,
-      ReferenceAVPacket& filtered_packet);
+  // Apply the bitstream filter. Returns nullptr when there is no filter to
+  // apply and the packet can be sent as-is.
+  UniqueAVPacket apply_bsf(const AVPacket& packet);
 
   CUdeviceptr previously_mapped_frame_ = 0;
   void unmap_previous_frame();
+
+  cudaStream_t nvdec_output_stream_ = nullptr;
+
+  // Marks the point in nvdec_output_stream_ where the mapping of the
+  // currently-mapped surface was enqueued. Consumers of that surface running on
+  // another stream wait on it. Re-recorded by every mapping, which is safe:
+  // NVDEC has a single output surface, so a frame is always consumed before the
+  // next one is mapped.
+  CudaEvent nvdec_surface_ready_;
+
+  // NVDEC gives us a single output surface, so every mapped frame lives at the
+  // same address and a new mapping overwrites whatever the previous frame's
+  // consumer is reading. These track that read so the next mapping, in
+  // receive_frame(), can be ordered after it.
+  CudaEvent surface_read_done_;
+  void record_surface_read(cudaStream_t stream);
 
   UniqueAVFrame convert_cuda_frame_to_av_frame(
       CUdeviceptr frame_ptr,
       unsigned int pitch,
       const CUVIDPARSERDISPINFO& disp_info);
 
+  // Height of the surfaces NVDEC outputs, i.e. the coded height, which is
+  // taller than the frames we hand out. See Note: [NVDEC surface dimensions and
+  // cropping].
+  int surface_height() const {
+    return static_cast<int>(video_format_.coded_height);
+  }
+
+  struct CropOffsets {
+    unsigned int luma;
+    unsigned int chroma;
+  };
+
+  CropOffsets get_crop_offsets(unsigned int pitch) const;
+
   void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
-  bool is_device_frame(const UniqueAVFrame& av_frame) const override;
+  std::optional<torch::stable::Tensor> get_frame_storage(
+      const AVFrame& av_frame) const override;
 
-  UniqueAVFrame transfer_cpu_frame_to_gpu(
+  GpuFrameAndStorage upload_cpu_frame_to_gpu(
       const AVFrame& cpu_frame,
-      AVPixelFormat target_pix_fmt);
+      cudaStream_t stream);
+
+  torch::stable::Tensor copy_nvdec_surface(
+      UniqueAVFrame& av_frame,
+      cudaStream_t stream);
 
   void apply_rotation(
       FrameOutput& frame_output,
@@ -119,6 +161,14 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   CUVIDEOFORMATEX parser_ext_info_ = {};
 
   std::queue<CUVIDPARSERDISPINFO> ready_frames_;
+
+  // The packets flagged AV_PKT_FLAG_DISCARD must be decoded, but their frames
+  // must not be returned (that's how libavcodec does it). We track the
+  // timestamps of those packets and drop the corresponding frames in
+  // receive_frame(). We rely on the packet's pts to identify it: it's not
+  // ideal, the pts may be non-unique or missing. But that's working so far.
+  // Unfortuntely, NVCUVID doesn't give us any other way to pass down that info.
+  std::unordered_set<CUvideotimestamp> discarded_timestamps_;
 
   bool eof_sent_ = false;
 
@@ -233,4 +283,78 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 // - we have to guess the frame's pts ourselves
 // - we have to re-order the frames ourselves to preserve display order.
 //
+//
+//
+// Note: [NVDEC surface dimensions and cropping]
+//
+// Different sets of dimensions are involved when decoding with NVDEC, and
+// mixing them up silently corrupts frames:
+//
+//     0    32                     1248 1280
+//   0 +-----+------------------------+---+
+//     |          top crop, 16 rows       |
+//  16 +-----+------------------------+---+ ---
+//     |     |                        |   |  |
+//     |left | display area 1216x512  |rgt|  |
+//     |crop |   (what users get)     |crp|  | 512
+//     |  32 |                        | 32|  |
+//     |     |                        |   |  |
+// 528 +-----+------------------------+---+ ---
+//     |        bottom crop, 16 rows      |
+// 544 +----------------------------------+
+//       coded frame 1280x544
+//
+// Dimensions reported by the format:
+//
+// - The true frame dimensions of the frame that is actually being displayed,
+//   and what we return to users as a HxW frame. Those are described by the
+//   CUVIDEOFORMAT.display_area (or video_format_.display_area) fields. Codecs
+//   typically don't encode exactly those dimensions: they're padded to
+//   macroblock dims, i.e. the coded dimensions:
+//
+// - The *coded* dimensions: CUVIDEOFORMAT.coded_width / coded_height, which the
+//   NVCUVID parser gives us. Larger than (or equal to) the display area: a
+//   1280x530 video is coded as 1280x544.
+//
+// Dimensions we choose:
+//
+// - There's another 'display' area, which (unsurprisingly), has a completely
+//   different meaning to the one above: it defines the area within the coded
+//   dimensions that gets scaled into the output surface. We set it in
+//   CUVIDDECODECREATEINFO.display_area when creating the decoder.
+//
+// - The *surface* dimensions. The surface is the buffer that
+//   cuvidMapVideoFrame() gives us for a decoded frame. Its size is whatever we
+//   asked for in CUVIDDECODECREATEINFO.ulTargetWidth / ulTargetHeight when
+//   creating the decoder, and NVDEC scales the source rectangle we also asked
+//   for, CUVIDDECODECREATEINFO.display_area, into it.
+//
+// In create_decoder(), at decoder creation, we set EVERYTHING to the coded
+// dimensions:
+//
+//   ulWidth, ulHeight                   <- coded_width, coded_height
+//   ulMaxWidth, ulMaxHeight             <- coded_width, coded_height
+//   CUVIDDECODECREATEINFO.display_area  <- the whole coded frame, i.e. no crop
+//   ulTargetWidth, ulTargetHeight       <- coded_width, coded_height
+//
+// Which means the decoder will always fill a surface of size coded_width x
+// coded_height, and it's up to us to crop it to the originally reported
+// CUVIDEOFORMAT.display_area. The crop never involves a copy: just pointer /
+// stride arithmetic to offset planes.
+//
+// Why do we handle the crop ourselves, when NVCUVID can do it for us (and we
+// previously let it do it)? It's to optimize cache hits in the decoder cache.
+// The cache key is based on the coded dimensions, not on the true display
+// dimensions, so we can re-use a decoder for a stream that has the same coded
+// dimensions but different display areas. If we wanted to let NVCUVID crop the
+// surface, we'd have to add the display area to the cache key, which would
+// enforce the exact same display area for a decoder to be re-usable, reducing
+// cache hits.
+//
+// The cost for this optimized cache hit is that we handle the crop complexity
+// ourselves. But it's 2026 and agents are good at pointer arithmetic.
+//
+// Finally, this crop has nothing to do with the one in convert_yuv_to_rgb()
+// [color_conversion.cpp], which trims the output of a color-conversion kernel
+// that ran on even-rounded dimensions.
 /* clang-format on */

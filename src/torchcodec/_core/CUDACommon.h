@@ -64,7 +64,47 @@ inline cudaStream_t get_current_cuda_stream(int32_t device_index) {
 
 // Make waitingStream wait until all work currently enqueued on runningStream
 // has completed.
+// Prefer a CudaEvent recorded by the producer where you can: this snapshots
+// runningStream at the *waiter's* convenience, so it also waits for anything
+// the producer enqueued after the work the waiter actually cares about.
 void sync_streams(cudaStream_t running_stream, cudaStream_t waiting_stream);
+
+// A cudaEvent_t with a destructor. The underlying event is created on the first
+// record() and reused by subsequent ones, always with timing disabled: we only
+// ever use events for ordering, and the timing-enabled flavour is the more
+// expensive one.
+//
+// An event marks a *point* in a stream, so it expresses "wait for the work that
+// was enqueued up to here" and nothing more. Producers should record() as soon
+// as the work they're advertising is enqueued, and consumers call
+// make_stream_wait() on that.
+class CudaEvent {
+ public:
+  CudaEvent() = default;
+  ~CudaEvent();
+
+  CudaEvent(CudaEvent&& other) noexcept;
+  CudaEvent& operator=(CudaEvent&& other) noexcept;
+  CudaEvent(const CudaEvent&) = delete;
+  CudaEvent& operator=(const CudaEvent&) = delete;
+
+  // Mark the current point in `running_stream`. Work enqueued on it after this
+  // call is *not* covered.
+  void record(cudaStream_t running_stream);
+
+  // Order `waiting_stream` after the work marked by the last record(). Doesn't
+  // block the host. No-op if record() was never called, or if `waiting_stream`
+  // is the stream that was recorded on.
+  void make_stream_wait(cudaStream_t waiting_stream) const;
+
+  // Block the host until the marked work has completed. No-op if record() was
+  // never called.
+  void synchronize() const;
+
+ private:
+  cudaEvent_t event_ = nullptr;
+  cudaStream_t recorded_on_ = nullptr;
+};
 
 void initialize_cuda_context_with_pytorch(const StableDevice& device);
 

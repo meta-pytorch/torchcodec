@@ -6,6 +6,8 @@
 
 #include "FFMPEGCommon.h"
 
+#include <cstring>
+
 #include "StableABICompat.h"
 
 extern "C" {
@@ -16,44 +18,40 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
+// The AVPixelFormat describing an NVDEC surface for a given source bit depth.
+// bit_depth is the source's, and only matters for the 16-bit containers.
+// FFmpeg < 6 has no P012LE. P016LE describes the same samples just as
+// validly: they're msb-aligned, so a 12-bit surface is a 16-bit one with
+// 4 zeroed low bits.
+AVPixelFormat nvdec_pix_fmt(NvdecSurface surface, int bit_depth) {
+  switch (surface) {
+    case NvdecSurface::NV12:
+      return AV_PIX_FMT_NV12;
+    case NvdecSurface::YUV444:
+      return AV_PIX_FMT_YUV444P;
+    case NvdecSurface::YUV444_16Bit:
+      return AV_PIX_FMT_YUV444P16LE;
+    case NvdecSurface::P016:
+      if (bit_depth == 10) {
+        return AV_PIX_FMT_P010LE;
+      }
 #if FFMPEG_HAS_P012
-// takes is_p016_surface as input instead of the actual NVDEC surface type so we
-// don't have to include the NVDEC headers here
-AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth) {
-  if (!is_p016_surface) {
-    return AV_PIX_FMT_NV12;
-  }
-  switch (bit_depth) {
-    case 10:
-      return AV_PIX_FMT_P010LE;
-    case 12:
-      return AV_PIX_FMT_P012LE;
-    default:
+      if (bit_depth == 12) {
+        return AV_PIX_FMT_P012LE;
+      }
+#endif
       return AV_PIX_FMT_P016LE;
   }
+  return AV_PIX_FMT_NV12;
 }
-#else
-AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth) {
-  // TODO_API_BREAKDOWN P2: needs a comment about P012 missing and why it's
-  // still OK to return P016LE.
-  if (!is_p016_surface) {
-    return AV_PIX_FMT_NV12;
-  }
-  return bit_depth == 10 ? AV_PIX_FMT_P010LE : AV_PIX_FMT_P016LE;
-}
-#endif // FFMPEG_HAS_P012
 
+bool is_nvdec_16bit_pix_fmt(int format) {
+  return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P016LE ||
 #if FFMPEG_HAS_P012
-bool is_nvdec_16bit_surface(int format) {
-  return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P012LE ||
-      format == AV_PIX_FMT_P016LE;
-}
-#else
-
-bool is_nvdec_16bit_surface(int format) {
-  return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P016LE;
-}
+      format == AV_PIX_FMT_P012LE ||
 #endif
+      false;
+}
 
 OutputDtype resolve_output_dtype(
     OutputDtypeConfig output_dtype_config,
@@ -91,6 +89,10 @@ ReferenceAVPacket::~ReferenceAVPacket() {
 
 AVPacket* ReferenceAVPacket::get() {
   return av_packet_;
+}
+
+AVPacket& ReferenceAVPacket::operator*() {
+  return *av_packet_;
 }
 
 AVPacket* ReferenceAVPacket::operator->() {
@@ -459,27 +461,26 @@ UniqueAVFrame allocate_av_frame(
   return av_frame;
 }
 
-SwrContext* create_swr_context(
+namespace {
+SwrContext* create_swr_context_from_layouts(
     AVSampleFormat src_sample_format,
     AVSampleFormat out_sample_format,
     int src_sample_rate,
     int out_sample_rate,
-    const AVFrame& src_av_frame,
-    int out_num_channels) {
+    const SwrChannelLayout& src_layout,
+    const SwrChannelLayout& out_layout) {
   SwrContext* swr_context = nullptr;
   int status = AVSUCCESS;
 #if FFMPEG_HAS_CH_LAYOUT
-  AVChannelLayout out_layout =
-      get_output_channel_layout(out_num_channels, src_av_frame);
   status = swr_alloc_set_opts2(
       &swr_context,
-      &out_layout,
+      // swr_alloc_set_opts2() only became const-correct in FFmpeg 6
+      // (libswresample 4.12): before that it asks for non-const layouts that
+      // it doesn't modify.
+      const_cast<AVChannelLayout*>(&out_layout),
       out_sample_format,
       out_sample_rate,
-      // swr_alloc_set_opts2() only became const-correct in FFmpeg 6
-      // (libswresample 4.12): before that it asks for a non-const layout that
-      // it doesn't modify.
-      const_cast<AVChannelLayout*>(&src_av_frame.ch_layout),
+      const_cast<AVChannelLayout*>(&src_layout),
       src_sample_format,
       src_sample_rate,
       0,
@@ -490,14 +491,12 @@ SwrContext* create_swr_context(
       "Couldn't create SwrContext: ",
       get_ffmpeg_error_string_from_error_code(status));
 #else
-  int64_t out_layout =
-      get_output_channel_layout(out_num_channels, src_av_frame);
   swr_context = swr_alloc_set_opts(
       nullptr,
       out_layout,
       out_sample_format,
       out_sample_rate,
-      get_channel_layout(src_av_frame),
+      src_layout,
       src_sample_format,
       src_sample_rate,
       0,
@@ -514,6 +513,74 @@ SwrContext* create_swr_context(
       "a buggy FFmpeg version. FFmpeg4 is known to fail here in some "
       "valid scenarios. Try to upgrade FFmpeg?");
   return swr_context;
+}
+} // namespace
+
+SwrContext* create_swr_context(
+    AVSampleFormat src_sample_format,
+    AVSampleFormat out_sample_format,
+    int src_sample_rate,
+    int out_sample_rate,
+    const AVFrame& src_av_frame,
+    int out_num_channels) {
+  return create_swr_context_from_layouts(
+      src_sample_format,
+      out_sample_format,
+      src_sample_rate,
+      out_sample_rate,
+#if FFMPEG_HAS_CH_LAYOUT
+      src_av_frame.ch_layout,
+#else
+      get_channel_layout(src_av_frame),
+#endif
+      get_output_channel_layout(out_num_channels, src_av_frame));
+}
+
+SwrContext* create_swr_context(
+    AVSampleFormat src_sample_format,
+    AVSampleFormat out_sample_format,
+    int src_sample_rate,
+    int out_sample_rate,
+    int src_num_channels,
+    int out_num_channels) {
+#if FFMPEG_HAS_CH_LAYOUT
+  AVChannelLayout src_layout;
+  AVChannelLayout out_layout;
+  av_channel_layout_default(&src_layout, src_num_channels);
+  av_channel_layout_default(&out_layout, out_num_channels);
+#else
+  int64_t src_layout = av_get_default_channel_layout(src_num_channels);
+  int64_t out_layout = av_get_default_channel_layout(out_num_channels);
+#endif
+  return create_swr_context_from_layouts(
+      src_sample_format,
+      out_sample_format,
+      src_sample_rate,
+      out_sample_rate,
+      src_layout,
+      out_layout);
+}
+
+// TODO Other places use the built-in swr_get_out_samples. We should align.
+int64_t get_swr_output_num_samples_bound(
+    const UniqueSwrContext& swr_context,
+    int num_src_samples,
+    int src_sample_rate,
+    int out_sample_rate) {
+  if (src_sample_rate == out_sample_rate) {
+    return num_src_samples;
+  }
+  // Note that this is an upper bound on the number of output samples.
+  // `swr_convert()` will likely not produce that many when sample rate
+  // conversion is needed: it buffers the last few, because those require
+  // future samples. That's why callers must narrow to what it actually
+  // returned. We could also use `swr_get_out_samples()`, but empirically
+  // `av_rescale_rnd()` gives a tighter bound.
+  return av_rescale_rnd(
+      swr_get_delay(swr_context.get(), src_sample_rate) + num_src_samples,
+      out_sample_rate,
+      src_sample_rate,
+      AV_ROUND_UP);
 }
 
 AVFilterContext* create_av_filter_context_with_options(
@@ -601,24 +668,11 @@ UniqueAVFrame convert_audio_av_frame_samples(
       maybe_skip_samples(src_av_frame, num_samples_to_skip);
 
   converted_av_frame->sample_rate = out_sample_rate;
-  int src_sample_rate = src_av_frame.sample_rate;
-  if (src_sample_rate != out_sample_rate) {
-    // Note that this is an upper bound on the number of output samples.
-    // `swr_convert()` will likely not fill convertedAVFrame with that many
-    // samples if sample rate conversion is needed. It will buffer the last few
-    // ones because those require future samples. That's also why we reset
-    // nb_samples after the call to `swr_convert()`.
-    // We could also use `swr_get_out_samples()` to determine the number of
-    // output samples, but empirically `av_rescale_rnd()` seems to provide a
-    // tighter bound.
-    converted_av_frame->nb_samples = av_rescale_rnd(
-        swr_get_delay(swr_context.get(), src_sample_rate) + num_src_samples,
-        out_sample_rate,
-        src_sample_rate,
-        AV_ROUND_UP);
-  } else {
-    converted_av_frame->nb_samples = num_src_samples;
-  }
+  // A bound, not the real count, which is why we reset nb_samples after the
+  // call to swr_convert() below.
+  converted_av_frame
+      ->nb_samples = static_cast<int>(get_swr_output_num_samples_bound(
+      swr_context, num_src_samples, src_av_frame.sample_rate, out_sample_rate));
 
   set_channel_layout(*converted_av_frame, src_av_frame, out_num_channels);
 
@@ -686,6 +740,17 @@ void set_ffmpeg_log_level() {
   av_log_set_level(log_level);
 }
 
+void forbid_nested_protocols(AVFormatContext* format_context) {
+  // See _assert_local_file_and_file_like_agree
+  // We call this explicitly so that the file-like behavior matches the default
+  // behavior of FFmpeg on local files.
+  int status = av_opt_set(format_context, "protocol_whitelist", "", 0);
+  STD_TORCH_CHECK(
+      status == 0,
+      "Failed to set protocol whitelist: ",
+      get_ffmpeg_error_string_from_error_code(status));
+}
+
 AVIOContext* avio_alloc_context(
     uint8_t* buffer,
     int buffer_size,
@@ -733,13 +798,13 @@ int64_t compute_safe_duration(
   }
 }
 
-std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
+const int32_t* get_display_matrix_from_stream(const AVStream* av_stream) {
   // av_stream_get_side_data() was deprecated in FFmpeg 6.0, but its replacement
   // (av_packet_side_data_get() + codecpar->coded_side_data) is only available
   // from FFmpeg 6.1. We need some #pragma magic to silence the deprecation
   // warning which our compile chain would otherwise treat as an error.
   if (av_stream == nullptr) {
-    return std::nullopt;
+    return nullptr;
   }
 
   const int32_t* display_matrix = nullptr;
@@ -780,6 +845,12 @@ std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
   }
 #endif
 
+  return display_matrix;
+}
+
+namespace {
+std::optional<double> get_rotation_from_display_matrix(
+    const int32_t* display_matrix) {
   if (display_matrix == nullptr) {
     return std::nullopt;
   }
@@ -796,36 +867,91 @@ std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
 
   return rotation;
 }
+} // namespace
 
-SwsConfig::SwsConfig(
-    int input_width,
-    int input_height,
-    AVPixelFormat input_format,
-    AVColorSpace input_colorspace,
-    int output_width,
-    int output_height,
-    AVPixelFormat output_format)
-    : input_width(input_width),
-      input_height(input_height),
-      input_format(input_format),
-      input_colorspace(input_colorspace),
-      output_width(output_width),
-      output_height(output_height),
-      output_format(output_format) {}
+std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
+  return get_rotation_from_display_matrix(
+      get_display_matrix_from_stream(av_stream));
+}
+
+std::optional<double> get_rotation_from_frame(const AVFrame& av_frame) {
+  const AVFrameSideData* side_data =
+      av_frame_get_side_data(&av_frame, AV_FRAME_DATA_DISPLAYMATRIX);
+  if (side_data == nullptr) {
+    return std::nullopt;
+  }
+  return get_rotation_from_display_matrix(
+      reinterpret_cast<const int32_t*>(side_data->data));
+}
+
+void set_display_matrix_on_frame(
+    AVFrame& av_frame,
+    const int32_t* display_matrix) {
+  // The frame may already carry a display matrix of its own: FFmpeg propagates
+  // the container's from 6.1 on, and the H.264/HEVC decoders derive one from a
+  // display-orientation SEI. Since av_frame_new_side_data() appends rather than
+  // replaces, and av_frame_get_side_data() returns the first match, not
+  // clearing first would leave whatever the decoder attached in charge and make
+  // ours dead weight - so which matrix wins would depend on the FFmpeg version
+  // and the codec. Clearing keeps it always the container's, which is the one
+  // the SingleStreamDecoder applies.
+  //
+  // Note that no test covers this: for our assets the decoder's matrix, when
+  // there is one, is the container's, so dropping this line changes nothing
+  // observable. It would take a stream whose SEI disagrees with its container.
+  av_frame_remove_side_data(&av_frame, AV_FRAME_DATA_DISPLAYMATRIX);
+  if (display_matrix == nullptr) {
+    return;
+  }
+
+  constexpr size_t kDisplayMatrixSize = 9 * sizeof(int32_t);
+  AVFrameSideData* side_data = av_frame_new_side_data(
+      &av_frame, AV_FRAME_DATA_DISPLAYMATRIX, kDisplayMatrixSize);
+  STD_TORCH_CHECK(
+      side_data != nullptr, "Failed to allocate display matrix side data");
+  std::memcpy(side_data->data, display_matrix, kDisplayMatrixSize);
+}
 
 bool SwsConfig::operator==(const SwsConfig& other) const {
   return input_width == other.input_width &&
       input_height == other.input_height &&
       input_format == other.input_format &&
       input_colorspace == other.input_colorspace &&
+      input_color_range == other.input_color_range &&
       output_width == other.output_width &&
       output_height == other.output_height &&
-      output_format == other.output_format;
+      output_format == other.output_format &&
+      output_color_range == other.output_color_range;
 }
 
 bool SwsConfig::operator!=(const SwsConfig& other) const {
   return !(*this == other);
 }
+
+namespace {
+#if FFMPEG_SWS_COLORSPACE_DETAILS_FAILS_ON_YUV_TO_YUV
+// Matches swscale's own isYUV() || isGray(): everything that isn't RGB,
+// palettised or a hardware format.
+bool is_yuv_or_gray(AVPixelFormat format) {
+  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(format);
+  return desc != nullptr &&
+      !(desc->flags &
+        (AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_PAL | AV_PIX_FMT_FLAG_HWACCEL));
+}
+
+void validate_sws_set_colorspace_details(int ret, const SwsConfig& sws_config) {
+  bool yuv_or_gray_to_yuv_or_gray = is_yuv_or_gray(sws_config.input_format) &&
+      is_yuv_or_gray(sws_config.output_format);
+  STD_TORCH_CHECK(
+      ret != -1 || yuv_or_gray_to_yuv_or_gray,
+      "sws_setColorspaceDetails returned -1");
+}
+#else
+void validate_sws_set_colorspace_details(int ret, const SwsConfig&) {
+  STD_TORCH_CHECK(ret != -1, "sws_setColorspaceDetails returned -1");
+}
+#endif
+} // namespace
 
 UniqueSwsContext create_sws_context(
     const SwsConfig& sws_config,
@@ -857,6 +983,14 @@ UniqueSwsContext create_sws_context(
       &saturation);
   STD_TORCH_CHECK(ret != -1, "sws_getColorspaceDetails returned -1");
 
+  // swscale spells a range as an int: 1 is full (jpeg), 0 is limited.
+  if (sws_config.input_color_range != AVCOL_RANGE_UNSPECIFIED) {
+    src_range = sws_config.input_color_range == AVCOL_RANGE_JPEG;
+  }
+  if (sws_config.output_color_range != AVCOL_RANGE_UNSPECIFIED) {
+    dst_range = sws_config.output_color_range == AVCOL_RANGE_JPEG;
+  }
+
   const int* colorspace_table =
       sws_getCoefficients(sws_config.input_colorspace);
   ret = sws_setColorspaceDetails(
@@ -868,7 +1002,7 @@ UniqueSwsContext create_sws_context(
       brightness,
       contrast,
       saturation);
-  STD_TORCH_CHECK(ret != -1, "sws_setColorspaceDetails returned -1");
+  validate_sws_set_colorspace_details(ret, sws_config);
 
   return UniqueSwsContext(sws_context);
 }

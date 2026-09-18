@@ -98,6 +98,13 @@ enum class Rotation {
 // Returns Rotation::NONE for nullopt.
 Rotation rotation_from_degrees(std::optional<double> degrees);
 
+// Rotates an HWC tensor, returning a contiguous result (`hwc` unchanged for
+// Rotation::NONE). For the paths that can't express rotation as a filter graph
+// and have to apply it to the already-converted RGB frame.
+FORCE_PUBLIC_VISIBILITY torch::stable::Tensor rotate_hwc_tensor(
+    const torch::stable::Tensor& hwc,
+    Rotation rotation);
+
 // Applies rotation in multiples of 90 degrees using FFmpeg's transpose/flip
 // filters. Note: this does not support arbitrary angle rotation
 // like TorchVision's RandomRotation transform.

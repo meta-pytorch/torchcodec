@@ -52,6 +52,8 @@ extensions = [
     "pytorch_sphinx_theme2",
 ]
 
+from sphinx_gallery.sorting import ExplicitOrder
+
 
 class CustomGalleryExampleSortKey:
     # This class defines the order in which our examples appear in
@@ -61,12 +63,12 @@ class CustomGalleryExampleSortKey:
     # See https://sphinx-gallery.github.io/stable/configuration.html#sorting-gallery-examples
     # and https://github.com/sphinx-gallery/sphinx-gallery/blob/master/sphinx_gallery/sorting.py
     def __init__(self, src_dir):
-        self.src_dir = src_dir
+        self.src_dir = str(src_dir)
 
     def __call__(self, filename):
-        # We have three top-level galleries: decoding examples, encoding
-        # examples, and migration guides. We define the example order within
-        # each gallery individually.
+        # We have four top-level galleries: decoding examples, encoding
+        # examples, blocks examples, and migration guides. We define the
+        # example order within each gallery individually.
         if "examples/decoding" in self.src_dir:
             order = [
                 "basic_example.py",
@@ -88,6 +90,12 @@ class CustomGalleryExampleSortKey:
                 "audio_encoding.py",
                 "video_encoding.py",
                 "multi_stream_encoding.py",
+            ]
+        elif "examples/blocks" in self.src_dir:
+            order = [
+                "basics.py",
+                "pipelines.py",
+                "raw_data.py",
             ]
         else:
             assert "examples/migration" in self.src_dir
@@ -112,6 +120,16 @@ sphinx_gallery_conf = {
     "doc_module": ("torchcodec",),
     "remove_config_comments": True,
     "within_subsection_order": CustomGalleryExampleSortKey,
+    # The order of the galleries themselves, which would otherwise be
+    # alphabetical.
+    "subsection_order": ExplicitOrder(
+        [
+            "../../examples/decoding",
+            "../../examples/blocks",
+            "../../examples/encoding",
+            "../../examples/migration",
+        ]
+    ),
 }
 
 # We override sphinx-gallery's example header to prevent sphinx-gallery from

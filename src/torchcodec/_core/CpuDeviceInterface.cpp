@@ -5,10 +5,12 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "CpuDeviceInterface.h"
+
 #include <algorithm>
 #include <cmath>
 #include <numeric>
 #include <sstream>
+#include "AudioCommon.h"
 
 namespace facebook::torchcodec {
 
@@ -268,14 +270,15 @@ void CpuDeviceInterface::convert_video_av_frame_to_frame_output(
             output_dims, kStableCPU, video_stream_options_.output_dtype));
 
     auto av_frame_format = static_cast<AVPixelFormat>(av_frame.format);
-    SwsConfig sws_config(
-        av_frame.width,
-        av_frame.height,
-        av_frame_format,
-        av_frame.colorspace,
-        output_dims.width,
-        output_dims.height,
-        output_pixel_format_);
+    SwsConfig sws_config{
+        .input_width = av_frame.width,
+        .input_height = av_frame.height,
+        .input_format = av_frame_format,
+        .input_colorspace = av_frame.colorspace,
+        .input_color_range = av_frame.color_range,
+        .output_width = output_dims.width,
+        .output_height = output_dims.height,
+        .output_format = output_pixel_format_};
 
     if (!sw_scale_ || sw_scale_->get_config() != sws_config) {
       sw_scale_ = std::make_unique<SwScale>(sws_config, sws_flags_);
@@ -557,27 +560,12 @@ CpuDeviceInterface::maybe_flush_audio_buffers() {
 
   int num_channels = audio_stream_options_.num_channels.value_or(
       get_num_channels(codec_context_));
-  torch::stable::Tensor last_samples =
-      torch::stable::empty({num_channels, num_remaining_samples});
-
-  std::vector<uint8_t*> output_buffers(num_channels);
-  for (auto i = 0; i < num_channels; i++) {
-    output_buffers[i] = reinterpret_cast<uint8_t*>(
-        select_row(last_samples, i).mutable_data_ptr<float>());
-  }
-
-  auto actual_num_remaining_samples = swr_convert(
-      swr_context_.get(),
-      output_buffers.data(),
-      num_remaining_samples,
-      nullptr,
-      0);
-
-  return torch::stable::narrow(
-      last_samples,
-      /*dim=*/1,
-      /*start=*/0,
-      /*length=*/actual_num_remaining_samples);
+  return swr_convert_to_tensor(
+      swr_context_,
+      /*src_planes=*/nullptr,
+      /*num_src_samples=*/0,
+      num_channels,
+      num_remaining_samples);
 }
 
 void CpuDeviceInterface::flush() {
@@ -602,19 +590,18 @@ UniqueAVFrame CpuDeviceInterface::convert_tensor_to_av_frame_for_encoding(
 
   // Initialize and cache scaling context if it does not exist
   if (!encoding_sws_context_) {
-    encoding_sws_context_.reset(sws_getContext(
-        in_width,
-        in_height,
-        in_pixel_format,
-        out_width,
-        out_height,
-        out_pixel_format,
-        SWS_BICUBIC, // Used by FFmpeg CLI
-        nullptr,
-        nullptr,
-        nullptr));
-    STD_TORCH_CHECK(
-        encoding_sws_context_ != nullptr, "Failed to create scaling context");
+    SwsConfig sws_config{
+        .input_width = in_width,
+        .input_height = in_height,
+        .input_format = in_pixel_format,
+        .input_colorspace = codec_context->colorspace,
+        .output_width = out_width,
+        .output_height = out_height,
+        .output_format = out_pixel_format,
+        .output_color_range = codec_context->color_range};
+
+    encoding_sws_context_ =
+        create_sws_context(sws_config, SWS_BICUBIC); // Used by FFmpeg CLI
   }
 
   UniqueAVFrame av_frame(av_frame_alloc());
@@ -625,6 +612,8 @@ UniqueAVFrame CpuDeviceInterface::convert_tensor_to_av_frame_for_encoding(
   av_frame->width = out_width;
   av_frame->height = out_height;
   av_frame->pts = frame_index;
+  av_frame->colorspace = codec_context->colorspace;
+  av_frame->color_range = codec_context->color_range;
 
   int status = av_frame_get_buffer(av_frame.get(), 0);
   STD_TORCH_CHECK(status >= 0, "Failed to allocate frame buffer");

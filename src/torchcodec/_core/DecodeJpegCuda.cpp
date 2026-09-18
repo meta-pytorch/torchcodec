@@ -373,16 +373,17 @@ void CUDAJpegDecoder::decode_batched_hardware(
     formats.push_back(output_format);
   }
 
-  // nvJPEG's hardware engine does not honour the stream it is given: with work
-  // already queued on `stream`, nvjpegDecodeBatched() can write its
-  // destinations before that work has run. Those destinations are the outputs
-  // allocated above, which come from the caching allocator, so a block that was
-  // just freed on this stream can be handed to the decoder while kernels
-  // reading it are still queued, and an early write silently corrupts them.
-  // Waiting on the device (cudaStreamWaitEvent) is not enough, only a host
-  // barrier is. It costs no wall time here, because decode_images() already
-  // host-synchronizes `stream` before returning. The software path below is
-  // unaffected. Remove once nvJPEG orders the write itself.
+  // The presync below is a workaround for a bug in nvJPEG, not a bug of ours:
+  // its hardware engine does not honour the stream it is given. With work
+  // already queued on `stream`, nvjpegDecodeBatched() may write its destination
+  // buffers *before* that work has run, thus potentially overriding buffers.
+  // The bug is reproducible on H100, not on the A100 we tried. There's a test
+  // for that: test_cuda_jpeg_waits_for_callers_stream. We force a CPU sync
+  // which is is essentially free today ONLY because decode_images() already
+  // host-synchronizes `stream` before returning. If that trailing sync is
+  // ever removed to make decoding asynchronous, the synx here turns into a real
+  // stall that stops the CPU from running ahead, and it should be reconsidered.
+  // The software path is unaffected, only the hardware path.
   cudaError_t presync_status = cudaStreamSynchronize(stream);
   STD_TORCH_CHECK(
       presync_status == cudaSuccess,
@@ -491,6 +492,8 @@ std::vector<torch::stable::Tensor> CUDAJpegDecoder::decode_images(
   // buffers) goes back to the pool and may be reused immediately by the next
   // call, so all GPU work using them must complete first.
   // TODO_IMAGE: Should we? What does the NVDEC decoder do?
+  // NOTE: decode_batched_hardware() leans on this sync, see bug workardound
+  // note there.
   cudaError_t cuda_status = cudaStreamSynchronize(stream);
   STD_TORCH_CHECK(
       cuda_status == cudaSuccess,
