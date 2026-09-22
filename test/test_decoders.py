@@ -5700,6 +5700,39 @@ class TestBlocks:
         with pytest.raises(ValueError, match="No valid audio stream found"):
             Demuxer(H265_VIDEO.path, streams="audio")
 
+    # ===== num_ffmpeg_threads =====
+
+    @pytest.mark.parametrize("num_ffmpeg_threads", (0, 1, 4))
+    def test_num_ffmpeg_threads(self, num_ffmpeg_threads):
+        demuxer = Demuxer(NASA_VIDEO.path)
+        decoder = demuxer.streams[0].make_decoder(num_ffmpeg_threads=num_ffmpeg_threads)
+        converter = ColorConverter()
+        got = [
+            converter.convert(raw_frame)
+            for raw_frame in itertools.islice(
+                self._decode(decoder, self._demux(demuxer)), 10
+            )
+        ]
+
+        expected = VideoDecoder(NASA_VIDEO.path, num_ffmpeg_threads=num_ffmpeg_threads)[
+            :10
+        ]
+
+        assert len(got) == len(expected) == 10
+        for got_frame, expected_data in zip(got, expected):
+            assert_frames_equal(got_frame.data, expected_data)
+
+    def test_num_ffmpeg_threads_none_raises(self):
+        (video,) = Demuxer(NASA_VIDEO.path).streams
+        with pytest.raises(ValueError, match="should be an int"):
+            video.make_decoder(num_ffmpeg_threads=None)
+
+    def test_audio_decoder_takes_no_num_ffmpeg_threads(self):
+        # See https://github.com/pytorch/torchcodec/issues/1253.
+        (audio,) = Demuxer(NASA_AUDIO_MP3.path, streams="audio").streams
+        with pytest.raises(TypeError, match="num_ffmpeg_threads"):
+            audio.make_decoder(num_ffmpeg_threads=4)
+
     # ===== audio streams =====
 
     @pytest.mark.parametrize(
