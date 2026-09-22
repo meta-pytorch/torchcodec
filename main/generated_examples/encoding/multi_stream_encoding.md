@@ -69,7 +69,7 @@ print(f"Output size: {Path(output_path).stat().st_size} bytes")
 ```
 
 ```
-Encoded video + audio to /tmp/tmpm8g8c1cm.mp4
+Encoded video + audio to /tmp/tmpe_tm_a80.mp4
 Output size: 2526674 bytes
 ```
 
@@ -132,7 +132,7 @@ print(f"Output size: {Path(chunk_output).stat().st_size} bytes")
 ```
 
 ```
-Incrementally encoded to /tmp/tmpzy6no5y_.mp4
+Incrementally encoded to /tmp/tmp95gnysif.mp4
 Output size: 2527045 bytes
 ```
 
@@ -208,7 +208,7 @@ bytes_tensor = torch.frombuffer(encoded_bytes, dtype=torch.uint8)
 Encoded to BytesIO, size: 2526674 bytes
 ```
 
-**Total running time of the script:** (0 minutes 6.242 seconds)
+**Total running time of the script:** (0 minutes 6.122 seconds)
 
 [`Download Jupyter notebook: multi_stream_encoding.ipynb`](../../_downloads/ccd7596cf7d161af13c32c87cfc7f878/multi_stream_encoding.ipynb)
 

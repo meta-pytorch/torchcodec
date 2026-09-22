@@ -46,7 +46,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpd7f8fzid/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpcxawv4sp/video.mp4'], returncode=0)
 ```
 
 ## One stage, one generator
@@ -189,8 +189,8 @@ for pipeline in (sequential, convert_on_own_thread):
 
 ```
 VideoDecoder.get_all_frames(): 0.63s
-sequential : 0.47s (1.35x vs VideoDecoder)
-convert_on_own_thread : 0.39s (1.61x vs VideoDecoder)
+sequential : 0.44s (1.43x vs VideoDecoder)
+convert_on_own_thread : 0.39s (1.60x vs VideoDecoder)
 ```
 
 `sequential` lands on the baseline, as expected: the same work, in the same
@@ -198,7 +198,7 @@ order, on one thread. `convert_on_own_thread` is where the speedup is,
 because it can overalp the two most expensive steps: decoding and
 color-conversion.
 
-**Total running time of the script:** (0 minutes 7.338 seconds)
+**Total running time of the script:** (0 minutes 7.205 seconds)
 
 [`Download Jupyter notebook: pipelines.ipynb`](../../_downloads/1bd9c6e945e662bafe88b1687e2dfa61/pipelines.ipynb)
 
