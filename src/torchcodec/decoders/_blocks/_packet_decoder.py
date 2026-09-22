@@ -53,12 +53,17 @@ class _BasePacketDecoder(Generic[_Decoded]):
         )
 
     @classmethod
-    def _from_stream(cls: type[_Self], stream: _Stream, device_str: str) -> _Self:
+    def _from_stream(
+        cls: type[_Self],
+        stream: _Stream,
+        device_str: str,
+        num_ffmpeg_threads: int = 1,
+    ) -> _Self:
         decoder = cls.__new__(cls)
         decoder._handle = _blocks_create_packet_decoder(
             stream._demuxer._handle,
             stream_index=stream.index,
-            num_threads=1,
+            num_threads=num_ffmpeg_threads,
             device=device_str,
         )
         decoder._drained = False

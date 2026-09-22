@@ -293,7 +293,10 @@ class VideoStream(_Stream):
         return self._frame_index
 
     def make_decoder(
-        self, device: str | torch.device | None = None
+        self,
+        device: str | torch.device | None = None,
+        *,
+        num_ffmpeg_threads: int = 1,
     ) -> VideoPacketDecoder:
         """Build the :class:`VideoPacketDecoder` for this stream.
 
@@ -301,11 +304,22 @@ class VideoStream(_Stream):
             device (str or torch.device, optional): The device to decode on (cpu or CUDA).
                 If ``None`` (default), the current default device is used (see
                 ``torch.set_default_device``).
+            num_ffmpeg_threads (int, optional): The number of threads to use for
+                CPU decoding. This has no effect when decoding on GPU. Use 1 for
+                single-threaded decoding, which may be best if you are decoding
+                multiple streams in parallel. Use a higher number for
+                multi-threaded decoding, which is best for a single stream.
+                Passing 0 lets FFmpeg decide on the number of threads.
+                Default: 1.
 
         Returns:
             VideoPacketDecoder: A decoder for this stream's packets.
         """
-        return VideoPacketDecoder._from_stream(self, convert_device_to_str(device))
+        if num_ffmpeg_threads is None:
+            raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
+        return VideoPacketDecoder._from_stream(
+            self, convert_device_to_str(device), num_ffmpeg_threads
+        )
 
 
 class AudioStream(_Stream):
