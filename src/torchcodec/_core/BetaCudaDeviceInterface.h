@@ -120,6 +120,12 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   std::queue<CUVIDPARSERDISPINFO> ready_frames_;
 
+  // pts of the packets we've sent, in order; each yields one displayed frame.
+  // See [Frame timestamps come from us, not from the parser].
+  std::queue<int64_t> pending_pts_;
+  // Only safe for codecs whose visible frames are in display order (VP9).
+  bool track_pts_ourselves_ = false;
+
   bool eof_sent_ = false;
 
   AVRational time_base_ = {0, 1};

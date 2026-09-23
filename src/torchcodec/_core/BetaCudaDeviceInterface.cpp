@@ -112,6 +112,87 @@ static int CUDAAPI pfn_display_picture_callback(
   return decoder->frame_ready_in_display_order(disp_info);
 }
 
+// Whether a single VP9 coded frame is displayed, from the first bits of its
+// uncompressed header. Bit layout matches
+// libavcodec/bsf/vp9_superframe_split.c:
+//   frame_marker        f(2)  (== 2)
+//   profile_low_bit     f(1)
+//   profile_high_bit    f(1)
+//   [profile == 3] reserved f(1)
+//   show_existing_frame f(1)  -> if set, this frame IS displayed
+//   frame_type          f(1)
+//   show_frame          f(1)
+bool vp9_frame_is_displayed(const uint8_t* data, int size) {
+  int bit = 0;
+  auto read_bit = [&]() -> int {
+    int byte_index = bit >> 3;
+    if (byte_index >= size) {
+      return 0;
+    }
+    int value = (data[byte_index] >> (7 - (bit & 7))) & 1;
+    bit++;
+    return value;
+  };
+
+  if (size < 1) {
+    return false;
+  }
+  read_bit();
+  read_bit(); // frame_marker
+  int profile = read_bit();
+  profile |= read_bit() << 1;
+  if (profile == 3) {
+    read_bit(); // reserved
+  }
+  if (read_bit()) {
+    return true; // show_existing_frame: re-displays an existing reference
+  }
+  read_bit(); // frame_type
+  return read_bit() != 0; // show_frame
+}
+
+// How many frames a VP9 packet will display: 0 (a lone hidden alt-ref), 1
+// (the common case), or more. Returns -1 if the packet looks malformed.
+//
+// A VP9 "superframe" packet concatenates several coded frames - typically one
+// or more hidden alt-refs plus the visible frame referencing them - and ends
+// with an index giving their sizes, bracketed by a marker byte.
+int count_vp9_displayed_frames(const uint8_t* data, int size) {
+  if (data == nullptr || size <= 0) {
+    return -1;
+  }
+
+  uint8_t marker = data[size - 1];
+  if ((marker & 0xe0) == 0xc0) {
+    int length_size = 1 + ((marker >> 3) & 0x3);
+    int nb_frames = 1 + (marker & 0x7);
+    int index_size = 2 + nb_frames * length_size;
+
+    if (size >= index_size && data[size - index_size] == marker) {
+      const uint8_t* sizes = data + size - index_size + 1;
+      int displayed = 0;
+      int offset = 0;
+      for (int i = 0; i < nb_frames; ++i) {
+        int frame_size = 0;
+        for (int j = 0; j < length_size; ++j) {
+          frame_size |= *sizes++ << (j * 8);
+        }
+        if (frame_size <= 0 || offset + frame_size > size - index_size) {
+          return -1;
+        }
+        if (vp9_frame_is_displayed(data + offset, frame_size)) {
+          displayed++;
+        }
+        offset += frame_size;
+      }
+      return displayed;
+    }
+  }
+
+  // Not a superframe: a single coded frame, displayed or not.
+  return vp9_frame_is_displayed(data, size) ? 1 : 0;
+}
+
 static UniqueCUvideodecoder create_decoder(
     CUVIDEOFORMAT* video_format,
     cudaVideoSurfaceFormat surface_format) {
@@ -407,6 +488,44 @@ void BetaCudaDeviceInterface::initialize_video_decoding(
 
   initialize_bsf(codec_par, av_format_ctx);
 
+  // clang-format off
+  // Note: [Frame timestamps come from us, not from the parser]
+  //
+  // We do not trust the timestamp the parser reports on a displayed frame
+  // (CUVIDPARSERDISPINFO::timestamp). On VP9 it is wrong.
+  //
+  // VP9 packs a hidden "alt-ref" frame - a synthesized reference frame that is
+  // decoded but never displayed - together with the visible frame that
+  // references it into a single "superframe" packet, carrying a single pts. So
+  // the parser decodes two pictures but displays one, and the timestamp it
+  // attaches to the displayed frame slips. Measured on real-world VP9: per
+  // superframe, exactly one timestamp is reported twice and one is never
+  // reported at all, leaving the reported timestamp a constant 2-3 frames
+  // behind the pixels it is attached to.
+  //
+  // That is invisible when decoding sequentially, because frames are consumed
+  // in display order and the timestamps are never used to pick one. But a seek
+  // decodes and discards frames until pts >= target, so it stops a couple of
+  // frames late and silently returns the wrong frame - with the right pts, so
+  // nothing downstream can notice.
+  //
+  // We don't need the parser's timestamps: it emits displayed frames in
+  // display order, and we know the pts of every packet we send it. So we keep
+  // our own FIFO and pair the nth displayed frame with the nth pts we sent.
+  //
+  // This relies on each packet we send yielding exactly one displayed frame.
+  // That holds for VP9: the hidden frame lives *inside* the superframe packet,
+  // and VP9 has no B-frames, so visible frames are already in display order.
+  // Codecs that reorder (H.264/HEVC) would break it, hence the VP9 gate - an
+  // earlier ungated version of this silently shifted H.264 and HEVC output.
+  //
+  // FFmpeg avoids all of this by not using the nvcuvid parser in its nvdec
+  // hwaccel path: its own VP9 decoder splits superframes into one packet per
+  // frame first (libavcodec/vp9.c: .bsfs = "vp9_superframe_split"). Splitting
+  // does *not* fix the parser though - we tried, it makes no difference.
+  // clang-format on
+  track_pts_ourselves_ = (codec_par->codec_id == AV_CODEC_ID_VP9);
+
   // Create parser. Default values that aren't obvious are taken from DALI.
   CUVIDPARSERPARAMS parser_params = {};
   auto codec_type = validate_codec_support(codec_par->codec_id);
@@ -650,6 +769,25 @@ int BetaCudaDeviceInterface::send_packet(ReferenceAVPacket& packet) {
   cuvid_packet.flags = CUVID_PKT_TIMESTAMP;
   cuvid_packet.timestamp = packet_to_send->pts;
 
+  // See [Frame timestamps come from us, not from the parser].
+  if (track_pts_ourselves_) {
+    // Push one entry per frame this packet will display, so the FIFO stays
+    // aligned even for packets that display none (a lone hidden frame) or more
+    // than one. Each displayed frame inherits the packet's pts, which is what
+    // FFmpeg does: vp9_superframe_split av_packet_ref()s the whole packet onto
+    // every sub-frame and only overrides the invisible ones to AV_NOPTS_VALUE.
+    // So a CPU decode of such a packet yields the same (possibly duplicated)
+    // timestamps we produce here.
+    int num_displayed =
+        count_vp9_displayed_frames(packet_to_send->data, packet_to_send->size);
+    if (num_displayed < 0) {
+      num_displayed = 1; // Malformed packet: assume the common case.
+    }
+    for (int i = 0; i < num_displayed; ++i) {
+      pending_pts_.push(packet_to_send->pts);
+    }
+  }
+
   return send_cuvid_packet(cuvid_packet);
 }
 
@@ -724,6 +862,11 @@ int BetaCudaDeviceInterface::frame_ready_for_decoding(
 
 int BetaCudaDeviceInterface::frame_ready_in_display_order(
     CUVIDPARSERDISPINFO* disp_info) {
+  // See [Frame timestamps come from us, not from the parser].
+  if (track_pts_ourselves_ && !pending_pts_.empty()) {
+    disp_info->timestamp = pending_pts_.front();
+    pending_pts_.pop();
+  }
   ready_frames_.push(*disp_info);
   return 1; // success
 }
@@ -988,6 +1131,9 @@ void BetaCudaDeviceInterface::flush() {
 
   std::queue<CUVIDPARSERDISPINFO> empty_queue;
   std::swap(ready_frames_, empty_queue);
+
+  std::queue<int64_t> empty_pts;
+  std::swap(pending_pts_, empty_pts);
 
   send_seqhdr_packet();
 }
