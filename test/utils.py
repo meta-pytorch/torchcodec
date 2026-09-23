@@ -974,6 +974,34 @@ DISCARD_FIRST_KEYFRAME_VIDEO = TestVideo(
     },
 )
 
+# A pair of videos whose heights, 50 and 52, are both encoded as 64 rows: H.264
+# codes whole 16x16 macroblocks and crops the padding away with the display
+# area. They're what it takes to exercise decoders that NVDEC considers to have
+# the same coded dimensions while their frames have different sizes.
+#
+# Generated with:
+#   $ for h in 50 52; do
+#       ffmpeg -f lavfi -i testsrc2=size=64x${h}:rate=25:duration=0.4 \
+#           -c:v libx264 -pix_fmt yuv420p -an coded64_display${h}.mp4
+#     done
+CODED64_DISPLAY50_VIDEO = TestVideo(
+    filename="coded64_display50.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=64, height=50, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed yet
+)
+
+CODED64_DISPLAY52_VIDEO = TestVideo(
+    filename="coded64_display52.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=64, height=52, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed yet
+)
+
 AV1_VIDEO = TestVideo(
     filename="av1_video.mkv",
     default_stream_index=0,
@@ -1071,6 +1099,28 @@ BT601_LIMITED_RANGE = TestVideo(
     },
     frames={0: {}},  # Not needed for now
 )
+
+# Full range BT.601 10-bit video (see test_full_range_10bit()). Generated with:
+# ffmpeg -f lavfi -i "color=c=0x404060:s=66x64:r=25:d=0.4" -c:v libx265 \
+# -tag:v hvc1 -pix_fmt yuv420p10le -colorspace smpte170m -color_range pc \
+# -x265-params lossless=1 bt601_full_range_10bit.mp4
+#
+# Confirm color space with:
+# ffprobe -v quiet -select_streams v:0 -show_entries stream=pix_fmt,color_space,color_range -of default=noprint_wrappers=1 test/resources/bt601_full_range_10bit.mp4
+# pix_fmt=yuv420p10le
+# color_range=pc
+# color_space=smpte170m
+BT601_FULL_RANGE_10BIT = TestVideo(
+    filename="bt601_full_range_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=66, height=64, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# The solid color BT601_FULL_RANGE_10BIT is filled with.
+BT601_FULL_RANGE_10BIT_RGB = (0x40, 0x40, 0x60)
 
 # HDR re-encode of NASA video (10-bit H265 with BT.2020 + PQ), generated with:
 # ffmpeg -i test/resources/nasa_13013.mp4 -map 0:v:0 -c:v libx265 -pix_fmt yuv420p10le \
@@ -1234,6 +1284,117 @@ TESTSRC2_ODD_HEIGHT_AND_WIDTH_444 = TestVideo(
     frames={0: {}},
 )
 
+# AV1 4:2:0 10-bit. NVDEC offers only a P016 output surface for this one, no
+# NV12, which used to send it to the CPU fallback whenever uint8 was requested.
+# ffmpeg -f lavfi -i "testsrc2=size=320x240:rate=25:duration=1" \
+#  -c:v libsvtav1 -pix_fmt yuv420p10le testsrc2_av1_10bit.mp4
+TESTSRC2_AV1_10BIT = TestVideo(
+    filename="testsrc2_av1_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libx264 -pix_fmt yuv444p10le -profile:v high444 \
+#  testsrc2_odd_height_and_width_444_10bit.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT = TestVideo(
+    filename="testsrc2_odd_height_and_width_444_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# HEVC 4:4:4, which NVDEC *can* decode natively (unlike H264 4:4:4 above), at
+# 8, 10 and 12 bits. Odd dimensions, so they also cover the cropping NVDEC's
+# even-aligned surfaces need. Encoded with, for DEPTH in 8/10/12:
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libx265 -pix_fmt yuv444pDEPTHle -tag:v hvc1 testsrc2_444_DEPTHbit_hevc.mp4
+# (the 8-bit one uses -pix_fmt yuv444p)
+TESTSRC2_444_8BIT_HEVC = TestVideo(
+    filename="testsrc2_444_8bit_hevc.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+TESTSRC2_444_10BIT_HEVC = TestVideo(
+    filename="testsrc2_444_10bit_hevc.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+TESTSRC2_444_12BIT_HEVC = TestVideo(
+    filename="testsrc2_444_12bit_hevc.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# The sources whose frames don't come out as three YUV planes. libx264 accepts
+# -pix_fmt gray but silently encodes 4:2:0 anyway, hence libx265 here. Even
+# dimensions, because both encoders below round odd ones down.
+# ffmpeg -f lavfi -i "testsrc2=size=320x240:rate=25:duration=1" \
+#  -vf format=gray -c:v libx265 -tag:v hvc1 testsrc2_gray_hevc.mp4
+TESTSRC2_GRAY_HEVC = TestVideo(
+    filename="testsrc2_gray_hevc.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -vf format=gbrp -c:v libx265 -tag:v hvc1 testsrc2_gbrp_hevc.mp4
+TESTSRC2_GBRP_HEVC = TestVideo(
+    filename="testsrc2_gbrp_hevc.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# FFV1 is lossless, so this one is a fifth of a second rather than a full one.
+# VP9's alpha is not an option: it rides in a separate layer, and the frames the
+# decoder produces are plain yuv420p.
+# ffmpeg -f lavfi -i "testsrc2=size=320x240:rate=25:duration=0.2" \
+#  -vf format=yuva420p -c:v ffv1 testsrc2_yuva420p_ffv1.mkv
+TESTSRC2_YUVA420P_FFV1 = TestVideo(
+    filename="testsrc2_yuva420p_ffv1.mkv",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# Full range (pc) 4:2:2, i.e. neither the range nor the chroma layout that NVDEC
+# surfaces come in. yuvj422p is what -pix_fmt yuvj422p and -pix_fmt yuv422p
+# -color_range pc both produce.
+# ffmpeg -f lavfi -i "testsrc2=size=320x240:rate=25:duration=1" \
+#  -c:v libx264 -pix_fmt yuvj422p testsrc2_full_range_422.mp4
+TESTSRC2_FULL_RANGE_422 = TestVideo(
+    filename="testsrc2_full_range_422.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
 # ffmpeg -f lavfi -i "testsrc2=size=321x240:rate=25:duration=1,format=rgb24" \
 #  -c:v libvpx-vp9 -pix_fmt yuv420p -b:v 1M testsrc2_odd_width_vp9.mp4
 TESTSRC2_ODD_WIDTH_VP9 = TestVideo(
@@ -1296,6 +1457,34 @@ TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT = TestVideo(
     default_stream_index=0,
     stream_infos={
         0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# Odd dimensions with 4:2:0 chroma, in a codec NVDEC doesn't decode. That's the
+# only combination that reaches the CPU fallback with a frame our 4:2:0 CUDA
+# kernel can't consume as-is: it has to be padded to even dimensions before
+# color conversion, and cropped back afterwards.
+# ffmpeg -f lavfi -i "testsrc2=rate=25:duration=0.4:size=121x80,format=rgb24" \
+#  -c:v mpeg2video -pix_fmt yuv420p testsrc2_odd_width_mpeg2.mp4
+TESTSRC2_ODD_WIDTH_MPEG2 = TestVideo(
+    filename="testsrc2_odd_width_mpeg2.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=121, height=80, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# Also odd in height, which additionally exercises the chroma plane's own
+# rounding: an odd-height 4:2:0 frame has ceil(height / 2) chroma rows.
+# ffmpeg -f lavfi -i "testsrc2=rate=25:duration=0.4:size=121x81,format=rgb24" \
+#  -c:v mpeg2video -pix_fmt yuv420p testsrc2_odd_height_and_width_mpeg2.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_MPEG2 = TestVideo(
+    filename="testsrc2_odd_height_and_width_mpeg2.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=121, height=81, num_color_channels=3),
     },
     frames={0: {}},
 )
@@ -1667,6 +1856,23 @@ SINE_16_CHANNEL_S16 = TestAudio(
             duration_seconds=1,
             num_frames=16,
             sample_format="s16",
+        )
+    },
+)
+
+# Generated with:
+# ffmpeg -y -f lavfi -i "sine=frequency=440:duration=2" -c:a mp3 -b:a 32k -ar 44100 -ac 1 test/resources/sine_mono_mp3.swf
+UNSEEKABLE_SWF = TestAudio(
+    filename="sine_mono_mp3.swf",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=44_100,
+            num_channels=1,
+            duration_seconds=2.2739909297052154,
+            num_frames=78,
+            sample_format="fltp",
         )
     },
 )

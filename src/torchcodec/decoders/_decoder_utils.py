@@ -107,6 +107,14 @@ def get_nvdec_cache_capacity() -> int:
     return _core.get_nvdec_cache_capacity()
 
 
+def convert_device_to_str(device: str | torch.device | None) -> str:
+    # The core ops take the device as a string. None means "the current default
+    # device".
+    if device is None:
+        device = torch.get_default_device()
+    return str(device)
+
+
 def convert_output_dtype_to_str(output_dtype: torch.dtype | str) -> str:
     # The core ops take the dtype as a string.
     dtype_to_str = {torch.uint8: "uint8", torch.float32: "float32"}

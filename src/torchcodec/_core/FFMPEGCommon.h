@@ -61,6 +61,17 @@ extern "C" {
 #define FFMPEG_HAS_SUPPORTED_CONFIG 0
 #endif
 
+// FFmpeg 4's sws_setColorspaceDetails() returns -1 when the source and the
+// destination are both YUV or gray, as its way of saying it can't apply a
+// colorspace matrix between the two. It's not a failure: the color ranges it
+// was asked for are still honored, and FFmpeg 5 and above return 0 for the very
+// same conversion, with the very same output.
+#if LIBSWSCALE_VERSION_MAJOR < 6
+#define FFMPEG_SWS_COLORSPACE_DETAILS_FAILS_ON_YUV_TO_YUV 1
+#else
+#define FFMPEG_SWS_COLORSPACE_DETAILS_FAILS_ON_YUV_TO_YUV 0
+#endif
+
 // FFmpeg 6 renamed AVFrame.pkt_duration to AVFrame.duration.
 #if LIBAVUTIL_VERSION_MAJOR < 58
 #define FFMPEG_HAS_FRAME_DURATION 0
@@ -70,8 +81,20 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
-AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth);
-bool is_nvdec_16bit_surface(int format);
+// Mirrors cudaVideoSurfaceFormat. Needed here because we don't want to include
+// the CUDA headers in this file, and it is necessary for
+// ffmpeg-version-dependent helpers like nvdec_pix_fmt() and
+// is_nvdec_16bit_pix_fmt().
+enum class NvdecSurface {
+  NV12,
+  P016,
+  YUV444,
+  YUV444_16Bit,
+};
+
+AVPixelFormat nvdec_pix_fmt(NvdecSurface surface, int bit_depth);
+
+bool is_nvdec_16bit_pix_fmt(int format);
 
 OutputDtype resolve_output_dtype(
     OutputDtypeConfig output_dtype_config,
@@ -223,6 +246,7 @@ class ReferenceAVPacket {
   ReferenceAVPacket& operator=(const ReferenceAVPacket& other) = delete;
   ~ReferenceAVPacket();
   AVPacket* get();
+  AVPacket& operator*();
   AVPacket* operator->();
 };
 
@@ -288,6 +312,13 @@ UniqueAVFrame allocate_av_frame(
     int num_channels,
     AVSampleFormat sample_format);
 
+// How a channel layout is spelled, which changed in FFmpeg 5.
+#if FFMPEG_HAS_CH_LAYOUT
+using SwrChannelLayout = AVChannelLayout;
+#else
+using SwrChannelLayout = int64_t;
+#endif
+
 SwrContext* create_swr_context(
     AVSampleFormat src_sample_format,
     AVSampleFormat desired_sample_format,
@@ -295,6 +326,27 @@ SwrContext* create_swr_context(
     int desired_sample_rate,
     const AVFrame& src_av_frame,
     int desired_num_channels);
+
+// Same, for callers that have samples rather than an AVFrame, and so only know
+// how many channels there are. Both layouts are the default one for their
+// channel count, which is what the AVFrame overload also falls back to when the
+// count changes.
+SwrContext* create_swr_context(
+    AVSampleFormat src_sample_format,
+    AVSampleFormat desired_sample_format,
+    int src_sample_rate,
+    int desired_sample_rate,
+    int src_num_channels,
+    int desired_num_channels);
+
+// Upper bound on the number of samples swr_convert() can emit for
+// num_src_samples of input, including whatever it still holds buffered. It is
+// only a bound: narrow the output down to what swr_convert() returned.
+int64_t get_swr_output_num_samples_bound(
+    const UniqueSwrContext& swr_context,
+    int num_src_samples,
+    int src_sample_rate,
+    int out_sample_rate);
 
 // Converts, if needed:
 // - sample format
@@ -313,6 +365,8 @@ UniqueAVFrame convert_audio_av_frame_samples(
 bool can_sws_scale_handle_unaligned_data();
 
 void set_ffmpeg_log_level();
+
+void forbid_nested_protocols(AVFormatContext* format_context);
 
 // These signatures are defined by FFmpeg.
 using AVIOReadFunction = int (*)(void*, uint8_t*, int);
@@ -340,6 +394,19 @@ int64_t compute_safe_duration(
 // rotated for correct display.
 std::optional<double> get_rotation_from_stream(const AVStream* av_stream);
 
+// Same, from a frame's own display matrix side data.
+std::optional<double> get_rotation_from_frame(const AVFrame& av_frame);
+
+// The stream's raw display matrix, or nullptr when it has none. Points into the
+// stream's side data, so it lives as long as the stream does.
+const int32_t* get_display_matrix_from_stream(const AVStream* av_stream);
+
+// Makes `av_frame` carry `display_matrix` (or no display matrix at all, for
+// nullptr), replacing whatever it had.
+void set_display_matrix_on_frame(
+    AVFrame& av_frame,
+    const int32_t* display_matrix);
+
 AVFilterContext* create_av_filter_context_with_options(
     AVFilterGraph* filter_graph,
     const AVFilter* buffer,
@@ -350,19 +417,11 @@ struct SwsConfig {
   int input_height = 0;
   AVPixelFormat input_format = AV_PIX_FMT_NONE;
   AVColorSpace input_colorspace = AVCOL_SPC_UNSPECIFIED;
+  AVColorRange input_color_range = AVCOL_RANGE_UNSPECIFIED;
   int output_width = 0;
   int output_height = 0;
   AVPixelFormat output_format = AV_PIX_FMT_NONE;
-
-  SwsConfig() = default;
-  SwsConfig(
-      int input_width,
-      int input_height,
-      AVPixelFormat input_format,
-      AVColorSpace input_colorspace,
-      int output_width,
-      int output_height,
-      AVPixelFormat output_format);
+  AVColorRange output_color_range = AVCOL_RANGE_UNSPECIFIED;
 
   bool operator==(const SwsConfig& other) const;
   bool operator!=(const SwsConfig& other) const;

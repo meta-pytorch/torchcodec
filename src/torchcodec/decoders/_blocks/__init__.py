@@ -4,27 +4,42 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Private, experimental building-block decode API (CPU only, for now).
+from torchcodec._core._metadata import (
+    AudioStreamHeaderMetadata,
+    ContainerMetadata,
+    DemuxerMetadata,
+    StreamMetadata,
+    VideoStreamHeaderMetadata,
+)
 
-Exposes the three decode stages -- :class:`Demuxer`, :class:`PacketDecoder`,
-:class:`ColorConverter` -- as passive, composable, GIL-releasing units, so a
-caller can build its own (threaded) decode pipeline and tune how the stages
-overlap. The blocks do no threading themselves.
-
-This is experimental and private; the API may change. See
-API_breakdown_claude_plan.md for the design and rationale.
-"""
-
+from ._audio_converter import AudioConverter
 from ._color_converter import ColorConverter
-from ._demuxer import Demuxer
-from ._frame import DecodedFrame, Packet, RawFrame
-from ._packet_decoder import PacketDecoder
+from ._demuxer import (
+    AudioStream,
+    Demuxer,
+    FrameIndex,
+    get_container_metadata,
+    VideoStream,
+)
+from ._frame import Packet, RawAudioSamples, RawFrame
+from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
 
 __all__ = [
     "Demuxer",
-    "PacketDecoder",
+    "get_container_metadata",
+    "VideoStream",
+    "AudioStream",
+    "VideoPacketDecoder",
+    "AudioPacketDecoder",
     "ColorConverter",
+    "AudioConverter",
     "Packet",
-    "DecodedFrame",
     "RawFrame",
+    "RawAudioSamples",
+    "FrameIndex",
+    "DemuxerMetadata",
+    "ContainerMetadata",
+    "StreamMetadata",
+    "VideoStreamHeaderMetadata",
+    "AudioStreamHeaderMetadata",
 ]

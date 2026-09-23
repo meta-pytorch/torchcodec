@@ -180,7 +180,6 @@ PngHeader read_header_and_configure(
   // called after png_set_palette_to_rgb()).
   bool has_trns = png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS) != 0;
 
-  bool expanded_palette = false;
   if (read_mode == ImageReadMode::UNCHANGED) {
     if (is_palette) {
       // A PNG palette (PLTE chunk) is always RGB triplets
@@ -193,78 +192,71 @@ PngHeader read_header_and_configure(
         png_set_tRNS_to_alpha(png_ptr);
         num_output_channels = 4;
       }
-      expanded_palette = true;
+    } else if (has_trns) {
+      png_set_strip_alpha(png_ptr);
     }
   } else {
     bool has_color = (color_type & PNG_COLOR_MASK_COLOR) != 0;
-    bool has_alpha = (color_type & PNG_COLOR_MASK_ALPHA) != 0;
+    bool has_alpha = (color_type & PNG_COLOR_MASK_ALPHA) != 0 || has_trns;
 
     png_uint_32 opaque_alpha = output_16 ? 65535 : 255;
 
     switch (read_mode) {
       case ImageReadMode::GRAY:
-        if (color_type != PNG_COLOR_TYPE_GRAY) {
-          if (is_palette) {
-            png_set_palette_to_rgb(png_ptr);
-          }
-
-          if (has_alpha) {
-            png_set_strip_alpha(png_ptr);
-          }
-
-          if (has_color) {
-            png_set_rgb_to_gray(png_ptr, 1, 0.2989, 0.587);
-          }
-          num_output_channels = 1;
+        if (is_palette) {
+          png_set_palette_to_rgb(png_ptr);
         }
+
+        if (has_alpha) {
+          png_set_strip_alpha(png_ptr);
+        }
+
+        if (has_color) {
+          png_set_rgb_to_gray(png_ptr, 1, 0.2989, 0.587);
+        }
+        num_output_channels = 1;
         break;
       case ImageReadMode::GRAY_ALPHA:
-        if (color_type != PNG_COLOR_TYPE_GRAY_ALPHA) {
-          if (is_palette) {
-            png_set_palette_to_rgb(png_ptr);
-          }
-
-          if (has_trns) {
-            png_set_tRNS_to_alpha(png_ptr);
-          } else if (!has_alpha) {
-            png_set_add_alpha(png_ptr, opaque_alpha, PNG_FILLER_AFTER);
-          }
-
-          if (has_color) {
-            png_set_rgb_to_gray(png_ptr, 1, 0.2989, 0.587);
-          }
-          num_output_channels = 2;
+        if (is_palette) {
+          png_set_palette_to_rgb(png_ptr);
         }
+
+        if (has_trns) {
+          png_set_tRNS_to_alpha(png_ptr);
+        } else if (!has_alpha) {
+          png_set_add_alpha(png_ptr, opaque_alpha, PNG_FILLER_AFTER);
+        }
+
+        if (has_color) {
+          png_set_rgb_to_gray(png_ptr, 1, 0.2989, 0.587);
+        }
+        num_output_channels = 2;
         break;
       case ImageReadMode::RGB:
-        if (color_type != PNG_COLOR_TYPE_RGB) {
-          if (is_palette) {
-            png_set_palette_to_rgb(png_ptr);
-          } else if (!has_color) {
-            png_set_gray_to_rgb(png_ptr);
-          }
-
-          if (has_alpha) {
-            png_set_strip_alpha(png_ptr);
-          }
-          num_output_channels = 3;
+        if (is_palette) {
+          png_set_palette_to_rgb(png_ptr);
+        } else if (!has_color) {
+          png_set_gray_to_rgb(png_ptr);
         }
+
+        if (has_alpha) {
+          png_set_strip_alpha(png_ptr);
+        }
+        num_output_channels = 3;
         break;
       case ImageReadMode::RGB_ALPHA:
-        if (color_type != PNG_COLOR_TYPE_RGB_ALPHA) {
-          if (is_palette) {
-            png_set_palette_to_rgb(png_ptr);
-          } else if (!has_color) {
-            png_set_gray_to_rgb(png_ptr);
-          }
-
-          if (has_trns) {
-            png_set_tRNS_to_alpha(png_ptr);
-          } else if (!has_alpha) {
-            png_set_add_alpha(png_ptr, opaque_alpha, PNG_FILLER_AFTER);
-          }
-          num_output_channels = 4;
+        if (is_palette) {
+          png_set_palette_to_rgb(png_ptr);
+        } else if (!has_color) {
+          png_set_gray_to_rgb(png_ptr);
         }
+
+        if (has_trns) {
+          png_set_tRNS_to_alpha(png_ptr);
+        } else if (!has_alpha) {
+          png_set_add_alpha(png_ptr, opaque_alpha, PNG_FILLER_AFTER);
+        }
+        num_output_channels = 4;
         break;
       default:
         png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
@@ -278,18 +270,29 @@ PngHeader read_header_and_configure(
 
   // libpng knows how to scale 16-bit samples to 8-bit, and vice versa, so we
   // can use that instead of doing it ourselves.
-  bool need_scaling = false;
   if (output_16 && bit_depth != 16) {
     png_set_expand_16(png_ptr);
-    need_scaling = true;
   } else if (!output_16 && bit_depth == 16) {
     png_set_scale_16(png_ptr);
-    need_scaling = true;
   }
 
-  if (read_mode != ImageReadMode::UNCHANGED || need_scaling ||
-      expanded_palette) {
-    png_read_update_info(png_ptr, info_ptr);
+  png_read_update_info(png_ptr, info_ptr);
+
+  // png_read_row() writes as many bytes as libpng's own post-transformation
+  // layout dictates, but we size the output tensor from num_output_channels,
+  // which we track by hand above. We make sure they agree.
+  size_t expected_row_bytes = static_cast<size_t>(width) *
+      static_cast<size_t>(num_output_channels) * (output_16 ? 2 : 1);
+  size_t actual_row_bytes = png_get_rowbytes(png_ptr, info_ptr);
+  if (actual_row_bytes != expected_row_bytes) {
+    png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
+    STD_TORCH_CHECK(
+        false,
+        "decode_png: libpng rows are ",
+        actual_row_bytes,
+        " bytes instead of the expected ",
+        expected_row_bytes,
+        ". This should never happen, please report a bug to the TorchCodec repo.");
   }
 
   return {

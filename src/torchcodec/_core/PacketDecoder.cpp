@@ -6,10 +6,12 @@
 
 #include "PacketDecoder.h"
 
-namespace facebook::torchcodec {
+#include "AudioCommon.h"
 
-// TODO_API_BREAKDOWN P1: we should make sure the block APIs can dispatch to
-// third-party extensions - all of them.
+#include <algorithm>
+#include <cstring>
+
+namespace facebook::torchcodec {
 
 SharedAVCodecContext create_and_open_codec_context(
     AVStream* stream,
@@ -57,19 +59,51 @@ const AVCodec* find_decoder(
 
 PacketDecoder::PacketDecoder(
     const Demuxer& demuxer,
+    std::optional<int> stream_index,
     const StableDevice& device,
     std::optional<int> ffmpeg_thread_count) {
+  AVStream* stream = demuxer.format_context()
+                         ->streams[demuxer.resolve_stream_index(stream_index)];
+  media_type_ = stream->codecpar->codec_type;
+
+  bool is_audio = media_type_ == AVMEDIA_TYPE_AUDIO;
+  STD_TORCH_CHECK(
+      !is_audio || device.type() == kStableCPU,
+      "Audio can only be decoded on the CPU.");
+
   device_interface_ = create_device_interface(device);
   STD_TORCH_CHECK(
       device_interface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");
 
-  AVStream* stream = demuxer.active_stream();
   time_base_ = stream->time_base;
+
+  is_mpeg_ps_ =
+      std::string_view(demuxer.format_context()->iformat->name) == "mpeg";
+
+  if (is_audio) {
+    // Audio codecs are hardcoded to a single FFmpeg thread, see
+    // https://github.com/pytorch/torchcodec/issues/1253.
+    ffmpeg_thread_count = 1;
+  } else if (const int32_t* matrix = get_display_matrix_from_stream(stream)) {
+    display_matrix_.emplace();
+    std::copy(
+        matrix, matrix + display_matrix_->size(), display_matrix_->begin());
+  }
+
   const AVCodec* av_codec = find_decoder(stream, device_interface_.get());
   codec_context_ = create_and_open_codec_context(
       stream, av_codec, device_interface_.get(), ffmpeg_thread_count);
   device_interface_->initialize(codec_context_);
+
+  if (is_audio) {
+    // Nothing else to set up: unlike video, we hand out the samples in the
+    // codec's own format, so no conversion state is needed here. Note we
+    // deliberately do NOT set request_sample_fmt: what SingleStreamDecoder
+    // asks for (FLTP) is an optimization for its own conversion, and here it
+    // would hide what the codec natively produces.
+    return;
+  }
 
   const AVPixFmtDescriptor* stream_desc =
       av_pix_fmt_desc_get(codec_context_->pix_fmt);
@@ -79,7 +113,7 @@ PacketDecoder::PacketDecoder(
   options.device = device;
   // This is ugly: what we actually mean is "let the device interface decode
   // into the native surface", which matters for NVDEC.
-  // TODO_API_BREAKDOWN P2: Find a cleaner way to express this?
+  // TODO_API_BREAKDOWN CC P1: Find a cleaner way to express this?
   options.output_dtype =
       stream_bit_depth > 8 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
 
@@ -87,39 +121,93 @@ PacketDecoder::PacketDecoder(
       stream, demuxer.format_context(), options);
 }
 
-int PacketDecoder::send_packet(AVPacket* packet) {
-  // The decode seam expects a ReferenceAVPacket. Copy a reference of the
-  // caller- owned packet into a temporary one (cheap, refcount bump); the
-  // temporary is unref'd on scope exit while the caller retains ownership of
-  // `packet`.
-  AutoAVPacket auto_packet;
-  ReferenceAVPacket ref(auto_packet);
-  int status = av_packet_ref(ref.get(), packet);
-  STD_TORCH_CHECK(status >= AVSUCCESS, "av_packet_ref failed");
-  return device_interface_->send_packet(ref);
+int PacketDecoder::send_packet(const AVPacket& packet) {
+  int status = device_interface_->send_packet(packet);
+
+  if (status == AVERROR_INVALIDDATA && packet_data_may_be_misaligned_) {
+    // Seeking in an MPEG program stream lands on a container-level byte offset,
+    // so the parser resumes mid-frame and the packets it rebuilds are garbage
+    // until it resyncs. Report those as consumed rather than as a corrupt file:
+    // dropping them is exactly what resyncing means.
+    return AVSUCCESS;
+  }
+  if (status >= AVSUCCESS) {
+    // The decoder accepted a packet, so we're aligned again: from now on
+    // invalid data means the file is corrupt, and we want to report it.
+    packet_data_may_be_misaligned_ = false;
+  }
+  return status;
 }
 
 int PacketDecoder::send_eof() {
   return device_interface_->send_eof_packet();
 }
 
+void PacketDecoder::reset() {
+  device_interface_->flush();
+  packet_data_may_be_misaligned_ = is_mpeg_ps_;
+}
+
 int PacketDecoder::receive_frame(UniqueAVFrame& av_frame) {
   int status = device_interface_->receive_frame(av_frame);
   if (status == AVSUCCESS) {
     device_interface_->make_frame_standalone(av_frame);
+    if (media_type_ == AVMEDIA_TYPE_VIDEO) {
+      // Attach a copy of the display matrix to the frame, so the ColorConverter
+      // can use it.
+      set_display_matrix_on_frame(
+          *av_frame, display_matrix_ ? display_matrix_->data() : nullptr);
+    }
   }
   return status;
 }
 
-FramePlanes frame_to_planes(
+namespace {
+const AVPixFmtDescriptor* get_pix_fmt_desc(const AVFrame& av_frame) {
+  const AVPixFmtDescriptor* desc =
+      av_pix_fmt_desc_get(static_cast<AVPixelFormat>(av_frame.format));
+  STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
+  return desc;
+}
+
+std::string get_pix_fmt_name(const AVFrame& av_frame) {
+  const char* name =
+      av_get_pix_fmt_name(static_cast<AVPixelFormat>(av_frame.format));
+  return name ? name : "unknown";
+}
+} // namespace
+
+FrameMetadata get_frame_metadata(const AVFrame& av_frame) {
+  const AVPixFmtDescriptor* desc = get_pix_fmt_desc(av_frame);
+
+  // These all return a static string, or nullptr for a value outside the enum.
+  const char* color_space_name = av_color_space_name(av_frame.colorspace);
+  const char* color_range_name = av_color_range_name(av_frame.color_range);
+  const char* color_primaries_name =
+      av_color_primaries_name(av_frame.color_primaries);
+  const char* color_trc_name = av_color_transfer_name(av_frame.color_trc);
+
+  FrameMetadata result;
+  result.pixel_format = get_pix_fmt_name(av_frame);
+  result.color_space = color_space_name ? color_space_name : "unknown";
+  result.color_range = color_range_name ? color_range_name : "unknown";
+  result.color_primaries =
+      color_primaries_name ? color_primaries_name : "unknown";
+  result.color_transfer_characteristic =
+      color_trc_name ? color_trc_name : "unknown";
+  result.bit_depth = desc->comp[0].depth;
+  result.width = av_frame.width;
+  result.height = av_frame.height;
+  result.rotation = get_rotation_from_frame(av_frame).value_or(0);
+  return result;
+}
+
+std::vector<torch::stable::Tensor> get_frame_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
     const torch::stable::Tensor& tensor_handle) {
-  auto pix_fmt = static_cast<AVPixelFormat>(av_frame.format);
-  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(pix_fmt);
-  STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
-  const char* pix_fmt_name = av_get_pix_fmt_name(pix_fmt);
-  std::string fmt_name = pix_fmt_name ? pix_fmt_name : "unknown";
+  const AVPixFmtDescriptor* desc = get_pix_fmt_desc(av_frame);
+  std::string fmt_name = get_pix_fmt_name(av_frame);
 
   STD_TORCH_CHECK(
       !(desc->flags &
@@ -133,16 +221,7 @@ FramePlanes frame_to_planes(
       fmt_name,
       " has an unsupported number of components.");
 
-  const char* colorspace_name = av_color_space_name(av_frame.colorspace);
-  const char* color_range_name = av_color_range_name(av_frame.color_range);
-
-  FramePlanes result;
-  result.pix_fmt = fmt_name;
-  result.colorspace = colorspace_name ? colorspace_name : "unknown";
-  result.color_range = color_range_name ? color_range_name : "unknown";
-
-  result.bit_depth = desc->comp[0].depth;
-
+  std::vector<torch::stable::Tensor> planes;
   for (int c = 0; c < desc->nb_components; ++c) {
     const AVComponentDescriptor& comp = desc->comp[c];
     int64_t bytes_per_sample = (comp.depth > 8) ? 2 : 1;
@@ -174,12 +253,12 @@ FramePlanes frame_to_planes(
 
     // The planes are views on the AVFrame's data. The AVFrame and its data are
     // owned by the tensor_handle. We want the planes to outlive the Python
-    // tensor handle (see test_materialize_planes_outlive_frame). So for each
-    // plane, we create a (shallow) copy of the tensor handle, and capture it in
-    // the plane's deleter. As long as a handle [copy] lives, the AVFrame and
-    // its data are alive.
+    // tensor handle (see test_planes_outlive_frame). So for each plane, we
+    // create a (shallow) copy of the tensor handle, and capture it in the
+    // plane's deleter. As long as a handle [copy] lives, the AVFrame and its
+    // data are alive.
     torch::stable::Tensor handle_copy = tensor_handle;
-    result.planes.push_back(torch::stable::from_blob(
+    planes.push_back(torch::stable::from_blob(
         av_frame.data[comp.plane] + comp.offset,
         {sizes, 2},
         {strides, 2},
@@ -188,7 +267,76 @@ FramePlanes frame_to_planes(
         [handle_copy](void*) {}));
   }
 
-  return result;
+  return planes;
+}
+
+namespace {
+// Scatters `num_channels`-interleaved samples into one contiguous row per
+// channel. Templated on an integer of the right width rather than the actual
+// sample type: we're only moving bytes around, so all that matters is size.
+template <typename T>
+void deinterleave(
+    const uint8_t* src,
+    uint8_t* dst,
+    int num_channels,
+    int num_samples) {
+  const T* in = reinterpret_cast<const T*>(src);
+  T* out = reinterpret_cast<T*>(dst);
+  for (int channel = 0; channel < num_channels; ++channel) {
+    T* row = out + static_cast<int64_t>(channel) * num_samples;
+    for (int sample = 0; sample < num_samples; ++sample) {
+      row[sample] = in[static_cast<int64_t>(sample) * num_channels + channel];
+    }
+  }
+}
+} // namespace
+
+torch::stable::Tensor get_audio_samples(const AVFrame& av_frame) {
+  auto sample_format = static_cast<AVSampleFormat>(av_frame.format);
+  int num_channels = get_num_channels(av_frame);
+  int64_t num_samples = av_frame.nb_samples;
+
+  torch::stable::Tensor samples = torch::stable::empty(
+      {num_channels, num_samples}, sample_format_dtype(sample_format));
+  if (num_samples == 0) {
+    return samples;
+  }
+
+  int bytes_per_sample = av_get_bytes_per_sample(sample_format);
+  auto* dst = static_cast<uint8_t*>(samples.mutable_data_ptr());
+  int64_t bytes_per_channel = num_samples * bytes_per_sample;
+
+  if (av_sample_fmt_is_planar(sample_format)) {
+    for (int channel = 0; channel < num_channels; ++channel) {
+      // extended_data rather than data: the latter only holds
+      // AV_NUM_DATA_POINTERS (8) pointers, and we support more channels.
+      std::memcpy(
+          dst + channel * bytes_per_channel,
+          av_frame.extended_data[channel],
+          bytes_per_channel);
+    }
+  } else {
+    const uint8_t* src = av_frame.extended_data[0];
+    int num_samples_int = static_cast<int>(num_samples);
+    switch (bytes_per_sample) {
+      case 1:
+        deinterleave<uint8_t>(src, dst, num_channels, num_samples_int);
+        break;
+      case 2:
+        deinterleave<uint16_t>(src, dst, num_channels, num_samples_int);
+        break;
+      case 4:
+        deinterleave<uint32_t>(src, dst, num_channels, num_samples_int);
+        break;
+      case 8:
+        deinterleave<uint64_t>(src, dst, num_channels, num_samples_int);
+        break;
+      default:
+        STD_TORCH_CHECK(
+            false, "Unexpected sample width: ", bytes_per_sample, " bytes.");
+    }
+  }
+  return samples;
 }
 
 } // namespace facebook::torchcodec

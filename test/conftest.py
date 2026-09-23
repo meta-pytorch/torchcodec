@@ -104,6 +104,14 @@ def pytest_collection_modifyitems(items):
         # This keeps our skip logic centralized
 
         if in_fbcode():
+            if needs_cuda:
+                # TODO Unskip? This is not great. Internal runners changed at
+                # some point and all CUDA tests started to fail, because they
+                # stopped having an NVDEC engine. See D121014449 for a failed
+                # alternative attempt at addressing this. Skipping all CUDA
+                # tests for now: CUDA covereage is still provided by the GitHub
+                # CI.
+                continue
             # fbcode doesn't like skipping tests, so instead we just don't collect the test
             # so that they don't even "exist", hence the continue statements.
             if needs_ffmpeg_cli or has_skip_marker or skipif_condition_is_true:
