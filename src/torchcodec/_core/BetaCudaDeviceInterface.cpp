@@ -199,10 +199,7 @@ bool vp9_frame_is_displayed(const uint8_t* data, int size) {
 
 // How many frames a VP9 packet will display: 0 (a lone hidden alt-ref), 1
 // (the common case), or more. Returns -1 if the packet looks malformed.
-//
-// A VP9 "superframe" packet concatenates several coded frames - typically one
-// or more hidden alt-refs plus the visible frame referencing them - and ends
-// with an index giving their sizes, bracketed by a marker byte.
+// Fully claude-generated.
 int count_vp9_displayed_frames(const uint8_t* data, int size) {
   if (data == nullptr || size <= 0) {
     return -1;
@@ -537,42 +534,16 @@ void BetaCudaDeviceInterface::initialize_video_decoding(
 
   initialize_bsf(codec_par, av_format_ctx);
 
-  // clang-format off
-  // Note: [Frame timestamps come from us, not from the parser]
-  //
-  // We do not trust the timestamp the parser reports on a displayed frame
-  // (CUVIDPARSERDISPINFO::timestamp). On VP9 it is wrong.
-  //
-  // VP9 packs a hidden "alt-ref" frame - a synthesized reference frame that is
-  // decoded but never displayed - together with the visible frame that
-  // references it into a single "superframe" packet, carrying a single pts. So
-  // the parser decodes two pictures but displays one, and the timestamp it
-  // attaches to the displayed frame slips. Measured on real-world VP9: per
-  // superframe, exactly one timestamp is reported twice and one is never
-  // reported at all, leaving the reported timestamp a constant 2-3 frames
-  // behind the pixels it is attached to.
-  //
-  // That is invisible when decoding sequentially, because frames are consumed
-  // in display order and the timestamps are never used to pick one. But a seek
-  // decodes and discards frames until pts >= target, so it stops a couple of
-  // frames late and silently returns the wrong frame - with the right pts, so
-  // nothing downstream can notice.
-  //
-  // We don't need the parser's timestamps: it emits displayed frames in
-  // display order, and we know the pts of every packet we send it. So we keep
-  // our own FIFO and pair the nth displayed frame with the nth pts we sent.
-  //
-  // This relies on each packet we send yielding exactly one displayed frame.
-  // That holds for VP9: the hidden frame lives *inside* the superframe packet,
-  // and VP9 has no B-frames, so visible frames are already in display order.
-  // Codecs that reorder (H.264/HEVC) would break it, hence the VP9 gate - an
-  // earlier ungated version of this silently shifted H.264 and HEVC output.
-  //
-  // FFmpeg avoids all of this by not using the nvcuvid parser in its nvdec
-  // hwaccel path: its own VP9 decoder splits superframes into one packet per
-  // frame first (libavcodec/vp9.c: .bsfs = "vp9_superframe_split"). Splitting
-  // does *not* fix the parser though - we tried, it makes no difference.
-  // clang-format on
+  // On VP9 when there are alt-ref frames, the NVCUVID parser reports incorrect
+  // timestamps. We don't know why. It's just incorrect. And because our decode
+  // loops heavily rely on pts info, this leads to incorrect behavior:
+  // requesting for frame i may return frame i + ~2.
+  // So for VP9, we keep track of the pts ourselves. We can do that because VP9
+  // doesn't have B-frames: the packets and their corresponding pts values
+  // arrive in the same order that the frames will be displayed. So we can just
+  // queue the pts valueof the packets that we receive, and pop() those to
+  // assign them to the frames that are displayed.
+  // test_nvdec_vp9_superframe_seek() is a non-regression test for all this.
   track_pts_ourselves_ = (codec_par->codec_id == AV_CODEC_ID_VP9);
 
   // Create parser. Default values that aren't obvious are taken from DALI.
@@ -822,15 +793,10 @@ int BetaCudaDeviceInterface::send_packet(const AVPacket& packet) {
     discarded_timestamps_.insert(cuvid_packet.timestamp);
   }
 
-  // See [Frame timestamps come from us, not from the parser].
   if (track_pts_ourselves_) {
-    // Push one entry per frame this packet will display, so the FIFO stays
-    // aligned even for packets that display none (a lone hidden frame) or more
-    // than one. Each displayed frame inherits the packet's pts, which is what
-    // FFmpeg does: vp9_superframe_split av_packet_ref()s the whole packet onto
-    // every sub-frame and only overrides the invisible ones to AV_NOPTS_VALUE.
-    // So a CPU decode of such a packet yields the same (possibly duplicated)
-    // timestamps we produce here.
+    // Push one entry per displayable frame contained within this packet.
+    // Each displayed frame inherits the packet's pts, which is what
+    // FFmpeg does too.
     int num_displayed =
         count_vp9_displayed_frames(packet_to_send.data, packet_to_send.size);
     if (num_displayed < 0) {
@@ -927,7 +893,6 @@ int BetaCudaDeviceInterface::frame_ready_for_decoding(
 
 int BetaCudaDeviceInterface::frame_ready_in_display_order(
     CUVIDPARSERDISPINFO* disp_info) {
-  // See [Frame timestamps come from us, not from the parser].
   if (track_pts_ourselves_ && !pending_pts_.empty()) {
     disp_info->timestamp = pending_pts_.front();
     pending_pts_.pop();

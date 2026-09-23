@@ -2472,19 +2472,10 @@ class TestVideoDecoder:
     @needs_cuda
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_nvdec_vp9_superframe_seek(self, seek_mode):
+        # Non-regression test for https://fburl.com/workplace/s406jd8a
+        # (internal, sorry).
         # Seeking on VP9 with hidden alt-ref frames must return the frame that
-        # was asked for, not a neighbouring one.
-        #
-        # Such a stream packs a hidden alt-ref frame and the visible frame
-        # referencing it into a single "superframe" packet carrying a single
-        # pts. The NVCUVID parser mis-attributes timestamps across those two
-        # coded pictures, so the timestamp it reports on a displayed frame lags
-        # the pixels attached to it. Decoding sequentially is unaffected, since
-        # frames come out in order and the timestamps are never used to pick
-        # one. But a seek discards frames until pts >= target, so it stops late
-        # and silently returns the wrong frame - with the right pts, so nothing
-        # downstream can notice. See
-        # [Frame timestamps come from us, not from the parser].
+        # was asked for, not a neighbouring one. See note about track_pts_ourselves_
         asset = TEST_SRC_2_720P_VP9_ALTREF
         cpu_decoder = VideoDecoder(asset.path, device="cpu", seek_mode=seek_mode)
 

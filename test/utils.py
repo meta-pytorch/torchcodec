@@ -1192,10 +1192,7 @@ TEST_SRC_2_720P_VP9 = TestVideo(
 )
 
 # VP9 with hidden alt-ref frames, i.e. with "superframe" packets that hold both
-# a hidden alt-ref frame and the visible frame referencing it. Needs 2-pass:
-# libvpx only enables auto-alt-ref in 2-pass mode, so the single-pass
-# TEST_SRC_2_720P_VP9 above contains no superframes at all.
-#
+# a hidden alt-ref frame and the visible frame referencing it.
 # ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=2 -c:v libvpx-vp9 \
 #     -b:v 300k -pass 1 -passlogfile pl -auto-alt-ref 1 -lag-in-frames 25 -f null /dev/null
 # ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=2 -c:v libvpx-vp9 \
