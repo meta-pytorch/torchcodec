@@ -20,15 +20,22 @@ Examples using `VideoStream`:
 
 Blocks: build your own decoding pipeline
 
-make_decoder(*device: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [VideoPacketDecoder](torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#VideoStream.make_decoder)
+make_decoder(*device: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, ***, *num_ffmpeg_threads: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*) → [VideoPacketDecoder](torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#VideoStream.make_decoder)
 
 Build the [`VideoPacketDecoder`](torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder) for this stream.
 
 Parameters:
 
-**device** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*torch.device*](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device)*,**optional*) - The device to decode on (cpu or CUDA).
+- **device** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*torch.device*](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device)*,**optional*) - The device to decode on (cpu or CUDA).
 If `None` (default), the current default device is used (see
 `torch.set_default_device`).
+- **num_ffmpeg_threads** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of threads to use for
+CPU decoding. This has no effect when decoding on GPU. Use 1 for
+single-threaded decoding, which may be best if you are decoding
+multiple streams in parallel. Use a higher number for
+multi-threaded decoding, which is best for a single stream.
+Passing 0 lets FFmpeg decide on the number of threads.
+Default: 1.
 
 Returns:
 

@@ -6,7 +6,7 @@
 
 Computation times
 =================
-**00:09.974** total execution time for 3 files **from generated_examples/blocks**:
+**00:10.083** total execution time for 3 files **from generated_examples/blocks**:
 
 .. container::
 
@@ -33,11 +33,11 @@ Computation times
      - Time
      - Mem (MB)
    * - :ref:`sphx_glr_generated_examples_blocks_pipelines.py` (``pipelines.py``)
-     - 00:07.205
+     - 00:07.308
      - 0.0
    * - :ref:`sphx_glr_generated_examples_blocks_basics.py` (``basics.py``)
-     - 00:01.545
+     - 00:01.550
      - 0.0
    * - :ref:`sphx_glr_generated_examples_blocks_raw_data.py` (``raw_data.py``)
-     - 00:01.223
+     - 00:01.225
      - 0.0

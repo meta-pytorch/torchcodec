@@ -60,7 +60,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpg216ywrt/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmph1iu9wqh/video.mp4'], returncode=0)
 ```
 
 ## The three blocks
@@ -189,7 +189,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpg216ywrt/video.mp4', '-i', '/tmp/tmpg216ywrt/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpg216ywrt/av.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmph1iu9wqh/video.mp4', '-i', '/tmp/tmph1iu9wqh/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmph1iu9wqh/av.mp4'], returncode=0)
 ```
 
 Which streams to follow is specified at construction time of the
@@ -559,7 +559,7 @@ and on CUDA.
 and reads the decoder's own YUV planes and audio samples, at the source's
 own precision.
 
-**Total running time of the script:** (0 minutes 1.545 seconds)
+**Total running time of the script:** (0 minutes 1.550 seconds)
 
 [`Download Jupyter notebook: basics.ipynb`](../../_downloads/cdae7c17b717a2c62f0675ad148787ce/basics.ipynb)
 

@@ -1,6 +1,6 @@
 # ImageReadMode
 
-*class*torchcodec.decoders.ImageReadMode(*value*)[[source]](../_modules/torchcodec/decoders/_image_decoders.html#ImageReadMode)
+*class*torchcodec.decoders.ImageReadMode(*value*, *names=None*, ***, *module=None*, *qualname=None*, *type=None*, *start=1*, *boundary=None*)[[source]](../_modules/torchcodec/decoders/_image_decoders.html#ImageReadMode)
 
 Color mode for image decoding.
 
