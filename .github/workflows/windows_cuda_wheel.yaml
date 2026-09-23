@@ -37,7 +37,7 @@ jobs:
       with-rocm: disable
       with-cuda: enable
       build-python-only: "disable"
-      python-versions: '["3.10", "3.11", "3.12", "3.13", "3.14"]'
+      python-versions: '["3.11", "3.12", "3.13", "3.14"]'
 
   build:
     needs: generate-matrix
@@ -69,12 +69,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-          # 3.10 corresponds to the minimum python version for which we build
+          # 3.11 corresponds to the minimum python version for which we build
           # the wheel unless the label cliflow/binaries/all is present in the
           # PR.
           # For the actual release we should add that label and change this to
           # include more python versions.
-        python-version: ['3.10']
+        python-version: ['3.11']
         cuda-version: ['13.0', '13.2']
         # TODO: FFmpeg 5 on Windows segfaults in avcodec_open2() when passing
         # bad parameters.
@@ -163,7 +163,7 @@ jobs:
     runs-on: windows-latest
     needs: build
     env:
-      PYTHON_VERSION: '3.10'
+      PYTHON_VERSION: '3.11'
       CUDA_VERSION: '13.0'
       FFMPEG_VERSION: '7'
     steps:

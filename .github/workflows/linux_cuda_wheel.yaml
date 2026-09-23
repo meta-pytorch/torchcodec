@@ -62,12 +62,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-          # 3.10 corresponds to the minimum python version for which we build
+          # 3.11 corresponds to the minimum python version for which we build
           # the wheel unless the label cliflow/binaries/all is present in the
           # PR.
           # For the actual release we should add that label and change this to
           # include more python versions.
-        python-version: ['3.10']
+        python-version: ['3.11']
         # We only test against a subset of the CUDA versions we build for, to
         # avoid having too big of a CI matrix. For releases we should add the
         # remaining ones.
@@ -149,7 +149,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     env:
-      PYTHON_VERSION: '3.10'
+      PYTHON_VERSION: '3.11'
       CUDA_VERSION: '13.0'
       FFMPEG_VERSION: '7'
     steps:
@@ -211,7 +211,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     env:
-      PYTHON_VERSION: '3.10'
+      PYTHON_VERSION: '3.11'
       CUDA_VERSION: '13.0'
     steps:
       - name: Setup env vars
@@ -266,7 +266,7 @@ jobs:
   build-docs:
     runs-on: linux.g5.4xlarge.nvidia.gpu
     env:
-      PYTHON_VERSION: '3.10'
+      PYTHON_VERSION: '3.11'
       CUDA_VERSION: '13.0'
       FFMPEG_VERSION: '7'
     container:
