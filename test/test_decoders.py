@@ -148,6 +148,7 @@ from .utils import (
     TEST_SRC_2_720P_MPEG4,
     TEST_SRC_2_720P_VP8,
     TEST_SRC_2_720P_VP9,
+    TEST_SRC_2_720P_VP9_ALTREF,
     TEST_SRC_2_MPEG4_MP4,
     TESTSRC2_444_10BIT_HEVC,
     TESTSRC2_444_12BIT_HEVC,
@@ -2467,6 +2468,21 @@ class TestVideoDecoder:
     def test_nvdec_cuda_interface_error(self):
         with pytest.raises(RuntimeError, match="torch_parse_device_string"):
             VideoDecoder(NASA_VIDEO.path, device="cuda:0:bad_variant")
+
+    @needs_cuda
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_nvdec_vp9_superframe_seek(self, seek_mode):
+        # Non-regression test for https://fburl.com/workplace/s406jd8a
+        # (internal, sorry).
+        # Seeking on VP9 with hidden alt-ref frames must return the frame that
+        # was asked for, not a neighbouring one. See note about track_pts_ourselves_
+        asset = TEST_SRC_2_720P_VP9_ALTREF
+        cpu_decoder = VideoDecoder(asset.path, device="cpu", seek_mode=seek_mode)
+
+        for index in (10, 24, 38, 52):
+            # A fresh decoder each time, so that the very first read is a seek.
+            gpu_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+            assert_frames_equal(gpu_decoder[index], cpu_decoder[index].to("cuda"))
 
     @needs_cuda
     def test_set_cuda_backend(self):

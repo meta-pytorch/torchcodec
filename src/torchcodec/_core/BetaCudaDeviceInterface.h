@@ -162,6 +162,12 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   std::queue<CUVIDPARSERDISPINFO> ready_frames_;
 
+  // Whether we track the pts ourselves, instead of relying on the NVCUVID
+  // parser.
+  bool track_pts_ourselves_ = false;
+  std::queue<int64_t>
+      pending_pts_; // only used when track_pts_ourselves_ is true
+
   // The packets flagged AV_PKT_FLAG_DISCARD must be decoded, but their frames
   // must not be returned (that's how libavcodec does it). We track the
   // timestamps of those packets and drop the corresponding frames in

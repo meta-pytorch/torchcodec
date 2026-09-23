@@ -1191,6 +1191,21 @@ TEST_SRC_2_720P_VP9 = TestVideo(
     frames={0: {}},  # Not needed for now
 )
 
+# VP9 with hidden alt-ref frames, i.e. with "superframe" packets that hold both
+# a hidden alt-ref frame and the visible frame referencing it.
+# ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=2 -c:v libvpx-vp9 \
+#     -b:v 300k -pass 1 -passlogfile pl -auto-alt-ref 1 -lag-in-frames 25 -f null /dev/null
+# ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=2 -c:v libvpx-vp9 \
+#     -b:v 300k -pass 2 -passlogfile pl -auto-alt-ref 1 -lag-in-frames 25 testsrc2_vp9_altref.webm
+TEST_SRC_2_720P_VP9_ALTREF = TestVideo(
+    filename="testsrc2_vp9_altref.webm",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
 # ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=1 -c:v libvpx -b:v 1M output_vp8.webm
 TEST_SRC_2_720P_VP8 = TestVideo(
     filename="testsrc2_vp8.webm",
