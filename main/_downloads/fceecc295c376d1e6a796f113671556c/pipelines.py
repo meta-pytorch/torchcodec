@@ -45,7 +45,7 @@ video_path = temp_dir / "video.mp4"
 subprocess.run(
     [
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-        "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30:duration=5",
+        "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30:duration=10",
         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30",
         "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
         str(video_path),
@@ -149,22 +149,29 @@ def one_thread_each(device):
 
 PIPELINES = (sequential, convert_on_own_thread, demux_on_own_thread, one_thread_each)
 for pipeline in PIPELINES:
-    frames = list(pipeline(device))
-    print(f"{pipeline.__name__}: {len(frames)} frames on {frames[0].data.device}")
+    num_frames = 0
+    for frame in pipeline(device):
+        num_frames += 1
+    print(f"{pipeline.__name__}: {num_frames} frames on {frame.data.device}")
 
 # %%
 # Which split is best depends on where the work is:
 #
-# * On the **CPU**, color conversion typically costs about as much as decoding,
-#   so ``convert_on_own_thread`` is usually the best one (see benchmarks below)
+# * On the **CPU**, color conversion costs a sizeable fraction of what decoding
+#   costs, so ``convert_on_own_thread`` is usually the best one (see benchmarks
+#   below)
 # * On **CUDA**, color conversion is comparatively much cheaper and is dwarfed
 #   by the decoding time, so demuxing in parallel with ``demux_on_own_thread``
 #   may be the better split.
 #
 #
-# Let's compare the speedup that ``convert_on_own_thread`` on the CPU, vs the
-# sequential pipeline and the :meth:`VideoDecoder.get_all_frames() #
-# <torchcodec.decoders.VideoDecoder.get_all_frames>` method as baselines.
+# Let's compare the speedup that ``convert_on_own_thread`` gives on the CPU, vs
+# the sequential pipeline and a :class:`~torchcodec.decoders.VideoDecoder` as
+# baselines. We iterate over the ``VideoDecoder`` frame by frame instead of
+# calling :meth:`~torchcodec.decoders.VideoDecoder.get_all_frames`, so that all
+# three have the same memory profile: one frame at a time, rather than the
+# entire video. ``get_all_frames()`` can be faster than iterating, but it has to
+# hold all the frames at once.
 from time import perf_counter_ns
 
 from torchcodec.decoders import VideoDecoder
@@ -181,21 +188,27 @@ def bench(f, num_exp=3, warmup=1):
     return torch.tensor(times).float().median().item() / 1e9
 
 
+def consume(frames):
+    for _ in frames:
+        pass
+
+
 def decode_all_with_videodecoder():
     decoder = VideoDecoder(video_path, device="cpu", seek_mode="approximate")
-    return decoder.get_all_frames()
+    consume(decoder)
 
 
 baseline = bench(decode_all_with_videodecoder)
-print(f"{'VideoDecoder.get_all_frames()':<29}: {baseline:.2f}s")
+print(f"{'VideoDecoder':<29}: {baseline:.2f}s")
 
 for pipeline in (sequential, convert_on_own_thread):
-    seconds = bench(lambda p=pipeline: list(p("cpu")))
+    seconds = bench(lambda p=pipeline: consume(p("cpu")))
     print(f"{pipeline.__name__:<29}: {seconds:.2f}s "
           f"({baseline / seconds:.2f}x vs VideoDecoder)")
 
 # %%
-# ``sequential`` lands on the baseline, as expected: the same work, in the same
-# order, on one thread. ``convert_on_own_thread`` is where the speedup is,
-# because it can overalp the two most expensive steps: decoding and
-# color-conversion.
+# ``sequential`` should land close to the ``VideoDecoder`` baseline, as
+# expected: they do the same work on one thread.
+# ``convert_on_own_thread`` should be faster, because it can overlap the
+# two most expensive steps: decoding and color-conversion. Note: actual speedup
+# will depend on the capabilities of the machine building these docs!

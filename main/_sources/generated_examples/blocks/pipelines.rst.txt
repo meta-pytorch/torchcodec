@@ -55,7 +55,7 @@ Some boilerplate first: a test video, and the device we'll run on.
     subprocess.run(
         [
             "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-            "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30:duration=5",
+            "-f", "lavfi", "-i", "testsrc2=size=1920x1080:rate=30:duration=10",
             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30",
             "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
             str(video_path),
@@ -73,7 +73,7 @@ Some boilerplate first: a test video, and the device we'll run on.
 
     device = 'cuda'
 
-    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpr64yi6mp/video.mp4'], returncode=0)
+    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp9uz1zasb/video.mp4'], returncode=0)
 
 
 
@@ -150,7 +150,7 @@ Which stage to parallelize
 With those in hand, a pipeline is one expression, and moving the thread
 boundary is moving one ``prefetch()`` call.
 
-.. GENERATED FROM PYTHON SOURCE LINES 114-155
+.. GENERATED FROM PYTHON SOURCE LINES 114-157
 
 .. code-block:: Python
 
@@ -192,8 +192,10 @@ boundary is moving one ``prefetch()`` call.
 
     PIPELINES = (sequential, convert_on_own_thread, demux_on_own_thread, one_thread_each)
     for pipeline in PIPELINES:
-        frames = list(pipeline(device))
-        print(f"{pipeline.__name__}: {len(frames)} frames on {frames[0].data.device}")
+        num_frames = 0
+        for frame in pipeline(device):
+            num_frames += 1
+        print(f"{pipeline.__name__}: {num_frames} frames on {frame.data.device}")
 
 
 
@@ -203,30 +205,35 @@ boundary is moving one ``prefetch()`` call.
 
  .. code-block:: none
 
-    sequential: 150 frames on cuda:0
-    convert_on_own_thread: 150 frames on cuda:0
-    demux_on_own_thread: 150 frames on cuda:0
-    one_thread_each: 150 frames on cuda:0
+    sequential: 300 frames on cuda:0
+    convert_on_own_thread: 300 frames on cuda:0
+    demux_on_own_thread: 300 frames on cuda:0
+    one_thread_each: 300 frames on cuda:0
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 156-168
+.. GENERATED FROM PYTHON SOURCE LINES 158-175
 
 Which split is best depends on where the work is:
 
-* On the **CPU**, color conversion typically costs about as much as decoding,
-  so ``convert_on_own_thread`` is usually the best one (see benchmarks below)
+* On the **CPU**, color conversion costs a sizeable fraction of what decoding
+  costs, so ``convert_on_own_thread`` is usually the best one (see benchmarks
+  below)
 * On **CUDA**, color conversion is comparatively much cheaper and is dwarfed
   by the decoding time, so demuxing in parallel with ``demux_on_own_thread``
   may be the better split.
 
 
-Let's compare the speedup that ``convert_on_own_thread`` on the CPU, vs the
-sequential pipeline and the :meth:`VideoDecoder.get_all_frames() #
-<torchcodec.decoders.VideoDecoder.get_all_frames>` method as baselines.
+Let's compare the speedup that ``convert_on_own_thread`` gives on the CPU, vs
+the sequential pipeline and a :class:`~torchcodec.decoders.VideoDecoder` as
+baselines. We iterate over the ``VideoDecoder`` frame by frame instead of
+calling :meth:`~torchcodec.decoders.VideoDecoder.get_all_frames`, so that all
+three have the same memory profile: one frame at a time, rather than the
+entire video. ``get_all_frames()`` can be faster than iterating, but it has to
+hold all the frames at once.
 
-.. GENERATED FROM PYTHON SOURCE LINES 168-197
+.. GENERATED FROM PYTHON SOURCE LINES 175-209
 
 .. code-block:: Python
 
@@ -246,16 +253,21 @@ sequential pipeline and the :meth:`VideoDecoder.get_all_frames() #
         return torch.tensor(times).float().median().item() / 1e9
 
 
+    def consume(frames):
+        for _ in frames:
+            pass
+
+
     def decode_all_with_videodecoder():
         decoder = VideoDecoder(video_path, device="cpu", seek_mode="approximate")
-        return decoder.get_all_frames()
+        consume(decoder)
 
 
     baseline = bench(decode_all_with_videodecoder)
-    print(f"{'VideoDecoder.get_all_frames()':<29}: {baseline:.2f}s")
+    print(f"{'VideoDecoder':<29}: {baseline:.2f}s")
 
     for pipeline in (sequential, convert_on_own_thread):
-        seconds = bench(lambda p=pipeline: list(p("cpu")))
+        seconds = bench(lambda p=pipeline: consume(p("cpu")))
         print(f"{pipeline.__name__:<29}: {seconds:.2f}s "
               f"({baseline / seconds:.2f}x vs VideoDecoder)")
 
@@ -267,24 +279,25 @@ sequential pipeline and the :meth:`VideoDecoder.get_all_frames() #
 
  .. code-block:: none
 
-    VideoDecoder.get_all_frames(): 0.63s
-    sequential                   : 0.43s (1.46x vs VideoDecoder)
-    convert_on_own_thread        : 0.39s (1.61x vs VideoDecoder)
+    VideoDecoder                 : 1.86s
+    sequential                   : 1.87s (0.99x vs VideoDecoder)
+    convert_on_own_thread        : 1.61s (1.15x vs VideoDecoder)
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 198-202
+.. GENERATED FROM PYTHON SOURCE LINES 210-215
 
-``sequential`` lands on the baseline, as expected: the same work, in the same
-order, on one thread. ``convert_on_own_thread`` is where the speedup is,
-because it can overalp the two most expensive steps: decoding and
-color-conversion.
+``sequential`` should land close to the ``VideoDecoder`` baseline, as
+expected: they do the same work on one thread.
+``convert_on_own_thread`` should be faster, because it can overlap the
+two most expensive steps: decoding and color-conversion. Note: actual speedup
+will depend on the capabilities of the machine building these docs!
 
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 7.175 seconds)
+   **Total running time of the script:** (0 minutes 26.410 seconds)
 
 
 .. _sphx_glr_download_generated_examples_blocks_pipelines.py:
