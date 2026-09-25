@@ -1,3 +1,8 @@
+.. image:: _static/img/torchcodec_horizontal_logo.jpg
+   :alt: TorchCodec
+   :width: 500px
+   :align: center
+
 Welcome to the TorchCodec documentation!
 ========================================
 
