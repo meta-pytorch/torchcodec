@@ -91,16 +91,29 @@ class RawFrame:
 
     .. important::
 
-        On CUDA, anything that reads the samples on a stream other than the one
-        the decoder ran on must call :meth:`record_stream`, or the decoder may
-        overwrite them while those reads are still pending. A
-        :class:`ColorConverter` does this for you.
+        On CUDA, the samples are produced on the stream that was current when
+        you called :meth:`VideoPacketDecoder.decode`, and all of that work is
+        enqueued by the time the call returns. Consume them on any other stream
+        - including by handing the frame to a :class:`ColorConverter` running
+        there - and the synchronization is yours to do, in both directions. See
+        :ref:`sphx_glr_generated_examples_blocks_raw_data.py` for what that
+        means and what your options are.
     """
 
     pts_seconds: float
     """The :term:`pts` of this frame, in seconds."""
     duration_seconds: float
     """How long this frame is displayed for, in seconds."""
+    storage_cuda: torch.Tensor | None
+    """The CUDA allocation backing :attr:`planes`, or ``None`` on CPU.
+
+    A flat ``uint8`` tensor whose contents are meaningless: read the samples
+    through :attr:`planes` instead. It is exposed for one purpose, which is to
+    let you call :meth:`torch.Tensor.record_stream` on it when you consume the
+    frame on a stream other than the one it was decoded on. Note that
+    ``record_stream`` on a plane does nothing at all - the planes are views the
+    allocator knows nothing about - so this is the only object it works on.
+    """
 
     def __init__(
         self,
@@ -110,7 +123,7 @@ class RawFrame:
         storage: torch.Tensor | None = None,
     ):
         self._handle = handle
-        self._storage = storage
+        self.storage_cuda = storage
         self.pts_seconds = pts_seconds
         self.duration_seconds = duration_seconds
         self._metadata: _Metadata | None = None
@@ -119,30 +132,10 @@ class RawFrame:
     @property
     def _device(self) -> torch.device:
         return (
-            self._storage.device if self._storage is not None else torch.device("cpu")
+            self.storage_cuda.device
+            if self.storage_cuda is not None
+            else torch.device("cpu")
         )
-
-    def record_stream(self, stream: torch.cuda.Stream) -> None:
-        """Tell the CUDA caching allocator that ``stream`` is still reading this
-        frame's samples.
-
-        **A CUDA consumer that reads the frame on a stream other than the one
-        the decoder ran on must call this**, right after queueing its reads.
-        Without it, the decoder's next frame can be handed the same buffer and
-        overwrite these samples while those reads are still pending.
-        :class:`ColorConverter` does it for you, but you will have to call this
-        yourself if you consume :attr:`planes` directly on a different stream.
-
-        See `this post
-        <https://zdevito.github.io/2022/08/04/cuda-caching-allocator.html>`_ for
-        what the allocator is doing and why this is needed.
-
-        Args:
-            stream (torch.cuda.Stream): The stream that is reading the samples.
-        """
-        # See [Standalone Frame Storage and the need for record_stream]
-        if self._storage is not None:
-            self._storage.record_stream(stream)
 
     def _get_metadata(self) -> _Metadata:
         if self._metadata is None:

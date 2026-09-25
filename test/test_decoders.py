@@ -4524,15 +4524,21 @@ class TestBlocks:
         # The stream reports None here, the frame flattens that to 0.
         assert frame.rotation == 0
 
+    # The ways a caller can keep the allocator from recycling a frame's buffer
+    # while their own reads are still queued on another stream, as documented in
+    # examples/blocks/raw_data.py. "none" and "plane_record_stream" are the two
+    # that don't work, and they're here to prove the others are load-bearing:
+    # the second is the plausible-looking mistake of calling record_stream() on
+    # a plane, which the allocator silently ignores.
+    _LIFETIME_STRATEGIES = ("sync_back", "record_stream", "none", "plane_record_stream")
+
     @pytest.mark.needs_cuda
-    @pytest.mark.parametrize("record_stream", (True, False))
-    def test_storage_record_stream(self, record_stream):
-        # Using VideoPacketDecoder on one stream and consuming the frames on a
-        # different stream requires the user to call frame.record_stream().
-        # Without the record_stream() call the decoder's next frame may be
-        # handed the same buffer and overwrites it while the read is still
-        # queued.
-        # See [Standalone Frame Storage and the need for record_stream]
+    @pytest.mark.parametrize("strategy", _LIFETIME_STRATEGIES)
+    def test_cross_stream_frame_lifetime(self, strategy):
+        # Decode on one stream, read the planes on another. See Note [Standalone
+        # Frame Stream Safety]: the buffer belongs to the decoding stream, so
+        # once the frame is dropped a later frame's storage can land on top of
+        # samples that are still being read, unless the caller says otherwise.
         video = NASA_VIDEO.path
         decode_stream = torch.cuda.Stream()
         read_stream = torch.cuda.Stream()
@@ -4545,34 +4551,41 @@ class TestBlocks:
                     decoded = (
                         decoder.drain() if packet is None else decoder.decode(packet)
                     )
-                with torch.cuda.stream(
-                    read_stream if separate_stream else decode_stream
-                ):
+                    decoded_event = torch.cuda.Event()
+                    decoded_event.record()
+
+                consumer = read_stream if separate_stream else decode_stream
+                decoded_event.wait(consumer)
+                with torch.cuda.stream(consumer):
                     while decoded:
                         frame = decoded.pop(0)
                         torch.cuda._sleep(20_000_000)  # ~10ms, fall behind
                         reads.append(frame.planes[0].clone())
-                        if separate_stream and record_stream:
-                            frame.record_stream(read_stream)
+                        if not separate_stream:
+                            continue
+                        if strategy == "record_stream":
+                            frame.storage_cuda.record_stream(read_stream)
+                        elif strategy == "plane_record_stream":
+                            frame.planes[0].record_stream(read_stream)
+                        elif strategy == "sync_back":
+                            decode_stream.wait_stream(read_stream)
             torch.cuda.synchronize()
             return reads
 
         ref = run(separate_stream=False)
         got = run(separate_stream=True)
         wrong = sum(1 for a, b in zip(ref, got) if not torch.equal(a, b))
-        if record_stream:
+        if strategy in ("sync_back", "record_stream"):
             assert wrong == 0
         else:
-            # Guards the test itself: without the call this really does corrupt,
-            # so the assertion above is meaningful.
             assert wrong > 0
 
     @pytest.mark.needs_cuda
     def test_backlogged_converter_on_separate_stream(self):
-        # Similar test to test_storage_record_stream(), but with the ColorConverter on a
-        # separate stream. In this case, *we* call record_stream() on behalf of
-        # the user.
-        # See [Standalone Frame Storage and the need for record_stream]
+        # A ColorConverter is an ordinary consumer: run it on its own stream and
+        # the caller owes it the same two edges as a converter they wrote
+        # themselves - wait for the decode, and keep the buffer from being
+        # recycled. Here the converter is deliberately made to fall behind.
         video = NASA_VIDEO.path
         demuxer, decoder, converter = self._make_blocks(video, "cuda")
         decode_stream = torch.cuda.Stream()
@@ -4582,10 +4595,16 @@ class TestBlocks:
         for packet in itertools.chain(demuxer, [None]):
             with torch.cuda.stream(decode_stream):
                 decoded = decoder.drain() if packet is None else decoder.decode(packet)
+                decoded_event = torch.cuda.Event()
+                decoded_event.record()
+
+            decoded_event.wait(convert_stream)
             with torch.cuda.stream(convert_stream):
                 while decoded:
                     torch.cuda._sleep(20_000_000)  # ~10ms
-                    frames.append(converter.convert(decoded.pop(0)))
+                    raw_frame = decoded.pop(0)
+                    frames.append(converter.convert(raw_frame))
+                    raw_frame.storage_cuda.record_stream(convert_stream)
         torch.cuda.synchronize()
 
         got = self._to_frame_batch(frames)

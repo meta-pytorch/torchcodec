@@ -1138,9 +1138,8 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   //   receive_frame() without losing the data.
   // - CPU-fallback frames are uploaded here too, so that a PacketDecoder always
   //   hands out frames that live on its own device.
-  // Both are async, so we record an event in the attached data right after
-  // enqueueing them: a ColorConverter on another stream must wait on it before
-  // reading the frame.
+  // Both are enqueued on the caller's current stream and are async: see Note
+  // [Standalone Frame Stream Safety] for what consumers on another stream owe.
   STD_TORCH_CHECK(
       mode() == Mode::DecoderOnly,
       "make_frame_standalone() is only valid in decoder-only mode: standalone "
@@ -1158,7 +1157,6 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   }
 
   auto attached_data = new OwnedFrameStorage();
-  attached_data->frame_ready.record(current_stream);
   attached_data->storage = std::move(storage);
   av_frame->opaque_ref = av_buffer_create(
       reinterpret_cast<uint8_t*>(attached_data),
@@ -1180,48 +1178,36 @@ std::optional<torch::stable::Tensor> BetaCudaDeviceInterface::get_frame_storage(
       mode() == Mode::DecoderOnly && av_frame.opaque_ref != nullptr,
       "Unexpected call to get_frame_storage(), please report a bug ");
 
-  // Note [Standalone Frame Storage and the need for record_stream]
+  // Note [Standalone Frame Stream Safety]
   //
-  // A PacketDecoder and a ColorConverter may run on different CUDA streams.
-  // Consider the following:
+  // A standalone frame's samples live in a torch CUDA allocation, filled by a
+  // copy (or upload) that make_frame_standalone() enqueues on whichever stream
+  // was current at the time. Everything a consumer needs follows from that, and
+  // we make it a documented promise on the Python side: the samples are
+  // produced on the stream that was current when decode() was called, and all
+  // of that work is enqueued by the time the call returns.
   //
-  // ```
-  // with decoder_stream:
-  //   frame = decoder.receive_frame()
-  // with color_converter_stream:
-  //   color_converter.convert(frame)
+  // A consumer running on that same stream is safe with no further thought;
+  // stream ordering does it all. A consumer on a *different* stream owes two
+  // things, and we deliberately leave both to them rather than guessing:
   //
-  // del frame
+  // 1. Waiting for the copy before reading, since it may still be in flight.
   //
-  // with decoder_stream:
-  //   frame = decoder.receive_frame()
-  // ```
+  // 2. Keeping the allocator from recycling the buffer out from under their
+  //    reads. The allocation belongs to the stream it was made on, and the
+  //    caching allocator only ever hands a block back out to an allocation on
+  //    that same stream, so the next frame's storage can land on top of these
+  //    samples while the reads are still queued. See the 'Streams and freeing
+  //    memory' section of
+  //    https://zdevito.github.io/2022/08/04/cuda-caching-allocator.html.
+  //    Syncing the producing stream back to theirs before dropping the last
+  //    reference fixes it, and so does record_stream(); the two trade latency
+  //    against memory, which is why the choice is the caller's.
   //
-  // The call to convert(frame) is non-blocking and just enqueues the
-  // color-conversion kernel. The CPU moves on immediately to `del frame` while
-  // the kernel is still running (it may also not even have started depending on
-  // how color_converter_stream is congested).
-  //
-  // When the frame is deleted, the torch CUDA allocator reclaims its memory and
-  // it becomes available for reuse for any subsequent allocation on the
-  // decoder_stream. If the next decoder.receive_frame() happens before the
-  // color-conversion kernel has finished (specifically: the new storage
-  // allocation for that next frame in make_frame_standalone()), the memory is
-  // reused, overwritten, and the color-conversion kernel reads garbage (i.e.
-  // the next frame's samples!).
-  //
-  // We're hitting exactly what
-  // https://zdevito.github.io/2022/08/04/cuda-caching-allocator.html describes
-  // in the 'Streams and freeing memory' section, and the solution is to call
-  // record_stream() on the frame's storage within color_conversion_stream just
-  // after the kernel is enqueued: this tells the allocator that it must wait
-  // until this point (on the device side) before reclaiming the memory.
-  //
-  // We call record_stream(color_conversion_stream) on the frame storage in the
-  // ColorConverter, on behalf of the user. But we still must expose the storage
-  // for those users who would like to consume the frame with their own
-  // consumer, i.e. not using the ColorConverter: they need to call
-  // frame.record_stream(color_conversion_stream) themselves.
+  // That second point is what this getter is for: the storage is the allocator
+  // block, exposed to Python as RawFrame.storage_cuda. It is not the planes -
+  // those are views built with from_blob, and record_stream() on them is a
+  // silent no-op, because the allocator skips pointers it did not allocate.
   return reinterpret_cast<OwnedFrameStorage*>(av_frame.opaque_ref->data)
       ->storage;
 }
@@ -1549,9 +1535,10 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         gpu_frame.opaque_ref != nullptr,
         "ColorConverter received a non-standalone frame; frames fed to a "
         "standalone ColorConverter must come from a PacketDecoder.");
-    auto attached_data =
-        reinterpret_cast<OwnedFrameStorage*>(gpu_frame.opaque_ref->data);
-    attached_data->frame_ready.make_stream_wait(current_stream);
+    // No ordering against the decoder here on purpose: a ColorConverter is just
+    // another consumer of the frame, and a caller running it on a stream of
+    // their own owes it the same synchronization as any converter they'd write
+    // themselves. See Note [Standalone Frame Stream Safety].
   } else {
     STD_TORCH_CHECK(
         mode() == Mode::Both,
