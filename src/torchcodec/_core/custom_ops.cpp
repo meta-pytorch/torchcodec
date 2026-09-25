@@ -815,7 +815,7 @@ OpsAudioFramesOutput get_frames_by_pts_in_range_audio(
 }
 
 // ==============================
-// Building-block ops (torchcodec.decoders._blocks)
+// Low-level API ops (torchcodec.decoders, implemented in decoders/_blocks)
 // ==============================
 
 std::optional<int> to_optional_int(std::optional<int64_t> value) {
@@ -1316,7 +1316,7 @@ void write_header_based_metadata(
 
 // The container header, as the Demuxer building block reports it: container
 // facts plus one entry per stream, and nothing derived from content. The
-// building blocks never merge the two, so a caller always knows which of the
+// low-level APIs never merge the two, so a caller always knows which of the
 // two sources a number came from.
 std::string _blocks_demuxer_container_json_metadata(
     torch::stable::Tensor& demuxer) {

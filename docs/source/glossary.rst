@@ -20,9 +20,9 @@ Glossary
        The :class:`~torchcodec.decoders.VideoDecoder` performs a scan when using
        ``seek_mode="exact"``, and doesn't scan when using
        ``seek_mode="approximate"``. A scan can also be triggered explicitly
-       with :meth:`~torchcodec.decoders._blocks.VideoStream.scan` on a
-       :class:`~torchcodec.decoders._blocks.VideoStream`, which hands back what
-       it found as a :class:`~torchcodec.decoders._blocks.FrameIndex`.
+       with :meth:`~torchcodec.decoders.VideoStream.scan` on a
+       :class:`~torchcodec.decoders.VideoStream`, which hands back what
+       it found as a :class:`~torchcodec.decoders.FrameIndex`.
 
     clips
         A clip is a sequence of frames, usually in :term:`pts` order. The frames

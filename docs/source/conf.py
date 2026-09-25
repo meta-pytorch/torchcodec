@@ -67,7 +67,7 @@ class CustomGalleryExampleSortKey:
 
     def __call__(self, filename):
         # We have four top-level galleries: decoding examples, encoding
-        # examples, blocks examples, and migration guides. We define the
+        # examples, low-level examples, and migration guides. We define the
         # example order within each gallery individually.
         if "examples/decoding" in self.src_dir:
             order = [
@@ -91,7 +91,7 @@ class CustomGalleryExampleSortKey:
                 "video_encoding.py",
                 "multi_stream_encoding.py",
             ]
-        elif "examples/blocks" in self.src_dir:
+        elif "examples/low_level" in self.src_dir:
             order = [
                 "basics.py",
                 "pipelines.py",
@@ -125,7 +125,7 @@ sphinx_gallery_conf = {
     "subsection_order": ExplicitOrder(
         [
             "../../examples/decoding",
-            "../../examples/blocks",
+            "../../examples/low_level",
             "../../examples/encoding",
             "../../examples/migration",
         ]

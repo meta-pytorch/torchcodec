@@ -74,7 +74,7 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   SharedAVCodecContext codec_context_;
   AVRational time_base_ = {};
   AVMediaType media_type_ = AVMEDIA_TYPE_VIDEO;
-  // Stamped onto every frame we hand out, so downstream blocks can read the
+  // Stamped onto every frame we hand out, so downstream stages can read the
   // rotation off the frame itself instead of knowing about the stream. Held by
   // value: we're only handed the Demuxer at construction and it may well be
   // gone by the time we decode.

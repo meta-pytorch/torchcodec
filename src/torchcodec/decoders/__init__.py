@@ -6,6 +6,25 @@
 
 from .._core import AudioStreamMetadata, VideoStreamMetadata
 from ._audio_decoder import AudioDecoder  # noqa
+from ._blocks import (  # noqa
+    AudioConverter,
+    AudioPacketDecoder,
+    AudioStream,
+    AudioStreamHeaderMetadata,
+    ColorConverter,
+    ContainerMetadata,
+    Demuxer,
+    DemuxerMetadata,
+    FrameIndex,
+    get_container_metadata,
+    Packet,
+    RawAudioSamples,
+    RawFrame,
+    StreamMetadata,
+    VideoPacketDecoder,
+    VideoStream,
+    VideoStreamHeaderMetadata,
+)
 from ._decoder_utils import (  # noqa
     get_nvdec_cache_capacity,
     set_cuda_backend,

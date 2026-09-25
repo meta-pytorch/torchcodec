@@ -213,7 +213,7 @@ class AudioStreamMetadata(AudioStreamHeaderMetadata):
 class DemuxerMetadata:
     """Container-level metadata, as reported by the header.
 
-    This is what a :class:`~torchcodec.decoders._blocks.Demuxer` can say about
+    This is what a :class:`~torchcodec.decoders.Demuxer` can say about
     the container itself.
     """
 
