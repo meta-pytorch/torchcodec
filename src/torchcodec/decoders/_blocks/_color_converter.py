@@ -22,6 +22,9 @@ from ._helpers import _process_local
 class ColorConverter:
     """Turn a :class:`RawFrame` (typically YUV) into an RGB :class:`~torchcodec.Frame`.
 
+    Low-level API: for straightforward decoding, use
+    :class:`~torchcodec.decoders.VideoDecoder` instead.
+
     .. code-block:: python
 
         converter = ColorConverter()
@@ -31,7 +34,7 @@ class ColorConverter:
                 frame = converter.convert(raw_frame)
                 frame.data  # uint8 [3, height, width], RGB
 
-    Unlike the other blocks this one isn't tied to a specific video stream.
+    Unlike the other stages this one isn't tied to a specific video stream.
     Everything it needs (dimensions, pixel format, color space, rotation) comes
     from the :class:`RawFrame` itself, so the same converter instance can
     process frames from any video stream, provided that they share the same
@@ -42,7 +45,7 @@ class ColorConverter:
             ``None`` (default), the current default device is used (see
             ``torch.set_default_device``). It has to be the device the frames
             are already on, i.e. it must match what was passed to the
-            :class:`~torchcodec.decoders._blocks.VideoPacketDecoder` that produced
+            :class:`~torchcodec.decoders.VideoPacketDecoder` that produced
             the :class:`RawFrame`.
         output_dtype (torch.dtype or ``"auto"``, optional): ``torch.uint8``
             (default) for values in ``[0, 255]``, ``torch.float32`` for

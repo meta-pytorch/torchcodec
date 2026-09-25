@@ -443,8 +443,8 @@ class CudaContextGuard {
   // thread.
   // Note that none of this was an issue before when our only entry-point was
   // the SingleStreamDecoder: all the entry-points were called from the same
-  // thread. Now that we have split the APIs in different blocks (PacketDecoder,
-  // ColorConverter), each of these blocks can be on different threads - and
+  // thread. Now that we have split the APIs in different stages (PacketDecoder,
+  // ColorConverter), each of these stages can be on different threads - and
   // importantly, they can be created in the main thread (where the context is
   // bound by our call to initialize_cuda_context_with_pytorch()), but then used
   // in a different thread that doesn't have the context.
@@ -955,7 +955,7 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   // been enqueued:
   // - With SingleStreamDecoder, that frame was either color-converted (with a
   //   copy), or that's a frame that was discarded in SingleStreamDecoder.
-  // - With the "Blocks" APIs, the PacketDecoder forces a copy in
+  // - With the low-level APIs, the PacketDecoder forces a copy in
   //   make_frame_standalone().
   // Those reads are asynchronous, so we must wait on them to finish.
   surface_read_done_.make_stream_wait(nvdec_output_stream_);

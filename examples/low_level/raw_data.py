@@ -9,19 +9,18 @@
 Raw frames and raw audio samples
 ================================
 
-.. currentmodule:: torchcodec.decoders._blocks
+.. currentmodule:: torchcodec.decoders
 
-.. warning::
+.. important::
 
-   **The Blocks APIs are under active construction.** They are private
-   and unreleased. Signatures and semantics may change without notice. This
-   tutorial only exists to show what they will eventually make possible.
+   **The low-level APIs are in beta.** Their signatures and semantics may still
+   change slightly, in response to user feedback.
 
-In this tutorial, we'll skip the conversion stage of a blocks pipeline and read
-the decoder's own YUV planes and audio samples directly, at the source's own
-precision.
+In this tutorial, we'll skip the conversion stage of a decoding pipeline and
+read the decoder's own YUV planes and audio samples directly, at the source's
+own precision.
 
-The last stage of a blocks pipeline - a :class:`ColorConverter` for video, an
+The last stage of a decoding pipeline - a :class:`ColorConverter` for video, an
 :class:`AudioConverter` for audio - is optional. If you stop before it, you get
 what the decoder actually produced: YUV planes in the codec's own pixel format,
 and audio samples in the codec's own sample type, with no conversion, no
@@ -34,7 +33,7 @@ YUV space, write a kernel fused with the first layer of your model, decode a
 integer audio samples yourself.
 
 This tutorial assumes you are familiar with the three stages described in
-:ref:`sphx_glr_generated_examples_blocks_basics.py`.
+:ref:`sphx_glr_generated_examples_low_level_basics.py`.
 """
 
 # %%
@@ -76,7 +75,7 @@ def decode_raw(demuxer, packet_decoder):
 # :class:`RawFrame` can hand out the decoder's own planes as tensor views, with
 # no copy and no conversion. It also carries everything you need to interpret
 # them.
-from torchcodec.decoders._blocks import ColorConverter, Demuxer
+from torchcodec.decoders import ColorConverter, Demuxer
 
 demuxer = Demuxer(video_path)
 packet_decoder = demuxer.streams[0].make_decoder(device=device)

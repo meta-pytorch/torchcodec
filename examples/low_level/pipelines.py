@@ -9,13 +9,12 @@
 Multi-threaded decoding pipelines
 =================================
 
-.. currentmodule:: torchcodec.decoders._blocks
+.. currentmodule:: torchcodec.decoders
 
-.. warning::
+.. important::
 
-   **The Blocks APIs are under active construction.** They are private
-   and unreleased. Signatures and semantics may change without notice. This
-   tutorial only exists to show what they will eventually make possible.
+   **The low-level APIs are in beta.** Their signatures and semantics may still
+   change slightly, in response to user feedback.
 
 In this tutorial, we'll assemble the three decoding stages into pipelines of our
 own: running demuxing, decoding and color-conversion concurrently on several
@@ -24,7 +23,7 @@ the GIL.
 
 .. important::
 
-   The Blocks objects can cross threads, but not processes, so multi-processing
+   These objects can cross threads, but not processes, so multi-processing
    is currently not supported. But it *can* be: if that's something you need,
    please open an issue.
 """
@@ -63,11 +62,11 @@ subprocess.run(
 # :class:`~torchcodec.Frame` objects a :class:`ColorConverter` makes of those. A
 # pipeline is then a chain of generators, and inserting ``prefetch()`` between
 # two of them puts everything upstream on its own thread: the stages run
-# concurrently, and since the blocks release the GIL, that's real parallelism.
+# concurrently, and since the stages release the GIL, that's real parallelism.
 import queue
 import threading
 
-from torchcodec.decoders._blocks import ColorConverter, Demuxer
+from torchcodec.decoders import ColorConverter, Demuxer
 
 
 def demux(demuxer):

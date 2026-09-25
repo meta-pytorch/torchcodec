@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from ._demuxer import _Stream
 
 
-# TODO_API_BREAKDOWN DOC P1 revisit every single comment across all Blocks APIs
+# TODO_API_BREAKDOWN DOC P1 revisit every single comment across all low-level APIs
 
 _Decoded = TypeVar("_Decoded", RawFrame, RawAudioSamples)
 _Self = TypeVar("_Self", bound="_BasePacketDecoder")
@@ -117,6 +117,9 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
     """Decodes the compressed :class:`Packet`\\ s of one video stream into
     :class:`RawFrame`\\ s.
 
+    Low-level API: for straightforward decoding, use
+    :class:`~torchcodec.decoders.VideoDecoder` instead.
+
     You should not build one yourself: :meth:`VideoStream.make_decoder` is what
     creates it. Frames come out on the device given there.
 
@@ -195,6 +198,9 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
 class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
     """Decodes the compressed :class:`Packet`\\ s of one audio stream into
     :class:`RawAudioSamples`.
+
+    Low-level API: for straightforward decoding, use
+    :class:`~torchcodec.decoders.AudioDecoder` instead.
 
     You should not build one yourself: :meth:`AudioStream.make_decoder` is what
     creates it. Audio is always decoded on the CPU.
