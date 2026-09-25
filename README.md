@@ -1,8 +1,8 @@
+[**Installation**](#installing-torchcodec) | [**Documentation**](https://meta-pytorch.org/torchcodec) | [**Contributing**](CONTRIBUTING.md) | [**License**](#license)
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/meta-pytorch/torchcodec/main/docs/source/_static/img/torchcodec_horizontal_logo.jpg" alt="TorchCodec" width="500">
 </p>
-
-[**Installation**](#installing-torchcodec) | [**Documentation**](https://meta-pytorch.org/torchcodec) | [**Contributing**](CONTRIBUTING.md) | [**License**](#license)
 
 TorchCodec is a PyTorch-native library for decoding and encoding media: videos,
 audio, and images, on CPU and CUDA GPU. It aims to be fast, easy to

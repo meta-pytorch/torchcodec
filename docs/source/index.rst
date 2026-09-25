@@ -1,10 +1,11 @@
+
+Welcome to the TorchCodec documentation!
+========================================
+
 .. image:: _static/img/torchcodec_horizontal_logo.jpg
    :alt: TorchCodec
    :width: 500px
    :align: center
-
-Welcome to the TorchCodec documentation!
-========================================
 
 TorchCodec is a PyTorch-native library for decoding and encoding media: videos,
 audio, and images, on CPU and CUDA GPU. It aims to be fast, easy to
