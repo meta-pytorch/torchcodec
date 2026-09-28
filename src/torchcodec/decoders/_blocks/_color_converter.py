@@ -80,6 +80,11 @@ class ColorConverter:
         :attr:`RawFrame.rotation` is applied, so the output is upright and
         matches what a :class:`~torchcodec.decoders.VideoDecoder` gives you.
 
+        If you run this on a different CUDA stream than the one the frame was
+        decoded on, refer to
+        :ref:`sphx_glr_generated_examples_low_level_cuda_streams.py` for pitfalls
+        and how to avoid them.
+
         Args:
             raw_frame (RawFrame): The frame to convert. It has to be on this
                 converter's device.
@@ -92,9 +97,6 @@ class ColorConverter:
             RuntimeError: If the frame is not on this converter's device.
         """
         data = _blocks_convert_frame(self._handle, raw_frame._handle, raw_frame._device)
-        if raw_frame._device.type == "cuda":
-            # See [Standalone Frame Storage and the need for record_stream]
-            raw_frame.record_stream(torch.cuda.current_stream())
         # The core op produces HWC; permute to CHW to match VideoDecoder (which
         # also returns a non-contiguous permuted view).
         data = data.permute(2, 0, 1)
