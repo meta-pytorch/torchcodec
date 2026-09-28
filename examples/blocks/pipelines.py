@@ -27,6 +27,15 @@ the GIL.
    The Blocks objects can cross threads, but not processes, so multi-processing
    is currently not supported. But it *can* be: if that's something you need,
    please open an issue.
+
+.. note::
+
+   Threads are not CUDA streams: the pipelines below run every stage on the
+   default stream, and nothing here requires you to think about stream
+   synchronization. If you decide to give a stage a CUDA stream of its own,
+   read :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` first - a
+   :class:`RawFrame` crossing streams comes with obligations that produce
+   corrupted frames rather than errors when they're missed.
 """
 
 # %%

@@ -1180,34 +1180,25 @@ std::optional<torch::stable::Tensor> BetaCudaDeviceInterface::get_frame_storage(
 
   // Note [Standalone Frame Stream Safety]
   //
-  // A standalone frame's samples live in a torch CUDA allocation, filled by a
-  // copy (or upload) that make_frame_standalone() enqueues on whichever stream
-  // was current at the time. Everything a consumer needs follows from that, and
-  // we make it a documented promise on the Python side: the samples are
+  // A standalone frame's samples are filled by a copy (or upload) that
+  // make_frame_standalone() enqueues on whichever stream is current at the
+  // time. A consumer on that same stream is safe through stream ordering alone;
+  // a consumer on a different stream has to wait for that copy, and has to keep
+  // the allocator from recycling the buffer while its reads are still queued.
+  //
+  // We deliberately do neither on its behalf, here or anywhere else in this
+  // file - so don't "fix" their absence. The second one has no single right
+  // answer (syncing back stalls the producer, record_stream() costs
+  // unpredictable memory), so it belongs to the caller, and once the caller is
+  // reasoning about streams anyway the first is theirs too. The promise they
+  // rely on is documented in examples/blocks/cuda_streams.py: the samples are
   // produced on the stream that was current when decode() was called, and all
   // of that work is enqueued by the time the call returns.
   //
-  // A consumer running on that same stream is safe with no further thought;
-  // stream ordering does it all. A consumer on a *different* stream owes two
-  // things, and we deliberately leave both to them rather than guessing:
-  //
-  // 1. Waiting for the copy before reading, since it may still be in flight.
-  //
-  // 2. Keeping the allocator from recycling the buffer out from under their
-  //    reads. The allocation belongs to the stream it was made on, and the
-  //    caching allocator only ever hands a block back out to an allocation on
-  //    that same stream, so the next frame's storage can land on top of these
-  //    samples while the reads are still queued. See the 'Streams and freeing
-  //    memory' section of
-  //    https://zdevito.github.io/2022/08/04/cuda-caching-allocator.html.
-  //    Syncing the producing stream back to theirs before dropping the last
-  //    reference fixes it, and so does record_stream(); the two trade latency
-  //    against memory, which is why the choice is the caller's.
-  //
-  // That second point is what this getter is for: the storage is the allocator
-  // block, exposed to Python as RawFrame.storage_cuda. It is not the planes -
-  // those are views built with from_blob, and record_stream() on them is a
-  // silent no-op, because the allocator skips pointers it did not allocate.
+  // This getter exists to make record_stream() possible: the storage is the
+  // allocator block, exposed to Python as RawFrame.storage_cuda. It is not the
+  // planes - those are from_blob views, and record_stream() on them is a silent
+  // no-op, because the allocator skips pointers it did not allocate.
   return reinterpret_cast<OwnedFrameStorage*>(av_frame.opaque_ref->data)
       ->storage;
 }

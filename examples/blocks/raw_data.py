@@ -144,92 +144,19 @@ print(f"{ours.shape = }, mean abs diff vs ColorConverter: "
       f"{(ours.float() - reference.float()).abs().mean():.2f}")
 
 # %%
-# CUDA streams
-# ^^^^^^^^^^^^
+# Reading the planes on CUDA
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^
 #
-# On CUDA, a :class:`RawFrame` comes with one promise:
+# The planes are views into a PyTorch CUDA allocation that the decoder still
+# owns and will reuse for a later frame. As long as you read them on the stream
+# the decoder ran on - which is what happens unless you create a stream
+# yourself - there is nothing to think about.
 #
-#    Its samples are produced on the stream that was current when you called
-#    :meth:`VideoPacketDecoder.decode`, and all of that work has been enqueued
-#    by the time the call returns.
-#
-# If you consume the frame on that same stream, you are done - stop reading,
-# stream ordering handles everything. The rest of this section is for the case
-# where the decoder runs on one stream and you consume the frame on another.
-# It applies just as much when the consumer is a :class:`ColorConverter`: it is
-# an ordinary consumer, and it does no synchronization on your behalf.
-#
-# Reading the samples
-# """""""""""""""""""
-#
-# The frame's samples arrive through an asynchronous copy, so a consumer on
-# another stream has to wait for it. Record an event on the decoding stream and
-# wait on it::
-#
-#     with torch.cuda.stream(decode_stream):
-#         frames = packet_decoder.decode(packet)
-#         decoded = torch.cuda.Event()
-#         decoded.record()
-#
-#     decoded.wait(my_stream)
-#     with torch.cuda.stream(my_stream):
-#         rgb = yuv420_to_rgb(*frames[0].planes)
-#
-# ``my_stream.wait_stream(decode_stream)`` works too, but it is blunter: it
-# waits for *everything* queued on the decoding stream, so a consumer that has
-# fallen behind a decoder running ahead of it ends up waiting for the whole
-# backlog rather than for its own frame.
-#
-# Letting the frame go
-# """"""""""""""""""""
-#
-# The other half is less obvious. The samples live in a PyTorch CUDA
-# allocation made on the decoding stream, and the caching allocator only ever
-# hands a freed block back out to an allocation on that same stream. So once
-# you drop your last reference, a later frame's storage can land on top of
-# these samples - while your reads are still queued. It shows up as the
-# occasional corrupted frame, never as an error.
-#
-# You have two ways out, and they cost different things.
-#
-# **Sync back before dropping the frame.** Make the decoding stream wait for
-# your reads, then let go::
-#
-#     decode_stream.wait_stream(my_stream)
-#     del frames
-#
-# This is precise and costs no extra memory, but it stalls the decoder: its
-# next frame cannot start until your reads have finished, which is exactly the
-# overlap you built a second stream to get. Recover it by working in batches -
-# hold a handful of frames, sync once, drop them all - so the decoder stalls
-# once every N frames instead of every frame. N is then a plain memory knob.
-#
-# **Or hand the problem to the allocator** with
-# :meth:`torch.Tensor.record_stream`, on :attr:`RawFrame.storage_cuda`::
-#
-#     with torch.cuda.stream(my_stream):
-#         rgb = yuv420_to_rgb(*frames[0].planes)
-#         frames[0].storage_cuda.record_stream(my_stream)
-#
-# This never stalls the decoder. Instead the allocator withholds the block
-# until your reads are done, so you pay in memory rather than in latency - and
-# the amount is decided by device timing rather than by you. Under memory
-# pressure the allocator falls back to blocking and releasing cached blocks,
-# which is a large stall at an unpredictable moment. Prefer it when you have
-# headroom to spare and latency you don't.
-#
-# .. warning::
-#
-#    ``record_stream`` has to be called on :attr:`RawFrame.storage_cuda`.
-#    Calling it on a plane is silently a no-op: the planes are views that the
-#    allocator knows nothing about, so it ignores them and your buffer stays
-#    unprotected.
-#
-# Whichever you pick, "dropping the frame" means dropping the *last* reference
-# to its samples. The planes outlive the :class:`RawFrame` they came from - each
-# one keeps the buffer alive on its own - so a stray ``Y`` still in scope is
-# holding the frame's memory, and a ``del raw_frame`` on its own has released
-# nothing.
+# If you read them on a *different* stream, there is: you have to wait for the
+# decoder's asynchronous copy before reading, and keep the allocator from
+# recycling the buffer while your reads are still queued.
+# :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` covers both, and
+# the choices you have for the second one.
 
 # %%
 # Formats that can't be viewed

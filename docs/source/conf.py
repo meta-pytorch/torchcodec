@@ -96,6 +96,7 @@ class CustomGalleryExampleSortKey:
                 "basics.py",
                 "pipelines.py",
                 "raw_data.py",
+                "cuda_streams.py",
             ]
         else:
             assert "examples/migration" in self.src_dir

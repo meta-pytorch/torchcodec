@@ -96,8 +96,7 @@ class RawFrame:
         enqueued by the time the call returns. Consume them on any other stream
         - including by handing the frame to a :class:`ColorConverter` running
         there - and the synchronization is yours to do, in both directions. See
-        :ref:`sphx_glr_generated_examples_blocks_raw_data.py` for what that
-        means and what your options are.
+        :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py`.
     """
 
     pts_seconds: float
@@ -113,6 +112,10 @@ class RawFrame:
     frame on a stream other than the one it was decoded on. Note that
     ``record_stream`` on a plane does nothing at all - the planes are views the
     allocator knows nothing about - so this is the only object it works on.
+
+    ``record_stream`` is one of two ways to handle a frame that crosses
+    streams, and not always the right one:
+    :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` compares them.
     """
 
     def __init__(

@@ -80,7 +80,7 @@ class ColorConverter:
         On CUDA, the conversion is enqueued on the current stream and nothing
         more: if that is not the stream the frame was decoded on, you owe it the
         same synchronization as a converter you wrote yourself. See
-        :ref:`sphx_glr_generated_examples_blocks_raw_data.py`.
+        :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py`.
 
         Args:
             raw_frame (RawFrame): The frame to convert. It has to be on this

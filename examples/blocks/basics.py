@@ -36,12 +36,15 @@ stages separately, one chain per media type:
     Packet        RawAudioSamples          AudioSamples
 
 
-Two companion tutorials go further:
+Three companion tutorials go further:
 
 * :ref:`sphx_glr_generated_examples_blocks_pipelines.py`, on running the stages
   concurrently on several threads.
 * :ref:`sphx_glr_generated_examples_blocks_raw_data.py`, on reading the
   decoder's own YUV planes and audio samples instead of converting them.
+* :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py`, on what a
+  :class:`RawFrame` requires of you when you run the stages on different CUDA
+  streams.
 """
 
 # %%
@@ -544,3 +547,6 @@ ffmpeg.wait()
 # * :ref:`sphx_glr_generated_examples_blocks_raw_data.py` skips the converters
 #   and reads the decoder's own YUV planes and audio samples, at the source's
 #   own precision.
+# * :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` covers the one
+#   case where a :class:`RawFrame` needs care: consuming it on a CUDA stream
+#   other than the one it was decoded on.
