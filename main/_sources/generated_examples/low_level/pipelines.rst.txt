@@ -80,7 +80,7 @@ Some boilerplate first: a test video, and the device we'll run on.
 
     device = 'cuda'
 
-    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpeud2xc1w/video.mp4'], returncode=0)
+    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp0tpdhtfz/video.mp4'], returncode=0)
 
 
 
@@ -287,8 +287,8 @@ hold all the frames at once.
  .. code-block:: none
 
     VideoDecoder                 : 1.86s
-    sequential                   : 1.87s (0.99x vs VideoDecoder)
-    convert_on_own_thread        : 1.62s (1.15x vs VideoDecoder)
+    sequential                   : 1.89s (0.99x vs VideoDecoder)
+    convert_on_own_thread        : 1.61s (1.15x vs VideoDecoder)
 
 
 
@@ -304,7 +304,7 @@ will depend on the capabilities of the machine building these docs!
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 26.477 seconds)
+   **Total running time of the script:** (0 minutes 26.468 seconds)
 
 
 .. _sphx_glr_download_generated_examples_low_level_pipelines.py:
