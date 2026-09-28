@@ -154,7 +154,7 @@ print(f"{ours.shape = }, mean abs diff vs ColorConverter: "
 #
 # However, if you read them on a *different* stream than the decoder stream, you
 # have to wait for the decoder's asynchronous copy before reading, and keep the
-# allocator from recycling the buffer while your reads are still queued. See 
+# allocator from recycling the buffer while your reads are still queued. See
 # :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` to learn more.
 
 # %%

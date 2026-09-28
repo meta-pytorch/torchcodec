@@ -107,7 +107,7 @@ class RawFrame:
     """The CUDA allocation backing :attr:`planes`, or ``None`` on CPU.
 
     This tensor is exposed for one purpose, which is to let you call
-    :meth:`torch.Tensor.record_stream` if you want to. See 
+    :meth:`torch.Tensor.record_stream` if you want to. See
     :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` for more details.
     You shouldn't read or write this tensor directly.
     """

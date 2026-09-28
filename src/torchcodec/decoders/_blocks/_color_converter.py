@@ -78,7 +78,7 @@ class ColorConverter:
         matches what a :class:`~torchcodec.decoders.VideoDecoder` gives you.
 
         If you run this on a different CUDA stream than the one the frame was
-        decoded on, refer to 
+        decoded on, refer to
         :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` for pitfalls
         and how to avoid them.
 
