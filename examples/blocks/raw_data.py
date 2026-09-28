@@ -144,19 +144,18 @@ print(f"{ours.shape = }, mean abs diff vs ColorConverter: "
       f"{(ours.float() - reference.float()).abs().mean():.2f}")
 
 # %%
-# Reading the planes on CUDA
-# ^^^^^^^^^^^^^^^^^^^^^^^^^^
+# Reading or converting the planes on CUDA
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #
 # The planes are views into a PyTorch CUDA allocation that the decoder still
-# owns and will reuse for a later frame. As long as you read them on the stream
-# the decoder ran on - which is what happens unless you create a stream
-# yourself - there is nothing to think about.
+# owns and may reuse for a later frame. As long as you read them on the stream
+# the decoder ran on, which is the case unless you explicitly request otherwise,
+# there is no problem and you don't need to think about stream synchronization.
 #
-# If you read them on a *different* stream, there is: you have to wait for the
-# decoder's asynchronous copy before reading, and keep the allocator from
-# recycling the buffer while your reads are still queued.
-# :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` covers both, and
-# the choices you have for the second one.
+# However, if you read them on a *different* stream than the decoder stream, you
+# have to wait for the decoder's asynchronous copy before reading, and keep the
+# allocator from recycling the buffer while your reads are still queued. See 
+# :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` to learn more.
 
 # %%
 # Formats that can't be viewed
