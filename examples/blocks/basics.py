@@ -547,6 +547,6 @@ ffmpeg.wait()
 # * :ref:`sphx_glr_generated_examples_blocks_raw_data.py` skips the converters
 #   and reads the decoder's own YUV planes and audio samples, at the source's
 #   own precision.
-# * :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` covers the one
-#   case where a :class:`RawFrame` needs care: consuming it on a CUDA stream
-#   other than the one it was decoded on.
+# * :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` explains how to
+#   manage CUDA streams when you consume a :class:`RawFrame` on a different CUDA
+#   stream than the one it was decoded on.
