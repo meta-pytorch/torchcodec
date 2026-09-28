@@ -1138,8 +1138,9 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   //   receive_frame() without losing the data.
   // - CPU-fallback frames are uploaded here too, so that a PacketDecoder always
   //   hands out frames that live on its own device.
-  // Both are enqueued on the caller's current stream and are async: see Note
-  // [Standalone Frame Stream Safety] for what consumers on another stream owe.
+  // Both are enqueued on the caller's current stream (of
+  // PacketDecoder.decode()) and are async. It's up to the consumer to properly
+  // sync, see our `cuda_streams.py` tutorial.
   STD_TORCH_CHECK(
       mode() == Mode::DecoderOnly,
       "make_frame_standalone() is only valid in decoder-only mode: standalone "
@@ -1178,27 +1179,6 @@ std::optional<torch::stable::Tensor> BetaCudaDeviceInterface::get_frame_storage(
       mode() == Mode::DecoderOnly && av_frame.opaque_ref != nullptr,
       "Unexpected call to get_frame_storage(), please report a bug ");
 
-  // Note [Standalone Frame Stream Safety]
-  //
-  // A standalone frame's samples are filled by a copy (or upload) that
-  // make_frame_standalone() enqueues on whichever stream is current at the
-  // time. A consumer on that same stream is safe through stream ordering alone;
-  // a consumer on a different stream has to wait for that copy, and has to keep
-  // the allocator from recycling the buffer while its reads are still queued.
-  //
-  // We deliberately do neither on its behalf, here or anywhere else in this
-  // file - so don't "fix" their absence. The second one has no single right
-  // answer (syncing back stalls the producer, record_stream() costs
-  // unpredictable memory), so it belongs to the caller, and once the caller is
-  // reasoning about streams anyway the first is theirs too. The promise they
-  // rely on is documented in examples/blocks/cuda_streams.py: the samples are
-  // produced on the stream that was current when decode() was called, and all
-  // of that work is enqueued by the time the call returns.
-  //
-  // This getter exists to make record_stream() possible: the storage is the
-  // allocator block, exposed to Python as RawFrame.storage_cuda. It is not the
-  // planes - those are from_blob views, and record_stream() on them is a silent
-  // no-op, because the allocator skips pointers it did not allocate.
   return reinterpret_cast<OwnedFrameStorage*>(av_frame.opaque_ref->data)
       ->storage;
 }
@@ -1526,10 +1506,6 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         gpu_frame.opaque_ref != nullptr,
         "ColorConverter received a non-standalone frame; frames fed to a "
         "standalone ColorConverter must come from a PacketDecoder.");
-    // No ordering against the decoder here on purpose: a ColorConverter is just
-    // another consumer of the frame, and a caller running it on a stream of
-    // their own owes it the same synchronization as any converter they'd write
-    // themselves. See Note [Standalone Frame Stream Safety].
   } else {
     STD_TORCH_CHECK(
         mode() == Mode::Both,
@@ -1540,6 +1516,9 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
       // mapping post-processing that receive_frame() enqueued on
       // nvdec_output_stream_. An uploaded frame, on the other hand, was
       // uploaded on current_stream and needs no ordering.
+      // TODO_API_BREAKDOWN CC P2: do we still need this?? We don't do any sync
+      // on behalf of the user anymore for the 'Blocks' APIs (see
+      // https://github.com/meta-pytorch/torchcodec/pull/1749) - so why here??
       nvdec_surface_ready_.make_stream_wait(current_stream);
     }
   }

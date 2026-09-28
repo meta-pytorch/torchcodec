@@ -91,11 +91,11 @@ class RawFrame:
 
     .. important::
 
-        On CUDA, the samples are produced on the stream that was current when
+        On CUDA, the samples are produced on the CUDA stream that was current when
         you called :meth:`VideoPacketDecoder.decode`, and all of that work is
-        enqueued by the time the call returns. Consume them on any other stream
-        - including by handing the frame to a :class:`ColorConverter` running
-        there - and the synchronization is yours to do, in both directions. See
+        enqueued by the time the call returns. If you consume them on any other stream
+        (via :class:`ColorConverter` or by reading :attr:`planes`), you must
+        handle synchronization yourself.  See
         :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py`.
     """
 
@@ -106,16 +106,10 @@ class RawFrame:
     storage_cuda: torch.Tensor | None
     """The CUDA allocation backing :attr:`planes`, or ``None`` on CPU.
 
-    A flat ``uint8`` tensor whose contents are meaningless: read the samples
-    through :attr:`planes` instead. It is exposed for one purpose, which is to
-    let you call :meth:`torch.Tensor.record_stream` on it when you consume the
-    frame on a stream other than the one it was decoded on. Note that
-    ``record_stream`` on a plane does nothing at all - the planes are views the
-    allocator knows nothing about - so this is the only object it works on.
-
-    ``record_stream`` is one of two ways to handle a frame that crosses
-    streams, and not always the right one:
-    :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` compares them.
+    This tensor is exposed for one purpose, which is to let you call
+    :meth:`torch.Tensor.record_stream` if you want to. See 
+    :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` for more details.
+    You shouldn't read or write this tensor directly.
     """
 
     def __init__(

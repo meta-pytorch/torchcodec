@@ -77,10 +77,10 @@ class ColorConverter:
         :attr:`RawFrame.rotation` is applied, so the output is upright and
         matches what a :class:`~torchcodec.decoders.VideoDecoder` gives you.
 
-        On CUDA, the conversion is enqueued on the current stream and nothing
-        more: if that is not the stream the frame was decoded on, you owe it the
-        same synchronization as a converter you wrote yourself. See
-        :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py`.
+        If you run this on a different CUDA stream than the one the frame was
+        decoded on, refer to 
+        :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` for pitfalls
+        and how to avoid them.
 
         Args:
             raw_frame (RawFrame): The frame to convert. It has to be on this
