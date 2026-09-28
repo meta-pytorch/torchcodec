@@ -47,6 +47,15 @@ class SwScale {
   // Resize context (output RGB at input res -> output RGB at output res).
   // May be null if no resize is needed.
   UniqueSwsContext resize_sws_context_;
+
+  // Scratch buffer holding the result of the color conversion, which is then
+  // the input of the resize. Null if no resize is needed.
+  //
+  // This must be an AVFrame rather than a tensor: swscale's SIMD readers
+  // over-read their input by up to a few dozen bytes, so the buffer needs
+  // padding past its last row. FFmpeg's allocators provide that padding, a
+  // plain tensor allocation does not.
+  UniqueAVFrame color_converted_frame_;
 };
 
 } // namespace facebook::torchcodec
