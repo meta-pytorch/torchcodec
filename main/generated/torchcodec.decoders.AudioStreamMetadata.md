@@ -6,16 +6,16 @@ Metadata of a single audio stream.
 
 Examples using `AudioStreamMetadata`:
 
-![](../_images/sphx_glr_basics_thumb.png)
-
-[Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
-
-Blocks: build your own decoding pipeline
 ![](../_images/sphx_glr_audio_decoding_thumb.jpg)
 
 [Decoding audio streams with AudioDecoder](../generated_examples/decoding/audio_decoding.html)
 
 Decoding audio streams with AudioDecoder
+![](../_images/sphx_glr_basics_thumb.png)
+
+[Build your own decoding pipeline](../generated_examples/low_level/basics.html)
+
+Build your own decoding pipeline
 
 begin_stream_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 

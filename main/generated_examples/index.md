@@ -63,28 +63,28 @@ Decoder Transforms: Applying transforms during decoding
 
 Decoding HDR videos
 
-## Decoding blocks (experimental)
+## Decoding: low-level APIs (beta)
 
 ![](../_images/sphx_glr_basics_thumb.png)
 
-[Blocks: build your own decoding pipeline](blocks/basics.html)
+[Build your own decoding pipeline](low_level/basics.html)
 
-Blocks: build your own decoding pipeline
+Build your own decoding pipeline
 ![](../_images/sphx_glr_pipelines_thumb.png)
 
-[Multi-threaded decoding pipelines](blocks/pipelines.html)
+[Multi-threaded decoding pipelines](low_level/pipelines.html)
 
 Multi-threaded decoding pipelines
 ![](../_images/sphx_glr_raw_data_thumb.png)
 
-[Raw frames and raw audio samples](blocks/raw_data.html)
+[Raw frames and raw audio samples](low_level/raw_data.html)
 
 Raw frames and raw audio samples
 ![](../_images/sphx_glr_cuda_streams_thumb.png)
 
-[Blocks and CUDA streams](blocks/cuda_streams.html)
+[CUDA streams](low_level/cuda_streams.html)
 
-Blocks and CUDA streams
+CUDA streams
 
 ## Encoding
 

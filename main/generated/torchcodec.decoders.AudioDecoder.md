@@ -78,11 +78,6 @@ unspecified, this is the [best stream](../glossary.html#term-best-stream).
 
 Examples using `AudioDecoder`:
 
-![](../_images/sphx_glr_basics_thumb.png)
-
-[Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
-
-Blocks: build your own decoding pipeline
 ![](../_images/sphx_glr_audio_decoding_thumb.jpg)
 
 [Decoding audio streams with AudioDecoder](../generated_examples/decoding/audio_decoding.html)
@@ -103,6 +98,11 @@ TorchCodec Performance Tips and Best Practices
 [Encoding audio samples with AudioEncoder](../generated_examples/encoding/audio_encoding.html)
 
 Encoding audio samples with AudioEncoder
+![](../_images/sphx_glr_basics_thumb.png)
+
+[Build your own decoding pipeline](../generated_examples/low_level/basics.html)
+
+Build your own decoding pipeline
 
 get_all_samples() → [AudioSamples](torchcodec.AudioSamples.html#torchcodec.AudioSamples)[[source]](../_modules/torchcodec/decoders/_audio_decoder.html#AudioDecoder.get_all_samples)
 

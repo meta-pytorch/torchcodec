@@ -1,0 +1,102 @@
+
+
+.. _sphx_glr_generated_examples_low_level:
+
+Decoding: low-level APIs (beta)
+-------------------------------
+
+
+.. raw:: html
+
+  <div id='sg-tag-list' class='sphx-glr-tag-list'></div>
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbnails">
+
+.. thumbnail-parent-div-open
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback.">
+
+.. only:: html
+
+  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_basics_thumb.png
+    :alt:
+
+  :doc:`/generated_examples/low_level/basics`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Build your own decoding pipeline</div>
+    </div>
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback.">
+
+.. only:: html
+
+  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_pipelines_thumb.png
+    :alt:
+
+  :doc:`/generated_examples/low_level/pipelines`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Multi-threaded decoding pipelines</div>
+    </div>
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback.">
+
+.. only:: html
+
+  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_raw_data_thumb.png
+    :alt:
+
+  :doc:`/generated_examples/low_level/raw_data`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Raw frames and raw audio samples</div>
+    </div>
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback.">
+
+.. only:: html
+
+  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_cuda_streams_thumb.png
+    :alt:
+
+  :doc:`/generated_examples/low_level/cuda_streams`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">CUDA streams</div>
+    </div>
+
+
+.. thumbnail-parent-div-close
+
+.. raw:: html
+
+    </div>
+
+
+.. toctree::
+   :hidden:
+
+   /generated_examples/low_level/basics
+   /generated_examples/low_level/pipelines
+   /generated_examples/low_level/raw_data
+   /generated_examples/low_level/cuda_streams
+

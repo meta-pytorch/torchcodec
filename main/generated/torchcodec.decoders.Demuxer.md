@@ -1,0 +1,125 @@
+# Demuxer
+
+*class*torchcodec.decoders.Demuxer(*source: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader*, ***, *streams: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [int](https://docs.python.org/3/builtins/functions.html#int) | [tuple](https://docs.python.org/3/builtins/stdtypes.html#tuple)[[str](https://docs.python.org/3/builtins/stdtypes.html#str) | [int](https://docs.python.org/3/builtins/functions.html#int), ...] = 'video'*)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#Demuxer)
+
+Reads one or more video and audio streams from a container, and produces their compressed [`Packet`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet)s.
+
+Low-level API: for straightforward decoding, use
+[`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) or
+[`AudioDecoder`](torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) instead.
+
+Packets come out interleaved, and [`Packet.stream_index`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet.stream_index) says which
+stream each one belongs to:
+
+```
+demuxer = Demuxer("video.mp4", streams=("video", "audio"))
+decoders = {s.index: s.make_decoder() for s in demuxer.streams}
+
+for packet in demuxer:
+ for output in decoders[packet.stream_index].decode(packet):
+ ...
+```
+
+Parameters:
+
+- **source** (str, `Pathlib.path`, bytes, `torch.Tensor` or file-like object) - 
+
+The source of the media:
+
+- If `str`: a local path or a URL to a media file.
+- If `Pathlib.path`: a path to a local media file.
+- If `bytes` object or `torch.Tensor`: the raw encoded data.
+- If file-like object: we read data from the object on demand. The
+object must expose the methods read(self, size: int) -> bytes
+and seek(self, offset: int, whence: int) -> int.
+- **streams** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,*[*int*](https://docs.python.org/3/builtins/functions.html#int)*or*[*tuple*](https://docs.python.org/3/builtins/stdtypes.html#tuple)*,**optional*) - Which streams to follow, as a
+single selector or a tuple of them. A selector is either
+`"video"` or `"audio"` for the [best stream](../glossary.html#term-best-stream) of that
+type, or an `int` for a stream index, absolute across all media
+types. `"all"` follows every audio and video stream in container
+order, skipping the rest, and can only be used on its own. Default:
+`"video"`.
+
+Variables:
+
+- **streams** ([*tuple*](https://docs.python.org/3/builtins/stdtypes.html#tuple)) - The [`VideoStream`](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream) and [`AudioStream`](torchcodec.decoders.AudioStream.html#torchcodec.decoders.AudioStream)
+objects being followed, in the order the `streams` parameter
+named them. Packet decoders are built from these.
+- **metadata** ([*DemuxerMetadata*](torchcodec.decoders.DemuxerMetadata.html#torchcodec.decoders.DemuxerMetadata)) - What the container header says about the
+container itself. What it says about a given stream is on
+`demuxer.streams[i].metadata`.
+
+Examples using `Demuxer`:
+
+![](../_images/sphx_glr_basics_thumb.png)
+
+[Build your own decoding pipeline](../generated_examples/low_level/basics.html)
+
+Build your own decoding pipeline
+![](../_images/sphx_glr_cuda_streams_thumb.png)
+
+[CUDA streams](../generated_examples/low_level/cuda_streams.html)
+
+CUDA streams
+![](../_images/sphx_glr_pipelines_thumb.png)
+
+[Multi-threaded decoding pipelines](../generated_examples/low_level/pipelines.html)
+
+Multi-threaded decoding pipelines
+![](../_images/sphx_glr_raw_data_thumb.png)
+
+[Raw frames and raw audio samples](../generated_examples/low_level/raw_data.html)
+
+Raw frames and raw audio samples
+
+__next__() → [Packet](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#Demuxer.__next__)
+
+Read and return the next [`Packet`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet).
+
+Packets come out interleaved across the streams being followed, in the
+order the container stores them, so this is where
+[`Packet.stream_index`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet.stream_index) matters: it is what routes each packet to
+the decoder of its own stream.
+
+Returns:
+
+The next packet.
+
+Return type:
+
+[Packet](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet)
+
+seek(*seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, ***, *stream: [VideoStream](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream) | [AudioStream](torchcodec.decoders.AudioStream.html#torchcodec.decoders.AudioStream) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#Demuxer.seek)
+
+Move the demuxer to `seconds`.
+
+This moves *every* stream being followed. For videos, this lands on the
+keyframe at or before `seconds`. For audio, a lossy codec's first
+frames after a seek are typically slightly wrong until the codec
+re-primes. This is especially true when resampling is involved (via an
+[`AudioConverter`](torchcodec.decoders.AudioConverter.html#torchcodec.decoders.AudioConverter)). Pre-rolling a margin of audio before the
+target is up to you.
+
+There is no `seek_mode` to choose from: seeking straight to
+`seconds` is what [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) calls
+`seek_mode="approximate"`. To get the `seek_mode="exact"` behavior,
+[scan](../glossary.html#term-scan) the stream and seek to
+[`FrameIndex.key_frame_seconds_for()`](torchcodec.decoders.FrameIndex.html#torchcodec.decoders.FrameIndex.key_frame_seconds_for) of your target instead.
+
+Important
+
+You must call [`VideoPacketDecoder.reset()`](torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder.reset) or
+[`AudioPacketDecoder.reset()`](torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder.reset) on every decoder fed by this
+demuxer afterwards, and [`AudioConverter.reset()`](torchcodec.decoders.AudioConverter.html#torchcodec.decoders.AudioConverter.reset) on every
+converter too: a seek invalidates a codec and resampler states.
+
+Parameters:
+
+- **seconds** ([*float*](https://docs.python.org/3/builtins/functions.html#float)) - The position to seek to.
+- **stream** ([*VideoStream*](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream)*or*[*AudioStream*](torchcodec.decoders.AudioStream.html#torchcodec.decoders.AudioStream)*,**optional*) - The stream the
+target `seconds` is resolved against. FFmpeg resolves a seek in a single
+stream's time base and lands on *that* stream's keyframes, the
+other streams merely resuming from wherever the container ends
+up - so a second video stream may land mid-GOP and decode
+garbage until its next keyframe. Defaults to the first of
+`streams`, as passed to the constructor.

@@ -1,0 +1,11 @@
+﻿.. role:: hidden
+    :class: hidden-section
+.. currentmodule:: torchcodec.decoders
+
+
+VideoPacketDecoder
+==================
+
+.. autoclass:: VideoPacketDecoder
+    :members:
+    :inherited-members:

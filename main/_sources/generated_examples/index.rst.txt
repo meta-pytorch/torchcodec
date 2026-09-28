@@ -248,8 +248,8 @@ Decoding
 
     </div>
 
-Decoding blocks (experimental)
-------------------------------
+Decoding: low-level APIs (beta)
+-------------------------------
 
 
 .. raw:: html
@@ -265,31 +265,31 @@ Decoding blocks (experimental)
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible.">
+    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback.">
 
 .. only:: html
 
-  .. image:: /generated_examples/blocks/images/thumb/sphx_glr_basics_thumb.png
+  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_basics_thumb.png
     :alt:
 
-  :doc:`/generated_examples/blocks/basics`
+  :doc:`/generated_examples/low_level/basics`
 
 .. raw:: html
 
-      <div class="sphx-glr-thumbnail-title">Blocks: build your own decoding pipeline</div>
+      <div class="sphx-glr-thumbnail-title">Build your own decoding pipeline</div>
     </div>
 
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible.">
+    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback.">
 
 .. only:: html
 
-  .. image:: /generated_examples/blocks/images/thumb/sphx_glr_pipelines_thumb.png
+  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_pipelines_thumb.png
     :alt:
 
-  :doc:`/generated_examples/blocks/pipelines`
+  :doc:`/generated_examples/low_level/pipelines`
 
 .. raw:: html
 
@@ -299,14 +299,14 @@ Decoding blocks (experimental)
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible.">
+    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback.">
 
 .. only:: html
 
-  .. image:: /generated_examples/blocks/images/thumb/sphx_glr_raw_data_thumb.png
+  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_raw_data_thumb.png
     :alt:
 
-  :doc:`/generated_examples/blocks/raw_data`
+  :doc:`/generated_examples/low_level/raw_data`
 
 .. raw:: html
 
@@ -316,18 +316,18 @@ Decoding blocks (experimental)
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible.">
+    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback.">
 
 .. only:: html
 
-  .. image:: /generated_examples/blocks/images/thumb/sphx_glr_cuda_streams_thumb.png
+  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_cuda_streams_thumb.png
     :alt:
 
-  :doc:`/generated_examples/blocks/cuda_streams`
+  :doc:`/generated_examples/low_level/cuda_streams`
 
 .. raw:: html
 
-      <div class="sphx-glr-thumbnail-title">Blocks and CUDA streams</div>
+      <div class="sphx-glr-thumbnail-title">CUDA streams</div>
     </div>
 
 
@@ -471,7 +471,7 @@ Migrating from torchvision
 
 
    /generated_examples/decoding/index.rst
-   /generated_examples/blocks/index.rst
+   /generated_examples/low_level/index.rst
    /generated_examples/encoding/index.rst
    /generated_examples/migration/index.rst
 

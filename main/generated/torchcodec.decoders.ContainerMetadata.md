@@ -1,0 +1,34 @@
+# ContainerMetadata
+
+*class*torchcodec.decoders.ContainerMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *best_video_stream_index: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *best_audio_stream_index: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *streams: [list](https://docs.python.org/3/builtins/stdtypes.html#list)[[StreamMetadata](torchcodec.decoders.StreamMetadata.html#torchcodec.decoders.StreamMetadata)]*)[[source]](../_modules/torchcodec/_core/_metadata.html#ContainerMetadata)
+
+Metadata of a container and of every stream in it.
+
+Unlike [`DemuxerMetadata`](torchcodec.decoders.DemuxerMetadata.html#torchcodec.decoders.DemuxerMetadata), which describes the container alone, this
+also lists the streams, including the ones that cannot be decoded.
+
+best_audio_stream_index*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+Index of the [best stream](../glossary.html#term-best-stream) of audio type (int or None).
+
+best_video_stream_index*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+Index of the [best stream](../glossary.html#term-best-stream) of video type (int or None).
+
+bit_rate_from_header*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+Overall bit rate of the container (float or None).
+
+duration_seconds_from_header*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+Duration of the container, in seconds, obtained from the header (float
+or None).
+
+streams*: [list](https://docs.python.org/3/builtins/stdtypes.html#list)[[StreamMetadata](torchcodec.decoders.StreamMetadata.html#torchcodec.decoders.StreamMetadata)]*
+
+One entry per stream in the file, indexed by stream index.
+
+A video stream comes back as a [`VideoStreamHeaderMetadata`](torchcodec.decoders.VideoStreamHeaderMetadata.html#torchcodec.decoders.VideoStreamHeaderMetadata) and an
+audio stream as an [`AudioStreamHeaderMetadata`](torchcodec.decoders.AudioStreamHeaderMetadata.html#torchcodec.decoders.AudioStreamHeaderMetadata). The rest will be plain
+[`StreamMetadata`](torchcodec.decoders.StreamMetadata.html#torchcodec.decoders.StreamMetadata). The `media_type` attribute tells the
+entries apart.

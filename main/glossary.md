@@ -19,9 +19,9 @@ not involve decoding**, so it is a lot cheaper than decoding the file.
 The [`VideoDecoder`](generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) performs a scan when using
 `seek_mode="exact"`, and doesn't scan when using
 `seek_mode="approximate"`. A scan can also be triggered explicitly
-with [`scan()`](generated/torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.scan) on a
-[`VideoStream`](generated/torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream), which hands back what
-it found as a [`FrameIndex`](generated/torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex).
+with [`scan()`](generated/torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.scan) on a
+[`VideoStream`](generated/torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream), which hands back what
+it found as a [`FrameIndex`](generated/torchcodec.decoders.FrameIndex.html#torchcodec.decoders.FrameIndex).
 
 clips
 

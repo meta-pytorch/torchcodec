@@ -111,21 +111,6 @@ determined after at least one frame has been decoded.
 
 Examples using `VideoDecoder`:
 
-![](../_images/sphx_glr_basics_thumb.png)
-
-[Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
-
-Blocks: build your own decoding pipeline
-![](../_images/sphx_glr_pipelines_thumb.png)
-
-[Multi-threaded decoding pipelines](../generated_examples/blocks/pipelines.html)
-
-Multi-threaded decoding pipelines
-![](../_images/sphx_glr_raw_data_thumb.png)
-
-[Raw frames and raw audio samples](../generated_examples/blocks/raw_data.html)
-
-Raw frames and raw audio samples
 ![](../_images/sphx_glr_approximate_mode_thumb.jpg)
 
 [Exact vs Approximate seek mode: Performance and accuracy comparison](../generated_examples/decoding/approximate_mode.html)
@@ -186,6 +171,21 @@ Encoding audio and video streams with the Encoder
 [Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html)
 
 Encoding video with the Encoder
+![](../_images/sphx_glr_basics_thumb.png)
+
+[Build your own decoding pipeline](../generated_examples/low_level/basics.html)
+
+Build your own decoding pipeline
+![](../_images/sphx_glr_pipelines_thumb.png)
+
+[Multi-threaded decoding pipelines](../generated_examples/low_level/pipelines.html)
+
+Multi-threaded decoding pipelines
+![](../_images/sphx_glr_raw_data_thumb.png)
+
+[Raw frames and raw audio samples](../generated_examples/low_level/raw_data.html)
+
+Raw frames and raw audio samples
 
 __getitem__(*key: [Integral](https://docs.python.org/3/library/numbers.html#numbers.Integral) | [slice](https://docs.python.org/3/builtins/functions.html#slice)*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.__getitem__)
 

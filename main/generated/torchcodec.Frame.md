@@ -6,21 +6,21 @@ A single video frame with associated metadata.
 
 Examples using `Frame`:
 
-![](../_images/sphx_glr_basics_thumb.png)
-
-[Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
-
-Blocks: build your own decoding pipeline
-![](../_images/sphx_glr_pipelines_thumb.png)
-
-[Multi-threaded decoding pipelines](../generated_examples/blocks/pipelines.html)
-
-Multi-threaded decoding pipelines
 ![](../_images/sphx_glr_basic_example_thumb.png)
 
 [Decoding a video with VideoDecoder](../generated_examples/decoding/basic_example.html)
 
 Decoding a video with VideoDecoder
+![](../_images/sphx_glr_basics_thumb.png)
+
+[Build your own decoding pipeline](../generated_examples/low_level/basics.html)
+
+Build your own decoding pipeline
+![](../_images/sphx_glr_pipelines_thumb.png)
+
+[Multi-threaded decoding pipelines](../generated_examples/low_level/pipelines.html)
+
+Multi-threaded decoding pipelines
 
 data*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
 

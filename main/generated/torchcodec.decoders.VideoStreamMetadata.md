@@ -6,16 +6,16 @@ Metadata of a single video stream.
 
 Examples using `VideoStreamMetadata`:
 
-![](../_images/sphx_glr_basics_thumb.png)
-
-[Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
-
-Blocks: build your own decoding pipeline
 ![](../_images/sphx_glr_basic_example_thumb.png)
 
 [Decoding a video with VideoDecoder](../generated_examples/decoding/basic_example.html)
 
 Decoding a video with VideoDecoder
+![](../_images/sphx_glr_basics_thumb.png)
+
+[Build your own decoding pipeline](../generated_examples/low_level/basics.html)
+
+Build your own decoding pipeline
 
 average_fps*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 

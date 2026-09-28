@@ -531,8 +531,8 @@ document.write(`
               </li>
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="generated_examples/blocks/index.html">
-                  Decoding blocks (experimental)
+                <a class="nav-link dropdown-item nav-internal" href="generated_examples/low_level/index.html">
+                  Decoding: low-level APIs (beta)
                 </a>
               </li>
             
@@ -571,12 +571,6 @@ document.write(`
               <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="api_ref_decoders.html">
                   torchcodec.decoders
-                </a>
-              </li>
-            
-              <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="api_ref_decoders_blocks.html">
-                  torchcodec.decoders._blocks
                 </a>
               </li>
             
@@ -830,8 +824,8 @@ document.write(`
               </li>
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="generated_examples/blocks/index.html">
-                  Decoding blocks (experimental)
+                <a class="nav-link dropdown-item nav-internal" href="generated_examples/low_level/index.html">
+                  Decoding: low-level APIs (beta)
                 </a>
               </li>
             
@@ -870,12 +864,6 @@ document.write(`
               <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="api_ref_decoders.html">
                   torchcodec.decoders
-                </a>
-              </li>
-            
-              <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="api_ref_decoders_blocks.html">
-                  torchcodec.decoders._blocks
                 </a>
               </li>
             
@@ -1137,9 +1125,9 @@ not involve decoding</strong>, so it is a lot cheaper than decoding the file.
 The <a class="reference internal" href="generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a> performs a scan when using
 <code class="docutils literal notranslate"><span class="pre">seek_mode=&quot;exact&quot;</span></code>, and doesn’t scan when using
 <code class="docutils literal notranslate"><span class="pre">seek_mode=&quot;approximate&quot;</span></code>. A scan can also be triggered explicitly
-with <a class="reference internal" href="generated/torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.scan" title="torchcodec.decoders._blocks.VideoStream.scan"><code class="xref py py-meth docutils literal notranslate"><span class="pre">scan()</span></code></a> on a
-<a class="reference internal" href="generated/torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream" title="torchcodec.decoders._blocks.VideoStream"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoStream</span></code></a>, which hands back what
-it found as a <a class="reference internal" href="generated/torchcodec.decoders._blocks.FrameIndex.html#torchcodec.decoders._blocks.FrameIndex" title="torchcodec.decoders._blocks.FrameIndex"><code class="xref py py-class docutils literal notranslate"><span class="pre">FrameIndex</span></code></a>.</p>
+with <a class="reference internal" href="generated/torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.scan" title="torchcodec.decoders.VideoStream.scan"><code class="xref py py-meth docutils literal notranslate"><span class="pre">scan()</span></code></a> on a
+<a class="reference internal" href="generated/torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream" title="torchcodec.decoders.VideoStream"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoStream</span></code></a>, which hands back what
+it found as a <a class="reference internal" href="generated/torchcodec.decoders.FrameIndex.html#torchcodec.decoders.FrameIndex" title="torchcodec.decoders.FrameIndex"><code class="xref py py-class docutils literal notranslate"><span class="pre">FrameIndex</span></code></a>.</p>
 </dd>
 <dt id="term-clips">clips<a class="headerlink" href="#term-clips" title="Link to this term">#</a></dt><dd><p>A clip is a sequence of frames, usually in <a class="reference internal" href="#term-pts"><span class="xref std std-term">pts</span></a> order. The frames
 may not necessarily be consecutive. A clip is represented as a 4D
