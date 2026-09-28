@@ -1138,9 +1138,9 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   //   receive_frame() without losing the data.
   // - CPU-fallback frames are uploaded here too, so that a PacketDecoder always
   //   hands out frames that live on its own device.
-  // Both are async, so we record an event in the attached data right after
-  // enqueueing them: a ColorConverter on another stream must wait on it before
-  // reading the frame.
+  // Both are enqueued on the caller's current stream (of
+  // PacketDecoder.decode()) and are async. It's up to the consumer to properly
+  // sync, see our `cuda_streams.py` tutorial.
   STD_TORCH_CHECK(
       mode() == Mode::DecoderOnly,
       "make_frame_standalone() is only valid in decoder-only mode: standalone "
@@ -1158,7 +1158,6 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   }
 
   auto attached_data = new OwnedFrameStorage();
-  attached_data->frame_ready.record(current_stream);
   attached_data->storage = std::move(storage);
   av_frame->opaque_ref = av_buffer_create(
       reinterpret_cast<uint8_t*>(attached_data),
@@ -1180,48 +1179,6 @@ std::optional<torch::stable::Tensor> BetaCudaDeviceInterface::get_frame_storage(
       mode() == Mode::DecoderOnly && av_frame.opaque_ref != nullptr,
       "Unexpected call to get_frame_storage(), please report a bug ");
 
-  // Note [Standalone Frame Storage and the need for record_stream]
-  //
-  // A PacketDecoder and a ColorConverter may run on different CUDA streams.
-  // Consider the following:
-  //
-  // ```
-  // with decoder_stream:
-  //   frame = decoder.receive_frame()
-  // with color_converter_stream:
-  //   color_converter.convert(frame)
-  //
-  // del frame
-  //
-  // with decoder_stream:
-  //   frame = decoder.receive_frame()
-  // ```
-  //
-  // The call to convert(frame) is non-blocking and just enqueues the
-  // color-conversion kernel. The CPU moves on immediately to `del frame` while
-  // the kernel is still running (it may also not even have started depending on
-  // how color_converter_stream is congested).
-  //
-  // When the frame is deleted, the torch CUDA allocator reclaims its memory and
-  // it becomes available for reuse for any subsequent allocation on the
-  // decoder_stream. If the next decoder.receive_frame() happens before the
-  // color-conversion kernel has finished (specifically: the new storage
-  // allocation for that next frame in make_frame_standalone()), the memory is
-  // reused, overwritten, and the color-conversion kernel reads garbage (i.e.
-  // the next frame's samples!).
-  //
-  // We're hitting exactly what
-  // https://zdevito.github.io/2022/08/04/cuda-caching-allocator.html describes
-  // in the 'Streams and freeing memory' section, and the solution is to call
-  // record_stream() on the frame's storage within color_conversion_stream just
-  // after the kernel is enqueued: this tells the allocator that it must wait
-  // until this point (on the device side) before reclaiming the memory.
-  //
-  // We call record_stream(color_conversion_stream) on the frame storage in the
-  // ColorConverter, on behalf of the user. But we still must expose the storage
-  // for those users who would like to consume the frame with their own
-  // consumer, i.e. not using the ColorConverter: they need to call
-  // frame.record_stream(color_conversion_stream) themselves.
   return reinterpret_cast<OwnedFrameStorage*>(av_frame.opaque_ref->data)
       ->storage;
 }
@@ -1549,9 +1506,6 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         gpu_frame.opaque_ref != nullptr,
         "ColorConverter received a non-standalone frame; frames fed to a "
         "standalone ColorConverter must come from a PacketDecoder.");
-    auto attached_data =
-        reinterpret_cast<OwnedFrameStorage*>(gpu_frame.opaque_ref->data);
-    attached_data->frame_ready.make_stream_wait(current_stream);
   } else {
     STD_TORCH_CHECK(
         mode() == Mode::Both,
@@ -1562,6 +1516,9 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
       // mapping post-processing that receive_frame() enqueued on
       // nvdec_output_stream_. An uploaded frame, on the other hand, was
       // uploaded on current_stream and needs no ordering.
+      // TODO_API_BREAKDOWN CC P2: do we still need this?? We don't do any sync
+      // on behalf of the user anymore for the 'Blocks' APIs (see
+      // https://github.com/meta-pytorch/torchcodec/pull/1749) - so why here??
       nvdec_surface_ready_.make_stream_wait(current_stream);
     }
   }
