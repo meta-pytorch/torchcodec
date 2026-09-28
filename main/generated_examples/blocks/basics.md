@@ -24,12 +24,15 @@ Demuxer -> AudioPacketDecoder -> AudioConverter
  Packet RawAudioSamples AudioSamples
 ```
 
-Two companion tutorials go further:
+Three companion tutorials go further:
 
 - [Multi-threaded decoding pipelines](pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py), on running the stages
 concurrently on several threads.
 - [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py), on reading the
 decoder's own YUV planes and audio samples instead of converting them.
+- [Blocks and CUDA streams](cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py), on what a
+[`RawFrame`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame) requires of you when you run the stages on different CUDA
+streams.
 
 First, a bit of boilerplate: a test video, and the device we'll run on.
 
@@ -60,7 +63,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpgi_u9hxb/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpxrtt5ww0/video.mp4'], returncode=0)
 ```
 
 ## The three blocks
@@ -189,7 +192,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpgi_u9hxb/video.mp4', '-i', '/tmp/tmpgi_u9hxb/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpgi_u9hxb/av.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpxrtt5ww0/video.mp4', '-i', '/tmp/tmpxrtt5ww0/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpxrtt5ww0/av.mp4'], returncode=0)
 ```
 
 Which streams to follow is specified at construction time of the
@@ -558,8 +561,11 @@ and on CUDA.
 - [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py) skips the converters
 and reads the decoder's own YUV planes and audio samples, at the source's
 own precision.
+- [Blocks and CUDA streams](cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py) explains how to
+manage CUDA streams when you consume a [`RawFrame`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame) on a different CUDA
+stream than the one it was decoded on.
 
-**Total running time of the script:** (0 minutes 1.550 seconds)
+**Total running time of the script:** (0 minutes 1.548 seconds)
 
 [`Download Jupyter notebook: basics.ipynb`](../../_downloads/cdae7c17b717a2c62f0675ad148787ce/basics.ipynb)
 

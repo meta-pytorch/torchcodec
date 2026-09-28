@@ -207,29 +207,22 @@ with whatever your model needs next.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 147-166
+.. GENERATED FROM PYTHON SOURCE LINES 147-159
 
-Reading the planes on CUDA
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+Reading or converting the planes on CUDA
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. important::
+The planes are views into a PyTorch CUDA allocation that the decoder still
+owns and may reuse for a later frame. As long as you read them on the stream
+the decoder ran on, which is the case unless you explicitly request otherwise,
+there is no problem and you don't need to think about stream synchronization.
 
-   The planes are a view into a buffer the decoder will hand back to the CUDA
-   caching allocator and reuse for a later frame. The allocator only knows
-   about the stream the decoder ran on, so if you read the samples on a
-   *different* CUDA stream, you must tell it so with
-   :meth:`RawFrame.record_stream`, right after queueing your reads::
+However, if you read them on a *different* stream than the decoder stream, you
+have to wait for the decoder's asynchronous copy before reading, and keep the
+allocator from recycling the buffer while your reads are still queued. See
+:ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` to learn more.
 
-       with torch.cuda.stream(my_stream):
-           rgb = yuv420_to_rgb(*raw_frame.planes)
-           raw_frame.record_stream(my_stream)
-
-   Without it, the decoder's next frame can be given the same buffer and
-   overwrite these samples while your reads are still pending - a race that
-   shows up as occasional corrupted frames, not as an error.
-   A :class:`ColorConverter` does this for you.
-
-.. GENERATED FROM PYTHON SOURCE LINES 168-178
+.. GENERATED FROM PYTHON SOURCE LINES 161-171
 
 Formats that can't be viewed
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -242,7 +235,7 @@ you never have to, since NVDEC only ever produces a handful of surface
 formats (``nv12``, ``p010le``, ``p012le``, ``p016le``, ``yuv444p``,
 ``yuv444p16le``).
 
-.. GENERATED FROM PYTHON SOURCE LINES 180-188
+.. GENERATED FROM PYTHON SOURCE LINES 173-181
 
 Raw HDR frames
 --------------
@@ -253,7 +246,7 @@ tone mapping. (For the :class:`~torchcodec.decoders.VideoDecoder` route to
 HDR, through its ``output_dtype`` parameter, see
 :ref:`sphx_glr_generated_examples_decoding_hdr_decoding.py`.)
 
-.. GENERATED FROM PYTHON SOURCE LINES 188-211
+.. GENERATED FROM PYTHON SOURCE LINES 181-204
 
 .. code-block:: Python
 
@@ -294,7 +287,7 @@ HDR, through its ``output_dtype`` parameter, see
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 212-219
+.. GENERATED FROM PYTHON SOURCE LINES 205-212
 
 A plane's dtype only tells you its storage width, ``uint8`` or ``uint16``;
 :attr:`RawFrame.bit_depth` is what tells you the range of the values held in
@@ -304,7 +297,7 @@ NVDEC surfaces are 16-bit containers holding the samples msb-aligned, so the
 10 bits sit at the top and the low 6 are zero. Shift them back down to read
 the sample values.
 
-.. GENERATED FROM PYTHON SOURCE LINES 219-224
+.. GENERATED FROM PYTHON SOURCE LINES 212-217
 
 .. code-block:: Python
 
@@ -326,7 +319,7 @@ the sample values.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 225-240
+.. GENERATED FROM PYTHON SOURCE LINES 218-233
 
 Raw audio samples
 -----------------
@@ -344,7 +337,7 @@ samples come out as ``[num_channels, num_samples]``. It is still the tensor an
 :class:`AudioConverter` reads, though, so mutating it in place does change
 what the converter gives you.
 
-.. GENERATED FROM PYTHON SOURCE LINES 240-258
+.. GENERATED FROM PYTHON SOURCE LINES 233-251
 
 .. code-block:: Python
 
@@ -380,7 +373,7 @@ what the converter gives you.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 259-264
+.. GENERATED FROM PYTHON SOURCE LINES 252-257
 
 An ``s16`` source gives ``int16``, an ``s32`` source ``int32``, an ``fltp``
 source ``float32``, and so on. The integer ones are *not* normalised to
@@ -388,7 +381,7 @@ source ``float32``, and so on. The integer ones are *not* normalised to
 :class:`AudioConverter` does. If normalising is all you need, you can always
 do it manually:
 
-.. GENERATED FROM PYTHON SOURCE LINES 264-268
+.. GENERATED FROM PYTHON SOURCE LINES 257-261
 
 .. code-block:: Python
 
@@ -412,7 +405,7 @@ do it manually:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 1.240 seconds)
+   **Total running time of the script:** (0 minutes 1.243 seconds)
 
 
 .. _sphx_glr_download_generated_examples_blocks_raw_data.py:

@@ -31,6 +31,11 @@ Examples using `VideoPacketDecoder`:
 [Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
 
 Blocks: build your own decoding pipeline
+![](../_images/sphx_glr_cuda_streams_thumb.png)
+
+[Blocks and CUDA streams](../generated_examples/blocks/cuda_streams.html)
+
+Blocks and CUDA streams
 ![](../_images/sphx_glr_raw_data_thumb.png)
 
 [Raw frames and raw audio samples](../generated_examples/blocks/raw_data.html)

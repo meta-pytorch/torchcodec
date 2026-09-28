@@ -143,26 +143,17 @@ print(f"{ours.shape = }, mean abs diff vs ColorConverter: "
 ours.shape = torch.Size([3, 720, 1280]), mean abs diff vs ColorConverter: 0.29
 ```
 
-### Reading the planes on CUDA
+### Reading or converting the planes on CUDA
 
-Important
+The planes are views into a PyTorch CUDA allocation that the decoder still
+owns and may reuse for a later frame. As long as you read them on the stream
+the decoder ran on, which is the case unless you explicitly request otherwise,
+there is no problem and you don't need to think about stream synchronization.
 
-The planes are a view into a buffer the decoder will hand back to the CUDA
-caching allocator and reuse for a later frame. The allocator only knows
-about the stream the decoder ran on, so if you read the samples on a
-*different* CUDA stream, you must tell it so with
-[`RawFrame.record_stream()`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.record_stream), right after queueing your reads:
-
-```
-with torch.cuda.stream(my_stream):
- rgb = yuv420_to_rgb(*raw_frame.planes)
- raw_frame.record_stream(my_stream)
-```
-
-Without it, the decoder's next frame can be given the same buffer and
-overwrite these samples while your reads are still pending - a race that
-shows up as occasional corrupted frames, not as an error.
-A [`ColorConverter`](../../generated/torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) does this for you.
+However, if you read them on a *different* stream than the decoder stream, you
+have to wait for the decoder's asynchronous copy before reading, and keep the
+allocator from recycling the buffer while your reads are still queued. See
+[Blocks and CUDA streams](cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py) to learn more.
 
 ### Formats that can't be viewed
 
@@ -288,7 +279,7 @@ print(f"{normalised.dtype = }, "
 normalised.dtype = torch.float32, range [-0.125, 0.125]
 ```
 
-**Total running time of the script:** (0 minutes 1.240 seconds)
+**Total running time of the script:** (0 minutes 1.243 seconds)
 
 [`Download Jupyter notebook: raw_data.ipynb`](../../_downloads/50b7daabc4b9e193429fc4a88177cd8a/raw_data.ipynb)
 

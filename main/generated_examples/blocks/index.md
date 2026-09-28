@@ -15,3 +15,8 @@ Multi-threaded decoding pipelines
 [Raw frames and raw audio samples](raw_data.html)
 
 Raw frames and raw audio samples
+![](../../_images/sphx_glr_cuda_streams_thumb.png)
+
+[Blocks and CUDA streams](cuda_streams.html)
+
+Blocks and CUDA streams

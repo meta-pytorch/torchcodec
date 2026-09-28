@@ -7,7 +7,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>torchcodec.decoders._blocks._audio_converter &#8212; TorchCodec 0.17.0.dev20260925+cu130 Documentation</title>
+    <title>torchcodec.decoders._blocks._audio_converter &#8212; TorchCodec 0.17.0.dev20260928+cu130 Documentation</title>
   
   
   
@@ -41,7 +41,7 @@
 <link rel="preload" as="script" href="../../../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../../../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../../../../_static/documentation_options.js?v=97aa7317"></script>
+    <script src="../../../../_static/documentation_options.js?v=44d26e91"></script>
     <script src="../../../../_static/doctools.js?v=888ff710"></script>
     <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -1498,11 +1498,11 @@ document.write(`
 <div class="viewcode-block" id="AudioConverter">
 <a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter">[docs]</a>
 <span class="nd">@_process_local</span><span class="p">(</span>
-    <span class="s2">&quot;A resampler carries filter history across calls that FFmpeg cannot &quot;</span>
-    <span class="s2">&quot;serialise. Construct one in each process.&quot;</span>
+    <span class="s2">"A resampler carries filter history across calls that FFmpeg cannot "</span>
+    <span class="s2">"serialise. Construct one in each process."</span>
 <span class="p">)</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">AudioConverter</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Turn :class:`RawAudioSamples` into normalised float32</span>
+<span class="w">    </span><span class="sd">"""Turn :class:`RawAudioSamples` into normalised float32</span>
 <span class="sd">    :class:`~torchcodec.AudioSamples`, optionally resampling and remixing</span>
 <span class="sd">    channels.</span>
 
@@ -1518,17 +1518,17 @@ document.write(`
 <span class="sd">        samples = converter.drain()</span>
 
 <span class="sd">    Unlike a :class:`ColorConverter`, this object is a stateful stream</span>
-<span class="sd">    processor, and it is bound to an audio stream: feed it the stream&#39;s samples</span>
-<span class="sd">    in order. When resampling, it holds samples back between calls, so you won&#39;t</span>
+<span class="sd">    processor, and it is bound to an audio stream: feed it the stream's samples</span>
+<span class="sd">    in order. When resampling, it holds samples back between calls, so you won't</span>
 <span class="sd">    necessarily get the same number of samples out as you put in for a given</span>
 <span class="sd">    call to :meth:`convert`.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        sample_rate (int, optional): The output sample rate. Defaults to the</span>
-<span class="sd">            source&#39;s own, i.e. no resampling.</span>
+<span class="sd">            source's own, i.e. no resampling.</span>
 <span class="sd">        num_channels (int, optional): The output number of channels. Defaults</span>
-<span class="sd">            to the source&#39;s own.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">            to the source's own.</span>
+<span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">num_channels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_handle</span> <span class="o">=</span> <span class="n">_blocks_create_audio_converter</span><span class="p">(</span>
@@ -1542,7 +1542,7 @@ document.write(`
         <span class="bp">self</span><span class="o">.</span><span class="n">_num_emitted_samples</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="c1"># The demuxer position these samples come from. See Packet._generation:</span>
         <span class="c1"># a resampler carries state across calls, so a seek invalidates it just</span>
-        <span class="c1"># as it invalidates the decoder&#39;s.</span>
+        <span class="c1"># as it invalidates the decoder's.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_generation</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_wrap</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AudioSamples</span><span class="p">:</span>
@@ -1552,7 +1552,7 @@ document.write(`
         <span class="c1"># resampling happens, libswresample buffers samples and emits them</span>
         <span class="c1"># later. Not all the samples of the first frame are necessarily emitted</span>
         <span class="c1"># immediately, they may be emitted with the next frame. Without this,</span>
-        <span class="c1"># we&#39;d fail the test_audio_converter_pts_is_contiguous() test.</span>
+        <span class="c1"># we'd fail the test_audio_converter_pts_is_contiguous() test.</span>
         <span class="n">pts_seconds</span> <span class="o">=</span> <span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_first_frame_pts_seconds</span>
             <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_emitted_samples</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">_out_sample_rate</span>
@@ -1568,7 +1568,7 @@ document.write(`
 <div class="viewcode-block" id="AudioConverter.convert">
 <a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter.convert">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">convert</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw_samples</span><span class="p">:</span> <span class="n">RawAudioSamples</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AudioSamples</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert one :class:`RawAudioSamples` into normalised float32</span>
+<span class="w">        </span><span class="sd">"""Convert one :class:`RawAudioSamples` into normalised float32</span>
 <span class="sd">        :class:`~torchcodec.AudioSamples`.</span>
 
 <span class="sd">        You may not get the same number of samples out as you put in, especially</span>
@@ -1577,20 +1577,20 @@ document.write(`
 <span class="sd">        Returns:</span>
 <span class="sd">            The converted samples, normalised float32 in ``[-1, 1]``. When</span>
 <span class="sd">            resampling, fewer than were passed in, possibly none.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generation</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_generation</span> <span class="o">=</span> <span class="n">raw_samples</span><span class="o">.</span><span class="n">_generation</span>
         <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generation</span> <span class="o">!=</span> <span class="n">raw_samples</span><span class="o">.</span><span class="n">_generation</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-                <span class="s2">&quot;The demuxer seeked since this converter was last reset(), and &quot;</span>
-                <span class="s2">&quot;a resampler carries state across calls, so these samples &quot;</span>
-                <span class="s2">&quot;would be resampled against the wrong history. Call reset() on &quot;</span>
-                <span class="s2">&quot;every converter fed by that demuxer after a seek.&quot;</span>
+                <span class="s2">"The demuxer seeked since this converter was last reset(), and "</span>
+                <span class="s2">"a resampler carries state across calls, so these samples "</span>
+                <span class="s2">"would be resampled against the wrong history. Call reset() on "</span>
+                <span class="s2">"every converter fed by that demuxer after a seek."</span>
             <span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_drained</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-                <span class="s2">&quot;This AudioConverter has been drained. Call reset() to convert &quot;</span>
-                <span class="s2">&quot;more samples.&quot;</span>
+                <span class="s2">"This AudioConverter has been drained. Call reset() to convert "</span>
+                <span class="s2">"more samples."</span>
             <span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_first_frame_pts_seconds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_first_frame_pts_seconds</span> <span class="o">=</span> <span class="n">raw_samples</span><span class="o">.</span><span class="n">pts_seconds</span>
@@ -1608,15 +1608,15 @@ document.write(`
 <div class="viewcode-block" id="AudioConverter.drain">
 <a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter.drain">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">drain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AudioSamples</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the samples the resampler was still holding on to.</span>
+<span class="w">        </span><span class="sd">"""Return the samples the resampler was still holding on to.</span>
 
-<span class="sd">        Empty unless you are resampling. This is not the codec&#39;s own buffer,</span>
+<span class="sd">        Empty unless you are resampling. This is not the codec's own buffer,</span>
 <span class="sd">        which :meth:`AudioPacketDecoder.drain` takes care of.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_first_frame_pts_seconds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-                <span class="s2">&quot;This AudioConverter hasn&#39;t converted any samples, so there is &quot;</span>
-                <span class="s2">&quot;nothing to drain.&quot;</span>
+                <span class="s2">"This AudioConverter hasn't converted any samples, so there is "</span>
+                <span class="s2">"nothing to drain."</span>
             <span class="p">)</span>
         <span class="n">data</span> <span class="o">=</span> <span class="n">_blocks_audio_converter_drain</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_handle</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_drained</span> <span class="o">=</span> <span class="kc">True</span>
@@ -1626,11 +1626,11 @@ document.write(`
 <div class="viewcode-block" id="AudioConverter.reset">
 <a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.AudioConverter.html#torchcodec.decoders._blocks.AudioConverter.reset">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">reset</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Drop the resampler&#39;s state and start over.</span>
+<span class="w">        </span><span class="sd">"""Drop the resampler's state and start over.</span>
 
 <span class="sd">        Needed after a :meth:`Demuxer.seek`, after :meth:`drain`, and before</span>
 <span class="sd">        converting a different stream.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">_blocks_audio_converter_reset</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_handle</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_drained</span> <span class="o">=</span> <span class="kc">False</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_first_frame_pts_seconds</span> <span class="o">=</span> <span class="kc">None</span>

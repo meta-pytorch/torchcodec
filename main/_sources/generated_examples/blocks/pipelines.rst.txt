@@ -33,11 +33,19 @@ the GIL.
    is currently not supported. But it *can* be: if that's something you need,
    please open an issue.
 
-.. GENERATED FROM PYTHON SOURCE LINES 33-34
+.. note::
+
+   The pipelines below run every stage on the same CUDA stream, and nothing here
+   requires you to think about stream synchronization. If you decide however to
+   give each stage a CUDA stream of its own, read
+   :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` for common gotchas
+   and how to avoid them.
+
+.. GENERATED FROM PYTHON SOURCE LINES 41-42
 
 Some boilerplate first: a test video, and the device we'll run on.
 
-.. GENERATED FROM PYTHON SOURCE LINES 34-56
+.. GENERATED FROM PYTHON SOURCE LINES 42-64
 
 .. code-block:: Python
 
@@ -73,11 +81,11 @@ Some boilerplate first: a test video, and the device we'll run on.
 
     device = 'cuda'
 
-    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp81vhcmf9/video.mp4'], returncode=0)
+    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpaa5fy30d/video.mp4'], returncode=0)
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 57-67
+.. GENERATED FROM PYTHON SOURCE LINES 65-75
 
 One stage, one generator
 ------------------------
@@ -90,7 +98,7 @@ pipeline is then a chain of generators, and inserting ``prefetch()`` between
 two of them puts everything upstream on its own thread: the stages run
 concurrently, and since the blocks release the GIL, that's real parallelism.
 
-.. GENERATED FROM PYTHON SOURCE LINES 67-108
+.. GENERATED FROM PYTHON SOURCE LINES 75-116
 
 .. code-block:: Python
 
@@ -142,7 +150,7 @@ concurrently, and since the blocks release the GIL, that's real parallelism.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 109-114
+.. GENERATED FROM PYTHON SOURCE LINES 117-122
 
 Which stage to parallelize
 --------------------------
@@ -150,7 +158,7 @@ Which stage to parallelize
 With those in hand, a pipeline is one expression, and moving the thread
 boundary is moving one ``prefetch()`` call.
 
-.. GENERATED FROM PYTHON SOURCE LINES 114-157
+.. GENERATED FROM PYTHON SOURCE LINES 122-165
 
 .. code-block:: Python
 
@@ -213,7 +221,7 @@ boundary is moving one ``prefetch()`` call.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 158-175
+.. GENERATED FROM PYTHON SOURCE LINES 166-183
 
 Which split is best depends on where the work is:
 
@@ -233,7 +241,7 @@ three have the same memory profile: one frame at a time, rather than the
 entire video. ``get_all_frames()`` can be faster than iterating, but it has to
 hold all the frames at once.
 
-.. GENERATED FROM PYTHON SOURCE LINES 175-209
+.. GENERATED FROM PYTHON SOURCE LINES 183-217
 
 .. code-block:: Python
 
@@ -280,13 +288,13 @@ hold all the frames at once.
  .. code-block:: none
 
     VideoDecoder                 : 1.86s
-    sequential                   : 1.88s (0.99x vs VideoDecoder)
-    convert_on_own_thread        : 1.61s (1.16x vs VideoDecoder)
+    sequential                   : 1.87s (0.99x vs VideoDecoder)
+    convert_on_own_thread        : 1.61s (1.15x vs VideoDecoder)
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 210-215
+.. GENERATED FROM PYTHON SOURCE LINES 218-223
 
 ``sequential`` should land close to the ``VideoDecoder`` baseline, as
 expected: they do the same work on one thread.
@@ -297,7 +305,7 @@ will depend on the capabilities of the machine building these docs!
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 26.465 seconds)
+   **Total running time of the script:** (0 minutes 26.440 seconds)
 
 
 .. _sphx_glr_download_generated_examples_blocks_pipelines.py:

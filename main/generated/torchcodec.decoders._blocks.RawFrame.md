@@ -27,13 +27,20 @@ what you have to apply yourself if you convert `planes` on your own.
 
 Important
 
-On CUDA, anything that reads the samples on a stream other than the one
-the decoder ran on must call `record_stream()`, or the decoder may
-overwrite them while those reads are still pending. A
-[`ColorConverter`](torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) does this for you.
+On CUDA, the samples are produced on the CUDA stream that was current when
+you called [`VideoPacketDecoder.decode()`](torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder.decode), and all of that work is
+enqueued by the time the call returns. If you consume them on any other stream
+(via [`ColorConverter`](torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) or by reading `planes`), you must
+handle synchronization yourself. See
+[Blocks and CUDA streams](../generated_examples/blocks/cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py).
 
 Examples using `RawFrame`:
 
+![](../_images/sphx_glr_cuda_streams_thumb.png)
+
+[Blocks and CUDA streams](../generated_examples/blocks/cuda_streams.html)
+
+Blocks and CUDA streams
 ![](../_images/sphx_glr_raw_data_thumb.png)
 
 [Raw frames and raw audio samples](../generated_examples/blocks/raw_data.html)
@@ -141,25 +148,6 @@ pts_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
 The [pts](../glossary.html#term-pts) of this frame, in seconds.
 
-record_stream(*stream: [Stream](https://docs.pytorch.org/docs/stable/generated/torch.cuda.streams.Stream.html#torch.cuda.streams.Stream)*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/decoders/_blocks/_frame.html#RawFrame.record_stream)
-
-Tell the CUDA caching allocator that `stream` is still reading this
-frame's samples.
-
-**A CUDA consumer that reads the frame on a stream other than the one
-the decoder ran on must call this**, right after queueing its reads.
-Without it, the decoder's next frame can be handed the same buffer and
-overwrite these samples while those reads are still pending.
-[`ColorConverter`](torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) does it for you, but you will have to call this
-yourself if you consume `planes` directly on a different stream.
-
-See [this post](https://zdevito.github.io/2022/08/04/cuda-caching-allocator.html) for
-what the allocator is doing and why this is needed.
-
-Parameters:
-
-**stream** ([*torch.cuda.Stream*](https://docs.pytorch.org/docs/stable/generated/torch.cuda.Stream_class.html#torch.cuda.Stream)) - The stream that is reading the samples.
-
 *property*rotation*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
 How many degrees counter-clockwise the frame has to be rotated to be
@@ -167,6 +155,15 @@ upright, or 0 if the container asks for no rotation.
 
 This is *not* applied to `planes`. A [`ColorConverter`](torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter)
 applies it, rounded to the nearest multiple of 90, to its output.
+
+storage_cuda*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+The CUDA allocation backing `planes`, or `None` on CPU.
+
+This tensor is exposed for one purpose, which is to let you call
+[`torch.Tensor.record_stream()`](https://docs.pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html#torch.Tensor.record_stream) if you want to. See
+[Blocks and CUDA streams](../generated_examples/blocks/cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py) for more details.
+You shouldn't read or write this tensor directly.
 
 *property*width*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 

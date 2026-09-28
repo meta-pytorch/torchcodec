@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>VideoPacketDecoder &#8212; TorchCodec 0.17.0.dev20260925+cu130 Documentation</title>
+    <title>VideoPacketDecoder &#8212; TorchCodec 0.17.0.dev20260928+cu130 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=97aa7317"></script>
+    <script src="../_static/documentation_options.js?v=44d26e91"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -1222,7 +1222,7 @@ document.write(`
 <p>You should not build one yourself: <a class="reference internal" href="torchcodec.decoders._blocks.VideoStream.html#torchcodec.decoders._blocks.VideoStream.make_decoder" title="torchcodec.decoders._blocks.VideoStream.make_decoder"><code class="xref py py-meth docutils literal notranslate"><span class="pre">VideoStream.make_decoder()</span></code></a> is what
 creates it. Frames come out on the device given there.</p>
 <p>Feed it one packet at a time, and drain it at the end:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">demuxer</span> <span class="o">=</span> <span class="n">Demuxer</span><span class="p">(</span><span class="s2">&quot;video.mp4&quot;</span><span class="p">)</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">demuxer</span> <span class="o">=</span> <span class="n">Demuxer</span><span class="p">(</span><span class="s2">"video.mp4"</span><span class="p">)</span>
 <span class="n">decoder</span> <span class="o">=</span> <span class="n">demuxer</span><span class="o">.</span><span class="n">streams</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">make_decoder</span><span class="p">()</span>
 
 <span class="k">for</span> <span class="n">packet</span> <span class="ow">in</span> <span class="n">demuxer</span><span class="p">:</span>
@@ -1238,6 +1238,9 @@ the packets of its own stream, in the order the demuxer produced them.</p>
 <div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_basics_thumb.png" />
 <p><a class="reference internal" href="../generated_examples/blocks/basics.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
   <div class="sphx-glr-thumbnail-title">Blocks: build your own decoding pipeline</div>
+</div><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_cuda_streams_thumb.png" />
+<p><a class="reference internal" href="../generated_examples/blocks/cuda_streams.html"><span class="doc">Blocks and CUDA streams</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Blocks and CUDA streams</div>
 </div><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../_images/sphx_glr_raw_data_thumb.png" />
 <p><a class="reference internal" href="../generated_examples/blocks/raw_data.html"><span class="doc">Raw frames and raw audio samples</span></a></p>
   <div class="sphx-glr-thumbnail-title">Raw frames and raw audio samples</div>
@@ -1639,7 +1642,7 @@ still holding, in presentation order.</p>
        "headline": "VideoPacketDecoder",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders._blocks.VideoPacketDecoder.html",
-       "articleBody": "VideoPacketDecoder# class torchcodec.decoders._blocks.VideoPacketDecoder(*args, **kwargs)[source]# Decodes the compressed Packets of one video stream into RawFrames. You should not build one yourself: VideoStream.make_decoder() is what creates it. Frames come out on the device given there. Feed it one packet at a time, and drain it at the end: demuxer = Demuxer(\"video.mp4\") decoder = demuxer.streams[0].make_decoder() for packet in demuxer: for raw_frame in decoder.decode(packet): ... for raw_frame in decoder.drain(): ... It is stateful. It holds the codec\u2019s reference-frame buffer, so it expects the packets of its own stream, in the order the demuxer produced them. Examples using VideoPacketDecoder: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline Raw frames and raw audio samples Raw frames and raw audio samples decode(packet: Packet) \u2192 list[RawFrame][source]# Send one Packet to the codec and return the RawFrames that are ready. This can return zero, one, or more than one RawFrame. What comes back is not the decoding of the packet you just passed: a codec that is buffering B-frames, or still priming itself, will emit what it owes you on a later call. Parameters: packet (Packet) \u2013 A packet of this decoder\u2019s own stream. Returns: The possibly empty list of RawFrames that the codec has ready, in presentation order. Raises: RuntimeError \u2013 If this decoder has been drained, or if the demuxer seeked without it being reset() afterwards. drain() \u2192 list[RawFrame][source]# Tell the codec the stream has ended, and return the RawFrames it was still holding. Skipping this loses the tail of the stream. A drained decoder refuses any further packet; reset() makes it usable again. Returns: The possibly empty list of RawFrames that the codec was still holding, in presentation order. reset() \u2192 None# Drop the codec\u2019s buffered state and start over. Needed after a Demuxer.seek(), and after drain().",
+       "articleBody": "VideoPacketDecoder# class torchcodec.decoders._blocks.VideoPacketDecoder(*args, **kwargs)[source]# Decodes the compressed Packets of one video stream into RawFrames. You should not build one yourself: VideoStream.make_decoder() is what creates it. Frames come out on the device given there. Feed it one packet at a time, and drain it at the end: demuxer = Demuxer(\"video.mp4\") decoder = demuxer.streams[0].make_decoder() for packet in demuxer: for raw_frame in decoder.decode(packet): ... for raw_frame in decoder.drain(): ... It is stateful. It holds the codec\u2019s reference-frame buffer, so it expects the packets of its own stream, in the order the demuxer produced them. Examples using VideoPacketDecoder: Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline Blocks and CUDA streams Blocks and CUDA streams Raw frames and raw audio samples Raw frames and raw audio samples decode(packet: Packet) \u2192 list[RawFrame][source]# Send one Packet to the codec and return the RawFrames that are ready. This can return zero, one, or more than one RawFrame. What comes back is not the decoding of the packet you just passed: a codec that is buffering B-frames, or still priming itself, will emit what it owes you on a later call. Parameters: packet (Packet) \u2013 A packet of this decoder\u2019s own stream. Returns: The possibly empty list of RawFrames that the codec has ready, in presentation order. Raises: RuntimeError \u2013 If this decoder has been drained, or if the demuxer seeked without it being reset() afterwards. drain() \u2192 list[RawFrame][source]# Tell the codec the stream has ended, and return the RawFrames it was still holding. Skipping this loses the tail of the stream. A drained decoder refuses any further packet; reset() makes it usable again. Returns: The possibly empty list of RawFrames that the codec was still holding, in presentation order. reset() \u2192 None# Drop the codec\u2019s buffered state and start over. Needed after a Demuxer.seek(), and after drain().",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

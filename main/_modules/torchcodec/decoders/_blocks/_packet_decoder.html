@@ -7,7 +7,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>torchcodec.decoders._blocks._packet_decoder &#8212; TorchCodec 0.17.0.dev20260925+cu130 Documentation</title>
+    <title>torchcodec.decoders._blocks._packet_decoder &#8212; TorchCodec 0.17.0.dev20260928+cu130 Documentation</title>
   
   
   
@@ -41,7 +41,7 @@
 <link rel="preload" as="script" href="../../../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../../../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../../../../_static/documentation_options.js?v=97aa7317"></script>
+    <script src="../../../../_static/documentation_options.js?v=44d26e91"></script>
     <script src="../../../../_static/doctools.js?v=888ff710"></script>
     <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -1507,13 +1507,13 @@ document.write(`
 
 <span class="c1"># TODO_API_BREAKDOWN DOC P1 revisit every single comment across all Blocks APIs</span>
 
-<span class="n">_Decoded</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s2">&quot;_Decoded&quot;</span><span class="p">,</span> <span class="n">RawFrame</span><span class="p">,</span> <span class="n">RawAudioSamples</span><span class="p">)</span>
-<span class="n">_Self</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s2">&quot;_Self&quot;</span><span class="p">,</span> <span class="n">bound</span><span class="o">=</span><span class="s2">&quot;_BasePacketDecoder&quot;</span><span class="p">)</span>
+<span class="n">_Decoded</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s2">"_Decoded"</span><span class="p">,</span> <span class="n">RawFrame</span><span class="p">,</span> <span class="n">RawAudioSamples</span><span class="p">)</span>
+<span class="n">_Self</span> <span class="o">=</span> <span class="n">TypeVar</span><span class="p">(</span><span class="s2">"_Self"</span><span class="p">,</span> <span class="n">bound</span><span class="o">=</span><span class="s2">"_BasePacketDecoder"</span><span class="p">)</span>
 
 
 <span class="nd">@_process_local</span><span class="p">(</span>
-    <span class="s2">&quot;A codec context holds reference frames and entropy state that FFmpeg &quot;</span>
-    <span class="s2">&quot;cannot serialise. Call stream.make_decoder() in each process.&quot;</span>
+    <span class="s2">"A codec context holds reference frames and entropy state that FFmpeg "</span>
+    <span class="s2">"cannot serialise. Call stream.make_decoder() in each process."</span>
 <span class="p">)</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">_BasePacketDecoder</span><span class="p">(</span><span class="n">Generic</span><span class="p">[</span><span class="n">_Decoded</span><span class="p">]):</span>
     <span class="n">_handle</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span>
@@ -1524,9 +1524,9 @@ document.write(`
     <span class="c1"># TypeError about the argument count.</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> cannot be instantiated directly. Build one &quot;</span>
-            <span class="s2">&quot;from the stream whose packets it decodes, with &quot;</span>
-            <span class="s2">&quot;stream.make_decoder().&quot;</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> cannot be instantiated directly. Build one "</span>
+            <span class="s2">"from the stream whose packets it decodes, with "</span>
+            <span class="s2">"stream.make_decoder()."</span>
         <span class="p">)</span>
 
     <span class="nd">@classmethod</span>
@@ -1556,22 +1556,22 @@ document.write(`
     <span class="k">def</span><span class="w"> </span><span class="nf">decode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">packet</span><span class="p">:</span> <span class="n">Packet</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">_Decoded</span><span class="p">]:</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_drained</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-                <span class="s2">&quot;This decoder has been drained, and a codec that has been told &quot;</span>
-                <span class="s2">&quot;the stream ended ignores any further packet. Create a new &quot;</span>
-                <span class="s2">&quot;decoder to decode another stream.&quot;</span>
+                <span class="s2">"This decoder has been drained, and a codec that has been told "</span>
+                <span class="s2">"the stream ended ignores any further packet. Create a new "</span>
+                <span class="s2">"decoder to decode another stream."</span>
             <span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generation</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_generation</span> <span class="o">=</span> <span class="n">packet</span><span class="o">.</span><span class="n">_generation</span>
         <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generation</span> <span class="o">!=</span> <span class="n">packet</span><span class="o">.</span><span class="n">_generation</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
-                <span class="s2">&quot;The demuxer seeked since this decoder was last reset(), so &quot;</span>
-                <span class="s2">&quot;this packet is from a position the codec knows nothing about &quot;</span>
-                <span class="s2">&quot;- decoding it would produce plausible-looking garbage. Call &quot;</span>
-                <span class="s2">&quot;reset() on every decoder fed by that demuxer after a seek.&quot;</span>
+                <span class="s2">"The demuxer seeked since this decoder was last reset(), so "</span>
+                <span class="s2">"this packet is from a position the codec knows nothing about "</span>
+                <span class="s2">"- decoding it would produce plausible-looking garbage. Call "</span>
+                <span class="s2">"reset() on every decoder fed by that demuxer after a seek."</span>
             <span class="p">)</span>
         <span class="n">status</span> <span class="o">=</span> <span class="n">_blocks_packet_decoder_send_packet</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_handle</span><span class="p">,</span> <span class="n">packet</span><span class="o">.</span><span class="n">_handle</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">status</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to send packet to decoder (status </span><span class="si">{</span><span class="n">status</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Failed to send packet to decoder (status </span><span class="si">{</span><span class="n">status</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_receive_ready_frames</span><span class="p">()</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">drain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">_Decoded</span><span class="p">]:</span>
@@ -1581,10 +1581,10 @@ document.write(`
         <span class="k">return</span> <span class="n">frames</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">reset</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Drop the codec&#39;s buffered state and start over.</span>
+<span class="w">        </span><span class="sd">"""Drop the codec's buffered state and start over.</span>
 
 <span class="sd">        Needed after a :meth:`Demuxer.seek`, and after :meth:`drain`.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">_blocks_packet_decoder_reset</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_handle</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_drained</span> <span class="o">=</span> <span class="kc">False</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_generation</span> <span class="o">=</span> <span class="kc">None</span>
@@ -1593,7 +1593,7 @@ document.write(`
 <div class="viewcode-block" id="VideoPacketDecoder">
 <a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">VideoPacketDecoder</span><span class="p">(</span><span class="n">_BasePacketDecoder</span><span class="p">[</span><span class="n">RawFrame</span><span class="p">]):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Decodes the compressed :class:`Packet`\\ s of one video stream into</span>
+<span class="w">    </span><span class="sd">"""Decodes the compressed :class:`Packet`\\ s of one video stream into</span>
 <span class="sd">    :class:`RawFrame`\\ s.</span>
 
 <span class="sd">    You should not build one yourself: :meth:`VideoStream.make_decoder` is what</span>
@@ -1601,7 +1601,7 @@ document.write(`
 
 <span class="sd">    Feed it one packet at a time, and drain it at the end::</span>
 
-<span class="sd">        demuxer = Demuxer(&quot;video.mp4&quot;)</span>
+<span class="sd">        demuxer = Demuxer("video.mp4")</span>
 <span class="sd">        decoder = demuxer.streams[0].make_decoder()</span>
 
 <span class="sd">        for packet in demuxer:</span>
@@ -1610,17 +1610,17 @@ document.write(`
 <span class="sd">        for raw_frame in decoder.drain():</span>
 <span class="sd">            ...</span>
 
-<span class="sd">    It is stateful. It holds the codec&#39;s reference-frame buffer, so it expects</span>
+<span class="sd">    It is stateful. It holds the codec's reference-frame buffer, so it expects</span>
 <span class="sd">    the packets of its own stream, in the order the demuxer produced them.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="c1"># methods calling super() only to pin the return type down to RawFrame. The</span>
-    <span class="c1"># base class is generic over _Decoded, which isn&#39;t ideal for the rendered</span>
+    <span class="c1"># base class is generic over _Decoded, which isn't ideal for the rendered</span>
     <span class="c1"># docs.</span>
 <div class="viewcode-block" id="VideoPacketDecoder.decode">
 <a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder.decode">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">decode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">packet</span><span class="p">:</span> <span class="n">Packet</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RawFrame</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Send one :class:`Packet` to the codec and return the</span>
+<span class="w">        </span><span class="sd">"""Send one :class:`Packet` to the codec and return the</span>
 <span class="sd">        :class:`RawFrame`\\ s that are ready.</span>
 
 <span class="sd">        **This can return zero, one, or more than one** :class:`RawFrame`. What</span>
@@ -1629,7 +1629,7 @@ document.write(`
 <span class="sd">        you on a later call.</span>
 
 <span class="sd">        Args:</span>
-<span class="sd">            packet (Packet): A packet of this decoder&#39;s own stream.</span>
+<span class="sd">            packet (Packet): A packet of this decoder's own stream.</span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            The possibly empty list of :class:`RawFrame`\\ s that the codec has</span>
@@ -1638,14 +1638,14 @@ document.write(`
 <span class="sd">        Raises:</span>
 <span class="sd">            RuntimeError: If this decoder has been drained, or if the demuxer</span>
 <span class="sd">                seeked without it being :meth:`reset` afterwards.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">packet</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="VideoPacketDecoder.drain">
 <a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder.drain">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">drain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RawFrame</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Tell the codec the stream has ended, and return the</span>
+<span class="w">        </span><span class="sd">"""Tell the codec the stream has ended, and return the</span>
 <span class="sd">        :class:`RawFrame`\\ s it was still holding.</span>
 
 <span class="sd">        Skipping this loses the tail of the stream. A drained decoder refuses</span>
@@ -1654,7 +1654,7 @@ document.write(`
 <span class="sd">        Returns:</span>
 <span class="sd">            The possibly empty list of :class:`RawFrame`\\ s that the codec was</span>
 <span class="sd">            still holding, in presentation order.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">drain</span><span class="p">()</span></div>
 
 
@@ -1681,7 +1681,7 @@ document.write(`
 <div class="viewcode-block" id="AudioPacketDecoder">
 <a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">AudioPacketDecoder</span><span class="p">(</span><span class="n">_BasePacketDecoder</span><span class="p">[</span><span class="n">RawAudioSamples</span><span class="p">]):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Decodes the compressed :class:`Packet`\\ s of one audio stream into</span>
+<span class="w">    </span><span class="sd">"""Decodes the compressed :class:`Packet`\\ s of one audio stream into</span>
 <span class="sd">    :class:`RawAudioSamples`.</span>
 
 <span class="sd">    You should not build one yourself: :meth:`AudioStream.make_decoder` is what</span>
@@ -1689,7 +1689,7 @@ document.write(`
 
 <span class="sd">    Feed it one packet at a time, and drain it at the end::</span>
 
-<span class="sd">        demuxer = Demuxer(&quot;audio.mp3&quot;, streams=&quot;audio&quot;)</span>
+<span class="sd">        demuxer = Demuxer("audio.mp3", streams="audio")</span>
 <span class="sd">        decoder = demuxer.streams[0].make_decoder()</span>
 
 <span class="sd">        for packet in demuxer:</span>
@@ -1703,13 +1703,13 @@ document.write(`
 <span class="sd">    them. After a :meth:`Demuxer.seek`, :meth:`reset` is necessary but not</span>
 <span class="sd">    sufficient: the first samples that come out are subtly wrong until the codec</span>
 <span class="sd">    re-primes, so decode a margin before your target and throw it away.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="c1"># See VideoPacketDecoder: pinning the return type down to RawAudioSamples.</span>
 <div class="viewcode-block" id="AudioPacketDecoder.decode">
 <a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder.decode">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">decode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">packet</span><span class="p">:</span> <span class="n">Packet</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RawAudioSamples</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Send one :class:`Packet` to the codec and return the</span>
+<span class="w">        </span><span class="sd">"""Send one :class:`Packet` to the codec and return the</span>
 <span class="sd">        :class:`RawAudioSamples` that are ready.</span>
 
 <span class="sd">        **This can return zero, one, or more than one**</span>
@@ -1718,7 +1718,7 @@ document.write(`
 <span class="sd">        what it owes you on a later call.</span>
 
 <span class="sd">        Args:</span>
-<span class="sd">            packet (Packet): A packet of this decoder&#39;s own stream.</span>
+<span class="sd">            packet (Packet): A packet of this decoder's own stream.</span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            The possibly empty list of :class:`RawAudioSamples` that the codec</span>
@@ -1727,14 +1727,14 @@ document.write(`
 <span class="sd">        Raises:</span>
 <span class="sd">            RuntimeError: If this decoder has been drained, or if the demuxer</span>
 <span class="sd">                seeked without it being :meth:`reset` afterwards.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="n">packet</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="AudioPacketDecoder.drain">
 <a class="viewcode-back" href="../../../../generated/torchcodec.decoders._blocks.AudioPacketDecoder.html#torchcodec.decoders._blocks.AudioPacketDecoder.drain">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">drain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">RawAudioSamples</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Tell the codec the stream has ended, and return the</span>
+<span class="w">        </span><span class="sd">"""Tell the codec the stream has ended, and return the</span>
 <span class="sd">        :class:`RawAudioSamples` it was still holding.</span>
 
 <span class="sd">        Skipping this loses the tail of the stream. A drained decoder refuses</span>
@@ -1743,7 +1743,7 @@ document.write(`
 <span class="sd">        Returns:</span>
 <span class="sd">            The possibly empty list of :class:`RawAudioSamples` that the codec</span>
 <span class="sd">            was still holding, in presentation order.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">drain</span><span class="p">()</span></div>
 
 
@@ -1762,7 +1762,7 @@ document.write(`
                     <span class="n">pts_seconds</span><span class="o">=</span><span class="n">pts_seconds</span><span class="p">,</span>
                     <span class="n">duration_seconds</span><span class="o">=</span><span class="n">duration_seconds</span><span class="p">,</span>
                     <span class="c1"># Carried onward so AudioConverter can make the same check:</span>
-                    <span class="c1"># a seek invalidates the resampler&#39;s state too.</span>
+                    <span class="c1"># a seek invalidates the resampler's state too.</span>
                     <span class="n">_generation</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_generation</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">,</span>
                 <span class="p">)</span>
             <span class="p">)</span>

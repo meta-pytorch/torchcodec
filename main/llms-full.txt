@@ -1537,6 +1537,11 @@ Examples using `ColorConverter`:
 [Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
 
 Blocks: build your own decoding pipeline
+![](../_images/sphx_glr_cuda_streams_thumb.png)
+
+[Blocks and CUDA streams](../generated_examples/blocks/cuda_streams.html)
+
+Blocks and CUDA streams
 ![](../_images/sphx_glr_pipelines_thumb.png)
 
 [Multi-threaded decoding pipelines](../generated_examples/blocks/pipelines.html)
@@ -1554,6 +1559,11 @@ Convert one [`RawFrame`](torchcodec.decoders._blocks.RawFrame.html#torchcodec.de
 
 [`RawFrame.rotation`](torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.rotation) is applied, so the output is upright and
 matches what a [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) gives you.
+
+If you run this on a different CUDA stream than the one the frame was
+decoded on, refer to
+[Blocks and CUDA streams](../generated_examples/blocks/cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py) for pitfalls
+and how to avoid them.
 
 Parameters:
 
@@ -1662,6 +1672,11 @@ Examples using `Demuxer`:
 [Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
 
 Blocks: build your own decoding pipeline
+![](../_images/sphx_glr_cuda_streams_thumb.png)
+
+[Blocks and CUDA streams](../generated_examples/blocks/cuda_streams.html)
+
+Blocks and CUDA streams
 ![](../_images/sphx_glr_pipelines_thumb.png)
 
 [Multi-threaded decoding pipelines](../generated_examples/blocks/pipelines.html)
@@ -2003,13 +2018,20 @@ what you have to apply yourself if you convert `planes` on your own.
 
 Important
 
-On CUDA, anything that reads the samples on a stream other than the one
-the decoder ran on must call `record_stream()`, or the decoder may
-overwrite them while those reads are still pending. A
-[`ColorConverter`](torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) does this for you.
+On CUDA, the samples are produced on the CUDA stream that was current when
+you called [`VideoPacketDecoder.decode()`](torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder.decode), and all of that work is
+enqueued by the time the call returns. If you consume them on any other stream
+(via [`ColorConverter`](torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) or by reading `planes`), you must
+handle synchronization yourself. See
+[Blocks and CUDA streams](../generated_examples/blocks/cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py).
 
 Examples using `RawFrame`:
 
+![](../_images/sphx_glr_cuda_streams_thumb.png)
+
+[Blocks and CUDA streams](../generated_examples/blocks/cuda_streams.html)
+
+Blocks and CUDA streams
 ![](../_images/sphx_glr_raw_data_thumb.png)
 
 [Raw frames and raw audio samples](../generated_examples/blocks/raw_data.html)
@@ -2117,25 +2139,6 @@ pts_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
 The [pts](../glossary.html#term-pts) of this frame, in seconds.
 
-record_stream(*stream: [Stream](https://docs.pytorch.org/docs/stable/generated/torch.cuda.streams.Stream.html#torch.cuda.streams.Stream)*) → [None](https://docs.python.org/3/builtins/constants.html#None)[[source]](../_modules/torchcodec/decoders/_blocks/_frame.html#RawFrame.record_stream)
-
-Tell the CUDA caching allocator that `stream` is still reading this
-frame's samples.
-
-**A CUDA consumer that reads the frame on a stream other than the one
-the decoder ran on must call this**, right after queueing its reads.
-Without it, the decoder's next frame can be handed the same buffer and
-overwrite these samples while those reads are still pending.
-[`ColorConverter`](torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) does it for you, but you will have to call this
-yourself if you consume `planes` directly on a different stream.
-
-See [this post](https://zdevito.github.io/2022/08/04/cuda-caching-allocator.html) for
-what the allocator is doing and why this is needed.
-
-Parameters:
-
-**stream** ([*torch.cuda.Stream*](https://docs.pytorch.org/docs/stable/generated/torch.cuda.Stream_class.html#torch.cuda.Stream)) - The stream that is reading the samples.
-
 *property*rotation*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
 How many degrees counter-clockwise the frame has to be rotated to be
@@ -2143,6 +2146,15 @@ upright, or 0 if the container asks for no rotation.
 
 This is *not* applied to `planes`. A [`ColorConverter`](torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter)
 applies it, rounded to the nearest multiple of 90, to its output.
+
+storage_cuda*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+The CUDA allocation backing `planes`, or `None` on CPU.
+
+This tensor is exposed for one purpose, which is to let you call
+[`torch.Tensor.record_stream()`](https://docs.pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html#torch.Tensor.record_stream) if you want to. See
+[Blocks and CUDA streams](../generated_examples/blocks/cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py) for more details.
+You shouldn't read or write this tensor directly.
 
 *property*width*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
@@ -2222,6 +2234,11 @@ Examples using `VideoPacketDecoder`:
 [Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
 
 Blocks: build your own decoding pipeline
+![](../_images/sphx_glr_cuda_streams_thumb.png)
+
+[Blocks and CUDA streams](../generated_examples/blocks/cuda_streams.html)
+
+Blocks and CUDA streams
 ![](../_images/sphx_glr_raw_data_thumb.png)
 
 [Raw frames and raw audio samples](../generated_examples/blocks/raw_data.html)
@@ -4100,12 +4117,15 @@ Demuxer -> AudioPacketDecoder -> AudioConverter
  Packet RawAudioSamples AudioSamples
 ```
 
-Two companion tutorials go further:
+Three companion tutorials go further:
 
 - [Multi-threaded decoding pipelines](pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py), on running the stages
 concurrently on several threads.
 - [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py), on reading the
 decoder's own YUV planes and audio samples instead of converting them.
+- [Blocks and CUDA streams](cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py), on what a
+[`RawFrame`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame) requires of you when you run the stages on different CUDA
+streams.
 
 First, a bit of boilerplate: a test video, and the device we'll run on.
 
@@ -4136,7 +4156,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpgi_u9hxb/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpxrtt5ww0/video.mp4'], returncode=0)
 ```
 
 ## The three blocks
@@ -4265,7 +4285,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpgi_u9hxb/video.mp4', '-i', '/tmp/tmpgi_u9hxb/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpgi_u9hxb/av.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpxrtt5ww0/video.mp4', '-i', '/tmp/tmpxrtt5ww0/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpxrtt5ww0/av.mp4'], returncode=0)
 ```
 
 Which streams to follow is specified at construction time of the
@@ -4634,14 +4654,232 @@ and on CUDA.
 - [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py) skips the converters
 and reads the decoder's own YUV planes and audio samples, at the source's
 own precision.
+- [Blocks and CUDA streams](cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py) explains how to
+manage CUDA streams when you consume a [`RawFrame`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame) on a different CUDA
+stream than the one it was decoded on.
 
-**Total running time of the script:** (0 minutes 1.550 seconds)
+**Total running time of the script:** (0 minutes 1.548 seconds)
 
 [`Download Jupyter notebook: basics.ipynb`](../../_downloads/cdae7c17b717a2c62f0675ad148787ce/basics.ipynb)
 
 [`Download Python source code: basics.py`](../../_downloads/1661ee49c88602100df40bd9839099d1/basics.py)
 
 [`Download zipped: basics.zip`](../../_downloads/b5a82a778b6587fb1a2c4e556876f778/basics.zip)
+
+[Gallery generated by Sphinx-Gallery](https://sphinx-gallery.github.io)
+
+---
+
+# Blocks and CUDA streams
+
+Warning
+
+**The Blocks APIs are under active construction.** They are private
+and unreleased. Signatures and semantics may change without notice. This
+tutorial only exists to show what they will eventually make possible.
+
+On CUDA, if you decode on one stream and consume the [`RawFrame`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame)s on
+another - either with a [`ColorConverter`](../../generated/torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter), or with your own consumer as in
+[Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py) - you must take care of
+two things:
+
+1. Waiting for the decoder's asynchronous copy before reading the samples.
+2. Keeping the CUDA caching allocator from reusing the frame's memory while
+your reads are still queued.
+
+Getting this wrong will lead to occasional corrupted frames. We cover both
+points below.
+
+Note that if you don't create a separate stream for consuming the RawFrame,
+none of this applies: everything runs on the same stream and stream ordering
+handles it.
+
+Some boilerplate first: a test video, the two streams we'll use, and a helper
+to build a fresh set of blocks for each example below.
+
+```
+import subprocess
+import tempfile
+from pathlib import Path
+
+import torch
+
+from torchcodec.decoders._blocks import ColorConverter, Demuxer
+
+video_path = Path(tempfile.mkdtemp()) / "video.mp4"
+subprocess.run(
+ [
+ "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+ "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30:duration=2",
+ "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30",
+ str(video_path),
+ ],
+ check=True,
+)
+
+decode_stream = torch.cuda.Stream()
+convert_stream = torch.cuda.Stream()
+
+def make_blocks():
+ demuxer = Demuxer(video_path)
+ packet_decoder = demuxer.streams[0].make_decoder(device="cuda")
+ return demuxer, packet_decoder, ColorConverter(device="cuda")
+```
+
+## Waiting for the samples to be ready
+
+A [`RawFrame`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame)'s samples are produced on the stream that was current when
+you called [`VideoPacketDecoder.decode()`](../../generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder.decode).
+[`VideoPacketDecoder.decode()`](../../generated/torchcodec.decoders._blocks.VideoPacketDecoder.html#torchcodec.decoders._blocks.VideoPacketDecoder.decode) typically involves a CUDA copy of the NVDEC
+decoder internals into a PyTorch-allocated CUDA tensor. This copy is
+asynchronous, so a consumer on another stream has to wait for it to finish.
+For that, you can record an event on the decoding stream and wait on it:
+
+```
+with torch.cuda.stream(decode_stream):
+ raw_frames = packet_decoder.decode(packet)
+ decoded = torch.cuda.Event()
+ decoded.record()
+
+decoded.wait(convert_stream)
+with torch.cuda.stream(convert_stream):
+ frame = color_converter.convert(raw_frames[0])
+```
+
+Alternatively, you can use `convert_stream.wait_stream(decode_stream)`, but
+it has different semantics: it waits for everything currently queued on the
+decoding stream, so a consumer that has fallen behind waits for the decoder's
+whole backlog instead of for its own frame.
+
+## Keeping the allocator from reusing the memory
+
+Here what can go wrong:
+
+```
+with torch.cuda.stream(decode_stream):
+ raw_frames = packet_decoder.decode(packet) # allocated on decode_stream
+
+with torch.cuda.stream(convert_stream):
+ frame = color_converter.convert(raw_frames[0]) # reads are only *queued*
+
+del raw_frames # the allocation goes back to decode_stream's pool
+
+with torch.cuda.stream(decode_stream):
+ packet_decoder.decode(next_packet) # BAD: the next frame can be given
+ # that same memory by the PyTorch CUDA
+ # allocator, and overwrite
+ # the samples convert() is reading
+```
+
+To learn more, see the *Streams and freeing memory* section of [this blog post](https://zdevito.github.io/2022/08/04/cuda-caching-allocator.html) .
+
+You have two ways to handle this each with its own trade-offs.
+
+### Option 1: sync back before dropping the frame
+
+Make the decoding stream wait for your reads, then let the frame go:
+
+```
+decode_stream.wait_stream(convert_stream)
+del raw_frames
+```
+
+The issue here is that the decoder's next frame cannot start until your reads
+have finished, which removes the overlap you created a second stream for. To
+get this overlap back, you can work in batches: hold N frames, sync once, drop
+them together. The decoder then stalls once every N frames, and N is an
+explicit memory knob:
+
+```
+MAX_INFLIGHT_FRAMES = 8
+
+demuxer, packet_decoder, color_converter = make_blocks()
+
+frames, in_flight = [], []
+for packet in list(demuxer) + [None]:
+ with torch.cuda.stream(decode_stream):
+ raw_frames = (
+ packet_decoder.drain() if packet is None else packet_decoder.decode(packet)
+ )
+ decoded = torch.cuda.Event()
+ decoded.record()
+
+ decoded.wait(convert_stream)
+ with torch.cuda.stream(convert_stream):
+ for raw_frame in raw_frames:
+ frames.append(color_converter.convert(raw_frame))
+
+ # Hold on to the raw frames, so that their memory can't be reused yet.
+ in_flight += raw_frames
+ if len(in_flight) >= MAX_INFLIGHT_FRAMES:
+ # Make the decoder wait for the conversions we queued, then let this
+ # batch of frames and their memory go.
+ decode_stream.wait_stream(convert_stream)
+ in_flight.clear()
+
+decode_stream.wait_stream(convert_stream)
+in_flight.clear()
+torch.cuda.synchronize()
+
+print(f"Option 1: {len(frames)} frames, {frames[0].data.shape = }")
+```
+
+```
+Option 1: 60 frames, frames[0].data.shape = torch.Size([3, 720, 1280])
+```
+
+### Option 2: let the allocator handle it
+
+[`torch.Tensor.record_stream()`](https://docs.pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html#torch.Tensor.record_stream) tells the allocator that another stream is
+using the block, so it withholds it from reuse until your reads complete. Call
+it on [`RawFrame.storage_cuda`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.storage_cuda), right after queueing your reads.
+
+This never stalls the decoder, so you keep full overlap, and you pay in memory
+instead. How much is decided by device timing rather than by you: the
+allocator polls the recorded stream on later allocations, so peak memory
+varies between runs and can't be attributed to a line of your code. Close to
+your memory ceiling, the allocator's fallback is to block and release cached
+blocks, which is a large stall at an unpredictable point.
+
+Note
+
+`record_stream` only works on [`RawFrame.storage_cuda`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.storage_cuda). Calling it
+on `RawFrame.planes` is silently a no-op
+
+```
+demuxer, packet_decoder, color_converter = make_blocks()
+
+frames = []
+for packet in list(demuxer) + [None]:
+ with torch.cuda.stream(decode_stream):
+ raw_frames = (
+ packet_decoder.drain() if packet is None else packet_decoder.decode(packet)
+ )
+ decoded = torch.cuda.Event()
+ decoded.record()
+
+ decoded.wait(convert_stream)
+ with torch.cuda.stream(convert_stream):
+ for raw_frame in raw_frames:
+ frames.append(color_converter.convert(raw_frame))
+ raw_frame.storage_cuda.record_stream(convert_stream)
+
+torch.cuda.synchronize()
+
+print(f"Option 2: {len(frames)} frames, {frames[0].data.shape = }")
+```
+
+```
+Option 2: 60 frames, frames[0].data.shape = torch.Size([3, 720, 1280])
+```
+
+**Total running time of the script:** (0 minutes 0.461 seconds)
+
+[`Download Jupyter notebook: cuda_streams.ipynb`](../../_downloads/a69034aed2fe1f84ed02ff93bcb31c72/cuda_streams.ipynb)
+
+[`Download Python source code: cuda_streams.py`](../../_downloads/6b0b0dc6bbb33ea64d140d8ad5e3113c/cuda_streams.py)
+
+[`Download zipped: cuda_streams.zip`](../../_downloads/c59cdf6bd944ae42ea18044238c3e753/cuda_streams.zip)
 
 [Gallery generated by Sphinx-Gallery](https://sphinx-gallery.github.io)
 
@@ -4664,6 +4902,11 @@ Multi-threaded decoding pipelines
 [Raw frames and raw audio samples](raw_data.html)
 
 Raw frames and raw audio samples
+![](../../_images/sphx_glr_cuda_streams_thumb.png)
+
+[Blocks and CUDA streams](cuda_streams.html)
+
+Blocks and CUDA streams
 
 ---
 
@@ -4685,6 +4928,14 @@ Important
 The Blocks objects can cross threads, but not processes, so multi-processing
 is currently not supported. But it *can* be: if that's something you need,
 please open an issue.
+
+Note
+
+The pipelines below run every stage on the same CUDA stream, and nothing here
+requires you to think about stream synchronization. If you decide however to
+give each stage a CUDA stream of its own, read
+[Blocks and CUDA streams](cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py) for common gotchas
+and how to avoid them.
 
 Some boilerplate first: a test video, and the device we'll run on.
 
@@ -4715,7 +4966,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp81vhcmf9/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpaa5fy30d/video.mp4'], returncode=0)
 ```
 
 ## One stage, one generator
@@ -4870,8 +5121,8 @@ for pipeline in (sequential, convert_on_own_thread):
 
 ```
 VideoDecoder : 1.86s
-sequential : 1.88s (0.99x vs VideoDecoder)
-convert_on_own_thread : 1.61s (1.16x vs VideoDecoder)
+sequential : 1.87s (0.99x vs VideoDecoder)
+convert_on_own_thread : 1.61s (1.15x vs VideoDecoder)
 ```
 
 `sequential` should land close to the `VideoDecoder` baseline, as
@@ -4880,7 +5131,7 @@ expected: they do the same work on one thread.
 two most expensive steps: decoding and color-conversion. Note: actual speedup
 will depend on the capabilities of the machine building these docs!
 
-**Total running time of the script:** (0 minutes 26.465 seconds)
+**Total running time of the script:** (0 minutes 26.440 seconds)
 
 [`Download Jupyter notebook: pipelines.ipynb`](../../_downloads/1bd9c6e945e662bafe88b1687e2dfa61/pipelines.ipynb)
 
@@ -5037,26 +5288,17 @@ print(f"{ours.shape = }, mean abs diff vs ColorConverter: "
 ours.shape = torch.Size([3, 720, 1280]), mean abs diff vs ColorConverter: 0.29
 ```
 
-### Reading the planes on CUDA
+### Reading or converting the planes on CUDA
 
-Important
+The planes are views into a PyTorch CUDA allocation that the decoder still
+owns and may reuse for a later frame. As long as you read them on the stream
+the decoder ran on, which is the case unless you explicitly request otherwise,
+there is no problem and you don't need to think about stream synchronization.
 
-The planes are a view into a buffer the decoder will hand back to the CUDA
-caching allocator and reuse for a later frame. The allocator only knows
-about the stream the decoder ran on, so if you read the samples on a
-*different* CUDA stream, you must tell it so with
-[`RawFrame.record_stream()`](../../generated/torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.record_stream), right after queueing your reads:
-
-```
-with torch.cuda.stream(my_stream):
- rgb = yuv420_to_rgb(*raw_frame.planes)
- raw_frame.record_stream(my_stream)
-```
-
-Without it, the decoder's next frame can be given the same buffer and
-overwrite these samples while your reads are still pending - a race that
-shows up as occasional corrupted frames, not as an error.
-A [`ColorConverter`](../../generated/torchcodec.decoders._blocks.ColorConverter.html#torchcodec.decoders._blocks.ColorConverter) does this for you.
+However, if you read them on a *different* stream than the decoder stream, you
+have to wait for the decoder's asynchronous copy before reading, and keep the
+allocator from recycling the buffer while your reads are still queued. See
+[Blocks and CUDA streams](cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py) to learn more.
 
 ### Formats that can't be viewed
 
@@ -5182,7 +5424,7 @@ print(f"{normalised.dtype = }, "
 normalised.dtype = torch.float32, range [-0.125, 0.125]
 ```
 
-**Total running time of the script:** (0 minutes 1.240 seconds)
+**Total running time of the script:** (0 minutes 1.243 seconds)
 
 [`Download Jupyter notebook: raw_data.ipynb`](../../_downloads/50b7daabc4b9e193429fc4a88177cd8a/raw_data.ipynb)
 
@@ -5196,13 +5438,14 @@ normalised.dtype = torch.float32, range [-0.125, 0.125]
 
 # Computation times
 
-**00:29.255** total execution time for 3 files **from generated_examples/blocks**:
+**00:29.692** total execution time for 4 files **from generated_examples/blocks**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Multi-threaded decoding pipelines](pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py) (`pipelines.py`) | 00:26.465 | 0.0 |
-| [Blocks: build your own decoding pipeline](basics.html#sphx-glr-generated-examples-blocks-basics-py) (`basics.py`) | 00:01.550 | 0.0 |
-| [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py) (`raw_data.py`) | 00:01.240 | 0.0 |
+| [Multi-threaded decoding pipelines](pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py) (`pipelines.py`) | 00:26.440 | 0.0 |
+| [Blocks: build your own decoding pipeline](basics.html#sphx-glr-generated-examples-blocks-basics-py) (`basics.py`) | 00:01.548 | 0.0 |
+| [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py) (`raw_data.py`) | 00:01.243 | 0.0 |
+| [Blocks and CUDA streams](cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py) (`cuda_streams.py`) | 00:00.461 | 0.0 |
 
 ---
 
@@ -5299,14 +5542,14 @@ bench(VideoDecoder, source=long_video_path, seek_mode="approximate")
 
 ```
 Creating a VideoDecoder object with seek_mode='exact' on a short video:
-med = 6.43ms +- 0.03
+med = 6.42ms +- 0.02
 Creating a VideoDecoder object with seek_mode='approximate' on a short video:
-med = 5.70ms +- 0.01
+med = 5.71ms +- 0.01
 
 Creating a VideoDecoder object with seek_mode='exact' on a long video:
-med = 79.12ms +- 1.61
+med = 77.68ms +- 0.94
 Creating a VideoDecoder object with seek_mode='approximate' on a long video:
-med = 8.23ms +- 0.01
+med = 8.26ms +- 0.05
 ```
 
 ## Performance: frame decoding and clip sampling
@@ -5340,9 +5583,9 @@ bench(sample_clips, seek_mode="approximate")
 
 ```
 Sampling clips with seek_mode='exact':
-med = 218.33ms +- 27.61
+med = 209.74ms +- 25.27
 Sampling clips with seek_mode='approximate':
-med = 137.96ms +- 25.84
+med = 138.83ms +- 26.59
 ```
 
 ## Accuracy: Metadata and frame retrieval
@@ -5458,7 +5701,7 @@ is usually the case when doing clip sampling, consider using "approximate".
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (0 minutes 25.365 seconds)
+**Total running time of the script:** (0 minutes 24.894 seconds)
 
 [`Download Jupyter notebook: approximate_mode.ipynb`](../../_downloads/4bf13eb02a73a239a7e7af99b5c000a9/approximate_mode.ipynb)
 
@@ -5627,7 +5870,7 @@ as [`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchc
 [TorchCodec Performance Tips and Best Practices](performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py) for more
 details.
 
-**Total running time of the script:** (0 minutes 0.975 seconds)
+**Total running time of the script:** (0 minutes 1.098 seconds)
 
 [`Download Jupyter notebook: audio_decoding.ipynb`](../../_downloads/f6b4925719fd3f116259f89a204c6888/audio_decoding.ipynb)
 
@@ -5671,9 +5914,9 @@ print(f"{torch.cuda.get_device_properties(0)=}")
 ```
 
 ```
-torch.__version__='2.15.0.dev20260924+cu130'
+torch.__version__='2.15.0.dev20260928+cu130'
 torch.cuda.is_available()=True
-torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=4d4ceb91-f71e-5c40-17ac-29b658e6180e, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)
+torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=54d5d9ec-e345-cd92-5f65-e980756c9b5e, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)
 ```
 
 ## Downloading the video
@@ -5696,7 +5939,7 @@ urllib.request.urlretrieve(
 ```
 
 ```
-('video.mp4', <http.client.HTTPMessage object at 0x7f34f58ed210>)
+('video.mp4', <http.client.HTTPMessage object at 0x7f4c90d8b710>)
 ```
 
 ## CUDA Decoding using VideoDecoder
@@ -5806,7 +6049,7 @@ mean_abs_diff=tensor(0.6004, device='cuda:0')
 max_abs_diff=tensor(2., device='cuda:0')
 ```
 
-**Total running time of the script:** (0 minutes 4.690 seconds)
+**Total running time of the script:** (0 minutes 5.132 seconds)
 
 [`Download Jupyter notebook: basic_cuda_example.ipynb`](../../_downloads/0d9d7e92cb34559510d86a36f73e1e53/basic_cuda_example.ipynb)
 
@@ -6068,7 +6311,7 @@ plot(other_frames.data, "Other frames")
 - ![Frame played at 2 seconds](../../_images/sphx_glr_basic_example_005.png)
 - ![Other frames](../../_images/sphx_glr_basic_example_006.png)
 
-**Total running time of the script:** (0 minutes 2.135 seconds)
+**Total running time of the script:** (0 minutes 2.115 seconds)
 
 [`Download Jupyter notebook: basic_example.ipynb`](../../_downloads/c8852e7e664672bdb64c6ba771a9bd30/basic_example.ipynb)
 
@@ -6185,10 +6428,10 @@ for frame in sample_data["frames"][:3]:
 
 ```
 Running ffprobe:
-ffprobe -i /tmp/tmp0_qln95n/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmpjr3armtu/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Running ffprobe:
-ffprobe -i /tmp/tmp0_qln95n/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmpjr3armtu/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Sample of fields in custom frame mappings:
 frame['key_frame'] = 1, frame['pts'] = 0, frame['duration'] = 1
@@ -6240,15 +6483,15 @@ for video_path, json_path in ((short_video_path, short_json_path), (long_video_p
 ```
 Running benchmarks on short_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 6.11ms +- 0.03
+med = 6.13ms +- 0.04
 Creating a VideoDecoder object with seek_mode='exact':
-med = 6.43ms +- 0.02
+med = 6.41ms +- 0.02
 
 Running benchmarks on long_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 25.60ms +- 0.14
+med = 25.55ms +- 0.22
 Creating a VideoDecoder object with seek_mode='exact':
-med = 43.79ms +- 0.66
+med = 43.55ms +- 0.56
 ```
 
 ## Performance: Frame decoding with custom frame mappings
@@ -6280,15 +6523,15 @@ for video_path, json_path in ((short_video_path, short_json_path), (long_video_p
 ```
 Running benchmarks on short_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 18.25ms +- 0.08
+med = 18.20ms +- 0.06
 Decoding frames with seek_mode='exact':
-med = 18.48ms +- 0.04
+med = 18.49ms +- 0.05
 
 Running benchmarks on long_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 37.40ms +- 0.13
+med = 37.52ms +- 0.12
 Decoding frames with seek_mode='exact':
-med = 55.44ms +- 0.52
+med = 55.81ms +- 0.46
 ```
 
 ## Accuracy: Metadata and frame retrieval
@@ -6389,7 +6632,7 @@ accuracy benefits.
 same videos are decoded repeatedly, and some preprocessing work can be done.
 - For exact frame seeking without preprocessing, use "exact" mode.
 
-**Total running time of the script:** (0 minutes 23.503 seconds)
+**Total running time of the script:** (0 minutes 23.554 seconds)
 
 [`Download Jupyter notebook: custom_frame_mappings.ipynb`](../../_downloads/515bb6477ed8fb530cccbe1b67ef6f0c/custom_frame_mappings.ipynb)
 
@@ -6554,13 +6797,13 @@ bench(direct_url_to_ffmpeg)
 
 ```
 Decode from existing download:
-med = 194.20ms +- 0.12
+med = 194.64ms +- 0.28
 
 Download before decode:
-med = 952.80ms +- 64.81
+med = 1029.48ms +- 60.15
 
 Direct url to FFmpeg:
-med = 238.34ms +- 9.85
+med = 246.33ms +- 12.76
 ```
 
 Decoding the already downloaded video is clearly the fastest. Having to
@@ -6595,7 +6838,7 @@ bench(stream_while_decode)
 
 ```
 Stream while decode:
-med = 212.84ms +- 2.30
+med = 211.86ms +- 3.20
 ```
 
 Streaming the data through a file-like object is much faster than
@@ -6721,10 +6964,10 @@ bench(decode_from_existing_open_file_object)
 
 ```
 Decode from existing file path:
-med = 194.08ms +- 0.13
+med = 193.96ms +- 0.14
 
 Decode from existing open file object:
-med = 194.27ms +- 0.22
+med = 194.34ms +- 3.37
 ```
 
 Thankfully, the answer is both means of decoding from a local file take about
@@ -6740,7 +6983,7 @@ import shutil
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (0 minutes 25.819 seconds)
+**Total running time of the script:** (0 minutes 26.501 seconds)
 
 [`Download Jupyter notebook: file_like.ipynb`](../../_downloads/f0caa5fce0f20da68647d009fb8dd8d0/file_like.ipynb)
 
@@ -6815,7 +7058,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc2=duration=2:size=320x180:rate=30', '-c:v', 'libx265', '-pix_fmt', 'yuv420p10le', '-x265-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited', '-preset', 'fast', '-crf', '23', '/tmp/tmpcj8mtsvt/hdr_video.mp4'], returncode=0, stdout=b'', stderr=b"ffmpeg version 7.1.1 Copyright (c) 2000-2025 the FFmpeg developers\n built with gcc 14.3.0 (conda-forge gcc 14.3.0-5)\n configuration: --prefix=/__w/_temp/conda_environment_36114039857 --cc=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-cc --cxx=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-c++ --nm=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-nm --ar=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-ar --disable-doc --enable-openssl --enable-demuxer=dash --enable-hardcoded-tables --enable-libfreetype --enable-libharfbuzz --enable-libfontconfig --enable-libopenh264 --enable-libdav1d --disable-gnutls --enable-libvpx --enable-libass --enable-pthreads --enable-alsa --enable-libpulse --enable-vaapi --enable-libvpl --enable-libopenvino --enable-gpl --enable-libx264 --enable-libx265 --enable-libmp3lame --enable-libaom --enable-libsvtav1 --enable-libxml2 --enable-pic --enable-shared --disable-static --enable-version3 --enable-zlib --enable-libvorbis --enable-libopus --enable-librsvg --enable-ffplay --pkg-config=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/pkg-config\n libavutil 59. 39.100 / 59. 39.100\n libavcodec 61. 19.101 / 61. 19.101\n libavformat 61. 7.100 / 61. 7.100\n libavdevice 61. 3.100 / 61. 3.100\n libavfilter 10. 4.100 / 10. 4.100\n libswscale 8. 3.100 / 8. 3.100\n libswresample 5. 3.100 / 5. 3.100\n libpostproc 58. 3.100 / 58. 3.100\nInput #0, lavfi, from 'testsrc2=duration=2:size=320x180:rate=30':\n Duration: N/A, start: 0.000000, bitrate: N/A\n Stream #0:0: Video: wrapped_avframe, yuv420p, 320x180 [SAR 1:1 DAR 16:9], 30 fps, 30 tbr, 30 tbn\nStream mapping:\n Stream #0:0 -> #0:0 (wrapped_avframe (native) -> hevc (libx265))\nPress [q] to stop, [?] for help\nx265 [info]: HEVC encoder version 3.5+1-f0c1022b6\nx265 [info]: build info [Linux][GCC 15.3.0][64 bit] 10bit\nx265 [info]: using cpu capabilities: MMX2 SSE2Fast LZCNT SSSE3 SSE4.2 AVX FMA3 BMI2 AVX2\nx265 [info]: Main 10 profile, Level-2 (Main tier)\nx265 [info]: Thread pool created using 16 threads\nx265 [info]: Slices : 1\nx265 [info]: frame threads / pool features : 4 / wpp(3 rows)\nx265 [warning]: Source height < 720p; disabling lookahead-slices\nx265 [info]: Coding QT: max CU size, min CU size : 64 / 8\nx265 [info]: Residual QT: max TU size, max depth : 32 / 1 inter / 1 intra\nx265 [info]: ME / range / subpel / merge : hex / 57 / 2 / 2\nx265 [info]: Keyframe min / max / scenecut / bias : 25 / 250 / 40 / 5.00 \nx265 [info]: Lookahead / bframes / badapt : 15 / 4 / 0\nx265 [info]: b-pyramid / weightp / weightb : 1 / 1 / 0\nx265 [info]: References / ref-limit cu / depth : 3 / on / on\nx265 [info]: AQ: mode / str / qg-size / cu-tree : 2 / 1.0 / 32 / 1\nx265 [info]: Rate Control / qCompress : CRF-23.0 / 0.60\nx265 [info]: tools: rd=2 psy-rd=2.00 rskip mode=1 signhide tmvp fast-intra\nx265 [info]: tools: strong-intra-smoothing deblock sao\nOutput #0, mp4, to '/tmp/tmpcj8mtsvt/hdr_video.mp4':\n Metadata:\n encoder : Lavf61.7.100\n Stream #0:0: Video: hevc (hev1 / 0x31766568), yuv420p10le(tv, progressive), 320x180 [SAR 1:1 DAR 16:9], q=2-31, 30 fps, 15360 tbn\n Metadata:\n encoder : Lavc61.19.101 libx265\n Side data:\n cpb: bitrate max/min/avg: 0/0/0 buffer size: 0 vbv_delay: N/A\n[out#0/mp4 @ 0x55fbebe65980] video:67KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:2KiB muxing overhead: 5.737264%\nframe= 60 fps=0.0 q=30.9 Lsize= 71KiB time=00:00:01.93 bitrate= 300.9kbits/s speed=8.15x \nx265 [info]: frame I: 1, Avg QP:21.56 kb/s: 966.00 \nx265 [info]: frame P: 12, Avg QP:24.23 kb/s: 550.02 \nx265 [info]: frame B: 47, Avg QP:30.60 kb/s: 188.91 \nx265 [info]: Weighted P-Frames: Y:0.0% UV:0.0%\nx265 [info]: consecutive B-frames: 7.7% 0.0% 0.0% 7.7% 84.6% \n\nencoded 60 frames in 0.22s (274.30 fps), 274.08 kb/s, Avg QP:29.17\n")
+CompletedProcess(args=['ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc2=duration=2:size=320x180:rate=30', '-c:v', 'libx265', '-pix_fmt', 'yuv420p10le', '-x265-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited', '-preset', 'fast', '-crf', '23', '/tmp/tmpvt4d0kqx/hdr_video.mp4'], returncode=0, stdout=b'', stderr=b"ffmpeg version 7.1.1 Copyright (c) 2000-2025 the FFmpeg developers\n built with gcc 14.3.0 (conda-forge gcc 14.3.0-5)\n configuration: --prefix=/__w/_temp/conda_environment_36421827242 --cc=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-cc --cxx=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-c++ --nm=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-nm --ar=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-ar --disable-doc --enable-openssl --enable-demuxer=dash --enable-hardcoded-tables --enable-libfreetype --enable-libharfbuzz --enable-libfontconfig --enable-libopenh264 --enable-libdav1d --disable-gnutls --enable-libvpx --enable-libass --enable-pthreads --enable-alsa --enable-libpulse --enable-vaapi --enable-libvpl --enable-libopenvino --enable-gpl --enable-libx264 --enable-libx265 --enable-libmp3lame --enable-libaom --enable-libsvtav1 --enable-libxml2 --enable-pic --enable-shared --disable-static --enable-version3 --enable-zlib --enable-libvorbis --enable-libopus --enable-librsvg --enable-ffplay --pkg-config=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/pkg-config\n libavutil 59. 39.100 / 59. 39.100\n libavcodec 61. 19.101 / 61. 19.101\n libavformat 61. 7.100 / 61. 7.100\n libavdevice 61. 3.100 / 61. 3.100\n libavfilter 10. 4.100 / 10. 4.100\n libswscale 8. 3.100 / 8. 3.100\n libswresample 5. 3.100 / 5. 3.100\n libpostproc 58. 3.100 / 58. 3.100\nInput #0, lavfi, from 'testsrc2=duration=2:size=320x180:rate=30':\n Duration: N/A, start: 0.000000, bitrate: N/A\n Stream #0:0: Video: wrapped_avframe, yuv420p, 320x180 [SAR 1:1 DAR 16:9], 30 fps, 30 tbr, 30 tbn\nStream mapping:\n Stream #0:0 -> #0:0 (wrapped_avframe (native) -> hevc (libx265))\nPress [q] to stop, [?] for help\nx265 [info]: HEVC encoder version 3.5+1-f0c1022b6\nx265 [info]: build info [Linux][GCC 15.3.0][64 bit] 10bit\nx265 [info]: using cpu capabilities: MMX2 SSE2Fast LZCNT SSSE3 SSE4.2 AVX FMA3 BMI2 AVX2\nx265 [info]: Main 10 profile, Level-2 (Main tier)\nx265 [info]: Thread pool created using 16 threads\nx265 [info]: Slices : 1\nx265 [info]: frame threads / pool features : 4 / wpp(3 rows)\nx265 [warning]: Source height < 720p; disabling lookahead-slices\nx265 [info]: Coding QT: max CU size, min CU size : 64 / 8\nx265 [info]: Residual QT: max TU size, max depth : 32 / 1 inter / 1 intra\nx265 [info]: ME / range / subpel / merge : hex / 57 / 2 / 2\nx265 [info]: Keyframe min / max / scenecut / bias : 25 / 250 / 40 / 5.00 \nx265 [info]: Lookahead / bframes / badapt : 15 / 4 / 0\nx265 [info]: b-pyramid / weightp / weightb : 1 / 1 / 0\nx265 [info]: References / ref-limit cu / depth : 3 / on / on\nx265 [info]: AQ: mode / str / qg-size / cu-tree : 2 / 1.0 / 32 / 1\nx265 [info]: Rate Control / qCompress : CRF-23.0 / 0.60\nx265 [info]: tools: rd=2 psy-rd=2.00 rskip mode=1 signhide tmvp fast-intra\nx265 [info]: tools: strong-intra-smoothing deblock sao\nOutput #0, mp4, to '/tmp/tmpvt4d0kqx/hdr_video.mp4':\n Metadata:\n encoder : Lavf61.7.100\n Stream #0:0: Video: hevc (hev1 / 0x31766568), yuv420p10le(tv, progressive), 320x180 [SAR 1:1 DAR 16:9], q=2-31, 30 fps, 15360 tbn\n Metadata:\n encoder : Lavc61.19.101 libx265\n Side data:\n cpb: bitrate max/min/avg: 0/0/0 buffer size: 0 vbv_delay: N/A\n[out#0/mp4 @ 0x55df671ff980] video:67KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:2KiB muxing overhead: 5.737264%\nframe= 60 fps=0.0 q=30.9 Lsize= 71KiB time=00:00:01.93 bitrate= 300.9kbits/s speed=8.28x \nx265 [info]: frame I: 1, Avg QP:21.56 kb/s: 966.00 \nx265 [info]: frame P: 12, Avg QP:24.23 kb/s: 550.02 \nx265 [info]: frame B: 47, Avg QP:30.60 kb/s: 188.91 \nx265 [info]: Weighted P-Frames: Y:0.0% UV:0.0%\nx265 [info]: consecutive B-frames: 7.7% 0.0% 0.0% 7.7% 84.6% \n\nencoded 60 frames in 0.22s (277.40 fps), 274.08 kb/s, Avg QP:29.17\n")
 ```
 
 ## Default behavior: `uint8` output
@@ -6961,7 +7204,7 @@ import shutil
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (0 minutes 0.436 seconds)
+**Total running time of the script:** (0 minutes 0.434 seconds)
 
 [`Download Jupyter notebook: hdr_decoding.ipynb`](../../_downloads/01dc406b3f53981468974c53f6e40c46/hdr_decoding.ipynb)
 
@@ -7120,7 +7363,7 @@ image = decode_jpeg(raw_image_bytes, device="cuda")
 images = decode_jpeg([img_0, img_1, img_2], device="cuda")
 ```
 
-**Total running time of the script:** (0 minutes 0.145 seconds)
+**Total running time of the script:** (0 minutes 0.116 seconds)
 
 [`Download Jupyter notebook: image_decoding.ipynb`](../../_downloads/f5cba4a26e1c617bc387e9f05406c8f2/image_decoding.ipynb)
 
@@ -7386,8 +7629,8 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} FFmpeg th
 ```
 
 ```
-median = 3.69s ± 0.06
-Speedup compared to sequential: 2.90x with 16 FFmpeg threads.
+median = 3.70s ± 0.06
+Speedup compared to sequential: 2.89x with 16 FFmpeg threads.
 ```
 
 ## Method 3: multiprocessing
@@ -7417,7 +7660,7 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} processes
 ```
 
 ```
-median = 4.33s ± 0.06
+median = 4.33s ± 0.07
 Speedup compared to sequential: 2.47x with 16 processes.
 ```
 
@@ -7449,8 +7692,8 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} threads."
 ```
 
 ```
-median = 1.44s ± 0.06
-Speedup compared to sequential: 7.40x with 16 threads.
+median = 1.43s ± 0.06
+Speedup compared to sequential: 7.45x with 16 threads.
 ```
 
 ## Validation and correctness check
@@ -7473,7 +7716,7 @@ import shutil
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (1 minutes 25.476 seconds)
+**Total running time of the script:** (1 minutes 25.475 seconds)
 
 [`Download Jupyter notebook: parallel_decoding.ipynb`](../../_downloads/1cff79ade5aa64baf192aceab5e06959/parallel_decoding.ipynb)
 
@@ -8041,7 +8284,7 @@ default value ensures that clips start early enough before the end. This means
 that by default, the policy parameter rarely comes into action, and most users
 probably don't need to worry too much about it.
 
-**Total running time of the script:** (0 minutes 0.411 seconds)
+**Total running time of the script:** (0 minutes 0.434 seconds)
 
 [`Download Jupyter notebook: sampling.ipynb`](../../_downloads/98c8aa10d85bcd2ddc4f4456ad29dcbe/sampling.ipynb)
 
@@ -8055,21 +8298,21 @@ probably don't need to worry too much about it.
 
 # Computation times
 
-**05:09.159** total execution time for 12 files **from generated_examples/decoding**:
+**05:10.008** total execution time for 12 files **from generated_examples/decoding**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Decoder Transforms: Applying transforms during decoding](transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`transforms.py`) | 02:20.204 | 0.0 |
-| [Parallel video decoding: multi-processing and multi-threading](parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`parallel_decoding.py`) | 01:25.476 | 0.0 |
-| [Streaming data through file-like support](file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`file_like.py`) | 00:25.819 | 0.0 |
-| [Exact vs Approximate seek mode: Performance and accuracy comparison](approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`approximate_mode.py`) | 00:25.365 | 0.0 |
-| [Decoding with custom frame mappings](custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`custom_frame_mappings.py`) | 00:23.503 | 0.0 |
-| [Accelerated video decoding on GPUs with CUDA and NVDEC](basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`basic_cuda_example.py`) | 00:04.690 | 0.0 |
-| [Decoding a video with VideoDecoder](basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`basic_example.py`) | 00:02.135 | 0.0 |
-| [Decoding audio streams with AudioDecoder](audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`audio_decoding.py`) | 00:00.975 | 0.0 |
-| [Decoding HDR videos](hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py) (`hdr_decoding.py`) | 00:00.436 | 0.0 |
-| [How to sample video clips](sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`sampling.py`) | 00:00.411 | 0.0 |
-| [Decoding images](image_decoding.html#sphx-glr-generated-examples-decoding-image-decoding-py) (`image_decoding.py`) | 00:00.145 | 0.0 |
+| [Decoder Transforms: Applying transforms during decoding](transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`transforms.py`) | 02:20.255 | 0.0 |
+| [Parallel video decoding: multi-processing and multi-threading](parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`parallel_decoding.py`) | 01:25.475 | 0.0 |
+| [Streaming data through file-like support](file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`file_like.py`) | 00:26.501 | 0.0 |
+| [Exact vs Approximate seek mode: Performance and accuracy comparison](approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`approximate_mode.py`) | 00:24.894 | 0.0 |
+| [Decoding with custom frame mappings](custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`custom_frame_mappings.py`) | 00:23.554 | 0.0 |
+| [Accelerated video decoding on GPUs with CUDA and NVDEC](basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`basic_cuda_example.py`) | 00:05.132 | 0.0 |
+| [Decoding a video with VideoDecoder](basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`basic_example.py`) | 00:02.115 | 0.0 |
+| [Decoding audio streams with AudioDecoder](audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`audio_decoding.py`) | 00:01.098 | 0.0 |
+| [Decoding HDR videos](hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py) (`hdr_decoding.py`) | 00:00.434 | 0.0 |
+| [How to sample video clips](sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`sampling.py`) | 00:00.434 | 0.0 |
+| [Decoding images](image_decoding.html#sphx-glr-generated-examples-decoding-image-decoding-py) (`image_decoding.py`) | 00:00.116 | 0.0 |
 | [TorchCodec Performance Tips and Best Practices](performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py) (`performance_tips.py`) | 00:00.000 | 0.0 |
 
 ---
@@ -8411,8 +8654,8 @@ print(f"torchvision transform: {bench(sample_torchvision_transforms, num_threads
 ```
 
 ```
-decoder transforms: times_med = 1978.51ms +- 24.45
-torchvision transform: times_med = 4101.90ms +- 49.30
+decoder transforms: times_med = 1967.90ms +- 15.42
+torchvision transform: times_med = 4048.67ms +- 74.80
 ```
 
 The reason is that FFmpeg is applying the decoder transforms in parallel.
@@ -8426,8 +8669,8 @@ print(f"torchvision transform: {bench(sample_torchvision_transforms, num_threads
 ```
 
 ```
-decoder transforms: times_med = 10691.13ms +- 13.07
-torchvision transform: times_med = 12445.42ms +- 21.74
+decoder transforms: times_med = 10664.08ms +- 27.58
+torchvision transform: times_med = 12466.26ms +- 16.36
 ```
 
 In brief, our performance guidance is:
@@ -8444,7 +8687,7 @@ In brief, our performance guidance is:
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (2 minutes 20.204 seconds)
+**Total running time of the script:** (2 minutes 20.255 seconds)
 
 [`Download Jupyter notebook: transforms.ipynb`](../../_downloads/f189e474be55fc74900ac94fda37f6f0/transforms.ipynb)
 
@@ -8748,7 +8991,7 @@ PNG encoding is CPU-only.
 Check the docstrings of the encoding methods to learn about the different
 encoding options.
 
-**Total running time of the script:** (0 minutes 0.174 seconds)
+**Total running time of the script:** (0 minutes 0.197 seconds)
 
 [`Download Jupyter notebook: image_encoding.ipynb`](../../_downloads/071d0183e16c5e6ef85b625a2f126867/image_encoding.ipynb)
 
@@ -8856,7 +9099,7 @@ print(f"Output size: {Path(output_path).stat().st_size} bytes")
 ```
 
 ```
-Encoded video + audio to /tmp/tmpl45k_4l3.mp4
+Encoded video + audio to /tmp/tmpr27m8jfb.mp4
 Output size: 2526674 bytes
 ```
 
@@ -8919,7 +9162,7 @@ print(f"Output size: {Path(chunk_output).stat().st_size} bytes")
 ```
 
 ```
-Incrementally encoded to /tmp/tmpgg08b6dd.mp4
+Incrementally encoded to /tmp/tmpqows9lue.mp4
 Output size: 2527045 bytes
 ```
 
@@ -8995,7 +9238,7 @@ bytes_tensor = torch.frombuffer(encoded_bytes, dtype=torch.uint8)
 Encoded to BytesIO, size: 2526674 bytes
 ```
 
-**Total running time of the script:** (0 minutes 5.568 seconds)
+**Total running time of the script:** (0 minutes 6.209 seconds)
 
 [`Download Jupyter notebook: multi_stream_encoding.ipynb`](../../_downloads/ccd7596cf7d161af13c32c87cfc7f878/multi_stream_encoding.ipynb)
 
@@ -9009,13 +9252,13 @@ Encoded to BytesIO, size: 2526674 bytes
 
 # Computation times
 
-**00:30.860** total execution time for 4 files **from generated_examples/encoding**:
+**00:32.729** total execution time for 4 files **from generated_examples/encoding**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Encoding video with the Encoder](video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`video_encoding.py`) | 00:25.089 | 0.0 |
-| [Encoding audio and video streams with the Encoder](multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`multi_stream_encoding.py`) | 00:05.568 | 0.0 |
-| [Encoding images](image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py) (`image_encoding.py`) | 00:00.174 | 0.0 |
+| [Encoding video with the Encoder](video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`video_encoding.py`) | 00:26.293 | 0.0 |
+| [Encoding audio and video streams with the Encoder](multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`multi_stream_encoding.py`) | 00:06.209 | 0.0 |
+| [Encoding images](image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py) (`image_encoding.py`) | 00:00.197 | 0.0 |
 | [Encoding audio samples with AudioEncoder](audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py) (`audio_encoding.py`) | 00:00.029 | 0.0 |
 
 ---
@@ -9108,7 +9351,7 @@ print(f"Encoded to {output_path}, size: {Path(output_path).stat().st_size} bytes
 ```
 frames.shape = torch.Size([60, 3, 1080, 1920]), frames.dtype = torch.uint8
 frame_rate = 24 fps
-Encoded to /tmp/tmp_aotz2_1.mp4, size: 2509386 bytes
+Encoded to /tmp/tmpdic188qk.mp4, size: 2509386 bytes
 ```
 
 Now that we have encoded data, let's decode it back to verify the
@@ -9385,7 +9628,7 @@ with encoder.open_file(custom_output):
  vs.add_frames(frames)
 ```
 
-**Total running time of the script:** (0 minutes 25.089 seconds)
+**Total running time of the script:** (0 minutes 26.293 seconds)
 
 [`Download Jupyter notebook: video_encoding.ipynb`](../../_downloads/e8868f804bffbeae56ed6b335353e809/video_encoding.ipynb)
 
@@ -9479,6 +9722,11 @@ Multi-threaded decoding pipelines
 [Raw frames and raw audio samples](blocks/raw_data.html)
 
 Raw frames and raw audio samples
+![](../_images/sphx_glr_cuda_streams_thumb.png)
+
+[Blocks and CUDA streams](blocks/cuda_streams.html)
+
+Blocks and CUDA streams
 
 ## Encoding
 
@@ -9908,27 +10156,28 @@ How to port `torchvision.io` image decoding and encoding code
 
 # Computation times
 
-**06:09.288** total execution time for 20 files **from all galleries**:
+**06:12.443** total execution time for 21 files **from all galleries**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Decoder Transforms: Applying transforms during decoding](generated_examples/decoding/transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`../../examples/decoding/transforms.py`) | 02:20.204 | 0.0 |
-| [Parallel video decoding: multi-processing and multi-threading](generated_examples/decoding/parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`../../examples/decoding/parallel_decoding.py`) | 01:25.476 | 0.0 |
-| [Multi-threaded decoding pipelines](generated_examples/blocks/pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py) (`../../examples/blocks/pipelines.py`) | 00:26.465 | 0.0 |
-| [Streaming data through file-like support](generated_examples/decoding/file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`../../examples/decoding/file_like.py`) | 00:25.819 | 0.0 |
-| [Exact vs Approximate seek mode: Performance and accuracy comparison](generated_examples/decoding/approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`../../examples/decoding/approximate_mode.py`) | 00:25.365 | 0.0 |
-| [Encoding video with the Encoder](generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`../../examples/encoding/video_encoding.py`) | 00:25.089 | 0.0 |
-| [Decoding with custom frame mappings](generated_examples/decoding/custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`../../examples/decoding/custom_frame_mappings.py`) | 00:23.503 | 0.0 |
-| [Encoding audio and video streams with the Encoder](generated_examples/encoding/multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`../../examples/encoding/multi_stream_encoding.py`) | 00:05.568 | 0.0 |
-| [Accelerated video decoding on GPUs with CUDA and NVDEC](generated_examples/decoding/basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`../../examples/decoding/basic_cuda_example.py`) | 00:04.690 | 0.0 |
-| [Decoding a video with VideoDecoder](generated_examples/decoding/basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`../../examples/decoding/basic_example.py`) | 00:02.135 | 0.0 |
-| [Blocks: build your own decoding pipeline](generated_examples/blocks/basics.html#sphx-glr-generated-examples-blocks-basics-py) (`../../examples/blocks/basics.py`) | 00:01.550 | 0.0 |
-| [Raw frames and raw audio samples](generated_examples/blocks/raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py) (`../../examples/blocks/raw_data.py`) | 00:01.240 | 0.0 |
-| [Decoding audio streams with AudioDecoder](generated_examples/decoding/audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`../../examples/decoding/audio_decoding.py`) | 00:00.975 | 0.0 |
-| [Decoding HDR videos](generated_examples/decoding/hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py) (`../../examples/decoding/hdr_decoding.py`) | 00:00.436 | 0.0 |
-| [How to sample video clips](generated_examples/decoding/sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`../../examples/decoding/sampling.py`) | 00:00.411 | 0.0 |
-| [Encoding images](generated_examples/encoding/image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py) (`../../examples/encoding/image_encoding.py`) | 00:00.174 | 0.0 |
-| [Decoding images](generated_examples/decoding/image_decoding.html#sphx-glr-generated-examples-decoding-image-decoding-py) (`../../examples/decoding/image_decoding.py`) | 00:00.145 | 0.0 |
+| [Decoder Transforms: Applying transforms during decoding](generated_examples/decoding/transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`../../examples/decoding/transforms.py`) | 02:20.255 | 0.0 |
+| [Parallel video decoding: multi-processing and multi-threading](generated_examples/decoding/parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`../../examples/decoding/parallel_decoding.py`) | 01:25.475 | 0.0 |
+| [Streaming data through file-like support](generated_examples/decoding/file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`../../examples/decoding/file_like.py`) | 00:26.501 | 0.0 |
+| [Multi-threaded decoding pipelines](generated_examples/blocks/pipelines.html#sphx-glr-generated-examples-blocks-pipelines-py) (`../../examples/blocks/pipelines.py`) | 00:26.440 | 0.0 |
+| [Encoding video with the Encoder](generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`../../examples/encoding/video_encoding.py`) | 00:26.293 | 0.0 |
+| [Exact vs Approximate seek mode: Performance and accuracy comparison](generated_examples/decoding/approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`../../examples/decoding/approximate_mode.py`) | 00:24.894 | 0.0 |
+| [Decoding with custom frame mappings](generated_examples/decoding/custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`../../examples/decoding/custom_frame_mappings.py`) | 00:23.554 | 0.0 |
+| [Encoding audio and video streams with the Encoder](generated_examples/encoding/multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`../../examples/encoding/multi_stream_encoding.py`) | 00:06.209 | 0.0 |
+| [Accelerated video decoding on GPUs with CUDA and NVDEC](generated_examples/decoding/basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`../../examples/decoding/basic_cuda_example.py`) | 00:05.132 | 0.0 |
+| [Decoding a video with VideoDecoder](generated_examples/decoding/basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`../../examples/decoding/basic_example.py`) | 00:02.115 | 0.0 |
+| [Blocks: build your own decoding pipeline](generated_examples/blocks/basics.html#sphx-glr-generated-examples-blocks-basics-py) (`../../examples/blocks/basics.py`) | 00:01.548 | 0.0 |
+| [Raw frames and raw audio samples](generated_examples/blocks/raw_data.html#sphx-glr-generated-examples-blocks-raw-data-py) (`../../examples/blocks/raw_data.py`) | 00:01.243 | 0.0 |
+| [Decoding audio streams with AudioDecoder](generated_examples/decoding/audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`../../examples/decoding/audio_decoding.py`) | 00:01.098 | 0.0 |
+| [Blocks and CUDA streams](generated_examples/blocks/cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py) (`../../examples/blocks/cuda_streams.py`) | 00:00.461 | 0.0 |
+| [Decoding HDR videos](generated_examples/decoding/hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py) (`../../examples/decoding/hdr_decoding.py`) | 00:00.434 | 0.0 |
+| [How to sample video clips](generated_examples/decoding/sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`../../examples/decoding/sampling.py`) | 00:00.434 | 0.0 |
+| [Encoding images](generated_examples/encoding/image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py) (`../../examples/encoding/image_encoding.py`) | 00:00.197 | 0.0 |
+| [Decoding images](generated_examples/decoding/image_decoding.html#sphx-glr-generated-examples-decoding-image-decoding-py) (`../../examples/decoding/image_decoding.py`) | 00:00.116 | 0.0 |
 | [Encoding audio samples with AudioEncoder](generated_examples/encoding/audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py) (`../../examples/encoding/audio_encoding.py`) | 00:00.029 | 0.0 |
 | [Migrating from TorchVision to TorchCodec](generated_examples/migration/torchvision_migration.html#sphx-glr-generated-examples-migration-torchvision-migration-py) (`../../examples/migration/torchvision_migration.py`) | 00:00.014 | 0.0 |
 | [TorchCodec Performance Tips and Best Practices](generated_examples/decoding/performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py) (`../../examples/decoding/performance_tips.py`) | 00:00.000 | 0.0 |

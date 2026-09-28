@@ -41,6 +41,11 @@ Examples using `ColorConverter`:
 [Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
 
 Blocks: build your own decoding pipeline
+![](../_images/sphx_glr_cuda_streams_thumb.png)
+
+[Blocks and CUDA streams](../generated_examples/blocks/cuda_streams.html)
+
+Blocks and CUDA streams
 ![](../_images/sphx_glr_pipelines_thumb.png)
 
 [Multi-threaded decoding pipelines](../generated_examples/blocks/pipelines.html)
@@ -58,6 +63,11 @@ Convert one [`RawFrame`](torchcodec.decoders._blocks.RawFrame.html#torchcodec.de
 
 [`RawFrame.rotation`](torchcodec.decoders._blocks.RawFrame.html#torchcodec.decoders._blocks.RawFrame.rotation) is applied, so the output is upright and
 matches what a [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) gives you.
+
+If you run this on a different CUDA stream than the one the frame was
+decoded on, refer to
+[Blocks and CUDA streams](../generated_examples/blocks/cuda_streams.html#sphx-glr-generated-examples-blocks-cuda-streams-py) for pitfalls
+and how to avoid them.
 
 Parameters:
 

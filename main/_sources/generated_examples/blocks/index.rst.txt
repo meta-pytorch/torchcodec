@@ -68,6 +68,23 @@ Decoding blocks (experimental)
     </div>
 
 
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible.">
+
+.. only:: html
+
+  .. image:: /generated_examples/blocks/images/thumb/sphx_glr_cuda_streams_thumb.png
+    :alt:
+
+  :doc:`/generated_examples/blocks/cuda_streams`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Blocks and CUDA streams</div>
+    </div>
+
+
 .. thumbnail-parent-div-close
 
 .. raw:: html
@@ -81,4 +98,5 @@ Decoding blocks (experimental)
    /generated_examples/blocks/basics
    /generated_examples/blocks/pipelines
    /generated_examples/blocks/raw_data
+   /generated_examples/blocks/cuda_streams
 

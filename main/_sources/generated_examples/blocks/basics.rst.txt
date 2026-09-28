@@ -41,18 +41,21 @@ stages separately, one chain per media type:
     Packet        RawAudioSamples          AudioSamples
 
 
-Two companion tutorials go further:
+Three companion tutorials go further:
 
 * :ref:`sphx_glr_generated_examples_blocks_pipelines.py`, on running the stages
   concurrently on several threads.
 * :ref:`sphx_glr_generated_examples_blocks_raw_data.py`, on reading the
   decoder's own YUV planes and audio samples instead of converting them.
+* :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py`, on what a
+  :class:`RawFrame` requires of you when you run the stages on different CUDA
+  streams.
 
-.. GENERATED FROM PYTHON SOURCE LINES 48-49
+.. GENERATED FROM PYTHON SOURCE LINES 51-52
 
 First, a bit of boilerplate: a test video, and the device we'll run on.
 
-.. GENERATED FROM PYTHON SOURCE LINES 49-71
+.. GENERATED FROM PYTHON SOURCE LINES 52-74
 
 .. code-block:: Python
 
@@ -88,11 +91,11 @@ First, a bit of boilerplate: a test video, and the device we'll run on.
 
     device = 'cuda'
 
-    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpgi_u9hxb/video.mp4'], returncode=0)
+    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpxrtt5ww0/video.mp4'], returncode=0)
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 72-81
+.. GENERATED FROM PYTHON SOURCE LINES 75-84
 
 The three blocks
 ----------------
@@ -104,7 +107,7 @@ Here is a complete video pipeline, which is equivalent to
 :meth:`VideoDecoder.get_all_frames()
 <torchcodec.decoders.VideoDecoder.get_all_frames>`
 
-.. GENERATED FROM PYTHON SOURCE LINES 81-102
+.. GENERATED FROM PYTHON SOURCE LINES 84-105
 
 .. code-block:: Python
 
@@ -142,7 +145,7 @@ Here is a complete video pipeline, which is equivalent to
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 103-125
+.. GENERATED FROM PYTHON SOURCE LINES 106-128
 
 We create a :class:`Demuxer` over the file
 and let it follow the default video stream, which comes back as a
@@ -167,7 +170,7 @@ Both :meth:`VideoStream.make_decoder` and :class:`ColorConverter` accept a
 ``device`` parameter so you can run them on CPU or CUDA (they must match!),
 and the demuxing stage is always CPU only.
 
-.. GENERATED FROM PYTHON SOURCE LINES 128-134
+.. GENERATED FROM PYTHON SOURCE LINES 131-137
 
 One audio stream
 ^^^^^^^^^^^^^^^^
@@ -176,7 +179,7 @@ Audio decoding has the same three stages. The following pipeline is equivalent
 to :meth:`AudioDecoder.get_all_samples()
 <torchcodec.decoders.AudioDecoder.get_all_samples>`:
 
-.. GENERATED FROM PYTHON SOURCE LINES 134-160
+.. GENERATED FROM PYTHON SOURCE LINES 137-163
 
 .. code-block:: Python
 
@@ -219,7 +222,7 @@ to :meth:`AudioDecoder.get_all_samples()
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 161-177
+.. GENERATED FROM PYTHON SOURCE LINES 164-180
 
 An :class:`AudioStream` builds an :class:`AudioPacketDecoder`, which decodes
 :class:`Packet` objects into :class:`RawAudioSamples`: the codec's own
@@ -238,7 +241,7 @@ of each :class:`RawAudioSamples` until the next one arrives, so that it can
 correctly interpolate them. Make sure to call :meth:`AudioConverter.drain` at
 the end of the pipeline to retrieve the last samples.
 
-.. GENERATED FROM PYTHON SOURCE LINES 179-185
+.. GENERATED FROM PYTHON SOURCE LINES 182-188
 
 Several streams at once
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -247,7 +250,7 @@ The examples above followed a single stream each. But a :class:`Demuxer` can
 follow multiple video streams, multiple audio streams, or a mix of both at
 once!
 
-.. GENERATED FROM PYTHON SOURCE LINES 185-195
+.. GENERATED FROM PYTHON SOURCE LINES 188-198
 
 .. code-block:: Python
 
@@ -270,11 +273,11 @@ once!
  .. code-block:: none
 
 
-    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpgi_u9hxb/video.mp4', '-i', '/tmp/tmpgi_u9hxb/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpgi_u9hxb/av.mp4'], returncode=0)
+    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpxrtt5ww0/video.mp4', '-i', '/tmp/tmpxrtt5ww0/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpxrtt5ww0/av.mp4'], returncode=0)
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 196-203
+.. GENERATED FROM PYTHON SOURCE LINES 199-206
 
 Which streams to follow is specified at construction time of the
 :class:`Demuxer` via the ``streams`` parameter. ``streams`` takes one selector
@@ -284,7 +287,7 @@ video stream, or the fourth audio track - or ``"all"`` on its own for every
 audio and video stream in the file.  ``demuxer.streams`` comes back in the
 order you asked for, and each of them builds its own decoder.
 
-.. GENERATED FROM PYTHON SOURCE LINES 203-213
+.. GENERATED FROM PYTHON SOURCE LINES 206-216
 
 .. code-block:: Python
 
@@ -305,13 +308,13 @@ order you asked for, and each of them builds its own decoder.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 214-217
+.. GENERATED FROM PYTHON SOURCE LINES 217-220
 
 The packets come out interleaved, in the order the container stores them, and
 :attr:`Packet.stream_index` says which stream each belongs to: use it to match
 a packet to its decoder. Each decoder is drained at the end, as always.
 
-.. GENERATED FROM PYTHON SOURCE LINES 217-235
+.. GENERATED FROM PYTHON SOURCE LINES 220-238
 
 .. code-block:: Python
 
@@ -346,7 +349,7 @@ a packet to its decoder. Each decoder is drained at the end, as always.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 236-248
+.. GENERATED FROM PYTHON SOURCE LINES 239-251
 
 Seeking
 -------
@@ -361,7 +364,7 @@ The seek also invalidates the frames the decoder is holding on to, so the
 every other decoder fed by that demuxer, and every :class:`AudioConverter`,
 whose resampler carries state across calls just the same.
 
-.. GENERATED FROM PYTHON SOURCE LINES 248-268
+.. GENERATED FROM PYTHON SOURCE LINES 251-271
 
 .. code-block:: Python
 
@@ -398,7 +401,7 @@ whose resampler carries state across calls just the same.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 269-274
+.. GENERATED FROM PYTHON SOURCE LINES 272-277
 
 That is what :meth:`VideoDecoder.get_frame_played_at()
 <torchcodec.decoders.VideoDecoder.get_frame_played_at>` does for you - the
@@ -406,7 +409,7 @@ seek, the decoding forward, and the dropping - except that we did it in the
 decoder's ``seek_mode="approximate"`` flavour. The ``"exact"`` one needs a
 :term:`scan`, which the next section gets to.
 
-.. GENERATED FROM PYTHON SOURCE LINES 276-283
+.. GENERATED FROM PYTHON SOURCE LINES 279-286
 
 .. warning::
 
@@ -416,7 +419,7 @@ decoder's ``seek_mode="approximate"`` flavour. The ``"exact"`` one needs a
    discarding it is up to you. :class:`~torchcodec.decoders.AudioDecoder` does
    all of this for you.
 
-.. GENERATED FROM PYTHON SOURCE LINES 285-297
+.. GENERATED FROM PYTHON SOURCE LINES 288-300
 
 Scanning
 --------
@@ -431,7 +434,7 @@ costs one pass over the file, and it leaves the demuxer back at the start.
 If you call :meth:`VideoStream.scan`, it has to happen before any packet is
 read from the demuxer.
 
-.. GENERATED FROM PYTHON SOURCE LINES 297-308
+.. GENERATED FROM PYTHON SOURCE LINES 300-311
 
 .. code-block:: Python
 
@@ -459,7 +462,7 @@ read from the demuxer.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 309-314
+.. GENERATED FROM PYTHON SOURCE LINES 312-317
 
 The index is also what gives the blocks frame *indices*, which they otherwise
 don't have at all: :meth:`FrameIndex.index_at` maps a timestamp to the frame
@@ -467,7 +470,7 @@ on screen then, and :attr:`FrameIndex.pts_seconds` maps back. That's enough to
 build :meth:`~torchcodec.decoders.VideoDecoder.get_frame_at`, or a clip
 sampler, on top of the blocks.
 
-.. GENERATED FROM PYTHON SOURCE LINES 314-318
+.. GENERATED FROM PYTHON SOURCE LINES 317-321
 
 .. code-block:: Python
 
@@ -488,7 +491,7 @@ sampler, on top of the blocks.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 319-339
+.. GENERATED FROM PYTHON SOURCE LINES 322-342
 
 If you're following more than one video stream, you can call :meth:`scan` on
 each of them. You only pay the scan cost once, for the first stream: the other
@@ -511,7 +514,7 @@ That makes keyframes attractive whenever you need *some* frames of a video
 rather than specific ones - thumbnails, coarse previews, or a cheap sampler
 for training.
 
-.. GENERATED FROM PYTHON SOURCE LINES 340-360
+.. GENERATED FROM PYTHON SOURCE LINES 343-363
 
 .. code-block:: Python
 
@@ -549,7 +552,7 @@ for training.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 361-374
+.. GENERATED FROM PYTHON SOURCE LINES 364-377
 
 Exact seeking
 ^^^^^^^^^^^^^
@@ -565,7 +568,7 @@ The two are the same call on the majority of files. This is what separates
 :class:`~torchcodec.decoders.VideoDecoder`'s ``seek_mode="exact"`` from
 ``"approximate"`` for a timestamp lookup.
 
-.. GENERATED FROM PYTHON SOURCE LINES 374-381
+.. GENERATED FROM PYTHON SOURCE LINES 377-384
 
 .. code-block:: Python
 
@@ -589,7 +592,7 @@ The two are the same call on the majority of files. This is what separates
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 382-406
+.. GENERATED FROM PYTHON SOURCE LINES 385-409
 
 Metadata
 --------
@@ -616,7 +619,7 @@ Metadata comes in three tiers, and the blocks never merge them:
 The name of a field tells you which tier it came from, so a header value is
 never mistaken for an exact one:
 
-.. GENERATED FROM PYTHON SOURCE LINES 406-416
+.. GENERATED FROM PYTHON SOURCE LINES 409-419
 
 .. code-block:: Python
 
@@ -645,7 +648,7 @@ never mistaken for an exact one:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 417-490
+.. GENERATED FROM PYTHON SOURCE LINES 420-493
 
 Comparing with VideoDecoder and AudioDecoder
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -721,7 +724,7 @@ to ask for you need to know what is in the file first. That's
 also reports the streams a demuxer cannot follow, such as subtitles. It hands
 back a :class:`ContainerMetadata`.
 
-.. GENERATED FROM PYTHON SOURCE LINES 490-495
+.. GENERATED FROM PYTHON SOURCE LINES 493-498
 
 .. code-block:: Python
 
@@ -744,7 +747,7 @@ back a :class:`ContainerMetadata`.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 496-508
+.. GENERATED FROM PYTHON SOURCE LINES 499-511
 
 Streams of unknown length
 -------------------------
@@ -759,7 +762,7 @@ duration, no frame count, and no end.
 Here is one such example where we generate an endless stream with FFmpeg, and
 decode its first 100 frames:
 
-.. GENERATED FROM PYTHON SOURCE LINES 508-537
+.. GENERATED FROM PYTHON SOURCE LINES 511-540
 
 .. code-block:: Python
 
@@ -806,7 +809,7 @@ decode its first 100 frames:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 538-547
+.. GENERATED FROM PYTHON SOURCE LINES 541-553
 
 Where to go next
 ----------------
@@ -817,11 +820,14 @@ Where to go next
 * :ref:`sphx_glr_generated_examples_blocks_raw_data.py` skips the converters
   and reads the decoder's own YUV planes and audio samples, at the source's
   own precision.
+* :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` explains how to
+  manage CUDA streams when you consume a :class:`RawFrame` on a different CUDA
+  stream than the one it was decoded on.
 
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 1.550 seconds)
+   **Total running time of the script:** (0 minutes 1.548 seconds)
 
 
 .. _sphx_glr_download_generated_examples_blocks_basics.py:

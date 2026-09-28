@@ -64,6 +64,7 @@
 - [RandomCrop](https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.transforms.RandomCrop.md)
 - [Resize](https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.transforms.Resize.md)
 - [Blocks: build your own decoding pipeline](https://meta-pytorch.org/torchcodec/stable/generated_examples/blocks/basics.md)
+- [Blocks and CUDA streams](https://meta-pytorch.org/torchcodec/stable/generated_examples/blocks/cuda_streams.md)
 - [Decoding blocks (experimental)](https://meta-pytorch.org/torchcodec/stable/generated_examples/blocks/index.md)
 - [Multi-threaded decoding pipelines](https://meta-pytorch.org/torchcodec/stable/generated_examples/blocks/pipelines.md)
 - [Raw frames and raw audio samples](https://meta-pytorch.org/torchcodec/stable/generated_examples/blocks/raw_data.md)

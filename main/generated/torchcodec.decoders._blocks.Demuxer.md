@@ -52,6 +52,11 @@ Examples using `Demuxer`:
 [Blocks: build your own decoding pipeline](../generated_examples/blocks/basics.html)
 
 Blocks: build your own decoding pipeline
+![](../_images/sphx_glr_cuda_streams_thumb.png)
+
+[Blocks and CUDA streams](../generated_examples/blocks/cuda_streams.html)
+
+Blocks and CUDA streams
 ![](../_images/sphx_glr_pipelines_thumb.png)
 
 [Multi-threaded decoding pipelines](../generated_examples/blocks/pipelines.html)
