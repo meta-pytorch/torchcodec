@@ -240,6 +240,30 @@ torch::stable::Tensor decode_heic(
     STD_TORCH_CHECK(
         decoded_data != nullptr, "Failed to get the decoded HEIC image plane.");
 
+    // `width` and `height` come from the image handle, i.e. from the
+    // container's metadata, and that's what we used to allocate the output
+    // tensor. On malformed files, the actual decoded frame may have different
+    // dimensions. We enforce that they must agree, because the copy below uses
+    // the width and height to read from the decoded frame, and would read past
+    // its end if the plane were actually smaller.
+    int64_t plane_width =
+        heif_image_get_width(img.get(), heif_channel_interleaved);
+    int64_t plane_height =
+        heif_image_get_height(img.get(), heif_channel_interleaved);
+    STD_TORCH_CHECK(
+        plane_width == width && plane_height == height,
+        "HEIC frame ",
+        i,
+        " decoded to ",
+        plane_width,
+        "x",
+        plane_height,
+        " but its header declares ",
+        width,
+        "x",
+        height,
+        ". This file is malformed.");
+
     // Copy the decoded plane into this frame's region row by row: the plane's
     // `stride` may include per-row padding, and the buffer is owned by `img`
     // (freed when it goes out of scope), so we can't wrap it with from_blob.
