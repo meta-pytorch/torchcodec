@@ -50,11 +50,17 @@ class SwScale {
 
   // Scratch buffer holding the result of the color conversion, which is then
   // the input of the resize. Null if no resize is needed.
-  //
-  // This must be an AVFrame rather than a tensor: swscale's SIMD readers
-  // over-read their input by up to a few dozen bytes, so the buffer needs
-  // padding past its last row. FFmpeg's allocators provide that padding, a
-  // plain tensor allocation does not.
+  // This must be an AVFrame allocated by FFmpeg. We used to allocate this
+  // ourselves as a tensor, but that could cause a crash in some rare cases:
+  // swscale may read **past** the source passed to sws_scale() when it's using
+  // SIMD ops. It typically reads past the linesize on each row, which is fine
+  // for all rows except the last one, where this is at best UB, at worst a
+  // segfault. IMHO this qualifies as a bug in swscale, and FWIW we fixed the
+  // exact same familiy of bugs in torch
+  // https://github.com/pytorch/pytorch/pull/179814!
+  // There's no non-regression test for that because it'd be too difficult to
+  // trigger, but context can be found in D120434423 and
+  // https://fburl.com/phabricator/7yqql5lj.
   UniqueAVFrame color_converted_frame_;
 };
 
