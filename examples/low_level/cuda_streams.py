@@ -5,21 +5,20 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-=======================
-Blocks and CUDA streams
-=======================
+============
+CUDA streams
+============
 
-.. currentmodule:: torchcodec.decoders._blocks
+.. currentmodule:: torchcodec.decoders
 
-.. warning::
+.. important::
 
-   **The Blocks APIs are under active construction.** They are private
-   and unreleased. Signatures and semantics may change without notice. This
-   tutorial only exists to show what they will eventually make possible.
+   **The low-level APIs are in beta.** Their signatures and semantics may still
+   change slightly, in response to user feedback.
 
 On CUDA, if you decode on one stream and consume the :class:`RawFrame`\\ s on
 another - either with a :class:`ColorConverter`, or with your own consumer as in
-:ref:`sphx_glr_generated_examples_blocks_raw_data.py` - you must take care of
+:ref:`sphx_glr_generated_examples_low_level_raw_data.py` - you must take care of
 two things:
 
 1. Waiting for the decoder's asynchronous copy before reading the samples.
@@ -36,14 +35,14 @@ handles it.
 
 # %%
 # Some boilerplate first: a test video, the two streams we'll use, and a helper
-# to build a fresh set of blocks for each example below.
+# to build a fresh set of stages for each example below.
 import subprocess
 import tempfile
 from pathlib import Path
 
 import torch
 
-from torchcodec.decoders._blocks import ColorConverter, Demuxer
+from torchcodec.decoders import ColorConverter, Demuxer
 
 video_path = Path(tempfile.mkdtemp()) / "video.mp4"
 subprocess.run(
@@ -60,7 +59,7 @@ decode_stream = torch.cuda.Stream()
 convert_stream = torch.cuda.Stream()
 
 
-def make_blocks():
+def make_stages():
     demuxer = Demuxer(video_path)
     packet_decoder = demuxer.streams[0].make_decoder(device="cuda")
     return demuxer, packet_decoder, ColorConverter(device="cuda")
@@ -132,7 +131,7 @@ def make_blocks():
 # explicit memory knob:
 MAX_INFLIGHT_FRAMES = 8
 
-demuxer, packet_decoder, color_converter = make_blocks()
+demuxer, packet_decoder, color_converter = make_stages()
 
 frames, in_flight = [], []
 for packet in list(demuxer) + [None]:
@@ -182,7 +181,7 @@ print(f"Option 1: {len(frames)} frames, {frames[0].data.shape = }")
 #    ``record_stream`` only works on :attr:`RawFrame.storage_cuda`. Calling it
 #    on ``RawFrame.planes`` is silently a no-op
 #
-demuxer, packet_decoder, color_converter = make_blocks()
+demuxer, packet_decoder, color_converter = make_stages()
 
 frames = []
 for packet in list(demuxer) + [None]:

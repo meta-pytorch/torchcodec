@@ -14,8 +14,7 @@ from time import perf_counter_ns
 import psutil
 import torch
 
-from torchcodec.decoders import VideoDecoder
-from torchcodec.decoders._blocks import ColorConverter, Demuxer
+from torchcodec.decoders import ColorConverter, Demuxer, VideoDecoder
 
 # Kept minimal on purpose; the filename is derived from exactly these.
 _DURATION_S = 10
@@ -29,7 +28,7 @@ def make_video() -> str:
     """Generate (once) a 720p/10s test clip in /tmp, keyed by its generation
     parameters, and return its path. Reused if it already exists."""
     key = f"{_SOURCE}_{_WIDTH}x{_HEIGHT}_{_FPS}fps_{_DURATION_S}s"
-    path = Path("/tmp") / f"bench_blocks_{key}.mp4"
+    path = Path("/tmp") / f"bench_low_level_{key}.mp4"
     if not path.exists():
         lavfi = f"{_SOURCE}=size={_WIDTH}x{_HEIGHT}:rate={_FPS}:duration={_DURATION_S}"
         subprocess.run(
@@ -147,7 +146,7 @@ def _decode_prefetch_packets_and_frames(path, device="cpu"):
 
 
 def _decode_video_decoder(path, device="cpu"):
-    # approximate seek mode to match the blocks
+    # approximate seek mode to match the low-level APIs
     VideoDecoder(path, seek_mode="approximate", device=device).get_all_frames()
 
 

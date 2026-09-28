@@ -96,7 +96,7 @@ class RawFrame:
         enqueued by the time the call returns. If you consume them on any other stream
         (via :class:`ColorConverter` or by reading :attr:`planes`), you must
         handle synchronization yourself.  See
-        :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py`.
+        :ref:`sphx_glr_generated_examples_low_level_cuda_streams.py`.
     """
 
     pts_seconds: float
@@ -108,7 +108,7 @@ class RawFrame:
 
     This tensor is exposed for one purpose, which is to let you call
     :meth:`torch.Tensor.record_stream` if you want to. See
-    :ref:`sphx_glr_generated_examples_blocks_cuda_streams.py` for more details.
+    :ref:`sphx_glr_generated_examples_low_level_cuda_streams.py` for more details.
     You shouldn't read or write this tensor directly.
     """
 
