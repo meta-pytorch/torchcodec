@@ -64,6 +64,9 @@ WIDTH = 256
 FRAME_RATE = 30
 NUM_AUDIO_CHANNELS = 2
 SAMPLE_RATE = 16_000
+# The mkv muxer's default audio codec varies across FFmpeg builds, and some
+# of them (AC-3) only accept 48000, 44100 or 32000.
+AV_SAMPLE_RATE = 44_100
 NUM_SAMPLES = 10_000
 
 
@@ -96,7 +99,7 @@ def _make_av_file(tmp_path):
         pixel_format="yuv444p",
         crf=0,
     )
-    audio = enc.add_audio(sample_rate=SAMPLE_RATE, num_channels=NUM_AUDIO_CHANNELS)
+    audio = enc.add_audio(sample_rate=AV_SAMPLE_RATE, num_channels=NUM_AUDIO_CHANNELS)
     with enc.open_file(path):
         video.add_frames(frames)
         audio.add_samples(samples)
@@ -311,11 +314,11 @@ def _make_video_and_ref(tmp_path, device):
         return path, VideoDecoder(path, device="cpu"), None
 
 
-class TestBlocks:
+class TestLowLevelAPIs:
     """The low-level Demuxer / PacketDecoder / Converter APIs."""
 
     @pytest.mark.parametrize("device", _get_devices())
-    def test_video_pipeline(self, tmp_path, device):
+    def test_video_seek(self, tmp_path, device):
         path, ref_decoder, source_frames = _make_video_and_ref(tmp_path, device)
 
         demuxer = Demuxer(path)
@@ -324,38 +327,6 @@ class TestBlocks:
         assert stream.metadata.height == HEIGHT
         assert stream.metadata.width == WIDTH
 
-        packet_decoder = stream.make_decoder(device=device)
-        converter = ColorConverter(device=device)
-
-        frames = []
-        for packet in demuxer:
-            assert isinstance(packet, Packet)
-            assert packet.stream_index == stream.index
-            for raw_frame in packet_decoder.decode(packet):
-                assert isinstance(raw_frame, RawFrame)
-                assert (raw_frame.height, raw_frame.width) == (HEIGHT, WIDTH)
-                assert raw_frame.planes[0].device.type == device
-                frames.append(converter.convert(raw_frame))
-        for raw_frame in packet_decoder.drain():
-            frames.append(converter.convert(raw_frame))
-
-        assert len(frames) == NUM_FRAMES
-        data = torch.stack([frame.data for frame in frames])
-        assert data.shape == (NUM_FRAMES, 3, HEIGHT, WIDTH)
-        assert data.dtype == torch.uint8
-        _assert_frames_close(
-            data,
-            ref_decoded=ref_decoder.get_all_frames().data if ref_decoder else None,
-            source=source_frames,
-            device=device,
-        )
-
-    @pytest.mark.parametrize("device", _get_devices())
-    def test_video_seek(self, tmp_path, device):
-        path, ref_decoder, source_frames = _make_video_and_ref(tmp_path, device)
-
-        demuxer = Demuxer(path)
-        (stream,) = demuxer.streams
         frame_index = stream.scan()
         assert len(frame_index) == NUM_FRAMES
         assert frame_index.num_frames_from_content == NUM_FRAMES
@@ -371,26 +342,40 @@ class TestBlocks:
         demuxer.seek(frame_index.key_frame_seconds_for(target_seconds))
         packet_decoder.reset()
 
-        frame = None
+        raw_frames = []
         for packet in demuxer:
-            for raw_frame in packet_decoder.decode(packet):
-                if frame is None and raw_frame.pts_seconds >= target_seconds:
-                    frame = converter.convert(raw_frame)
-            if frame is not None:
-                break
-        assert frame is not None
-        assert frame.pts_seconds == pytest.approx(target_seconds)
+            assert isinstance(packet, Packet)
+            assert packet.stream_index == stream.index
+            raw_frames.extend(packet_decoder.decode(packet))
+        raw_frames.extend(packet_decoder.drain())
+
+        frames = []
+        for raw_frame in raw_frames:
+            assert isinstance(raw_frame, RawFrame)
+            assert (raw_frame.height, raw_frame.width) == (HEIGHT, WIDTH)
+            assert raw_frame.planes[0].device.type == device
+            if raw_frame.pts_seconds >= target_seconds:
+                frames.append(converter.convert(raw_frame))
+
+        assert len(frames) == NUM_FRAMES - target_index
+        assert frames[0].pts_seconds == pytest.approx(target_seconds)
+        data = torch.stack([frame.data for frame in frames])
+        assert data.dtype == torch.uint8
         _assert_frames_close(
-            frame.data,
+            data,
             ref_decoded=(
-                ref_decoder.get_frame_at(target_index).data if ref_decoder else None
+                ref_decoder.get_frames_in_range(
+                    start=target_index, stop=NUM_FRAMES
+                ).data
+                if ref_decoder
+                else None
             ),
-            source=source_frames[target_index] if source_frames is not None else None,
+            source=source_frames[target_index:] if source_frames is not None else None,
             device=device,
         )
 
     def test_audio_pipeline(self, tmp_path):
-        path, source_samples = _make_audio_file(tmp_path)
+        path, _ = _make_audio_file(tmp_path)
 
         demuxer = Demuxer(path, streams="audio")
         (stream,) = demuxer.streams
@@ -398,45 +383,31 @@ class TestBlocks:
         assert stream.metadata.sample_rate == SAMPLE_RATE
         assert stream.metadata.num_channels == NUM_AUDIO_CHANNELS
 
-        packet_decoder = stream.make_decoder()
-        converter = AudioConverter()
-
-        chunks = []
-        for packet in demuxer:
-            for raw_samples in packet_decoder.decode(packet):
-                assert isinstance(raw_samples, RawAudioSamples)
-                assert raw_samples.num_channels == NUM_AUDIO_CHANNELS
-                chunks.append(converter.convert(raw_samples).data)
-        for raw_samples in packet_decoder.drain():
-            chunks.append(converter.convert(raw_samples).data)
-        chunks.append(converter.drain().data)
-
-        data = torch.cat(chunks, dim=1)
-        assert data.shape == (NUM_AUDIO_CHANNELS, NUM_SAMPLES)
-        assert data.dtype == torch.float32
-        torch.testing.assert_close(data, source_samples, atol=1e-4, rtol=1e-3)
-
-    def test_audio_pipeline_resample(self, tmp_path):
-        path, _ = _make_audio_file(tmp_path)
-
         target_sr = 8000
-        demuxer = Demuxer(path, streams="audio")
-        (stream,) = demuxer.streams
         packet_decoder = stream.make_decoder()
         converter = AudioConverter(sample_rate=target_sr, num_channels=1)
 
         chunks = []
         for packet in demuxer:
             for raw_samples in packet_decoder.decode(packet):
+                assert isinstance(raw_samples, RawAudioSamples)
+                assert raw_samples.num_channels == NUM_AUDIO_CHANNELS
+                assert raw_samples.sample_rate == SAMPLE_RATE
                 chunks.append(converter.convert(raw_samples).data)
         for raw_samples in packet_decoder.drain():
             chunks.append(converter.convert(raw_samples).data)
         chunks.append(converter.drain().data)
 
         data = torch.cat(chunks, dim=1)
+        assert data.dtype == torch.float32
         assert data.shape[0] == 1
         expected_num_samples = int(NUM_SAMPLES * target_sr / SAMPLE_RATE)
         assert abs(data.shape[1] - expected_num_samples) <= 1
+
+        ref = AudioDecoder(path, sample_rate=target_sr, num_channels=1)
+        torch.testing.assert_close(
+            data, ref.get_all_samples().data, atol=1e-4, rtol=1e-3
+        )
 
     def test_multi_stream(self, tmp_path):
         path, _, _ = _make_av_file(tmp_path)
@@ -447,7 +418,7 @@ class TestBlocks:
         video_metadata = metadata.streams[metadata.best_video_stream_index]
         assert (video_metadata.height, video_metadata.width) == (HEIGHT, WIDTH)
         audio_metadata = metadata.streams[metadata.best_audio_stream_index]
-        assert audio_metadata.sample_rate == SAMPLE_RATE
+        assert audio_metadata.sample_rate == AV_SAMPLE_RATE
 
         demuxer = Demuxer(path, streams="all")
         assert len(demuxer.streams) == 2
