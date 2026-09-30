@@ -48,6 +48,7 @@ Three companion tutorials go further:
 
 # %%
 # First, a bit of boilerplate: a test video, and the device we'll run on.
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_basics.jpg'
 import subprocess
 import tempfile
 from pathlib import Path

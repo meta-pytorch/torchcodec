@@ -39,6 +39,7 @@ The rest of this guide goes over these one by one.
 # %%
 # A bit of boilerplate first: let's make up some encoded image bytes to play
 # with, by encoding a random image.
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_torchvision_migration.jpg'
 import torch
 
 from torchcodec.encoders import JpegEncoder, PngEncoder

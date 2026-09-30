@@ -36,6 +36,7 @@ handles it.
 # %%
 # Some boilerplate first: a test video, the two streams we'll use, and a helper
 # to build a fresh set of stages for each example below.
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_cuda_streams.jpg'
 import subprocess
 import tempfile
 from pathlib import Path

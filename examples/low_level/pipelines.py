@@ -38,6 +38,7 @@ the GIL.
 
 # %%
 # Some boilerplate first: a test video, and the device we'll run on.
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_pipelines.jpg'
 import subprocess
 import tempfile
 from pathlib import Path
