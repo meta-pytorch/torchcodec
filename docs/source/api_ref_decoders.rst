@@ -100,7 +100,8 @@ Low-level decoding APIs
 .. important::
 
    **The low-level APIs are in beta.** Their signatures and semantics may still
-   change slightly, in response to user feedback.
+   change slightly, in response to user feedback. Please `share your feedback
+   <https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue>`__!
 
 These expose the three stages of decoding - demuxing, decoding and conversion -
 as separate objects, where :class:`VideoDecoder` and :class:`AudioDecoder` do
