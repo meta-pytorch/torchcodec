@@ -367,7 +367,7 @@ class Demuxer:
     stream each one belongs to::
 
         demuxer = Demuxer("video.mp4", streams=("video", "audio"))
-        decoders = {s.index: s.make_decoder() for s in demuxer.streams}
+        decoders = {s.index: s.make_decoder(device="cuda") for s in demuxer.streams}
 
         for packet in demuxer:
             for output in decoders[packet.stream_index].decode(packet):

@@ -39,7 +39,7 @@ low-level APIs expose those three stages separately, one chain per media type:
 
 This unlocks features that the high-level decoders don't offer:
 
-* **Multi-threaded pipelines**: demux, decode and color-convert on separate
+* **Performance gains via multi-threaded pipelines**: demux, decode and color-convert on separate
   threads. Each stage releases the GIL. (:ref:`tutorial
   <sphx_glr_generated_examples_low_level_pipelines.py>`).
 * **Access raw YUV data, for SDR and HDR sources**: read the decoder's own planes, with no
