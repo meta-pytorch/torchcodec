@@ -359,7 +359,7 @@ class AudioStream(_Stream):
 class Demuxer:
     """Reads one or more video and audio streams from a container, and produces their compressed :class:`Packet`\\ s.
 
-    Low-level API: for straightforward decoding, use
+    This is a low-level API: for straightforward decoding, use
     :class:`~torchcodec.decoders.VideoDecoder` or
     :class:`~torchcodec.decoders.AudioDecoder` instead.
 

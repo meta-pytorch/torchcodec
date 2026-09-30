@@ -27,7 +27,7 @@ class AudioConverter:
     :class:`~torchcodec.AudioSamples`, optionally resampling and remixing
     channels.
 
-    Low-level API: for straightforward decoding, use
+    This is a low-level API: for straightforward decoding, use
     :class:`~torchcodec.decoders.AudioDecoder` instead.
 
     .. code-block:: python

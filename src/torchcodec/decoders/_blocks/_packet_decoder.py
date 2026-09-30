@@ -117,7 +117,7 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
     """Decodes the compressed :class:`Packet`\\ s of one video stream into
     :class:`RawFrame`\\ s.
 
-    Low-level API: for straightforward decoding, use
+    This is a low-level API: for straightforward decoding, use
     :class:`~torchcodec.decoders.VideoDecoder` instead.
 
     You should not build one yourself: :meth:`VideoStream.make_decoder` is what
@@ -199,7 +199,7 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
     """Decodes the compressed :class:`Packet`\\ s of one audio stream into
     :class:`RawAudioSamples`.
 
-    Low-level API: for straightforward decoding, use
+    This is a low-level API: for straightforward decoding, use
     :class:`~torchcodec.decoders.AudioDecoder` instead.
 
     You should not build one yourself: :meth:`AudioStream.make_decoder` is what
