@@ -1,0 +1,32 @@
+# Glossary
+
+pts
+
+Presentation Time Stamp. The time at which a frame or audio sample should be played.
+In TorchCodec, pts are expressed in seconds.
+
+best stream
+
+The notion of "best" stream is determined by FFmpeg. Quoting the [FFmpeg docs](https://ffmpeg.org/doxygen/trunk/group__lavf__decoding.html#ga757780d38f482deb4d809c6c521fbcc2):
+
+> *The best stream is determined according to various heuristics as the most likely to be what the user expects.*
+
+scan
+
+A scan corresponds to an entire pass over a video file, with the purpose
+of retrieving metadata about the different streams and frames. **It does
+not involve decoding**, so it is a lot cheaper than decoding the file.
+The [`VideoDecoder`](generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) performs a scan when using
+`seek_mode="exact"`, and doesn't scan when using
+`seek_mode="approximate"`. A scan can also be triggered explicitly
+with [`scan()`](generated/torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.scan) on a
+[`VideoStream`](generated/torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream), which hands back what
+it found as a [`FrameIndex`](generated/torchcodec.decoders.FrameIndex.html#torchcodec.decoders.FrameIndex).
+
+clips
+
+A clip is a sequence of frames, usually in pts order. The frames
+may not necessarily be consecutive. A clip is represented as a 4D
+[`FrameBatch`](generated/torchcodec.FrameBatch.html#torchcodec.FrameBatch). A group of clips, which is what the
+[samplers](api_ref_samplers.html#samplers) return, is represented as 5D
+[`FrameBatch`](generated/torchcodec.FrameBatch.html#torchcodec.FrameBatch).

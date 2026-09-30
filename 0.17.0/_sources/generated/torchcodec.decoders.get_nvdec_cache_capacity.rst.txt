@@ -1,0 +1,9 @@
+﻿.. role:: hidden
+    :class: hidden-section
+.. currentmodule:: torchcodec.decoders
+
+
+get_nvdec_cache_capacity
+========================
+
+.. autofunction:: get_nvdec_cache_capacity

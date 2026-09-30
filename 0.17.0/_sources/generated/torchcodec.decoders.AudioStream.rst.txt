@@ -1,0 +1,11 @@
+﻿.. role:: hidden
+    :class: hidden-section
+.. currentmodule:: torchcodec.decoders
+
+
+AudioStream
+===========
+
+.. autoclass:: AudioStream
+    :members:
+    :special-members: __getitem__, __next__

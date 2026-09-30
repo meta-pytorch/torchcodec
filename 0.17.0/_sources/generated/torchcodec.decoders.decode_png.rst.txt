@@ -1,0 +1,9 @@
+﻿.. role:: hidden
+    :class: hidden-section
+.. currentmodule:: torchcodec.decoders
+
+
+decode_png
+==========
+
+.. autofunction:: decode_png

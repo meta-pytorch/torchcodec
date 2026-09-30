@@ -1,0 +1,12 @@
+﻿.. role:: hidden
+    :class: hidden-section
+.. currentmodule:: torchcodec.decoders
+
+
+RawAudioSamples
+===============
+
+.. autoclass:: RawAudioSamples
+    :members:
+    :undoc-members: __init__
+    :inherited-members:
