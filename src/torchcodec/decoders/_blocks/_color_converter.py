@@ -22,7 +22,7 @@ from ._helpers import _process_local
 class ColorConverter:
     """Turn a :class:`RawFrame` (typically YUV) into an RGB :class:`~torchcodec.Frame`.
 
-    Low-level API: for straightforward decoding, use
+    This is a low-level API: for straightforward decoding, use
     :class:`~torchcodec.decoders.VideoDecoder` instead.
 
     .. code-block:: python
