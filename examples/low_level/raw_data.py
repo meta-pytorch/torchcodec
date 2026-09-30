@@ -39,12 +39,13 @@ This tutorial assumes you are familiar with the three stages described in
 
 # %%
 # Boilerplate: a test video, and the device we'll run on.
-# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_raw_data.jpg'
 import subprocess
 import tempfile
 from pathlib import Path
 
 import torch
+
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_raw_data.jpg'
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"{device = }")

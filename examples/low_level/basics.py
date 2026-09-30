@@ -61,12 +61,13 @@ This unlocks features that the high-level decoders don't offer:
 # %%
 # First, a bit of boilerplate: a test video, and the device we'll run on.
 #
-# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_basics.jpg'
 import subprocess
 import tempfile
 from pathlib import Path
 
 import torch
+
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_basics.jpg'
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"{device = }")

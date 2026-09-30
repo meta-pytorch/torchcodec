@@ -5,9 +5,9 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-============
-CUDA streams
-============
+===============================================
+Low-level APIs and CUDA streams synchronization
+===============================================
 
 .. currentmodule:: torchcodec.decoders
 
@@ -37,7 +37,6 @@ handles it.
 # %%
 # Some boilerplate first: a test video, the two streams we'll use, and a helper
 # to build a fresh set of stages for each example below.
-# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_cuda_streams.jpg'
 import subprocess
 import tempfile
 from pathlib import Path
@@ -45,6 +44,8 @@ from pathlib import Path
 import torch
 
 from torchcodec.decoders import ColorConverter, Demuxer
+
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_cuda_streams.jpg'
 
 video_path = Path(tempfile.mkdtemp()) / "video.mp4"
 subprocess.run(

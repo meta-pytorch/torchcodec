@@ -39,12 +39,13 @@ the GIL.
 
 # %%
 # Some boilerplate first: a test video, and the device we'll run on.
-# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_pipelines.jpg'
 import subprocess
 import tempfile
 from pathlib import Path
 
 import torch
+
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_pipelines.jpg'
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"{device = }")
