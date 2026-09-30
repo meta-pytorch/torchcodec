@@ -14,17 +14,20 @@ Build your own decoding pipeline
 .. important::
 
    **The low-level APIs are in beta.** Their signatures and semantics may still
-   change slightly, in response to user feedback.
+   change slightly, in response to user feedback. Please `share your feedback
+   <https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue>`__!
 
 In this tutorial, we'll take a tour of the low-level decoding APIs: the three
 decoding stages for video and audio, following several streams of a container at
 once, seeking, scanning, what the metadata means, and decoding a source that
 never ends.
 
-:class:`~torchcodec.decoders.VideoDecoder` and
-:class:`~torchcodec.decoders.AudioDecoder` are each a single box that does
-demuxing, decoding and conversion for you. The low-level APIs expose those three
-stages separately, one chain per media type:
+For simple end-to-end decoding, :class:`~torchcodec.decoders.VideoDecoder` and
+:class:`~torchcodec.decoders.AudioDecoder` are often all you need: they
+handle demuxing, decoding and conversion for you, in a single call. But that
+means you don't control these stages: you can't run them on different threads,
+stop before the conversion, or decode several streams in a single pass. The
+low-level APIs expose those three stages separately, one chain per media type:
 
 .. code-block::
 
@@ -34,25 +37,37 @@ stages separately, one chain per media type:
    Demuxer  ->  AudioPacketDecoder  ->  AudioConverter
     Packet        RawAudioSamples          AudioSamples
 
+This unlocks features that the high-level decoders don't offer:
 
-Three companion tutorials go further:
-
-* :ref:`sphx_glr_generated_examples_low_level_pipelines.py`, on running the stages
-  concurrently on several threads.
-* :ref:`sphx_glr_generated_examples_low_level_raw_data.py`, on reading the
-  decoder's own YUV planes and audio samples instead of converting them.
-* :ref:`sphx_glr_generated_examples_low_level_cuda_streams.py`, on what a
-  :class:`RawFrame` requires of you when you run the stages on different CUDA
-  streams.
+* **Performance gains via multi-threaded pipelines**: demux, decode and color-convert on separate
+  threads. Each stage releases the GIL. (:ref:`tutorial
+  <sphx_glr_generated_examples_low_level_pipelines.py>`).
+* **Access raw YUV data, for SDR and HDR sources**: read the decoder's own planes, with no
+  conversion and no copy, at the source's own precision. 10-bit HDR comes out
+  as ``uint16`` with every bit intact. You also get access to the raw audio samples.
+  (:ref:`tutorial <sphx_glr_generated_examples_low_level_raw_data.py>`).
+* **Custom transformations of YUV data**: write your own color conversion kernel, or
+  train directly in YUV space! (:ref:`tutorial <raw_data_custom_conversion>`).
+* **Multi-stream decoding**: decode audio and video (or several streams)
+  in a single pass over the input (:ref:`below <low_level_several_streams>`).
+* **Endless streams**: decode sources that have no duration, no frame count
+  and no end, such as live streams and pipes
+  (:ref:`below <low_level_unknown_length>`).
+* **Key frame retrieval**: get exact key frame positions from a scan, and
+  decode key frames for cheap thumbnails or training samplers
+  (:ref:`below <low_level_keyframes>`).
 """
 
 # %%
 # First, a bit of boilerplate: a test video, and the device we'll run on.
+#
 import subprocess
 import tempfile
 from pathlib import Path
 
 import torch
+
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_basics.jpg'
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"{device = }")
@@ -178,6 +193,8 @@ print(f"{data.shape = }, {data.dtype = }, "
 # the end of the pipeline to retrieve the last samples.
 
 # %%
+# .. _low_level_several_streams:
+#
 # Several streams at once
 # ^^^^^^^^^^^^^^^^^^^^^^^
 #
@@ -322,6 +339,8 @@ print(f"frame {i} is on screen at {seconds}s, and starts at {index.pts_seconds[i
 # If you're following more than one video stream, you can call :meth:`scan` on
 # each of them. You only pay the scan cost once, for the first stream: the other
 # streams' scan resuts are cached and returned when you call scan on them.
+#
+# .. _low_level_keyframes:
 #
 # Keyframes
 # ^^^^^^^^^
@@ -496,6 +515,8 @@ for stream in get_container_metadata(av_path).streams:
     print(f"  stream {stream.stream_index}: {stream.media_type}, {stream.codec}")
 
 # %%
+# .. _low_level_unknown_length:
+#
 # Streams of unknown length
 # -------------------------
 #

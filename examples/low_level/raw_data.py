@@ -14,7 +14,8 @@ Raw frames and raw audio samples
 .. important::
 
    **The low-level APIs are in beta.** Their signatures and semantics may still
-   change slightly, in response to user feedback.
+   change slightly, in response to user feedback. Please `share your feedback
+   <https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue>`__!
 
 In this tutorial, we'll skip the conversion stage of a decoding pipeline and
 read the decoder's own YUV planes and audio samples directly, at the source's
@@ -43,6 +44,8 @@ import tempfile
 from pathlib import Path
 
 import torch
+
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_raw_data.jpg'
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"{device = }")
@@ -104,6 +107,8 @@ print(f"{Y.shape = }, {U.shape = }, {Y.dtype = }, {Y.stride() = }")
 # applies it for you.
 
 # %%
+# .. _raw_data_custom_conversion:
+#
 # Doing the conversion yourself
 # -----------------------------
 #

@@ -359,7 +359,7 @@ class AudioStream(_Stream):
 class Demuxer:
     """Reads one or more video and audio streams from a container, and produces their compressed :class:`Packet`\\ s.
 
-    Low-level API: for straightforward decoding, use
+    This is a low-level API: for straightforward decoding, use
     :class:`~torchcodec.decoders.VideoDecoder` or
     :class:`~torchcodec.decoders.AudioDecoder` instead.
 
@@ -367,7 +367,7 @@ class Demuxer:
     stream each one belongs to::
 
         demuxer = Demuxer("video.mp4", streams=("video", "audio"))
-        decoders = {s.index: s.make_decoder() for s in demuxer.streams}
+        decoders = {s.index: s.make_decoder(device="cuda") for s in demuxer.streams}
 
         for packet in demuxer:
             for output in decoders[packet.stream_index].decode(packet):

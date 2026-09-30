@@ -5,16 +5,17 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-============
-CUDA streams
-============
+===============================================
+Low-level APIs and CUDA streams synchronization
+===============================================
 
 .. currentmodule:: torchcodec.decoders
 
 .. important::
 
    **The low-level APIs are in beta.** Their signatures and semantics may still
-   change slightly, in response to user feedback.
+   change slightly, in response to user feedback. Please `share your feedback
+   <https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue>`__!
 
 On CUDA, if you decode on one stream and consume the :class:`RawFrame`\\ s on
 another - either with a :class:`ColorConverter`, or with your own consumer as in
@@ -43,6 +44,8 @@ from pathlib import Path
 import torch
 
 from torchcodec.decoders import ColorConverter, Demuxer
+
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_cuda_streams.jpg'
 
 video_path = Path(tempfile.mkdtemp()) / "video.mp4"
 subprocess.run(
