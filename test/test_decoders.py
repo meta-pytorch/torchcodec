@@ -122,6 +122,7 @@ from .utils import (
     needs_jpeg,
     needs_png,
     needs_webp,
+    NVDEC_SURFACE_REUSE_VIDEO,
     psnr,
     RGBA_AVIF,
     RGBA_HEIC,
@@ -2622,6 +2623,17 @@ class TestVideoDecoder:
             assert_frames_equal(frames, reference)
             # A single cached decoder was enough for both videos
             assert _core._get_nvdec_cache_size(device_index=0) == 1
+
+    @needs_cuda
+    def test_nvdec_surface_reuse(self):
+        # Non regression test for https://github.com/meta-pytorch/torchcodec/pull/1758
+        reference = VideoDecoder(NVDEC_SURFACE_REUSE_VIDEO.path, device="cpu")[:]
+
+        decoder = VideoDecoder(NVDEC_SURFACE_REUSE_VIDEO.path, device="cuda")
+        frames = decoder[:]
+        assert not decoder.cpu_fallback
+
+        assert_frames_equal(frames, reference.cuda())
 
     def test_cpu_fallback_no_fallback_on_cpu_device(self):
         """Test that CPU device doesn't trigger fallback (it's not a fallback scenario)."""
