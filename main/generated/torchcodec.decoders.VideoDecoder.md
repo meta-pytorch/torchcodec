@@ -171,17 +171,17 @@ Encoding audio and video streams with the Encoder
 [Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html)
 
 Encoding video with the Encoder
-![](../_images/sphx_glr_basics_thumb.png)
+![](../_images/sphx_glr_basics_thumb.jpg)
 
 [Build your own decoding pipeline](../generated_examples/low_level/basics.html)
 
 Build your own decoding pipeline
-![](../_images/sphx_glr_pipelines_thumb.png)
+![](../_images/sphx_glr_pipelines_thumb.jpg)
 
 [Multi-threaded decoding pipelines](../generated_examples/low_level/pipelines.html)
 
 Multi-threaded decoding pipelines
-![](../_images/sphx_glr_raw_data_thumb.png)
+![](../_images/sphx_glr_raw_data_thumb.jpg)
 
 [Raw frames and raw audio samples](../generated_examples/low_level/raw_data.html)
 

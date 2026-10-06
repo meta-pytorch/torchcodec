@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>VideoPacketDecoder &#8212; TorchCodec 0.17.0.dev20260928+cu130 Documentation</title>
+    <title>VideoPacketDecoder &#8212; TorchCodec 0.18.0.dev20261006+cu130 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=44d26e91"></script>
+    <script src="../_static/documentation_options.js?v=6cfce710"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -54,7 +54,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.17';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.18';
         DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
         </script>
     <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.decoders.VideoPacketDecoder.html" />
@@ -80,7 +80,7 @@
 
 <meta name="llm:navigation-file" content="/llms.txt">
 <meta name="llm:sitemap" content="/sitemap.xml">
-<meta name="llm:version" content="0.17">
+<meta name="llm:version" content="0.18">
 <meta name="llm:project" content="Python">
 <meta name="llm:page-type" content="api">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Navigation Guide">
@@ -186,7 +186,7 @@
   fbq('track', 'PageView');
 </script>
 <script>
-  document.documentElement.setAttribute('data-version', '0.17');
+  document.documentElement.setAttribute('data-version', '0.18');
 </script>
 <noscript>
   <img height="1" width="1" src="https://www.facebook.com/tr?id=243028289693773&ev=PageView&noscript=1" />
@@ -1026,7 +1026,6 @@ document.write(`
 </details></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="../api_ref_decoders.html">torchcodec.decoders</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoDecoder.html">VideoDecoder</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.WavDecoder.html">WavDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoStreamMetadata.html">VideoStreamMetadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.set_cuda_backend.html">set_cuda_backend</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.set_nvdec_cache_capacity.html">set_nvdec_cache_capacity</a></li>
@@ -1204,7 +1203,7 @@ document.write(`
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">torchcodec.decoders.</span></span><span class="sig-name descname"><span class="pre">VideoPacketDecoder</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_packet_decoder.html#VideoPacketDecoder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders.VideoPacketDecoder" title="Link to this definition">#</a></dt>
 <dd><p>Decodes the compressed <a class="reference internal" href="torchcodec.decoders.Packet.html#torchcodec.decoders.Packet" title="torchcodec.decoders.Packet"><code class="xref py py-class docutils literal notranslate"><span class="pre">Packet</span></code></a>s of one video stream into
 <a class="reference internal" href="torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame" title="torchcodec.decoders.RawFrame"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawFrame</span></code></a>s.</p>
-<p>Low-level API: for straightforward decoding, use
+<p>This is a low-level API: for straightforward decoding, use
 <a class="reference internal" href="torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a> instead.</p>
 <p>You should not build one yourself: <a class="reference internal" href="torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.make_decoder" title="torchcodec.decoders.VideoStream.make_decoder"><code class="xref py py-meth docutils literal notranslate"><span class="pre">VideoStream.make_decoder()</span></code></a> is what
 creates it. Frames come out on the device given there.</p>
@@ -1222,13 +1221,13 @@ creates it. Frames come out on the device given there.</p>
 <p>It is stateful. It holds the codec’s reference-frame buffer, so it expects
 the packets of its own stream, in the order the demuxer produced them.</p>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">VideoPacketDecoder</span></code>:</p>
-<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback."><img alt="" src="../_images/sphx_glr_basics_thumb.png" />
+<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !"><img alt="" src="../_images/sphx_glr_basics_thumb.jpg" />
 <p><a class="reference internal" href="../generated_examples/low_level/basics.html"><span class="doc">Build your own decoding pipeline</span></a></p>
   <div class="sphx-glr-thumbnail-title">Build your own decoding pipeline</div>
-</div><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback."><img alt="" src="../_images/sphx_glr_cuda_streams_thumb.png" />
-<p><a class="reference internal" href="../generated_examples/low_level/cuda_streams.html"><span class="doc">CUDA streams</span></a></p>
-  <div class="sphx-glr-thumbnail-title">CUDA streams</div>
-</div><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback."><img alt="" src="../_images/sphx_glr_raw_data_thumb.png" />
+</div><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !"><img alt="" src="../_images/sphx_glr_cuda_streams_thumb.jpg" />
+<p><a class="reference internal" href="../generated_examples/low_level/cuda_streams.html"><span class="doc">Low-level APIs and CUDA streams synchronization</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Low-level APIs and CUDA streams synchronization</div>
+</div><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !"><img alt="" src="../_images/sphx_glr_raw_data_thumb.jpg" />
 <p><a class="reference internal" href="../generated_examples/low_level/raw_data.html"><span class="doc">Raw frames and raw audio samples</span></a></p>
   <div class="sphx-glr-thumbnail-title">Raw frames and raw audio samples</div>
 </div></div><dl class="py method">
@@ -1629,7 +1628,7 @@ still holding, in presentation order.</p>
        "headline": "VideoPacketDecoder",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders.VideoPacketDecoder.html",
-       "articleBody": "VideoPacketDecoder# class torchcodec.decoders.VideoPacketDecoder(*args, **kwargs)[source]# Decodes the compressed Packets of one video stream into RawFrames. Low-level API: for straightforward decoding, use VideoDecoder instead. You should not build one yourself: VideoStream.make_decoder() is what creates it. Frames come out on the device given there. Feed it one packet at a time, and drain it at the end: demuxer = Demuxer(\"video.mp4\") decoder = demuxer.streams[0].make_decoder() for packet in demuxer: for raw_frame in decoder.decode(packet): ... for raw_frame in decoder.drain(): ... It is stateful. It holds the codec\u2019s reference-frame buffer, so it expects the packets of its own stream, in the order the demuxer produced them. Examples using VideoPacketDecoder: Build your own decoding pipeline Build your own decoding pipeline CUDA streams CUDA streams Raw frames and raw audio samples Raw frames and raw audio samples decode(packet: Packet) \u2192 list[RawFrame][source]# Send one Packet to the codec and return the RawFrames that are ready. This can return zero, one, or more than one RawFrame. What comes back is not the decoding of the packet you just passed: a codec that is buffering B-frames, or still priming itself, will emit what it owes you on a later call. Parameters: packet (Packet) \u2013 A packet of this decoder\u2019s own stream. Returns: The possibly empty list of RawFrames that the codec has ready, in presentation order. Raises: RuntimeError \u2013 If this decoder has been drained, or if the demuxer seeked without it being reset() afterwards. drain() \u2192 list[RawFrame][source]# Tell the codec the stream has ended, and return the RawFrames it was still holding. Skipping this loses the tail of the stream. A drained decoder refuses any further packet; reset() makes it usable again. Returns: The possibly empty list of RawFrames that the codec was still holding, in presentation order. reset() \u2192 None# Drop the codec\u2019s buffered state and start over. Needed after a Demuxer.seek(), and after drain().",
+       "articleBody": "VideoPacketDecoder# class torchcodec.decoders.VideoPacketDecoder(*args, **kwargs)[source]# Decodes the compressed Packets of one video stream into RawFrames. This is a low-level API: for straightforward decoding, use VideoDecoder instead. You should not build one yourself: VideoStream.make_decoder() is what creates it. Frames come out on the device given there. Feed it one packet at a time, and drain it at the end: demuxer = Demuxer(\"video.mp4\") decoder = demuxer.streams[0].make_decoder() for packet in demuxer: for raw_frame in decoder.decode(packet): ... for raw_frame in decoder.drain(): ... It is stateful. It holds the codec\u2019s reference-frame buffer, so it expects the packets of its own stream, in the order the demuxer produced them. Examples using VideoPacketDecoder: Build your own decoding pipeline Build your own decoding pipeline Low-level APIs and CUDA streams synchronization Low-level APIs and CUDA streams synchronization Raw frames and raw audio samples Raw frames and raw audio samples decode(packet: Packet) \u2192 list[RawFrame][source]# Send one Packet to the codec and return the RawFrames that are ready. This can return zero, one, or more than one RawFrame. What comes back is not the decoding of the packet you just passed: a codec that is buffering B-frames, or still priming itself, will emit what it owes you on a later call. Parameters: packet (Packet) \u2013 A packet of this decoder\u2019s own stream. Returns: The possibly empty list of RawFrames that the codec has ready, in presentation order. Raises: RuntimeError \u2013 If this decoder has been drained, or if the demuxer seeked without it being reset() afterwards. drain() \u2192 list[RawFrame][source]# Tell the codec the stream has ended, and return the RawFrames it was still holding. Skipping this loses the tail of the stream. A drained decoder refuses any further packet; reset() makes it usable again. Returns: The possibly empty list of RawFrames that the codec was still holding, in presentation order. reset() \u2192 None# Drop the codec\u2019s buffered state and start over. Needed after a Demuxer.seek(), and after drain().",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

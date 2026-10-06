@@ -3,7 +3,7 @@
 Important
 
 **The low-level APIs are in beta.** Their signatures and semantics may still
-change slightly, in response to user feedback.
+change slightly, in response to user feedback. Please [share your feedback](https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue)!
 
 In this tutorial, we'll assemble the three decoding stages into pipelines of our
 own: running demuxing, decoding and color-conversion concurrently on several
@@ -21,7 +21,7 @@ Note
 The pipelines below run every stage on the same CUDA stream, and nothing here
 requires you to think about stream synchronization. If you decide however to
 give each stage a CUDA stream of its own, read
-[CUDA streams](cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) for common gotchas
+[Low-level APIs and CUDA streams synchronization](cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) for common gotchas
 and how to avoid them.
 
 Some boilerplate first: a test video, and the device we'll run on.
@@ -53,7 +53,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp0tpdhtfz/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpliwoqyim/video.mp4'], returncode=0)
 ```
 
 ## One stage, one generator
@@ -208,7 +208,7 @@ for pipeline in (sequential, convert_on_own_thread):
 
 ```
 VideoDecoder : 1.86s
-sequential : 1.89s (0.99x vs VideoDecoder)
+sequential : 1.87s (0.99x vs VideoDecoder)
 convert_on_own_thread : 1.61s (1.15x vs VideoDecoder)
 ```
 
@@ -218,7 +218,7 @@ expected: they do the same work on one thread.
 two most expensive steps: decoding and color-conversion. Note: actual speedup
 will depend on the capabilities of the machine building these docs!
 
-**Total running time of the script:** (0 minutes 26.468 seconds)
+**Total running time of the script:** (0 minutes 26.500 seconds)
 
 [`Download Jupyter notebook: pipelines.ipynb`](../../_downloads/b6cf9084a4d02eed0052adaf54947e49/pipelines.ipynb)
 

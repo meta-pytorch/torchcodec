@@ -18,7 +18,7 @@ for packet in demuxer:
 
 Examples using `RawAudioSamples`:
 
-![](../_images/sphx_glr_raw_data_thumb.png)
+![](../_images/sphx_glr_raw_data_thumb.jpg)
 
 [Raw frames and raw audio samples](../generated_examples/low_level/raw_data.html)
 

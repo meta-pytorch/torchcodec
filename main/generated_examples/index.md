@@ -65,26 +65,26 @@ Decoding HDR videos
 
 ## Decoding: low-level APIs (beta)
 
-![](../_images/sphx_glr_basics_thumb.png)
+![](../_images/sphx_glr_basics_thumb.jpg)
 
 [Build your own decoding pipeline](low_level/basics.html)
 
 Build your own decoding pipeline
-![](../_images/sphx_glr_pipelines_thumb.png)
+![](../_images/sphx_glr_pipelines_thumb.jpg)
 
 [Multi-threaded decoding pipelines](low_level/pipelines.html)
 
 Multi-threaded decoding pipelines
-![](../_images/sphx_glr_raw_data_thumb.png)
+![](../_images/sphx_glr_raw_data_thumb.jpg)
 
 [Raw frames and raw audio samples](low_level/raw_data.html)
 
 Raw frames and raw audio samples
-![](../_images/sphx_glr_cuda_streams_thumb.png)
+![](../_images/sphx_glr_cuda_streams_thumb.jpg)
 
-[CUDA streams](low_level/cuda_streams.html)
+[Low-level APIs and CUDA streams synchronization](low_level/cuda_streams.html)
 
-CUDA streams
+Low-level APIs and CUDA streams synchronization
 
 ## Encoding
 
@@ -111,7 +111,7 @@ Encoding audio and video streams with the Encoder
 
 ## Migrating from torchvision
 
-![](../_images/sphx_glr_torchvision_migration_thumb.png)
+![](../_images/sphx_glr_torchvision_migration_thumb.jpg)
 
 [Migrating from TorchVision to TorchCodec](migration/torchvision_migration.html)
 

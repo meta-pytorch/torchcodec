@@ -3,17 +3,19 @@
 Important
 
 **The low-level APIs are in beta.** Their signatures and semantics may still
-change slightly, in response to user feedback.
+change slightly, in response to user feedback. Please [share your feedback](https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue)!
 
 In this tutorial, we'll take a tour of the low-level decoding APIs: the three
 decoding stages for video and audio, following several streams of a container at
 once, seeking, scanning, what the metadata means, and decoding a source that
 never ends.
 
-[`VideoDecoder`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) and
-[`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) are each a single box that does
-demuxing, decoding and conversion for you. The low-level APIs expose those three
-stages separately, one chain per media type:
+For simple end-to-end decoding, [`VideoDecoder`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) and
+[`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) are often all you need: they
+handle demuxing, decoding and conversion for you, in a single call. But that
+means you don't control these stages: you can't run them on different threads,
+stop before the conversion, or decode several streams in a single pass. The
+low-level APIs expose those three stages separately, one chain per media type:
 
 ```
 Demuxer -> VideoPacketDecoder -> ColorConverter
@@ -23,15 +25,24 @@ Demuxer -> AudioPacketDecoder -> AudioConverter
  Packet RawAudioSamples AudioSamples
 ```
 
-Three companion tutorials go further:
+This unlocks features that the high-level decoders don't offer:
 
-- [Multi-threaded decoding pipelines](pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py), on running the stages
-concurrently on several threads.
-- [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-low-level-raw-data-py), on reading the
-decoder's own YUV planes and audio samples instead of converting them.
-- [CUDA streams](cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py), on what a
-[`RawFrame`](../../generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame) requires of you when you run the stages on different CUDA
-streams.
+- **Performance gains via multi-threaded pipelines**: demux, decode and color-convert on separate
+threads. Each stage releases the GIL. ([tutorial](pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py)).
+- **Access raw YUV data, for SDR and HDR sources**: read the decoder's own planes, with no
+conversion and no copy, at the source's own precision. 10-bit HDR comes out
+as `uint16` with every bit intact. You also get access to the raw audio samples.
+([tutorial](raw_data.html#sphx-glr-generated-examples-low-level-raw-data-py)).
+- **Custom transformations of YUV data**: write your own color conversion kernel, or
+train directly in YUV space! ([tutorial](raw_data.html#raw-data-custom-conversion)).
+- **Multi-stream decoding**: decode audio and video (or several streams)
+in a single pass over the input (below).
+- **Endless streams**: decode sources that have no duration, no frame count
+and no end, such as live streams and pipes
+(below).
+- **Key frame retrieval**: get exact key frame positions from a scan, and
+decode key frames for cheap thumbnails or training samplers
+(below).
 
 First, a bit of boilerplate: a test video, and the device we'll run on.
 
@@ -62,7 +73,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpc6umz9iy/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp117j5ne4/video.mp4'], returncode=0)
 ```
 
 ## The three stages
@@ -191,7 +202,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpc6umz9iy/video.mp4', '-i', '/tmp/tmpc6umz9iy/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpc6umz9iy/av.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmp117j5ne4/video.mp4', '-i', '/tmp/tmp117j5ne4/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmp117j5ne4/av.mp4'], returncode=0)
 ```
 
 Which streams to follow is specified at construction time of the
@@ -561,11 +572,11 @@ and on CUDA.
 - [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-low-level-raw-data-py) skips the converters
 and reads the decoder's own YUV planes and audio samples, at the source's
 own precision.
-- [CUDA streams](cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) explains how to
+- [Low-level APIs and CUDA streams synchronization](cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) explains how to
 manage CUDA streams when you consume a [`RawFrame`](../../generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame) on a different CUDA
 stream than the one it was decoded on.
 
-**Total running time of the script:** (0 minutes 1.543 seconds)
+**Total running time of the script:** (0 minutes 1.564 seconds)
 
 [`Download Jupyter notebook: basics.ipynb`](../../_downloads/6982b776b242e8d98bf3991f1eabc245/basics.ipynb)
 

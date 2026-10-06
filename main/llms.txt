@@ -84,7 +84,7 @@
 - [Encoding video with the Encoder](https://meta-pytorch.org/torchcodec/stable/generated_examples/encoding/video_encoding.md)
 - [Interactive examples](https://meta-pytorch.org/torchcodec/stable/generated_examples/index.md)
 - [Build your own decoding pipeline](https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/basics.md)
-- [CUDA streams](https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/cuda_streams.md)
+- [Low-level APIs and CUDA streams synchronization](https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/cuda_streams.md)
 - [Decoding: low-level APIs (beta)](https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/index.md)
 - [Multi-threaded decoding pipelines](https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/pipelines.md)
 - [Raw frames and raw audio samples](https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/raw_data.md)

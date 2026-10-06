@@ -4,9 +4,11 @@
 
 For a video decoder tutorial, see: [Decoding a video with VideoDecoder](generated_examples/decoding/basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py).
 
+The [`VideoDecoder`](generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) class is a high-level entry point for video decoding.
+For low-level control over the decoding process, see Low-level decoding APIs for video and audio.
+
 | [`VideoDecoder`](generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) | A single-stream video decoder. |
 | --- | --- |
-| [`WavDecoder`](generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder) | A fast decoder for WAV audio files. |
 
 | [`VideoStreamMetadata`](generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata) | Metadata of a single video stream. |
 | --- | --- |
@@ -24,6 +26,9 @@ For a video decoder tutorial, see: [Decoding a video with VideoDecoder](generate
 ## Audio Decoding
 
 For an audio decoder tutorial, see: [Decoding audio streams with AudioDecoder](generated_examples/decoding/audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py).
+
+The [`AudioDecoder`](generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) class is a high-level entry point for audio decoding.
+For low-level control over the decoding process, see Low-level decoding APIs for video and audio.
 
 | [`AudioDecoder`](generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) | A single-stream audio decoder. |
 | --- | --- |
@@ -46,25 +51,24 @@ For an audio decoder tutorial, see: [Decoding audio streams with AudioDecoder](g
 | [`ImageReadMode`](generated/torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) | Color mode for image decoding. |
 | --- | --- |
 
-## Low-level decoding APIs
+## Low-level decoding APIs for video and audio
 
 Important
 
 **The low-level APIs are in beta.** Their signatures and semantics may still
-change slightly, in response to user feedback.
+change slightly, in response to user feedback. Please [share your feedback](https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue)!
 
-These expose the three stages of decoding - demuxing, decoding and conversion -
-as separate objects, where [`VideoDecoder`](generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) and [`AudioDecoder`](generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) do
-all three for you. Reach for them when you need to control a stage, skip one, or
-run them on different threads. If you just want frames out of a file, use
-[`VideoDecoder`](generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder).
+These APIs expose the three stages of decoding as separate objects: demuxing, decoding and conversion.
+Reach for them when you need to control a stage, skip one, or run them on
+different threads. If you just want RGB frames out of a file,
+[`VideoDecoder`](generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) and [`AudioDecoder`](generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) are easier to use.
 
 For tutorials, see:
 
 - [Build your own decoding pipeline](generated_examples/low_level/basics.html#sphx-glr-generated-examples-low-level-basics-py)
 - [Multi-threaded decoding pipelines](generated_examples/low_level/pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py)
 - [Raw frames and raw audio samples](generated_examples/low_level/raw_data.html#sphx-glr-generated-examples-low-level-raw-data-py)
-- [CUDA streams](generated_examples/low_level/cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py)
+- [Low-level APIs and CUDA streams synchronization](generated_examples/low_level/cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py)
 
 ### Demuxing
 

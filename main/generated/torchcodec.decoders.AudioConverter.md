@@ -6,7 +6,7 @@ Turn [`RawAudioSamples`](torchcodec.decoders.RawAudioSamples.html#torchcodec.dec
 [`AudioSamples`](torchcodec.AudioSamples.html#torchcodec.AudioSamples), optionally resampling and remixing
 channels.
 
-Low-level API: for straightforward decoding, use
+This is a low-level API: for straightforward decoding, use
 [`AudioDecoder`](torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) instead.
 
 ```
@@ -35,7 +35,7 @@ to the source's own.
 
 Examples using `AudioConverter`:
 
-![](../_images/sphx_glr_basics_thumb.png)
+![](../_images/sphx_glr_basics_thumb.jpg)
 
 [Build your own decoding pipeline](../generated_examples/low_level/basics.html)
 

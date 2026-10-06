@@ -11,7 +11,7 @@ Examples using `VideoStreamMetadata`:
 [Decoding a video with VideoDecoder](../generated_examples/decoding/basic_example.html)
 
 Decoding a video with VideoDecoder
-![](../_images/sphx_glr_basics_thumb.png)
+![](../_images/sphx_glr_basics_thumb.jpg)
 
 [Build your own decoding pipeline](../generated_examples/low_level/basics.html)
 

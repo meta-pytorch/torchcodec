@@ -5,7 +5,7 @@
 Decodes the compressed [`Packet`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet)s of one audio stream into
 [`RawAudioSamples`](torchcodec.decoders.RawAudioSamples.html#torchcodec.decoders.RawAudioSamples).
 
-Low-level API: for straightforward decoding, use
+This is a low-level API: for straightforward decoding, use
 [`AudioDecoder`](torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) instead.
 
 You should not build one yourself: [`AudioStream.make_decoder()`](torchcodec.decoders.AudioStream.html#torchcodec.decoders.AudioStream.make_decoder) is what
@@ -32,7 +32,7 @@ re-primes, so decode a margin before your target and throw it away.
 
 Examples using `AudioPacketDecoder`:
 
-![](../_images/sphx_glr_raw_data_thumb.png)
+![](../_images/sphx_glr_raw_data_thumb.jpg)
 
 [Raw frames and raw audio samples](../generated_examples/low_level/raw_data.html)
 

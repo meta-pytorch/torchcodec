@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>AudioConverter &#8212; TorchCodec 0.17.0.dev20260928+cu130 Documentation</title>
+    <title>AudioConverter &#8212; TorchCodec 0.18.0.dev20261006+cu130 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=44d26e91"></script>
+    <script src="../_static/documentation_options.js?v=6cfce710"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -54,7 +54,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.17';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.18';
         DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
         </script>
     <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.decoders.AudioConverter.html" />
@@ -80,7 +80,7 @@
 
 <meta name="llm:navigation-file" content="/llms.txt">
 <meta name="llm:sitemap" content="/sitemap.xml">
-<meta name="llm:version" content="0.17">
+<meta name="llm:version" content="0.18">
 <meta name="llm:project" content="Python">
 <meta name="llm:page-type" content="api">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Navigation Guide">
@@ -186,7 +186,7 @@
   fbq('track', 'PageView');
 </script>
 <script>
-  document.documentElement.setAttribute('data-version', '0.17');
+  document.documentElement.setAttribute('data-version', '0.18');
 </script>
 <noscript>
   <img height="1" width="1" src="https://www.facebook.com/tr?id=243028289693773&ev=PageView&noscript=1" />
@@ -1026,7 +1026,6 @@ document.write(`
 </details></li>
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="../api_ref_decoders.html">torchcodec.decoders</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoDecoder.html">VideoDecoder</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.WavDecoder.html">WavDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoStreamMetadata.html">VideoStreamMetadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.set_cuda_backend.html">set_cuda_backend</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.set_nvdec_cache_capacity.html">set_nvdec_cache_capacity</a></li>
@@ -1205,7 +1204,7 @@ document.write(`
 <dd><p>Turn <a class="reference internal" href="torchcodec.decoders.RawAudioSamples.html#torchcodec.decoders.RawAudioSamples" title="torchcodec.decoders.RawAudioSamples"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawAudioSamples</span></code></a> into normalised float32
 <a class="reference internal" href="torchcodec.AudioSamples.html#torchcodec.AudioSamples" title="torchcodec.AudioSamples"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioSamples</span></code></a>, optionally resampling and remixing
 channels.</p>
-<p>Low-level API: for straightforward decoding, use
+<p>This is a low-level API: for straightforward decoding, use
 <a class="reference internal" href="torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder" title="torchcodec.decoders.AudioDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioDecoder</span></code></a> instead.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">converter</span> <span class="o">=</span> <span class="n">AudioConverter</span><span class="p">(</span><span class="n">sample_rate</span><span class="o">=</span><span class="mi">16_000</span><span class="p">)</span>
 
@@ -1233,7 +1232,7 @@ to the source’s own.</p></li>
 </dd>
 </dl>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">AudioConverter</span></code>:</p>
-<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback."><img alt="" src="../_images/sphx_glr_basics_thumb.png" />
+<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !"><img alt="" src="../_images/sphx_glr_basics_thumb.jpg" />
 <p><a class="reference internal" href="../generated_examples/low_level/basics.html"><span class="doc">Build your own decoding pipeline</span></a></p>
   <div class="sphx-glr-thumbnail-title">Build your own decoding pipeline</div>
 </div></div><dl class="py method">
@@ -1619,7 +1618,7 @@ converting a different stream.</p>
        "headline": "AudioConverter",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders.AudioConverter.html",
-       "articleBody": "AudioConverter# class torchcodec.decoders.AudioConverter(sample_rate: int | None = None, num_channels: int | None = None)[source]# Turn RawAudioSamples into normalised float32 AudioSamples, optionally resampling and remixing channels. Low-level API: for straightforward decoding, use AudioDecoder instead. converter = AudioConverter(sample_rate=16_000) for packet in demuxer: for raw_samples in packet_decoder.decode(packet): samples = converter.convert(raw_samples) for raw_samples in packet_decoder.drain(): samples = converter.convert(raw_samples) samples = converter.drain() Unlike a ColorConverter, this object is a stateful stream processor, and it is bound to an audio stream: feed it the stream\u2019s samples in order. When resampling, it holds samples back between calls, so you won\u2019t necessarily get the same number of samples out as you put in for a given call to convert(). Parameters: sample_rate (int, optional) \u2013 The output sample rate. Defaults to the source\u2019s own, i.e. no resampling. num_channels (int, optional) \u2013 The output number of channels. Defaults to the source\u2019s own. Examples using AudioConverter: Build your own decoding pipeline Build your own decoding pipeline convert(raw_samples: RawAudioSamples) \u2192 AudioSamples[source]# Convert one RawAudioSamples into normalised float32 AudioSamples. You may not get the same number of samples out as you put in, especially if you are resampling. Returns: The converted samples, normalised float32 in [-1, 1]. When resampling, fewer than were passed in, possibly none. drain() \u2192 AudioSamples[source]# Return the samples the resampler was still holding on to. Empty unless you are resampling. This is not the codec\u2019s own buffer, which AudioPacketDecoder.drain() takes care of. reset() \u2192 None[source]# Drop the resampler\u2019s state and start over. Needed after a Demuxer.seek(), after drain(), and before converting a different stream.",
+       "articleBody": "AudioConverter# class torchcodec.decoders.AudioConverter(sample_rate: int | None = None, num_channels: int | None = None)[source]# Turn RawAudioSamples into normalised float32 AudioSamples, optionally resampling and remixing channels. This is a low-level API: for straightforward decoding, use AudioDecoder instead. converter = AudioConverter(sample_rate=16_000) for packet in demuxer: for raw_samples in packet_decoder.decode(packet): samples = converter.convert(raw_samples) for raw_samples in packet_decoder.drain(): samples = converter.convert(raw_samples) samples = converter.drain() Unlike a ColorConverter, this object is a stateful stream processor, and it is bound to an audio stream: feed it the stream\u2019s samples in order. When resampling, it holds samples back between calls, so you won\u2019t necessarily get the same number of samples out as you put in for a given call to convert(). Parameters: sample_rate (int, optional) \u2013 The output sample rate. Defaults to the source\u2019s own, i.e. no resampling. num_channels (int, optional) \u2013 The output number of channels. Defaults to the source\u2019s own. Examples using AudioConverter: Build your own decoding pipeline Build your own decoding pipeline convert(raw_samples: RawAudioSamples) \u2192 AudioSamples[source]# Convert one RawAudioSamples into normalised float32 AudioSamples. You may not get the same number of samples out as you put in, especially if you are resampling. Returns: The converted samples, normalised float32 in [-1, 1]. When resampling, fewer than were passed in, possibly none. drain() \u2192 AudioSamples[source]# Return the samples the resampler was still holding on to. Empty unless you are resampling. This is not the codec\u2019s own buffer, which AudioPacketDecoder.drain() takes care of. reset() \u2192 None[source]# Drop the resampler\u2019s state and start over. Needed after a Demuxer.seek(), after drain(), and before converting a different stream.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

@@ -4,7 +4,7 @@
 
 Reads one or more video and audio streams from a container, and produces their compressed [`Packet`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet)s.
 
-Low-level API: for straightforward decoding, use
+This is a low-level API: for straightforward decoding, use
 [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) or
 [`AudioDecoder`](torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) instead.
 
@@ -13,7 +13,7 @@ stream each one belongs to:
 
 ```
 demuxer = Demuxer("video.mp4", streams=("video", "audio"))
-decoders = {s.index: s.make_decoder() for s in demuxer.streams}
+decoders = {s.index: s.make_decoder(device="cuda") for s in demuxer.streams}
 
 for packet in demuxer:
  for output in decoders[packet.stream_index].decode(packet):
@@ -51,22 +51,22 @@ container itself. What it says about a given stream is on
 
 Examples using `Demuxer`:
 
-![](../_images/sphx_glr_basics_thumb.png)
+![](../_images/sphx_glr_basics_thumb.jpg)
 
 [Build your own decoding pipeline](../generated_examples/low_level/basics.html)
 
 Build your own decoding pipeline
-![](../_images/sphx_glr_cuda_streams_thumb.png)
+![](../_images/sphx_glr_cuda_streams_thumb.jpg)
 
-[CUDA streams](../generated_examples/low_level/cuda_streams.html)
+[Low-level APIs and CUDA streams synchronization](../generated_examples/low_level/cuda_streams.html)
 
-CUDA streams
-![](../_images/sphx_glr_pipelines_thumb.png)
+Low-level APIs and CUDA streams synchronization
+![](../_images/sphx_glr_pipelines_thumb.jpg)
 
 [Multi-threaded decoding pipelines](../generated_examples/low_level/pipelines.html)
 
 Multi-threaded decoding pipelines
-![](../_images/sphx_glr_raw_data_thumb.png)
+![](../_images/sphx_glr_raw_data_thumb.jpg)
 
 [Raw frames and raw audio samples](../generated_examples/low_level/raw_data.html)
 

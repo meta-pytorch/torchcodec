@@ -32,16 +32,16 @@ you called [`VideoPacketDecoder.decode()`](torchcodec.decoders.VideoPacketDecode
 enqueued by the time the call returns. If you consume them on any other stream
 (via [`ColorConverter`](torchcodec.decoders.ColorConverter.html#torchcodec.decoders.ColorConverter) or by reading `planes`), you must
 handle synchronization yourself. See
-[CUDA streams](../generated_examples/low_level/cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py).
+[Low-level APIs and CUDA streams synchronization](../generated_examples/low_level/cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py).
 
 Examples using `RawFrame`:
 
-![](../_images/sphx_glr_cuda_streams_thumb.png)
+![](../_images/sphx_glr_cuda_streams_thumb.jpg)
 
-[CUDA streams](../generated_examples/low_level/cuda_streams.html)
+[Low-level APIs and CUDA streams synchronization](../generated_examples/low_level/cuda_streams.html)
 
-CUDA streams
-![](../_images/sphx_glr_raw_data_thumb.png)
+Low-level APIs and CUDA streams synchronization
+![](../_images/sphx_glr_raw_data_thumb.jpg)
 
 [Raw frames and raw audio samples](../generated_examples/low_level/raw_data.html)
 
@@ -162,7 +162,7 @@ The CUDA allocation backing `planes`, or `None` on CPU.
 
 This tensor is exposed for one purpose, which is to let you call
 [`torch.Tensor.record_stream()`](https://docs.pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html#torch.Tensor.record_stream) if you want to. See
-[CUDA streams](../generated_examples/low_level/cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) for more details.
+[Low-level APIs and CUDA streams synchronization](../generated_examples/low_level/cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) for more details.
 You shouldn't read or write this tensor directly.
 
 *property*width*: [int](https://docs.python.org/3/builtins/functions.html#int)*

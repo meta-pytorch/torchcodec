@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>CUDA streams &#8212; TorchCodec 0.17.0.dev20260928+cu130 Documentation</title>
+    <title>Low-level APIs and CUDA streams synchronization &#8212; TorchCodec 0.18.0.dev20261006+cu130 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../../_static/documentation_options.js?v=44d26e91"></script>
+    <script src="../../_static/documentation_options.js?v=6cfce710"></script>
     <script src="../../_static/doctools.js?v=888ff710"></script>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -54,7 +54,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.17';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.18';
         DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
         </script>
     <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/cuda_streams.html" />
@@ -72,7 +72,7 @@
 <meta name="llm:site-type" content="documentation">
 <meta name="llm:framework" content="PyTorch">
 
-<meta name="llm:description" content="CUDA streams - Documentation for Python, part of the PyTorch ecosystem.">
+<meta name="llm:description" content="Low-level APIs and CUDA streams synchronization - Documentation for Python, part of the PyTorch ecosystem.">
 
 
 
@@ -80,7 +80,7 @@
 
 <meta name="llm:navigation-file" content="/llms.txt">
 <meta name="llm:sitemap" content="/sitemap.xml">
-<meta name="llm:version" content="0.17">
+<meta name="llm:version" content="0.18">
 <meta name="llm:project" content="Python">
 <meta name="llm:page-type" content="api">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Navigation Guide">
@@ -186,7 +186,7 @@
   fbq('track', 'PageView');
 </script>
 <script>
-  document.documentElement.setAttribute('data-version', '0.17');
+  document.documentElement.setAttribute('data-version', '0.18');
 </script>
 <noscript>
   <img height="1" width="1" src="https://www.facebook.com/tr?id=243028289693773&ev=PageView&noscript=1" />
@@ -1037,7 +1037,7 @@ document.write(`
 <li class="toctree-l2"><a class="reference internal" href="basics.html">Build your own decoding pipeline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="pipelines.html">Multi-threaded decoding pipelines</a></li>
 <li class="toctree-l2"><a class="reference internal" href="raw_data.html">Raw frames and raw audio samples</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">CUDA streams</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Low-level APIs and CUDA streams synchronization</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../encoding/index.html">Encoding</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -1094,7 +1094,7 @@ document.write(`
     
     <li class="breadcrumb-item"><a href="index.html" class="nav-link">Decoding: low-level APIs (beta)</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page">CUDA streams</li>
+    <li class="breadcrumb-item active" aria-current="page">Low-level...</li>
   </ul>
 </nav>
 </div>
@@ -1148,7 +1148,7 @@ document.write(`
     </div>
     
     <div itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-      <meta itemprop="name" content="CUDA streams">
+      <meta itemprop="name" content="Low-level APIs and CUDA streams synchronization">
       <meta itemprop="position" content="3">
     </div>
   </div>
@@ -1162,12 +1162,12 @@ document.write(`
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section class="sphx-glr-example-title" id="cuda-streams">
-<span id="sphx-glr-generated-examples-low-level-cuda-streams-py"></span><h1>CUDA streams<a class="headerlink" href="#cuda-streams" title="Link to this heading">#</a></h1>
+  <section class="sphx-glr-example-title" id="low-level-apis-and-cuda-streams-synchronization">
+<span id="sphx-glr-generated-examples-low-level-cuda-streams-py"></span><h1>Low-level APIs and CUDA streams synchronization<a class="headerlink" href="#low-level-apis-and-cuda-streams-synchronization" title="Link to this heading">#</a></h1>
 <div class="admonition important">
 <p class="admonition-title">Important</p>
 <p><strong>The low-level APIs are in beta.</strong> Their signatures and semantics may still
-change slightly, in response to user feedback.</p>
+change slightly, in response to user feedback. Please <a class="reference external" href="https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue">share your feedback</a>!</p>
 </div>
 <p>On CUDA, if you decode on one stream and consume the <a class="reference internal" href="../../generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame" title="torchcodec.decoders.RawFrame"><code class="xref py py-class docutils literal notranslate"><span class="pre">RawFrame</span></code></a>s on
 another - either with a <a class="reference internal" href="../../generated/torchcodec.decoders.ColorConverter.html#torchcodec.decoders.ColorConverter" title="torchcodec.decoders.ColorConverter"><code class="xref py py-class docutils literal notranslate"><span class="pre">ColorConverter</span></code></a>, or with your own consumer as in
@@ -1192,6 +1192,7 @@ to build a fresh set of stages for each example below.</p>
 </span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span><span class="w">
 </span><span class="w">
 </span><span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec</span><span class="nn">.</span><span class="nn">decoders</span><span class="w"> </span><span class="kn">import</span> <a class="sphx-glr-backref-module-torchcodec-decoders sphx-glr-backref-type-py-class reference internal" href="../../generated/torchcodec.decoders.ColorConverter.html#torchcodec.decoders.ColorConverter" title="torchcodec.decoders.ColorConverter"><span class="n">ColorConverter</span></a><span class="p">,</span> <a class="sphx-glr-backref-module-torchcodec-decoders sphx-glr-backref-type-py-class reference internal" href="../../generated/torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer" title="torchcodec.decoders.Demuxer"><span class="n">Demuxer</span></a><span class="w">
+</span><span class="w">
 </span><span class="w">
 </span><a class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class sphx-glr-backref-instance reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.PosixPath" title="pathlib.PosixPath"><span class="n">video_path</span></a> <span class="o">=</span> <a class="sphx-glr-backref-module-pathlib sphx-glr-backref-type-py-class reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="pathlib.Path"><span class="n">Path</span></a><span class="p">(</span><a class="sphx-glr-backref-module-tempfile sphx-glr-backref-type-py-function reference external" href="https://docs.python.org/3/library/tempfile.html#tempfile.mkdtemp" title="tempfile.mkdtemp"><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span></a><span class="p">(</span><span class="p">)</span><span class="p">)</span> <span class="o">/</span> <span class="s2">&quot;</span><span class="s2">video.mp4</span><span class="s2">&quot;</span><span class="w">
 </span><a class="sphx-glr-backref-module-subprocess sphx-glr-backref-type-py-function reference external" href="https://docs.python.org/3/library/subprocess.html#subprocess.run" title="subprocess.run"><span class="n">subprocess</span><span class="o">.</span><span class="n">run</span></a><span class="p">(</span><span class="w">
@@ -1341,7 +1342,7 @@ on <code class="docutils literal notranslate"><span class="pre">RawFrame.planes<
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Option 2: 60 frames, frames[0].data.shape = torch.Size([3, 720, 1280])
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 0.434 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 0.451 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-generated-examples-low-level-cuda-streams-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../../_downloads/7aeb5a6bda96251b470424d6612d4f8b/cuda_streams.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">cuda_streams.ipynb</span></code></a></p>
@@ -1702,11 +1703,11 @@ on <code class="docutils literal notranslate"><span class="pre">RawFrame.planes<
     {
        "@context": "https://schema.org",
        "@type": "Article",
-       "name": "CUDA streams",
-       "headline": "CUDA streams",
+       "name": "Low-level APIs and CUDA streams synchronization",
+       "headline": "Low-level APIs and CUDA streams synchronization",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated_examples/low_level/cuda_streams.html",
-       "articleBody": "CUDA streams# Important The low-level APIs are in beta. Their signatures and semantics may still change slightly, in response to user feedback. On CUDA, if you decode on one stream and consume the RawFrames on another - either with a ColorConverter, or with your own consumer as in Raw frames and raw audio samples - you must take care of two things: Waiting for the decoder\u2019s asynchronous copy before reading the samples. Keeping the CUDA caching allocator from reusing the frame\u2019s memory while your reads are still queued. Getting this wrong will lead to occasional corrupted frames. We cover both points below. Note that if you don\u2019t create a separate stream for consuming the RawFrame, none of this applies: everything runs on the same stream and stream ordering handles it. Some boilerplate first: a test video, the two streams we\u2019ll use, and a helper to build a fresh set of stages for each example below. import subprocess import tempfile from pathlib import Path import torch from torchcodec.decoders import ColorConverter, Demuxer video_path = Path(tempfile.mkdtemp()) / \"video.mp4\" subprocess.run( [ \"ffmpeg\", \"-y\", \"-hide_banner\", \"-loglevel\", \"error\", \"-f\", \"lavfi\", \"-i\", \"testsrc2=size=1280x720:rate=30:duration=2\", \"-c:v\", \"libx264\", \"-pix_fmt\", \"yuv420p\", \"-g\", \"30\", str(video_path), ], check=True, ) decode_stream = torch.cuda.Stream() convert_stream = torch.cuda.Stream() def make_stages(): demuxer = Demuxer(video_path) packet_decoder = demuxer.streams[0].make_decoder(device=\"cuda\") return demuxer, packet_decoder, ColorConverter(device=\"cuda\") Waiting for the samples to be ready# A RawFrame\u2019s samples are produced on the stream that was current when you called VideoPacketDecoder.decode(). VideoPacketDecoder.decode() typically involves a CUDA copy of the NVDEC decoder internals into a PyTorch-allocated CUDA tensor. This copy is asynchronous, so a consumer on another stream has to wait for it to finish. For that, you can record an event on the decoding stream and wait on it: with torch.cuda.stream(decode_stream): raw_frames = packet_decoder.decode(packet) decoded = torch.cuda.Event() decoded.record() decoded.wait(convert_stream) with torch.cuda.stream(convert_stream): frame = color_converter.convert(raw_frames[0]) Alternatively, you can use convert_stream.wait_stream(decode_stream), but it has different semantics: it waits for everything currently queued on the decoding stream, so a consumer that has fallen behind waits for the decoder\u2019s whole backlog instead of for its own frame. Keeping the allocator from reusing the memory# Here what can go wrong: with torch.cuda.stream(decode_stream): raw_frames = packet_decoder.decode(packet) # allocated on decode_stream with torch.cuda.stream(convert_stream): frame = color_converter.convert(raw_frames[0]) # reads are only *queued* del raw_frames # the allocation goes back to decode_stream\u0027s pool with torch.cuda.stream(decode_stream): packet_decoder.decode(next_packet) # BAD: the next frame can be given # that same memory by the PyTorch CUDA # allocator, and overwrite # the samples convert() is reading To learn more, see the Streams and freeing memory section of this blog post . You have two ways to handle this each with its own trade-offs. Option 1: sync back before dropping the frame# Make the decoding stream wait for your reads, then let the frame go: decode_stream.wait_stream(convert_stream) del raw_frames The issue here is that the decoder\u2019s next frame cannot start until your reads have finished, which removes the overlap you created a second stream for. To get this overlap back, you can work in batches: hold N frames, sync once, drop them together. The decoder then stalls once every N frames, and N is an explicit memory knob: MAX_INFLIGHT_FRAMES = 8 demuxer, packet_decoder, color_converter = make_stages() frames, in_flight = [], [] for packet in list(demuxer) + [None]: with torch.cuda.stream(decode_stream): raw_frames = ( packet_decoder.drain() if packet is None else packet_decoder.decode(packet) ) decoded = torch.cuda.Event() decoded.record() decoded.wait(convert_stream) with torch.cuda.stream(convert_stream): for raw_frame in raw_frames: frames.append(color_converter.convert(raw_frame)) # Hold on to the raw frames, so that their memory can\u0027t be reused yet. in_flight += raw_frames if len(in_flight) \u003e= MAX_INFLIGHT_FRAMES: # Make the decoder wait for the conversions we queued, then let this # batch of frames and their memory go. decode_stream.wait_stream(convert_stream) in_flight.clear() decode_stream.wait_stream(convert_stream) in_flight.clear() torch.cuda.synchronize() print(f\"Option 1: {len(frames)} frames, {frames[0].data.shape = }\") Option 1: 60 frames, frames[0].data.shape = torch.Size([3, 720, 1280]) Option 2: let the allocator handle it# torch.Tensor.record_stream() tells the allocator that another stream is using the block, so it withholds it from reuse until your reads complete. Call it on RawFrame.storage_cuda, right after queueing your reads. This never stalls the decoder, so you keep full overlap, and you pay in memory instead. How much is decided by device timing rather than by you: the allocator polls the recorded stream on later allocations, so peak memory varies between runs and can\u2019t be attributed to a line of your code. Close to your memory ceiling, the allocator\u2019s fallback is to block and release cached blocks, which is a large stall at an unpredictable point. Note record_stream only works on RawFrame.storage_cuda. Calling it on RawFrame.planes is silently a no-op demuxer, packet_decoder, color_converter = make_stages() frames = [] for packet in list(demuxer) + [None]: with torch.cuda.stream(decode_stream): raw_frames = ( packet_decoder.drain() if packet is None else packet_decoder.decode(packet) ) decoded = torch.cuda.Event() decoded.record() decoded.wait(convert_stream) with torch.cuda.stream(convert_stream): for raw_frame in raw_frames: frames.append(color_converter.convert(raw_frame)) raw_frame.storage_cuda.record_stream(convert_stream) torch.cuda.synchronize() print(f\"Option 2: {len(frames)} frames, {frames[0].data.shape = }\") Option 2: 60 frames, frames[0].data.shape = torch.Size([3, 720, 1280]) Total running time of the script: (0 minutes 0.434 seconds) Download Jupyter notebook: cuda_streams.ipynb Download Python source code: cuda_streams.py Download zipped: cuda_streams.zip Gallery generated by Sphinx-Gallery",
+       "articleBody": "Low-level APIs and CUDA streams synchronization# Important The low-level APIs are in beta. Their signatures and semantics may still change slightly, in response to user feedback. Please share your feedback! On CUDA, if you decode on one stream and consume the RawFrames on another - either with a ColorConverter, or with your own consumer as in Raw frames and raw audio samples - you must take care of two things: Waiting for the decoder\u2019s asynchronous copy before reading the samples. Keeping the CUDA caching allocator from reusing the frame\u2019s memory while your reads are still queued. Getting this wrong will lead to occasional corrupted frames. We cover both points below. Note that if you don\u2019t create a separate stream for consuming the RawFrame, none of this applies: everything runs on the same stream and stream ordering handles it. Some boilerplate first: a test video, the two streams we\u2019ll use, and a helper to build a fresh set of stages for each example below. import subprocess import tempfile from pathlib import Path import torch from torchcodec.decoders import ColorConverter, Demuxer video_path = Path(tempfile.mkdtemp()) / \"video.mp4\" subprocess.run( [ \"ffmpeg\", \"-y\", \"-hide_banner\", \"-loglevel\", \"error\", \"-f\", \"lavfi\", \"-i\", \"testsrc2=size=1280x720:rate=30:duration=2\", \"-c:v\", \"libx264\", \"-pix_fmt\", \"yuv420p\", \"-g\", \"30\", str(video_path), ], check=True, ) decode_stream = torch.cuda.Stream() convert_stream = torch.cuda.Stream() def make_stages(): demuxer = Demuxer(video_path) packet_decoder = demuxer.streams[0].make_decoder(device=\"cuda\") return demuxer, packet_decoder, ColorConverter(device=\"cuda\") Waiting for the samples to be ready# A RawFrame\u2019s samples are produced on the stream that was current when you called VideoPacketDecoder.decode(). VideoPacketDecoder.decode() typically involves a CUDA copy of the NVDEC decoder internals into a PyTorch-allocated CUDA tensor. This copy is asynchronous, so a consumer on another stream has to wait for it to finish. For that, you can record an event on the decoding stream and wait on it: with torch.cuda.stream(decode_stream): raw_frames = packet_decoder.decode(packet) decoded = torch.cuda.Event() decoded.record() decoded.wait(convert_stream) with torch.cuda.stream(convert_stream): frame = color_converter.convert(raw_frames[0]) Alternatively, you can use convert_stream.wait_stream(decode_stream), but it has different semantics: it waits for everything currently queued on the decoding stream, so a consumer that has fallen behind waits for the decoder\u2019s whole backlog instead of for its own frame. Keeping the allocator from reusing the memory# Here what can go wrong: with torch.cuda.stream(decode_stream): raw_frames = packet_decoder.decode(packet) # allocated on decode_stream with torch.cuda.stream(convert_stream): frame = color_converter.convert(raw_frames[0]) # reads are only *queued* del raw_frames # the allocation goes back to decode_stream\u0027s pool with torch.cuda.stream(decode_stream): packet_decoder.decode(next_packet) # BAD: the next frame can be given # that same memory by the PyTorch CUDA # allocator, and overwrite # the samples convert() is reading To learn more, see the Streams and freeing memory section of this blog post . You have two ways to handle this each with its own trade-offs. Option 1: sync back before dropping the frame# Make the decoding stream wait for your reads, then let the frame go: decode_stream.wait_stream(convert_stream) del raw_frames The issue here is that the decoder\u2019s next frame cannot start until your reads have finished, which removes the overlap you created a second stream for. To get this overlap back, you can work in batches: hold N frames, sync once, drop them together. The decoder then stalls once every N frames, and N is an explicit memory knob: MAX_INFLIGHT_FRAMES = 8 demuxer, packet_decoder, color_converter = make_stages() frames, in_flight = [], [] for packet in list(demuxer) + [None]: with torch.cuda.stream(decode_stream): raw_frames = ( packet_decoder.drain() if packet is None else packet_decoder.decode(packet) ) decoded = torch.cuda.Event() decoded.record() decoded.wait(convert_stream) with torch.cuda.stream(convert_stream): for raw_frame in raw_frames: frames.append(color_converter.convert(raw_frame)) # Hold on to the raw frames, so that their memory can\u0027t be reused yet. in_flight += raw_frames if len(in_flight) \u003e= MAX_INFLIGHT_FRAMES: # Make the decoder wait for the conversions we queued, then let this # batch of frames and their memory go. decode_stream.wait_stream(convert_stream) in_flight.clear() decode_stream.wait_stream(convert_stream) in_flight.clear() torch.cuda.synchronize() print(f\"Option 1: {len(frames)} frames, {frames[0].data.shape = }\") Option 1: 60 frames, frames[0].data.shape = torch.Size([3, 720, 1280]) Option 2: let the allocator handle it# torch.Tensor.record_stream() tells the allocator that another stream is using the block, so it withholds it from reuse until your reads complete. Call it on RawFrame.storage_cuda, right after queueing your reads. This never stalls the decoder, so you keep full overlap, and you pay in memory instead. How much is decided by device timing rather than by you: the allocator polls the recorded stream on later allocations, so peak memory varies between runs and can\u2019t be attributed to a line of your code. Close to your memory ceiling, the allocator\u2019s fallback is to block and release cached blocks, which is a large stall at an unpredictable point. Note record_stream only works on RawFrame.storage_cuda. Calling it on RawFrame.planes is silently a no-op demuxer, packet_decoder, color_converter = make_stages() frames = [] for packet in list(demuxer) + [None]: with torch.cuda.stream(decode_stream): raw_frames = ( packet_decoder.drain() if packet is None else packet_decoder.decode(packet) ) decoded = torch.cuda.Event() decoded.record() decoded.wait(convert_stream) with torch.cuda.stream(convert_stream): for raw_frame in raw_frames: frames.append(color_converter.convert(raw_frame)) raw_frame.storage_cuda.record_stream(convert_stream) torch.cuda.synchronize() print(f\"Option 2: {len(frames)} frames, {frames[0].data.shape = }\") Option 2: 60 frames, frames[0].data.shape = torch.Size([3, 720, 1280]) Total running time of the script: (0 minutes 0.451 seconds) Download Jupyter notebook: cuda_streams.ipynb Download Python source code: cuda_streams.py Download zipped: cuda_streams.zip Gallery generated by Sphinx-Gallery",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

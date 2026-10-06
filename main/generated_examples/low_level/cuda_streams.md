@@ -1,9 +1,9 @@
-# CUDA streams
+# Low-level APIs and CUDA streams synchronization
 
 Important
 
 **The low-level APIs are in beta.** Their signatures and semantics may still
-change slightly, in response to user feedback.
+change slightly, in response to user feedback. Please [share your feedback](https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue)!
 
 On CUDA, if you decode on one stream and consume the [`RawFrame`](../../generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame)s on
 another - either with a [`ColorConverter`](../../generated/torchcodec.decoders.ColorConverter.html#torchcodec.decoders.ColorConverter), or with your own consumer as in
@@ -200,7 +200,7 @@ print(f"Option 2: {len(frames)} frames, {frames[0].data.shape = }")
 Option 2: 60 frames, frames[0].data.shape = torch.Size([3, 720, 1280])
 ```
 
-**Total running time of the script:** (0 minutes 0.434 seconds)
+**Total running time of the script:** (0 minutes 0.451 seconds)
 
 [`Download Jupyter notebook: cuda_streams.ipynb`](../../_downloads/7aeb5a6bda96251b470424d6612d4f8b/cuda_streams.ipynb)
 

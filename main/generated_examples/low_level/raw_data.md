@@ -3,7 +3,7 @@
 Important
 
 **The low-level APIs are in beta.** Their signatures and semantics may still
-change slightly, in response to user feedback.
+change slightly, in response to user feedback. Please [share your feedback](https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue)!
 
 In this tutorial, we'll skip the conversion stage of a decoding pipeline and
 read the decoder's own YUV planes and audio samples directly, at the source's
@@ -152,7 +152,7 @@ there is no problem and you don't need to think about stream synchronization.
 However, if you read them on a *different* stream than the decoder stream, you
 have to wait for the decoder's asynchronous copy before reading, and keep the
 allocator from recycling the buffer while your reads are still queued. See
-[CUDA streams](cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) to learn more.
+[Low-level APIs and CUDA streams synchronization](cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) to learn more.
 
 ### Formats that can't be viewed
 
@@ -278,7 +278,7 @@ print(f"{normalised.dtype = }, "
 normalised.dtype = torch.float32, range [-0.125, 0.125]
 ```
 
-**Total running time of the script:** (0 minutes 1.229 seconds)
+**Total running time of the script:** (0 minutes 1.256 seconds)
 
 [`Download Jupyter notebook: raw_data.ipynb`](../../_downloads/41298244eef267ccbc6ba0e0eba028b7/raw_data.ipynb)
 

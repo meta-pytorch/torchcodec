@@ -23,7 +23,7 @@ Migrating from torchvision
 
 .. only:: html
 
-  .. image:: /generated_examples/migration/images/thumb/sphx_glr_torchvision_migration_thumb.png
+  .. image:: /generated_examples/migration/images/thumb/sphx_glr_torchvision_migration_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/migration/torchvision_migration`

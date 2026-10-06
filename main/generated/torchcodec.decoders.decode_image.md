@@ -59,7 +59,7 @@ Decoding images
 [Encoding images](../generated_examples/encoding/image_encoding.html)
 
 Encoding images
-![](../_images/sphx_glr_torchvision_migration_thumb.png)
+![](../_images/sphx_glr_torchvision_migration_thumb.jpg)
 
 [Migrating from TorchVision to TorchCodec](../generated_examples/migration/torchvision_migration.html)
 

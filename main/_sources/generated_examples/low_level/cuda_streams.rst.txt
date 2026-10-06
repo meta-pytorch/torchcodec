@@ -10,16 +10,17 @@
 .. _sphx_glr_generated_examples_low_level_cuda_streams.py:
 
 
-============
-CUDA streams
-============
+===============================================
+Low-level APIs and CUDA streams synchronization
+===============================================
 
 .. currentmodule:: torchcodec.decoders
 
 .. important::
 
    **The low-level APIs are in beta.** Their signatures and semantics may still
-   change slightly, in response to user feedback.
+   change slightly, in response to user feedback. Please `share your feedback
+   <https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue>`__!
 
 On CUDA, if you decode on one stream and consume the :class:`RawFrame`\ s on
 another - either with a :class:`ColorConverter`, or with your own consumer as in
@@ -37,12 +38,12 @@ Note that if you don't create a separate stream for consuming the `RawFrame`,
 none of this applies: everything runs on the same stream and stream ordering
 handles it.
 
-.. GENERATED FROM PYTHON SOURCE LINES 37-39
+.. GENERATED FROM PYTHON SOURCE LINES 38-40
 
 Some boilerplate first: a test video, the two streams we'll use, and a helper
 to build a fresh set of stages for each example below.
 
-.. GENERATED FROM PYTHON SOURCE LINES 39-68
+.. GENERATED FROM PYTHON SOURCE LINES 40-70
 
 .. code-block:: Python
 
@@ -53,6 +54,7 @@ to build a fresh set of stages for each example below.
     import torch
 
     from torchcodec.decoders import ColorConverter, Demuxer
+
 
     video_path = Path(tempfile.mkdtemp()) / "video.mp4"
     subprocess.run(
@@ -82,7 +84,7 @@ to build a fresh set of stages for each example below.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 69-92
+.. GENERATED FROM PYTHON SOURCE LINES 72-95
 
 Waiting for the samples to be ready
 -----------------------------------
@@ -108,7 +110,7 @@ it has different semantics: it waits for everything currently queued on the
 decoding stream, so a consumer that has fallen behind waits for the decoder's
 whole backlog instead of for its own frame.
 
-.. GENERATED FROM PYTHON SOURCE LINES 94-117
+.. GENERATED FROM PYTHON SOURCE LINES 97-120
 
 Keeping the allocator from reusing the memory
 ---------------------------------------------
@@ -134,7 +136,7 @@ To learn more, see the *Streams and freeing memory* section of `this blog post
 
 You have two ways to handle this each with its own trade-offs.
 
-.. GENERATED FROM PYTHON SOURCE LINES 119-132
+.. GENERATED FROM PYTHON SOURCE LINES 122-135
 
 Option 1: sync back before dropping the frame
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -150,7 +152,7 @@ get this overlap back, you can work in batches: hold N frames, sync once, drop
 them together. The decoder then stalls once every N frames, and N is an
 explicit memory knob:
 
-.. GENERATED FROM PYTHON SOURCE LINES 132-164
+.. GENERATED FROM PYTHON SOURCE LINES 135-167
 
 .. code-block:: Python
 
@@ -199,7 +201,7 @@ explicit memory knob:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 165-184
+.. GENERATED FROM PYTHON SOURCE LINES 168-187
 
 Option 2: let the allocator handle it
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -221,7 +223,7 @@ blocks, which is a large stall at an unpredictable point.
    on ``RawFrame.planes`` is silently a no-op
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 184-204
+.. GENERATED FROM PYTHON SOURCE LINES 187-207
 
 .. code-block:: Python
 
@@ -261,7 +263,7 @@ blocks, which is a large stall at an unpredictable point.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 0.434 seconds)
+   **Total running time of the script:** (0 minutes 0.451 seconds)
 
 
 .. _sphx_glr_download_generated_examples_low_level_cuda_streams.py:

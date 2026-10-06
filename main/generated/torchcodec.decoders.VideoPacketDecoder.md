@@ -5,7 +5,7 @@
 Decodes the compressed [`Packet`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet)s of one video stream into
 [`RawFrame`](torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame)s.
 
-Low-level API: for straightforward decoding, use
+This is a low-level API: for straightforward decoding, use
 [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) instead.
 
 You should not build one yourself: [`VideoStream.make_decoder()`](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.make_decoder) is what
@@ -29,17 +29,17 @@ the packets of its own stream, in the order the demuxer produced them.
 
 Examples using `VideoPacketDecoder`:
 
-![](../_images/sphx_glr_basics_thumb.png)
+![](../_images/sphx_glr_basics_thumb.jpg)
 
 [Build your own decoding pipeline](../generated_examples/low_level/basics.html)
 
 Build your own decoding pipeline
-![](../_images/sphx_glr_cuda_streams_thumb.png)
+![](../_images/sphx_glr_cuda_streams_thumb.jpg)
 
-[CUDA streams](../generated_examples/low_level/cuda_streams.html)
+[Low-level APIs and CUDA streams synchronization](../generated_examples/low_level/cuda_streams.html)
 
-CUDA streams
-![](../_images/sphx_glr_raw_data_thumb.png)
+Low-level APIs and CUDA streams synchronization
+![](../_images/sphx_glr_raw_data_thumb.jpg)
 
 [Raw frames and raw audio samples](../generated_examples/low_level/raw_data.html)
 

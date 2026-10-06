@@ -265,11 +265,11 @@ Decoding: low-level APIs (beta)
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback.">
+    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !">
 
 .. only:: html
 
-  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_basics_thumb.png
+  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_basics_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/low_level/basics`
@@ -282,11 +282,11 @@ Decoding: low-level APIs (beta)
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback.">
+    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !">
 
 .. only:: html
 
-  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_pipelines_thumb.png
+  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_pipelines_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/low_level/pipelines`
@@ -299,11 +299,11 @@ Decoding: low-level APIs (beta)
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback.">
+    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !">
 
 .. only:: html
 
-  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_raw_data_thumb.png
+  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_raw_data_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/low_level/raw_data`
@@ -316,18 +316,18 @@ Decoding: low-level APIs (beta)
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback.">
+    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !">
 
 .. only:: html
 
-  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_cuda_streams_thumb.png
+  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_cuda_streams_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/low_level/cuda_streams`
 
 .. raw:: html
 
-      <div class="sphx-glr-thumbnail-title">CUDA streams</div>
+      <div class="sphx-glr-thumbnail-title">Low-level APIs and CUDA streams synchronization</div>
     </div>
 
 
@@ -447,7 +447,7 @@ Migrating from torchvision
 
 .. only:: html
 
-  .. image:: /generated_examples/migration/images/thumb/sphx_glr_torchvision_migration_thumb.png
+  .. image:: /generated_examples/migration/images/thumb/sphx_glr_torchvision_migration_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/migration/torchvision_migration`

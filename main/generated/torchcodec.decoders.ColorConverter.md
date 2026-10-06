@@ -4,7 +4,7 @@
 
 Turn a [`RawFrame`](torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame) (typically YUV) into an RGB [`Frame`](torchcodec.Frame.html#torchcodec.Frame).
 
-Low-level API: for straightforward decoding, use
+This is a low-level API: for straightforward decoding, use
 [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) instead.
 
 ```
@@ -39,22 +39,22 @@ feeding it a mix of SDR and HDR frames gives you a mix of dtypes.
 
 Examples using `ColorConverter`:
 
-![](../_images/sphx_glr_basics_thumb.png)
+![](../_images/sphx_glr_basics_thumb.jpg)
 
 [Build your own decoding pipeline](../generated_examples/low_level/basics.html)
 
 Build your own decoding pipeline
-![](../_images/sphx_glr_cuda_streams_thumb.png)
+![](../_images/sphx_glr_cuda_streams_thumb.jpg)
 
-[CUDA streams](../generated_examples/low_level/cuda_streams.html)
+[Low-level APIs and CUDA streams synchronization](../generated_examples/low_level/cuda_streams.html)
 
-CUDA streams
-![](../_images/sphx_glr_pipelines_thumb.png)
+Low-level APIs and CUDA streams synchronization
+![](../_images/sphx_glr_pipelines_thumb.jpg)
 
 [Multi-threaded decoding pipelines](../generated_examples/low_level/pipelines.html)
 
 Multi-threaded decoding pipelines
-![](../_images/sphx_glr_raw_data_thumb.png)
+![](../_images/sphx_glr_raw_data_thumb.jpg)
 
 [Raw frames and raw audio samples](../generated_examples/low_level/raw_data.html)
 
@@ -69,7 +69,7 @@ matches what a [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec
 
 If you run this on a different CUDA stream than the one the frame was
 decoded on, refer to
-[CUDA streams](../generated_examples/low_level/cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) for pitfalls
+[Low-level APIs and CUDA streams synchronization](../generated_examples/low_level/cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) for pitfalls
 and how to avoid them.
 
 Parameters:

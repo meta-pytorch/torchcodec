@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>torchcodec.decoders &#8212; TorchCodec 0.17.0.dev20260928+cu130 Documentation</title>
+    <title>torchcodec.decoders &#8212; TorchCodec 0.18.0.dev20261006+cu130 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="_static/documentation_options.js?v=44d26e91"></script>
+    <script src="_static/documentation_options.js?v=6cfce710"></script>
     <script src="_static/doctools.js?v=888ff710"></script>
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/sg-tags.js?v=d80f6fa4"></script>
@@ -54,7 +54,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.17';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.18';
         DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
         </script>
     <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/api_ref_decoders.html" />
@@ -80,7 +80,7 @@
 
 <meta name="llm:navigation-file" content="/llms.txt">
 <meta name="llm:sitemap" content="/sitemap.xml">
-<meta name="llm:version" content="0.17">
+<meta name="llm:version" content="0.18">
 <meta name="llm:project" content="Python">
 <meta name="llm:page-type" content="documentation">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Navigation Guide">
@@ -186,7 +186,7 @@
   fbq('track', 'PageView');
 </script>
 <script>
-  document.documentElement.setAttribute('data-version', '0.17');
+  document.documentElement.setAttribute('data-version', '0.18');
 </script>
 <noscript>
   <img height="1" width="1" src="https://www.facebook.com/tr?id=243028289693773&ev=PageView&noscript=1" />
@@ -1026,7 +1026,6 @@ document.write(`
 </details></li>
 <li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">torchcodec.decoders</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.VideoDecoder.html">VideoDecoder</a></li>
-<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.WavDecoder.html">WavDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.VideoStreamMetadata.html">VideoStreamMetadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.set_cuda_backend.html">set_cuda_backend</a></li>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.set_nvdec_cache_capacity.html">set_nvdec_cache_capacity</a></li>
@@ -1193,13 +1192,12 @@ document.write(`
 <section id="video-decoding">
 <h2>Video Decoding<a class="headerlink" href="#video-decoding" title="Link to this heading">#</a></h2>
 <p>For a video decoder tutorial, see: <a class="reference internal" href="generated_examples/decoding/basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py"><span class="std std-ref">Decoding a video with VideoDecoder</span></a>.</p>
+<p>The <a class="reference internal" href="generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a> class is a high-level entry point for video decoding.
+For low-level control over the decoding process, see <a class="reference internal" href="#decoders-low-level"><span class="std std-ref">Low-level decoding APIs for video and audio</span></a>.</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a></p></td>
 <td><p>A single-stream video decoder.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder" title="torchcodec.decoders.WavDecoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">WavDecoder</span></code></a></p></td>
-<td><p>A fast decoder for WAV audio files.</p></td>
 </tr>
 </tbody>
 </table>
@@ -1239,6 +1237,8 @@ document.write(`
 <section id="audio-decoding">
 <h2>Audio Decoding<a class="headerlink" href="#audio-decoding" title="Link to this heading">#</a></h2>
 <p>For an audio decoder tutorial, see: <a class="reference internal" href="generated_examples/decoding/audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py"><span class="std std-ref">Decoding audio streams with AudioDecoder</span></a>.</p>
+<p>The <a class="reference internal" href="generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder" title="torchcodec.decoders.AudioDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioDecoder</span></code></a> class is a high-level entry point for audio decoding.
+For low-level control over the decoding process, see <a class="reference internal" href="#decoders-low-level"><span class="std std-ref">Low-level decoding APIs for video and audio</span></a>.</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder" title="torchcodec.decoders.AudioDecoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AudioDecoder</span></code></a></p></td>
@@ -1296,24 +1296,23 @@ document.write(`
 </table>
 </div>
 </section>
-<section id="low-level-decoding-apis">
-<span id="decoders-low-level"></span><h2>Low-level decoding APIs<a class="headerlink" href="#low-level-decoding-apis" title="Link to this heading">#</a></h2>
+<section id="low-level-decoding-apis-for-video-and-audio">
+<span id="decoders-low-level"></span><h2>Low-level decoding APIs for video and audio<a class="headerlink" href="#low-level-decoding-apis-for-video-and-audio" title="Link to this heading">#</a></h2>
 <div class="admonition important">
 <p class="admonition-title">Important</p>
 <p><strong>The low-level APIs are in beta.</strong> Their signatures and semantics may still
-change slightly, in response to user feedback.</p>
+change slightly, in response to user feedback. Please <a class="reference external" href="https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue">share your feedback</a>!</p>
 </div>
-<p>These expose the three stages of decoding - demuxing, decoding and conversion -
-as separate objects, where <a class="reference internal" href="generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a> and <a class="reference internal" href="generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder" title="torchcodec.decoders.AudioDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioDecoder</span></code></a> do
-all three for you. Reach for them when you need to control a stage, skip one, or
-run them on different threads. If you just want frames out of a file, use
-<a class="reference internal" href="generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a>.</p>
+<p>These APIs expose the three stages of decoding as separate objects: demuxing, decoding and conversion.
+Reach for them when you need to control a stage, skip one, or run them on
+different threads. If you just want RGB frames out of a file,
+<a class="reference internal" href="generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a> and <a class="reference internal" href="generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder" title="torchcodec.decoders.AudioDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioDecoder</span></code></a> are easier to use.</p>
 <p>For tutorials, see:</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="generated_examples/low_level/basics.html#sphx-glr-generated-examples-low-level-basics-py"><span class="std std-ref">Build your own decoding pipeline</span></a></p></li>
 <li><p><a class="reference internal" href="generated_examples/low_level/pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py"><span class="std std-ref">Multi-threaded decoding pipelines</span></a></p></li>
 <li><p><a class="reference internal" href="generated_examples/low_level/raw_data.html#sphx-glr-generated-examples-low-level-raw-data-py"><span class="std std-ref">Raw frames and raw audio samples</span></a></p></li>
-<li><p><a class="reference internal" href="generated_examples/low_level/cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py"><span class="std std-ref">CUDA streams</span></a></p></li>
+<li><p><a class="reference internal" href="generated_examples/low_level/cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py"><span class="std std-ref">Low-level APIs and CUDA streams synchronization</span></a></p></li>
 </ul>
 <section id="demuxing">
 <h3>Demuxing<a class="headerlink" href="#demuxing" title="Link to this heading">#</a></h3>
@@ -1545,7 +1544,7 @@ run them on different threads. If you just want frames out of a file, use
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#image-decoding">Image Decoding</a><ul class="nav section-nav flex-column">
 </ul>
 </li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#low-level-decoding-apis">Low-level decoding APIs</a><ul class="nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#low-level-decoding-apis-for-video-and-audio">Low-level decoding APIs for video and audio</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#demuxing">Demuxing</a><ul class="nav section-nav flex-column">
 </ul>
 </li>
@@ -1782,7 +1781,7 @@ run them on different threads. If you just want frames out of a file, use
        "headline": "torchcodec.decoders",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/api_ref_decoders.html",
-       "articleBody": "torchcodec.decoders# Video Decoding# For a video decoder tutorial, see: Decoding a video with VideoDecoder. VideoDecoder A single-stream video decoder. WavDecoder A fast decoder for WAV audio files. VideoStreamMetadata Metadata of a single video stream. CUDA decoding utils: set_cuda_backend Context Manager to set the CUDA backend for VideoDecoder. set_nvdec_cache_capacity Set the maximum number of NVDEC decoders that can be cached (per GPU). get_nvdec_cache_capacity Get the capacity of the per-device NVDEC decoder cache. CpuFallbackStatus Information about CPU fallback status. Audio Decoding# For an audio decoder tutorial, see: Decoding audio streams with AudioDecoder. AudioDecoder A single-stream audio decoder. WavDecoder A fast decoder for WAV audio files. AudioStreamMetadata Metadata of a single audio stream. Image Decoding# decode_image Decode an image into a [N]CHW tensor, detecting the format automatically. decode_jpeg Decode a JPEG image into a CHW tensor, on CPU or CUDA. decode_png Decode a PNG image into a CHW tensor. decode_webp Decode a WebP image into a [N]CHW tensor. decode_gif Decode a GIF image into a [N]CHW tensor. decode_avif Decode an AVIF image into a [N]CHW tensor. decode_heic Decode an HEIC/HEIF image into a [N]CHW tensor - requires libheif! ImageReadMode Color mode for image decoding. Low-level decoding APIs# Important The low-level APIs are in beta. Their signatures and semantics may still change slightly, in response to user feedback. These expose the three stages of decoding - demuxing, decoding and conversion - as separate objects, where VideoDecoder and AudioDecoder do all three for you. Reach for them when you need to control a stage, skip one, or run them on different threads. If you just want frames out of a file, use VideoDecoder. For tutorials, see: Build your own decoding pipeline Multi-threaded decoding pipelines Raw frames and raw audio samples CUDA streams Demuxing# Demuxer Reads one or more video and audio streams from a container, and produces their compressed Packets. VideoStream A video stream followed by a Demuxer. AudioStream An audio stream followed by a Demuxer. get_container_metadata Describe a container and every stream in it, without decoding anything. Decoding# VideoPacketDecoder Decodes the compressed Packets of one video stream into RawFrames. AudioPacketDecoder Decodes the compressed Packets of one audio stream into RawAudioSamples. Conversion# ColorConverter Turn a RawFrame (typically YUV) into an RGB Frame. AudioConverter Turn RawAudioSamples into normalised float32 AudioSamples, optionally resampling and remixing channels. Data types# Packet One compressed packet of one stream, as a Demuxer produced it. RawFrame One decoded video frame, exactly as the decoder produced it. FrameIndex What the packets of a video stream say about its frames, as returned by a scan (VideoStream.scan()). RawAudioSamples One decoded audio frame\u0027s samples, exactly as the decoder produced them. Metadata# DemuxerMetadata Container-level metadata, as reported by the header. ContainerMetadata Metadata of a container and of every stream in it. VideoStreamHeaderMetadata Metadata of a single video stream, as reported by the container header. AudioStreamHeaderMetadata Metadata of a single audio stream, as reported by the container header. StreamMetadata Metadata of a single stream, as reported by the container header.",
+       "articleBody": "torchcodec.decoders# Video Decoding# For a video decoder tutorial, see: Decoding a video with VideoDecoder. The VideoDecoder class is a high-level entry point for video decoding. For low-level control over the decoding process, see Low-level decoding APIs for video and audio. VideoDecoder A single-stream video decoder. VideoStreamMetadata Metadata of a single video stream. CUDA decoding utils: set_cuda_backend Context Manager to set the CUDA backend for VideoDecoder. set_nvdec_cache_capacity Set the maximum number of NVDEC decoders that can be cached (per GPU). get_nvdec_cache_capacity Get the capacity of the per-device NVDEC decoder cache. CpuFallbackStatus Information about CPU fallback status. Audio Decoding# For an audio decoder tutorial, see: Decoding audio streams with AudioDecoder. The AudioDecoder class is a high-level entry point for audio decoding. For low-level control over the decoding process, see Low-level decoding APIs for video and audio. AudioDecoder A single-stream audio decoder. WavDecoder A fast decoder for WAV audio files. AudioStreamMetadata Metadata of a single audio stream. Image Decoding# decode_image Decode an image into a [N]CHW tensor, detecting the format automatically. decode_jpeg Decode a JPEG image into a CHW tensor, on CPU or CUDA. decode_png Decode a PNG image into a CHW tensor. decode_webp Decode a WebP image into a [N]CHW tensor. decode_gif Decode a GIF image into a [N]CHW tensor. decode_avif Decode an AVIF image into a [N]CHW tensor. decode_heic Decode an HEIC/HEIF image into a [N]CHW tensor - requires libheif! ImageReadMode Color mode for image decoding. Low-level decoding APIs for video and audio# Important The low-level APIs are in beta. Their signatures and semantics may still change slightly, in response to user feedback. Please share your feedback! These APIs expose the three stages of decoding as separate objects: demuxing, decoding and conversion. Reach for them when you need to control a stage, skip one, or run them on different threads. If you just want RGB frames out of a file, VideoDecoder and AudioDecoder are easier to use. For tutorials, see: Build your own decoding pipeline Multi-threaded decoding pipelines Raw frames and raw audio samples Low-level APIs and CUDA streams synchronization Demuxing# Demuxer Reads one or more video and audio streams from a container, and produces their compressed Packets. VideoStream A video stream followed by a Demuxer. AudioStream An audio stream followed by a Demuxer. get_container_metadata Describe a container and every stream in it, without decoding anything. Decoding# VideoPacketDecoder Decodes the compressed Packets of one video stream into RawFrames. AudioPacketDecoder Decodes the compressed Packets of one audio stream into RawAudioSamples. Conversion# ColorConverter Turn a RawFrame (typically YUV) into an RGB Frame. AudioConverter Turn RawAudioSamples into normalised float32 AudioSamples, optionally resampling and remixing channels. Data types# Packet One compressed packet of one stream, as a Demuxer produced it. RawFrame One decoded video frame, exactly as the decoder produced it. FrameIndex What the packets of a video stream say about its frames, as returned by a scan (VideoStream.scan()). RawAudioSamples One decoded audio frame\u0027s samples, exactly as the decoder produced them. Metadata# DemuxerMetadata Container-level metadata, as reported by the header. ContainerMetadata Metadata of a container and of every stream in it. VideoStreamHeaderMetadata Metadata of a single video stream, as reported by the container header. AudioStreamHeaderMetadata Metadata of a single audio stream, as reported by the container header. StreamMetadata Metadata of a single stream, as reported by the container header.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",
