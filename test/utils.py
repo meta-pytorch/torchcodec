@@ -1298,7 +1298,7 @@ TESTSRC2_ODD_HEIGHT_AND_WIDTH_444 = TestVideo(
 )
 
 # AV1 with reserved color primaries, transfer and matrix coefficients (value 3),
-# which FFmpeg 8's swscale rejects unless we work around it. 
+# which FFmpeg >=8's swscale rejects unless we work around it.
 # ffmpeg -f lavfi -i "testsrc2=size=80x64:rate=25:duration=0.2" \
 #  -c:v libsvtav1 -pix_fmt yuv420p \
 #  -bsf:v av1_metadata=color_primaries=3:transfer_characteristics=3:matrix_coefficients=3 \

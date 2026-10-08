@@ -808,6 +808,7 @@ class TestVideoDecoder:
     def test_reserved_color_metadata(self):
         # Non-regression test for
         # https://github.com/meta-pytorch/torchcodec/issues/1759
+        # (Failed on FFmpeg >= 8)
         decoder = VideoDecoder(AV1_RESERVED_COLOR_METADATA.path)
         frames = decoder.get_frames_in_range(0, len(decoder))
         assert frames.data.shape == (5, 3, 64, 80)

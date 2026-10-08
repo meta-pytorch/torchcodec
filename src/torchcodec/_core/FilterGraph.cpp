@@ -152,7 +152,6 @@ FilterGraph::FilterGraph(
 
 namespace {
 
-// H.273 code points that are reserved, or unknown to FFmpeg.
 bool is_reserved(AVColorPrimaries primaries) {
   return primaries == AVCOL_PRI_RESERVED0 || primaries == AVCOL_PRI_RESERVED ||
       av_color_primaries_name(primaries) == nullptr;
@@ -171,9 +170,10 @@ bool is_reserved(AVColorSpace colorspace) {
 } // namespace
 
 UniqueAVFrame FilterGraph::convert(const AVFrame& av_frame) {
-  // Since FFmpeg 8, swscale (used by the scale filter) rejects frames with
-  // reserved color properties with ENOTSUP, while earlier versions ignore
-  // them. Reserved values carry no meaning, so we treat them as unspecified.
+  // From FFmpeg >= 8, swscale (used by the scale filter) rejects frames with
+  // reserved color properties. FFmpeg < 8 ignores them. A 'reserved' value is
+  // argulably a bad encoding. We just preserve the FFmpeg < 8 behavior by
+  // setting them to unspecified, which ignores them.
   const AVFrame* input_frame = &av_frame;
   UniqueAVFrame sanitized_frame;
   if (is_reserved(av_frame.color_primaries) ||
