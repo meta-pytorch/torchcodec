@@ -151,14 +151,45 @@ FilterGraph::FilterGraph(
 }
 
 UniqueAVFrame FilterGraph::convert(const AVFrame& av_frame) {
-  int status = av_buffersrc_write_frame(source_context_, &av_frame);
+  // Since FFmpeg 8, swscale rejects frames whose color properties are tagged
+  // "reserved", which some real-world streams carry. Older FFmpeg ignored
+  // them, so we do the same by treating them as unspecified.
+  // See https://github.com/meta-pytorch/torchcodec/issues/1759
+  bool reserved_primaries = av_frame.color_primaries == AVCOL_PRI_RESERVED0 ||
+      av_frame.color_primaries == AVCOL_PRI_RESERVED;
+  bool reserved_trc = av_frame.color_trc == AVCOL_TRC_RESERVED0 ||
+      av_frame.color_trc == AVCOL_TRC_RESERVED;
+  bool reserved_colorspace = av_frame.colorspace == AVCOL_SPC_RESERVED;
+
+  const AVFrame* src_frame = &av_frame;
+  UniqueAVFrame sanitized_frame;
+  if (reserved_primaries || reserved_trc || reserved_colorspace) {
+    sanitized_frame.reset(av_frame_clone(&av_frame));
+    STD_TORCH_CHECK(sanitized_frame, "Failed to clone frame");
+    if (reserved_primaries) {
+      sanitized_frame->color_primaries = AVCOL_PRI_UNSPECIFIED;
+    }
+    if (reserved_trc) {
+      sanitized_frame->color_trc = AVCOL_TRC_UNSPECIFIED;
+    }
+    if (reserved_colorspace) {
+      sanitized_frame->colorspace = AVCOL_SPC_UNSPECIFIED;
+    }
+    src_frame = sanitized_frame.get();
+  }
+
+  int status = av_buffersrc_write_frame(source_context_, src_frame);
   STD_TORCH_CHECK(
-      status >= AVSUCCESS, "Failed to add frame to buffer source context");
+      status >= AVSUCCESS,
+      "Failed to add frame to buffer source context: ",
+      get_ffmpeg_error_string_from_error_code(status));
 
   UniqueAVFrame filtered_av_frame(av_frame_alloc());
   status = av_buffersink_get_frame(sink_context_, filtered_av_frame.get());
   STD_TORCH_CHECK(
-      status >= AVSUCCESS, "Failed to get frame from buffer sink context");
+      status >= AVSUCCESS,
+      "Failed to get frame from buffer sink context: ",
+      get_ffmpeg_error_string_from_error_code(status));
 
   return filtered_av_frame;
 }

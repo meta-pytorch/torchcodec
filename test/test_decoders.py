@@ -69,6 +69,7 @@ from .utils import (
     ANIMATED_HEIC,
     assert_frames_equal,
     assert_tensor_close_on_at_least,
+    AV1_RESERVED_COLOR,
     AV1_VIDEO,
     BAD_HUFFMAN_JPEG,
     BT2020_LIMITED_RANGE_10BIT,
@@ -1743,6 +1744,17 @@ class TestVideoDecoder:
         expected = torch.tensor(BT601_FULL_RANGE_10BIT_RGB, dtype=torch.float32)
 
         frame = decoder[0].cpu().float()
+        assert (frame - expected[:, None, None]).abs().max() <= 3
+
+    def test_reserved_color_tags(self):
+        # Non regression test for
+        # https://github.com/meta-pytorch/torchcodec/issues/1759. Since FFmpeg 8,
+        # swscale rejects frames with "reserved" color tags. This video's width
+        # isn't a multiple of 32, so it goes through filtergraph.
+        decoder = VideoDecoder(AV1_RESERVED_COLOR.path)
+        expected = torch.tensor((0x40, 0x40, 0x60), dtype=torch.float32)
+
+        frame = decoder[0].float()
         assert (frame - expected[:, None, None]).abs().max() <= 3
 
     @needs_cuda

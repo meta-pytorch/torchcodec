@@ -1138,6 +1138,27 @@ BT601_FULL_RANGE_10BIT = TestVideo(
 # The solid color BT601_FULL_RANGE_10BIT is filled with.
 BT601_FULL_RANGE_10BIT_RGB = (0x40, 0x40, 0x60)
 
+# AV1 video whose color primaries, transfer and matrix are all tagged
+# "reserved" (see test_reserved_color_tags()). Generated with:
+# ffmpeg -f lavfi -i "color=c=0x404060:s=66x64:r=25:d=0.4" -c:v libaom-av1 \
+# -aom-params lossless=1 -pix_fmt yuv420p \
+# -bsf:v av1_metadata=color_primaries=3:transfer_characteristics=3:matrix_coefficients=3 \
+# av1_reserved_color.mp4
+#
+# Confirm color tags with:
+# ffprobe -v quiet -select_streams v:0 -show_entries stream=color_space,color_transfer,color_primaries -of default=noprint_wrappers=1 test/resources/av1_reserved_color.mp4
+# color_space=reserved
+# color_transfer=reserved
+# color_primaries=reserved
+AV1_RESERVED_COLOR = TestVideo(
+    filename="av1_reserved_color.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=66, height=64, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
 # HDR re-encode of NASA video (10-bit H265 with BT.2020 + PQ), generated with:
 # ffmpeg -i test/resources/nasa_13013.mp4 -map 0:v:0 -c:v libx265 -pix_fmt yuv420p10le \
 # -x265-params "colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited" \
