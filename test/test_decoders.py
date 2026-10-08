@@ -69,6 +69,7 @@ from .utils import (
     ANIMATED_HEIC,
     assert_frames_equal,
     assert_tensor_close_on_at_least,
+    AV1_RESERVED_COLOR_METADATA,
     AV1_VIDEO,
     BAD_HUFFMAN_JPEG,
     BT2020_LIMITED_RANGE_10BIT,
@@ -803,6 +804,14 @@ class TestVideoDecoder:
         assert decoded_frame10.duration_seconds == ref_frame_info10.duration_seconds
         assert decoded_frame10.pts_seconds == ref_frame_info10.pts_seconds
         assert_frames_equal(decoded_frame10.data, ref_frame10.to(device=device))
+
+    def test_reserved_color_metadata(self):
+        # Non-regression test for
+        # https://github.com/meta-pytorch/torchcodec/issues/1759
+        # (Failed on FFmpeg >= 8)
+        decoder = VideoDecoder(AV1_RESERVED_COLOR_METADATA.path)
+        frames = decoder.get_frames_in_range(0, len(decoder))
+        assert frames.data.shape == (5, 3, 64, 80)
 
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
