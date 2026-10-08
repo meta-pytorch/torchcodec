@@ -1297,6 +1297,21 @@ TESTSRC2_ODD_HEIGHT_AND_WIDTH_444 = TestVideo(
     frames={0: {}},
 )
 
+# AV1 with reserved color primaries, transfer and matrix coefficients (value 3),
+# which FFmpeg 8's swscale rejects unless we work around it. 
+# ffmpeg -f lavfi -i "testsrc2=size=80x64:rate=25:duration=0.2" \
+#  -c:v libsvtav1 -pix_fmt yuv420p \
+#  -bsf:v av1_metadata=color_primaries=3:transfer_characteristics=3:matrix_coefficients=3 \
+#  av1_reserved_color_metadata.mp4
+AV1_RESERVED_COLOR_METADATA = TestVideo(
+    filename="av1_reserved_color_metadata.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=80, height=64, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
 # AV1 4:2:0 10-bit. NVDEC offers only a P016 output surface for this one, no
 # NV12, which used to send it to the CPU fallback whenever uint8 was requested.
 # ffmpeg -f lavfi -i "testsrc2=size=320x240:rate=25:duration=1" \
