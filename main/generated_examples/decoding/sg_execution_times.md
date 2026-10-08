@@ -1,18 +1,18 @@
 # Computation times
 
-**05:15.399** total execution time for 12 files **from generated_examples/decoding**:
+**05:10.180** total execution time for 12 files **from generated_examples/decoding**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Decoder Transforms: Applying transforms during decoding](transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`transforms.py`) | 02:21.165 | 0.0 |
-| [Parallel video decoding: multi-processing and multi-threading](parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`parallel_decoding.py`) | 01:25.442 | 0.0 |
-| [Streaming data through file-like support](file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`file_like.py`) | 00:31.536 | 0.0 |
-| [Exact vs Approximate seek mode: Performance and accuracy comparison](approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`approximate_mode.py`) | 00:24.798 | 0.0 |
-| [Decoding with custom frame mappings](custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`custom_frame_mappings.py`) | 00:23.503 | 0.0 |
-| [Accelerated video decoding on GPUs with CUDA and NVDEC](basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`basic_cuda_example.py`) | 00:04.829 | 0.0 |
-| [Decoding a video with VideoDecoder](basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`basic_example.py`) | 00:02.148 | 0.0 |
-| [Decoding audio streams with AudioDecoder](audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`audio_decoding.py`) | 00:00.967 | 0.0 |
-| [Decoding HDR videos](hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py) (`hdr_decoding.py`) | 00:00.437 | 0.0 |
-| [How to sample video clips](sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`sampling.py`) | 00:00.417 | 0.0 |
-| [Decoding images](image_decoding.html#sphx-glr-generated-examples-decoding-image-decoding-py) (`image_decoding.py`) | 00:00.155 | 0.0 |
+| [Decoder Transforms: Applying transforms during decoding](transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`transforms.py`) | 02:20.936 | 0.0 |
+| [Parallel video decoding: multi-processing and multi-threading](parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`parallel_decoding.py`) | 01:25.798 | 0.0 |
+| [Streaming data through file-like support](file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`file_like.py`) | 00:26.025 | 0.0 |
+| [Exact vs Approximate seek mode: Performance and accuracy comparison](approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`approximate_mode.py`) | 00:25.030 | 0.0 |
+| [Decoding with custom frame mappings](custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`custom_frame_mappings.py`) | 00:23.560 | 0.0 |
+| [Accelerated video decoding on GPUs with CUDA and NVDEC](basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`basic_cuda_example.py`) | 00:04.736 | 0.0 |
+| [Decoding a video with VideoDecoder](basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`basic_example.py`) | 00:02.151 | 0.0 |
+| [Decoding audio streams with AudioDecoder](audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`audio_decoding.py`) | 00:00.979 | 0.0 |
+| [Decoding HDR videos](hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py) (`hdr_decoding.py`) | 00:00.434 | 0.0 |
+| [How to sample video clips](sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`sampling.py`) | 00:00.409 | 0.0 |
+| [Decoding images](image_decoding.html#sphx-glr-generated-examples-decoding-image-decoding-py) (`image_decoding.py`) | 00:00.123 | 0.0 |
 | [TorchCodec Performance Tips and Best Practices](performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py) (`performance_tips.py`) | 00:00.000 | 0.0 |
