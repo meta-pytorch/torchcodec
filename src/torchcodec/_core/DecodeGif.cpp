@@ -135,6 +135,15 @@ torch::stable::Tensor decode_gif(
 
   GifColorType bg{0, 0, 0};
   if (gif_file->SColorMap) {
+    // SBackGroundColor is read directly from the GIF without validation.
+    // Validate it before using it as a color map index.
+    STD_TORCH_CHECK(
+        gif_file->SBackGroundColor < gif_file->SColorMap->ColorCount,
+        "GIF file contains incorrect background color ",
+        gif_file->SBackGroundColor,
+        " that exceeds ColorTable of size ",
+        gif_file->SColorMap->ColorCount
+    );
     bg = gif_file->SColorMap->Colors[gif_file->SBackGroundColor];
   }
 
