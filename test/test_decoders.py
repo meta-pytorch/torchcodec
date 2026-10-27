@@ -3782,6 +3782,20 @@ class TestWavDecoder:
             assert wav_samples.pts_seconds == audio_samples.pts_seconds
 
 
+def _make_raw_h264(tmp_path, num_frames=30):
+    # An Annex B elementary stream: no container, hence no timestamps.
+    path = tmp_path / "raw.h264"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-i", str(NASA_VIDEO.path), "-map", "0:3", "-frames:v", str(num_frames),
+            "-c:v", "libx264", "-bf", "2", "-g", "10", "-f", "h264", str(path),
+        ],
+        check=True,
+    )  # fmt: skip
+    return path
+
+
 def _low_level_devices():
     return ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
 
@@ -5316,8 +5330,14 @@ class TestLowLevel:
         # video stream in both seek modes. We compare against a sequential
         # decode of the same file through the low-level APIs instead.
         video = SINE_STEREO_MP2_MPEG_PS
+
+        def key(frame):
+            # The last frame of this asset has no pts: NaN, which can't be used
+            # as a dict key (it can, but it can't be accessed for comparison).
+            return None if math.isnan(frame.pts_seconds) else frame.pts_seconds
+
         sequential = {
-            frame.pts_seconds: frame.data
+            key(frame): frame.data
             for frame in self._decode_sequential(video.path, device)
         }
 
@@ -5330,7 +5350,7 @@ class TestLowLevel:
 
         assert len(got) > 0
         for frame in got:
-            assert_frames_equal(frame.data, sequential[frame.pts_seconds])
+            assert_frames_equal(frame.data, sequential[key(frame)])
 
     @pytest.mark.parametrize(
         "video",
@@ -6431,6 +6451,20 @@ class TestLowLevel:
             tuple(plane.clone() for plane in raw_frame.planes),
         ):
             pickle.loads(pickle.dumps(obj))
+
+    # ===== missing pts =====
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_pts_is_nan_without_timestamps(self, tmp_path, device):
+        demuxer, decoder, converter = self._make_stages(
+            _make_raw_h264(tmp_path), device
+        )
+        frames = list(self._decode(decoder, self._demux(demuxer)))
+        assert len(frames) == 30
+        for raw_frame in frames:
+            assert math.isnan(raw_frame.pts_seconds)
+            assert math.isnan(converter.convert(raw_frame).pts_seconds)
 
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn
