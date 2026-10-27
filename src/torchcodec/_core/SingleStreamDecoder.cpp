@@ -175,6 +175,13 @@ void SingleStreamDecoder::scan_file_and_update_metadata_and_index() {
     // We got a valid packet. Let's figure out what stream it belongs to and
     // record its relevant metadata.
     int stream_index = packet->stream_index;
+    if (stream_index < 0 ||
+        stream_index >=
+            static_cast<int>(container_metadata_.all_stream_metadata.size())) {
+      // in theory, a video may add a stream midway through the file, which
+      // could cause OOB access. See D124080592.
+      continue;
+    }
 
     auto& stream_metadata =
         container_metadata_.all_stream_metadata[stream_index];
