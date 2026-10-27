@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Generic, TYPE_CHECKING, TypeVar
+from typing import Generic, TypeVar
 
 import torch
 
@@ -19,59 +19,49 @@ from torchcodec._core.ops import (
     _blocks_packet_decoder_send_packet,
 )
 
+from .._decoder_utils import convert_device_to_str
+from ._decoder_parameters import (
+    _DecoderParameters,
+    AudioPacketDecoderParameters,
+    VideoPacketDecoderParameters,
+)
 from ._frame import Packet, RawAudioSamples, RawFrame
 from ._helpers import _process_local
-
-if TYPE_CHECKING:
-    # Only for the annotation: _demuxer imports this module to build decoders,
-    # so importing it back at runtime would be circular.
-    from ._demuxer import _Stream
 
 
 # TODO_API_BREAKDOWN DOC P1 revisit every single comment across all low-level APIs
 
 _Decoded = TypeVar("_Decoded", RawFrame, RawAudioSamples)
-_Self = TypeVar("_Self", bound="_BasePacketDecoder")
 
 
 @_process_local(
     "A codec context holds reference frames and entropy state that FFmpeg "
-    "cannot serialise. Call stream.make_decoder() in each process."
+    "cannot serialise. Build a decoder in each process instead, from the same "
+    "decoder parameters: those can be pickled."
 )
 class _BasePacketDecoder(Generic[_Decoded]):
     _handle: torch.Tensor
     _drained: bool
     _generation: int | None
 
-    # *args so that a call with arguments gets the message below rather than a
-    # TypeError about the argument count.
-    def __init__(self, *args, **kwargs) -> None:
-        raise RuntimeError(
-            f"{type(self).__name__} cannot be instantiated directly. Build one "
-            "from the stream whose packets it decodes, with "
-            "stream.make_decoder()."
-        )
-
-    @classmethod
-    def _from_stream(
-        cls: type[_Self],
-        stream: _Stream,
+    def _init(
+        self,
+        parameters: _DecoderParameters,
         device_str: str,
-        num_ffmpeg_threads: int = 1,
-    ) -> _Self:
-        decoder = cls.__new__(cls)
-        decoder._handle = _blocks_create_packet_decoder(
-            stream._demuxer._handle,
-            stream_index=stream.index,
+        num_ffmpeg_threads: int,
+        decoder: str | None,
+    ) -> None:
+        self._handle = _blocks_create_packet_decoder(
+            parameters._to_strings(),
             num_threads=num_ffmpeg_threads,
             device=device_str,
+            decoder=decoder,
         )
-        decoder._drained = False
+        self._drained = False
         # The demuxer position these packets come from. None until the first
         # packet, and again after every reset(), so it is adopted rather than
         # tracked: the decoder never needs a reference back to the demuxer.
-        decoder._generation = None
-        return decoder
+        self._generation = None
 
     def _receive_ready_frames(self) -> list[_Decoded]:
         raise NotImplementedError
@@ -120,8 +110,9 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
     This is a low-level API: for straightforward decoding, use
     :class:`~torchcodec.decoders.VideoDecoder` instead.
 
-    You should not build one yourself: :meth:`VideoStream.make_decoder` is what
-    creates it. Frames come out on the device given there.
+    It is built from the :class:`VideoPacketDecoderParameters` describing the
+    stream's packets. :meth:`VideoStream.make_decoder` builds one from
+    :attr:`VideoStream.decoder_parameters`.
 
     Feed it one packet at a time, and drain it at the end::
 
@@ -135,8 +126,44 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
             ...
 
     It is stateful. It holds the codec's reference-frame buffer, so it expects
-    the packets of its own stream, in the order the demuxer produced them.
+    the packets of its own stream, in decoding order: the order a demuxer
+    produces them in.
+
+    Args:
+        parameters (VideoPacketDecoderParameters): Describes the packets this
+            decoder decodes.
+        device (str or torch.device, optional): The device to decode on (cpu or
+            CUDA). Frames come out on this device. If ``None`` (default), the
+            current default device is used (see ``torch.set_default_device``).
+        num_ffmpeg_threads (int, optional): The number of threads to use for
+            CPU decoding. This has no effect when decoding on GPU. Use 1 for
+            single-threaded decoding, which may be best if you are decoding
+            multiple streams in parallel. Use a higher number for
+            multi-threaded decoding, which is best for a single stream. Passing
+            0 lets FFmpeg decide on the number of threads. Default: 1.
+        decoder (str, optional): The name of the FFmpeg decoder to use, e.g.
+            ``"libdav1d"``. It must decode the codec of ``parameters``. By
+            default FFmpeg picks one, or the device does.
     """
+
+    def __init__(
+        self,
+        parameters: VideoPacketDecoderParameters,
+        device: str | torch.device | None = None,
+        *,
+        num_ffmpeg_threads: int = 1,
+        decoder: str | None = None,
+    ):
+        if not isinstance(parameters, VideoPacketDecoderParameters):
+            raise TypeError(
+                "parameters must be a VideoPacketDecoderParameters, got "
+                f"{type(parameters).__name__}."
+            )
+        if num_ffmpeg_threads is None:
+            raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
+        self._init(
+            parameters, convert_device_to_str(device), num_ffmpeg_threads, decoder
+        )
 
     # methods calling super() only to pin the return type down to RawFrame. The
     # base class is generic over _Decoded, which isn't ideal for the rendered
@@ -202,8 +229,9 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
     This is a low-level API: for straightforward decoding, use
     :class:`~torchcodec.decoders.AudioDecoder` instead.
 
-    You should not build one yourself: :meth:`AudioStream.make_decoder` is what
-    creates it. Audio is always decoded on the CPU.
+    It is built from the :class:`AudioPacketDecoderParameters` describing the
+    stream's packets. :meth:`AudioStream.make_decoder` builds one from
+    :attr:`AudioStream.decoder_parameters`. Audio is always decoded on the CPU.
 
     Feed it one packet at a time, and drain it at the end::
 
@@ -221,7 +249,27 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
     them. After a :meth:`Demuxer.seek`, :meth:`reset` is necessary but not
     sufficient: the first samples that come out are subtly wrong until the codec
     re-primes, so decode a margin before your target and throw it away.
+
+    Args:
+        parameters (AudioPacketDecoderParameters): Describes the packets this
+            decoder decodes.
+        decoder (str, optional): The name of the FFmpeg decoder to use, e.g.
+            ``"mp3float"``. It must decode the codec of ``parameters``. By
+            default FFmpeg picks one.
     """
+
+    def __init__(
+        self,
+        parameters: AudioPacketDecoderParameters,
+        *,
+        decoder: str | None = None,
+    ):
+        if not isinstance(parameters, AudioPacketDecoderParameters):
+            raise TypeError(
+                "parameters must be an AudioPacketDecoderParameters, got "
+                f"{type(parameters).__name__}."
+            )
+        self._init(parameters, "cpu", num_ffmpeg_threads=1, decoder=decoder)
 
     # See VideoPacketDecoder: pinning the return type down to RawAudioSamples.
     def decode(self, packet: Packet) -> list[RawAudioSamples]:

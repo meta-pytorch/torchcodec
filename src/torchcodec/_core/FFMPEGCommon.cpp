@@ -879,7 +879,6 @@ const int32_t* get_display_matrix_from_stream(const AVStream* av_stream) {
   return display_matrix;
 }
 
-namespace {
 std::optional<double> get_rotation_from_display_matrix(
     const int32_t* display_matrix) {
   if (display_matrix == nullptr) {
@@ -898,7 +897,6 @@ std::optional<double> get_rotation_from_display_matrix(
 
   return rotation;
 }
-} // namespace
 
 std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
   return get_rotation_from_display_matrix(
@@ -913,6 +911,19 @@ std::optional<double> get_rotation_from_frame(const AVFrame& av_frame) {
   }
   return get_rotation_from_display_matrix(
       reinterpret_cast<const int32_t*>(side_data->data));
+}
+
+AVPacketSideDataType side_data_type_from_name(const std::string& name) {
+  // av_packet_side_data_name() has no inverse, so we look the name up among
+  // all the side data types.
+  for (int type = 0; type < AV_PKT_DATA_NB; ++type) {
+    const char* type_name =
+        av_packet_side_data_name(static_cast<AVPacketSideDataType>(type));
+    if (type_name != nullptr && name == type_name) {
+      return static_cast<AVPacketSideDataType>(type);
+    }
+  }
+  STD_TORCH_CHECK(false, "Unknown side data type: '", name, "'.");
 }
 
 void set_display_matrix_on_frame(

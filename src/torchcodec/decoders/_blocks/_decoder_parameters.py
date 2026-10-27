@@ -159,9 +159,31 @@ class _DecoderParameters:
             fields.append(f"{f.name}={value}")
         return f"{type(self).__name__}({', '.join(fields)})"
 
+    def _to_strings(self) -> list[str]:
+        """The parameters as alternating keys and values, the way the C++
+        decoder_parameters_from_strings() takes them."""
+        flat = ["media_type", self._media_type]
+        for f in dataclasses.fields(self):
+            value = getattr(self, f.name)
+            if value is None:
+                continue
+            if f.name == "coded_side_data":
+                for name, payload in value.items():
+                    flat += [_CODED_SIDE_DATA_PREFIX + name, payload.hex()]
+                continue
+            if isinstance(value, bytes):
+                value = value.hex()
+            elif isinstance(value, bool):
+                value = int(value)
+            elif isinstance(value, Fraction):
+                value = f"{value.numerator}/{value.denominator}"
+            flat += [f.name.lstrip("_"), str(value)]
+        return flat
+
     @classmethod
     def _from_strings(cls, values: dict[str, str]):
-        """From what the C++ decoder_parameters_to_strings() returns."""
+        """The inverse of :meth:`_to_strings`, from what the C++
+        decoder_parameters_to_strings() returns."""
         values = dict(values)
         misaligned = values.pop("packets_may_be_misaligned_after_reset") == "1"
         coded_side_data = {

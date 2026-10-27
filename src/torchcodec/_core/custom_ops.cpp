@@ -96,7 +96,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "_blocks_demuxer_decoder_parameters(Tensor demuxer, int stream_index) -> str");
   m.def(
-      "_blocks_create_packet_decoder(Tensor demuxer, *, int? stream_index=None, int? num_threads=None, str device=\"cpu\") -> Tensor");
+      "_blocks_create_packet_decoder(str[] fields, *, int? num_threads=None, str device=\"cpu\", str? decoder=None) -> Tensor");
   m.def(
       "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
@@ -979,23 +979,26 @@ std::string _blocks_demuxer_decoder_parameters(
   return json.str();
 }
 
+// `fields` alternates the keys and values of decoder_parameters_from_strings().
 torch::stable::Tensor _blocks_create_packet_decoder(
-    torch::stable::Tensor& demuxer,
-    std::optional<int64_t> stream_index,
+    std::vector<std::string> fields,
     std::optional<int64_t> num_threads,
-    std::string device) {
-  Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
+    std::string device,
+    std::optional<std::string> decoder) {
   validate_device_interface(device);
+  STD_TORCH_CHECK(
+      fields.size() % 2 == 0, "fields must alternate keys and values.");
+
   std::optional<int> thread_count;
   if (num_threads.has_value()) {
     thread_count = static_cast<int>(num_threads.value());
   }
-  auto decoder = std::make_unique<PacketDecoder>(
-      *demuxer_ptr,
-      to_optional_int(stream_index),
+  auto packet_decoder = std::make_unique<PacketDecoder>(
+      decoder_parameters_from_strings(unflatten_extra_options(fields)),
       StableDevice(device),
-      thread_count);
-  return wrap_pointer_to_tensor<PacketDecoder>(std::move(decoder));
+      thread_count,
+      decoder);
+  return wrap_pointer_to_tensor<PacketDecoder>(std::move(packet_decoder));
 }
 
 int64_t _blocks_packet_decoder_send_packet(
@@ -1739,6 +1742,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
       "_blocks_create_demuxer_from_file_like",
       TORCH_BOX(&_blocks_create_demuxer_from_file_like));
   m.impl(
+      "_blocks_create_packet_decoder",
+      TORCH_BOX(&_blocks_create_packet_decoder));
+  m.impl(
       "_blocks_create_color_converter",
       TORCH_BOX(&_blocks_create_color_converter));
   m.impl(
@@ -1817,9 +1823,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       "_blocks_demuxer_next_packet", TORCH_BOX(&_blocks_demuxer_next_packet));
   m.impl("_blocks_demuxer_seek", TORCH_BOX(&_blocks_demuxer_seek));
   m.impl("_blocks_demuxer_scan", TORCH_BOX(&_blocks_demuxer_scan));
-  m.impl(
-      "_blocks_create_packet_decoder",
-      TORCH_BOX(&_blocks_create_packet_decoder));
   m.impl(
       "_blocks_demuxer_decoder_parameters",
       TORCH_BOX(&_blocks_demuxer_decoder_parameters));

@@ -10,6 +10,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include "DecoderParameters.h"
 #include "FFMPEGCommon.h"
 #include "Frame.h"
 #include "StableABICompat.h"
@@ -40,7 +41,7 @@ class DeviceInterface {
  public:
   DeviceInterface(const StableDevice& device) : device_(device) {}
 
-  virtual ~DeviceInterface(){};
+  virtual ~DeviceInterface() {};
 
   StableDevice& device() {
     return device_;
@@ -58,8 +59,7 @@ class DeviceInterface {
 
   // Initialize state needed to decode packets into raw AVFrames.
   virtual void initialize_video_decoding(
-      [[maybe_unused]] const AVStream* av_stream,
-      [[maybe_unused]] const UniqueDecodingAVFormatContext& av_format_ctx,
+      [[maybe_unused]] const DecoderParameters& decoder_parameters,
       [[maybe_unused]] const VideoStreamOptions& video_stream_options) {}
 
   // Initialize state needed to color-convert decoded AVFrames into output
@@ -74,12 +74,11 @@ class DeviceInterface {
   // Convenience for the combined decode + color-convert path, kept for BC as
   // it's used by SingleStreamDecoder and out-of-tree interfaces rely on it.
   void initialize_video(
-      const AVStream* av_stream,
-      const UniqueDecodingAVFormatContext& av_format_ctx,
+      const DecoderParameters& decoder_parameters,
       const VideoStreamOptions& video_stream_options,
       const std::vector<std::unique_ptr<Transform>>& transforms,
       const std::optional<FrameDims>& resized_output_dims) {
-    initialize_video_decoding(av_stream, av_format_ctx, video_stream_options);
+    initialize_video_decoding(decoder_parameters, video_stream_options);
     initialize_color_conversion(
         video_stream_options, transforms, resized_output_dims);
   }

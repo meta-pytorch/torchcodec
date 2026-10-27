@@ -29,8 +29,7 @@ class CudaDeviceInterface : public DeviceInterface {
   void initialize(const SharedAVCodecContext& codec_context) override;
 
   void initialize_video_decoding(
-      const AVStream* av_stream,
-      const UniqueDecodingAVFormatContext& av_format_ctx,
+      const DecoderParameters& decoder_parameters,
       const VideoStreamOptions& video_stream_options) override;
 
   void initialize_color_conversion(

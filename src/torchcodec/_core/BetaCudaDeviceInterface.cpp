@@ -26,6 +26,7 @@
 
 extern "C" {
 #include <libavutil/hwcontext_cuda.h>
+#include <libavutil/intreadwrite.h>
 #include <libavutil/pixdesc.h>
 }
 
@@ -496,13 +497,14 @@ void BetaCudaDeviceInterface::initialize_color_conversion(
 }
 
 void BetaCudaDeviceInterface::initialize_video_decoding(
-    const AVStream* av_stream,
-    const UniqueDecodingAVFormatContext& av_format_ctx,
+    const DecoderParameters& decoder_parameters,
     const VideoStreamOptions& video_stream_options) {
-  STD_TORCH_CHECK(av_stream != nullptr, "AVStream cannot be null");
   CudaContextGuard context_guard(device_.index());
   decoding_initialized_ = true;
-  rotation_ = rotation_from_degrees(get_rotation_from_stream(av_stream));
+  rotation_ = rotation_from_degrees(get_rotation_from_display_matrix(
+      decoder_parameters.display_matrix
+          ? decoder_parameters.display_matrix->data()
+          : nullptr));
   output_dtype_ = video_stream_options.output_dtype;
 
   auto maybe_surface_format = nvcuvid_available_
@@ -522,18 +524,19 @@ void BetaCudaDeviceInterface::initialize_video_decoding(
         cpu_interface_ != nullptr, "Failed to create CPU device interface");
     cpu_interface_->initialize(codec_context_);
     cpu_interface_->initialize_video_decoding(
-        av_stream, av_format_ctx, video_stream_options);
+        decoder_parameters, video_stream_options);
     return;
   }
 
   surface_format_ = maybe_surface_format.value();
-  time_base_ = av_stream->time_base;
-  frame_rate_avg_from_ffmpeg_ = av_stream->r_frame_rate;
+  time_base_ = decoder_parameters.time_base;
+  frame_rate_avg_from_ffmpeg_ = decoder_parameters.r_frame_rate;
 
-  const AVCodecParameters* codec_par = av_stream->codecpar;
+  const AVCodecParameters* codec_par =
+      decoder_parameters.codec_parameters.get();
   STD_TORCH_CHECK(codec_par != nullptr, "CodecParameters cannot be null");
 
-  initialize_bsf(codec_par, av_format_ctx);
+  initialize_bsf(codec_par);
 
   // On VP9 when there are alt-ref frames, the NVCUVID parser reports incorrect
   // timestamps. We don't know why. It's just incorrect. And because our decode
@@ -643,56 +646,50 @@ void BetaCudaDeviceInterface::initialize(
 }
 
 void BetaCudaDeviceInterface::initialize_bsf(
-    const AVCodecParameters* codec_par,
-    const UniqueDecodingAVFormatContext& av_format_ctx) {
+    const AVCodecParameters* codec_par) {
   // Setup bit stream filters (BSF):
   // https://ffmpeg.org/doxygen/7.0/group__lavc__bsf.html
   // This is only needed for some formats, like H264 or HEVC.
 
   STD_TORCH_CHECK(codec_par != nullptr, "codecPar cannot be null");
-  STD_TORCH_CHECK(av_format_ctx != nullptr, "AVFormatContext cannot be null");
-  STD_TORCH_CHECK(
-      av_format_ctx->iformat != nullptr,
-      "AVFormatContext->iformat cannot be null");
   std::string filter_name;
 
-  // Matching logic is taken from DALI
-  switch (codec_par->codec_id) {
-    case AV_CODEC_ID_H264: {
-      const std::string format_name = av_format_ctx->iformat->long_name
-          ? av_format_ctx->iformat->long_name
-          : "";
+  // The NVCUVID parser only accepts H.264 and HEVC in Annex B format, where NAL
+  // units are delimited by start codes. MP4, Matroska and FLV store them
+  // length-prefixed instead: the *_mp4toannexb filters convert them. MPEG-4
+  // Part 2 streams may also hold DivX-style packed B-frames, which the parser
+  // can't handle either: mpeg4_unpack_bframes unpacks them.
+  //
+  // DALI decides on these filters based on the container:
+  // https://github.com/NVIDIA/DALI/blob/ae79f316ae9b14c464d9cb98465f7f783da9ea89/dali/operators/video/frames_decoder_gpu.cc#L294-L318
+  // We can't, because the packets don't have to come from a container. For
+  // H.264 and HEVC we look at the extradata instead, the same way the
+  // mp4toannexb filters themselves decide whether there is anything to convert:
+  // Annex B extradata is either empty or starts with a start code.
+  // https://github.com/FFmpeg/FFmpeg/blob/d244d438c372b76d825be4527fccfd162429010a/libavcodec/bsf/h264_mp4toannexb.c#L265-L271
+  // https://github.com/FFmpeg/FFmpeg/blob/d244d438c372b76d825be4527fccfd162429010a/libavcodec/bsf/hevc_mp4toannexb.c#L105-L110
+  // For MPEG-4 Part 2, mpeg4_unpack_bframes passes through any packet that
+  // isn't packed, so we always apply it.
+  const uint8_t* extradata = codec_par->extradata;
+  int extradata_size = codec_par->extradata_size;
+  bool is_annex_b = extradata_size == 0 ||
+      (extradata_size >= 3 && AV_RB24(extradata) == 1) ||
+      (extradata_size >= 4 && AV_RB32(extradata) == 1);
 
-      if (format_name == "QuickTime / MOV" ||
-          format_name == "FLV (Flash Video)" ||
-          format_name == "Matroska / WebM" ||
-          format_name == "raw H.264 video") {
+  switch (codec_par->codec_id) {
+    case AV_CODEC_ID_H264:
+      if (!is_annex_b) {
         filter_name = "h264_mp4toannexb";
       }
       break;
-    }
-
-    case AV_CODEC_ID_HEVC: {
-      const std::string format_name = av_format_ctx->iformat->long_name
-          ? av_format_ctx->iformat->long_name
-          : "";
-
-      if (format_name == "QuickTime / MOV" ||
-          format_name == "FLV (Flash Video)" ||
-          format_name == "Matroska / WebM" || format_name == "raw HEVC video") {
+    case AV_CODEC_ID_HEVC:
+      if (!is_annex_b) {
         filter_name = "hevc_mp4toannexb";
       }
       break;
-    }
-    case AV_CODEC_ID_MPEG4: {
-      const std::string format_name =
-          av_format_ctx->iformat->name ? av_format_ctx->iformat->name : "";
-      if (format_name == "avi") {
-        filter_name = "mpeg4_unpack_bframes";
-      }
+    case AV_CODEC_ID_MPEG4:
+      filter_name = "mpeg4_unpack_bframes";
       break;
-    }
-
     default:
       // No bitstream filter needed for other codecs
       break;

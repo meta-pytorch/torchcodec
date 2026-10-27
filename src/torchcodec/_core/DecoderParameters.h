@@ -48,4 +48,10 @@ get_decoder_parameters(const AVFormatContext& format_context, int stream_index);
 FORCE_PUBLIC_VISIBILITY std::map<std::string, std::string>
 decoder_parameters_to_strings(const DecoderParameters& parameters);
 
+// The inverse of decoder_parameters_to_strings(), which also needs
+// "media_type" ("video" or "audio"). Raises on unknown keys and on values
+// FFmpeg doesn't know, rather than ignoring them.
+FORCE_PUBLIC_VISIBILITY DecoderParameters decoder_parameters_from_strings(
+    const std::map<std::string, std::string>& values);
+
 } // namespace facebook::torchcodec

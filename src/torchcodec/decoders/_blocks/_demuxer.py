@@ -37,8 +37,6 @@ from torchcodec._core.ops import (
     _blocks_demuxer_stream_json_metadata,
 )
 
-from .._decoder_utils import convert_device_to_str
-
 from ._decoder_parameters import (
     AudioPacketDecoderParameters,
     VideoPacketDecoderParameters,
@@ -337,10 +335,8 @@ class VideoStream(_Stream):
         Returns:
             VideoPacketDecoder: A decoder for this stream's packets.
         """
-        if num_ffmpeg_threads is None:
-            raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
-        return VideoPacketDecoder._from_stream(
-            self, convert_device_to_str(device), num_ffmpeg_threads
+        return VideoPacketDecoder(
+            self.decoder_parameters, device, num_ffmpeg_threads=num_ffmpeg_threads
         )
 
 
@@ -381,7 +377,7 @@ class AudioStream(_Stream):
         Returns:
             AudioPacketDecoder: A decoder for this stream's packets.
         """
-        return AudioPacketDecoder._from_stream(self, "cpu")
+        return AudioPacketDecoder(self.decoder_parameters)
 
 
 @_process_local(

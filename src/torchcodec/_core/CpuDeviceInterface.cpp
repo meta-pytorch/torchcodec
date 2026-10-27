@@ -86,11 +86,9 @@ void CpuDeviceInterface::initialize(const SharedAVCodecContext& codec_context) {
 }
 
 void CpuDeviceInterface::initialize_video_decoding(
-    const AVStream* av_stream,
-    [[maybe_unused]] const UniqueDecodingAVFormatContext& av_format_ctx,
+    const DecoderParameters& decoder_parameters,
     [[maybe_unused]] const VideoStreamOptions& video_stream_options) {
-  STD_TORCH_CHECK(av_stream != nullptr, "avStream is null");
-  time_base_ = av_stream->time_base;
+  time_base_ = decoder_parameters.time_base;
 }
 
 void CpuDeviceInterface::initialize_color_conversion(

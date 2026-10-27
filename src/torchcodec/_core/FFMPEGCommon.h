@@ -437,12 +437,19 @@ int64_t compute_safe_duration(
 // rotated for correct display.
 std::optional<double> get_rotation_from_stream(const AVStream* av_stream);
 
+// Same, from a raw display matrix, or nullptr for none.
+std::optional<double> get_rotation_from_display_matrix(
+    const int32_t* display_matrix);
+
 // Same, from a frame's own display matrix side data.
 std::optional<double> get_rotation_from_frame(const AVFrame& av_frame);
 
 // The stream's raw display matrix, or nullptr when it has none. Points into the
 // stream's side data, so it lives as long as the stream does.
 const int32_t* get_display_matrix_from_stream(const AVStream* av_stream);
+
+// The inverse of av_packet_side_data_name(). Raises on an unknown name.
+AVPacketSideDataType side_data_type_from_name(const std::string& name);
 
 // Makes `av_frame` carry `display_matrix` (or no display matrix at all, for
 // nullptr), replacing whatever it had.

@@ -28,8 +28,7 @@ class CpuDeviceInterface : public DeviceInterface {
   virtual void initialize(const SharedAVCodecContext& codec_context) override;
 
   virtual void initialize_video_decoding(
-      const AVStream* av_stream,
-      const UniqueDecodingAVFormatContext& av_format_ctx,
+      const DecoderParameters& decoder_parameters,
       const VideoStreamOptions& video_stream_options) override;
 
   virtual void initialize_color_conversion(
@@ -84,8 +83,9 @@ class CpuDeviceInterface : public DeviceInterface {
   VideoStreamOptions video_stream_options_;
   // Default used when color conversion runs standalone (no stream to derive it
   // from, e.g. the ColorConverter block API). initialize_video_decoding()
-  // overrides it from the stream when there is one. Its value doesn't matter on
-  // color-conversion-only mode, but filtergraph still expects it.
+  // overrides it from the decoder parameters when there are some. Its value
+  // doesn't matter on color-conversion-only mode, but filtergraph still expects
+  // it.
   AVRational time_base_ = {1, AV_TIME_BASE};
   AVPixelFormat output_pixel_format_;
 

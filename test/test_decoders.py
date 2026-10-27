@@ -6591,6 +6591,217 @@ class TestLowLevel:
             VideoPacketDecoderParameters(**self._init_fields(parameters)) == parameters
         )
 
+    def _decode_with(self, path, parameters, device, **decoder_kwargs):
+        decoder = VideoPacketDecoder(parameters, device, **decoder_kwargs)
+        converter = ColorConverter(device=device)
+        return list(
+            self._convert(converter, self._decode(decoder, self._demux(Demuxer(path))))
+        )
+
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            NASA_VIDEO,
+            NASA_VIDEO_ROTATED,
+            H265_VIDEO,
+            AV1_VIDEO,
+            TEST_SRC_2_720P_VP9,
+            TEST_SRC_2_720P_MPEG4,
+        ),
+    )
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_video_decoder_parameters_round_trip_through_their_fields(
+        self, asset, device
+    ):
+        # Everything a demuxer knows about a stream fits in the public fields:
+        # parameters rebuilt from them decode exactly like the originals.
+        parameters = Demuxer(asset.path).streams[0].decoder_parameters
+        rebuilt = VideoPacketDecoderParameters(**self._init_fields(parameters))
+        assert rebuilt == parameters
+
+        expected = self._decode_sequential(asset.path, device)
+        got = self._decode_with(asset.path, rebuilt, device)
+        assert len(got) == len(expected) > 0
+        for frame, expected_frame in zip(got, expected):
+            assert frame.pts_seconds == expected_frame.pts_seconds
+            assert frame.duration_seconds == expected_frame.duration_seconds
+            assert_frames_equal(frame.data, expected_frame.data)
+
+    @pytest.mark.parametrize(
+        "asset", (NASA_AUDIO, NASA_AUDIO_MP3, SINE_MONO_S16, SINE_16_CHANNEL_S16)
+    )
+    def test_audio_decoder_parameters_round_trip_through_their_fields(self, asset):
+        def decode(make_decoder):
+            demuxer = Demuxer(asset.path, streams="audio")
+            decoder = make_decoder(demuxer.streams[0])
+            return list(self._decode(decoder, self._demux(demuxer)))
+
+        parameters = Demuxer(asset.path, streams="audio").streams[0].decoder_parameters
+        rebuilt = AudioPacketDecoderParameters(**self._init_fields(parameters))
+        assert rebuilt == parameters
+
+        expected = decode(lambda stream: stream.make_decoder())
+        got = decode(lambda stream: AudioPacketDecoder(rebuilt))
+        assert len(got) == len(expected) > 0
+        for samples, expected_samples in zip(got, expected):
+            assert samples.pts_seconds == expected_samples.pts_seconds
+            torch.testing.assert_close(
+                samples.data, expected_samples.data, atol=0, rtol=0
+            )
+
+    def test_rotation_is_a_decoder_parameter(self):
+        parameters = Demuxer(NASA_VIDEO_ROTATED.path).streams[0].decoder_parameters
+        assert parameters.rotation == 90
+
+        unrotated = dataclasses.replace(parameters, rotation=None)
+        demuxer = Demuxer(NASA_VIDEO_ROTATED.path)
+        decoder = VideoPacketDecoder(unrotated)
+        raw_frame = next(self._decode(decoder, self._demux(demuxer)))
+        assert raw_frame.rotation == 0
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_hand_built_video_decoder_parameters(self, device):
+        # The NASA video's packets are length-prefixed (avcC), so besides the
+        # codec and the time base, the decoder only needs the extradata.
+        extradata = Demuxer(NASA_VIDEO.path).streams[0].decoder_parameters.extradata
+        parameters = VideoPacketDecoderParameters(
+            "h264", Fraction(1, 30000), extradata=extradata
+        )
+
+        expected = self._decode_sequential(NASA_VIDEO.path, device)
+        got = self._decode_with(NASA_VIDEO.path, parameters, device)
+        assert len(got) == len(expected)
+        for frame, expected_frame in zip(got, expected):
+            assert frame.pts_seconds == expected_frame.pts_seconds
+            assert_frames_equal(frame.data, expected_frame.data)
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_hand_built_parameters_for_annex_b(self, tmp_path, device):
+        # Annex B H.264 carries its configuration in-band.
+        path = _make_raw_h264(tmp_path)
+        parameters = VideoPacketDecoderParameters("h264", (1, 25))
+
+        expected = self._decode_sequential(path, device)
+        got = self._decode_with(path, parameters, device)
+        assert len(got) == len(expected) == 30
+        for frame, expected_frame in zip(got, expected):
+            assert_frames_equal(frame.data, expected_frame.data)
+
+    def test_hand_built_audio_decoder_parameters(self):
+        # PCM packets are just samples: the decoder can't know how to interpret
+        # them without the sample format, rate and channel layout.
+        parameters = AudioPacketDecoderParameters(
+            "pcm_s16le",
+            (1, 16_000),
+            sample_format="s16",
+            sample_rate=16_000,
+            channel_layout="mono",
+        )
+        demuxer = Demuxer(SINE_MONO_S16.path, streams="audio")
+        got = torch.cat(
+            [
+                samples.data
+                for samples in self._decode(
+                    AudioPacketDecoder(parameters), self._demux(demuxer)
+                )
+            ],
+            dim=1,
+        )
+        expected = AudioDecoder(SINE_MONO_S16.path).get_all_samples().data
+        torch.testing.assert_close(got.float() / 2**15, expected, atol=0, rtol=0)
+
+        missing_channels = dataclasses.replace(parameters, channel_layout=None)
+        with pytest.raises(RuntimeError):
+            AudioPacketDecoder(missing_channels)
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        (
+            (dict(codec="not_a_codec"), "Unknown codec"),
+            (dict(codec="aac"), "not a video codec"),
+            (dict(pixel_format="not_a_format"), "pixel_format"),
+            (dict(color_space="not_a_color_space"), "color_space"),
+            (dict(field_order="not_a_field_order"), "field_order"),
+            (dict(width=2**40), "out of range"),
+        ),
+    )
+    def test_invalid_decoder_parameters_raise_on_decoder_creation(self, kwargs, match):
+        kwargs = {"codec": "h264", "time_base": (1, 30), **kwargs}
+        with pytest.raises(RuntimeError, match=match):
+            VideoPacketDecoder(VideoPacketDecoderParameters(**kwargs))
+
+    def test_audio_decoder_parameters_raise_on_wrong_codec_type(self):
+        with pytest.raises(RuntimeError, match="not an audio codec"):
+            AudioPacketDecoder(AudioPacketDecoderParameters("h264", (1, 30)))
+        with pytest.raises(RuntimeError, match="channel_layout"):
+            AudioPacketDecoder(
+                AudioPacketDecoderParameters(
+                    "aac", (1, 30), channel_layout="not_a_layout"
+                )
+            )
+
+    def test_decoder_takes_parameters_of_its_media_type(self):
+        with pytest.raises(TypeError, match="VideoPacketDecoderParameters"):
+            VideoPacketDecoder(AudioPacketDecoderParameters("aac", (1, 30)))
+        with pytest.raises(TypeError, match="AudioPacketDecoderParameters"):
+            AudioPacketDecoder(VideoPacketDecoderParameters("h264", (1, 30)))
+
+    def test_decoder_selection(self):
+        parameters = Demuxer(NASA_VIDEO.path).streams[0].decoder_parameters
+        expected = self._decode_sequential(NASA_VIDEO.path, "cpu")
+        got = self._decode_with(NASA_VIDEO.path, parameters, "cpu", decoder="h264")
+        assert len(got) == len(expected)
+        for frame, expected_frame in zip(got, expected):
+            assert_frames_equal(frame.data, expected_frame.data)
+
+        with pytest.raises(RuntimeError, match="'hevc' decoder can't decode h264"):
+            VideoPacketDecoder(parameters, decoder="hevc")
+        with pytest.raises(RuntimeError, match="Unknown decoder"):
+            VideoPacketDecoder(parameters, decoder="not_a_decoder")
+
+    @pytest.mark.skipif(
+        ffmpeg_major_version >= 6, reason="framerate is supported from FFmpeg 6"
+    )
+    def test_framerate_requires_ffmpeg_6(self):
+        with pytest.raises(RuntimeError, match="FFmpeg 6"):
+            VideoPacketDecoder(
+                VideoPacketDecoderParameters("h264", (1, 30), framerate=(30, 1))
+            )
+
+    @pytest.mark.skipif(
+        ffmpeg_major_version >= 7, reason="coded_side_data is supported from FFmpeg 6.1"
+    )
+    def test_coded_side_data_requires_ffmpeg_6_1(self):
+        # FFmpeg 6.0 is lumped in with 5 here, which is wrong but harmless: we
+        # only test FFmpeg 6.1.
+        with pytest.raises(RuntimeError, match="FFmpeg 6.1"):
+            VideoPacketDecoder(
+                VideoPacketDecoderParameters(
+                    "h264",
+                    (1, 30),
+                    coded_side_data={"Content light level metadata": bytes(4)},
+                )
+            )
+
+    @pytest.mark.skipif(
+        ffmpeg_major_version < 7, reason="coded_side_data is supported from FFmpeg 6.1"
+    )
+    def test_coded_side_data(self):
+        side_data = {"Content light level metadata": bytes(range(4))}
+        parameters = VideoPacketDecoderParameters(
+            "h264",
+            (1, 30000),
+            extradata=Demuxer(NASA_VIDEO.path).streams[0].decoder_parameters.extradata,
+            coded_side_data=side_data,
+        )
+        assert len(self._decode_with(NASA_VIDEO.path, parameters, "cpu")) > 0
+
+        with pytest.raises(RuntimeError, match="Unknown side data type"):
+            VideoPacketDecoder(
+                dataclasses.replace(parameters, coded_side_data={"nope": b"x"})
+            )
+
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn
 def _jpeg_param(*values):
