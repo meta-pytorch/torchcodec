@@ -6,12 +6,18 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import NamedTuple
 
 import torch
 
-from torchcodec._core.ops import _blocks_frame_metadata, _blocks_frame_planes
+from torchcodec._core.ops import (
+    _blocks_create_packet,
+    _blocks_frame_metadata,
+    _blocks_frame_planes,
+    _blocks_packet_state,
+)
 
 from ._helpers import _process_local
 
@@ -29,16 +35,18 @@ class _Metadata(NamedTuple):
     rotation: float
 
 
-@_process_local(
-    "Build a Demuxer in each process instead, from the same source: a packet "
-    "is only decodable by a decoder built from its own stream."
-)
 class Packet:
     """One compressed packet of one stream, as a :class:`Demuxer` produced it.
 
     You should not build one yourself: a ``Demuxer`` creates them, and a
     :class:`VideoPacketDecoder` or an :class:`AudioPacketDecoder` consumes
     them. The contents are opaque: a ``Packet`` is a handle to an FFmpeg packet.
+
+    Packets can be pickled, e.g. to decode them in another process: send them
+    along with the :attr:`VideoStream.decoder_parameters` or
+    :attr:`AudioStream.decoder_parameters` of their stream, and build a decoder
+    from those on the other side. Pickled packets can only be loaded by the
+    same version of TorchCodec.
     """
 
     stream_index: int
@@ -59,6 +67,45 @@ class Packet:
         # it exists so a decoder can catch a missing reset(), not for callers to
         # reason about. See _BasePacketDecoder.decode().
         self._generation = generation
+
+    def __reduce__(self):
+        data, pts, dts, duration, flags, side_data_json, side_data_payload = (
+            _blocks_packet_state(self._handle)
+        )
+        side_data = []
+        for name, size in json.loads(side_data_json):
+            side_data += [name, str(size)]
+        return (
+            _rebuild_packet,
+            (
+                data,
+                pts,
+                dts,
+                duration,
+                flags,
+                side_data,
+                side_data_payload,
+                self.stream_index,
+                self._generation,
+            ),
+        )
+
+
+def _rebuild_packet(
+    data: torch.Tensor,
+    pts: int,
+    dts: int,
+    duration: int,
+    flags: int,
+    side_data: list[str],
+    side_data_payload: torch.Tensor,
+    stream_index: int,
+    generation: int,
+) -> Packet:
+    handle = _blocks_create_packet(
+        data, pts, dts, duration, flags, side_data, side_data_payload
+    )
+    return Packet(handle, stream_index, generation=generation)
 
 
 @_process_local(

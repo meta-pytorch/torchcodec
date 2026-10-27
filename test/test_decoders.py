@@ -3786,6 +3786,19 @@ class TestWavDecoder:
             assert wav_samples.pts_seconds == audio_samples.pts_seconds
 
 
+def _forking_pickler_round_trip(obj):
+    buffer = io.BytesIO()
+    ForkingPickler(buffer).dump(obj)
+    return pickle.loads(buffer.getvalue())
+
+
+def _decode_in_worker(parameters, packets):
+    decoder = VideoPacketDecoder(parameters, "cpu")
+    converter = ColorConverter(device="cpu")
+    raw_frames = [f for p in packets for f in decoder.decode(p)] + decoder.drain()
+    return [converter.convert(f).data for f in raw_frames]
+
+
 def _make_raw_h264(tmp_path, num_frames=30):
     # An Annex B elementary stream: no container, hence no timestamps.
     path = tmp_path / "raw.h264"
@@ -6416,7 +6429,6 @@ class TestLowLevel:
             audio.make_decoder(),
             ColorConverter(),
             AudioConverter(),
-            next(iter(demuxer)),
             next(self._decoded_frames(NASA_VIDEO.path, "cpu")),
         ]
 
@@ -6801,6 +6813,94 @@ class TestLowLevel:
             VideoPacketDecoder(
                 dataclasses.replace(parameters, coded_side_data={"nope": b"x"})
             )
+
+    # ===== pickling packets =====
+
+    @pytest.mark.parametrize(
+        "round_trip",
+        (
+            lambda obj: pickle.loads(pickle.dumps(obj)),
+            lambda obj: _forking_pickler_round_trip(obj),
+            copy.copy,
+            copy.deepcopy,
+        ),
+        ids=("pickle", "forking_pickler", "copy", "deepcopy"),
+    )
+    def test_packets_are_picklable(self, round_trip):
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        video, _ = demuxer.streams
+        demuxer.seek(5)
+
+        packets = list(demuxer)
+        restored = [round_trip(packet) for packet in packets]
+        assert [p.stream_index for p in restored] == [p.stream_index for p in packets]
+        assert all(p._generation == 1 for p in restored)
+
+        def decode(packets):
+            decoder = video.make_decoder()
+            video_packets = [p for p in packets if p.stream_index == video.index]
+            return list(self._decode(decoder, video_packets))
+
+        expected = decode(packets)
+        got = decode(restored)
+        assert len(got) == len(expected) > 0
+        for raw_frame, expected_raw_frame in zip(got, expected):
+            assert raw_frame.pts_seconds == expected_raw_frame.pts_seconds
+            for plane, expected_plane in zip(
+                raw_frame.planes, expected_raw_frame.planes
+            ):
+                torch.testing.assert_close(plane, expected_plane, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3))
+    def test_pickled_packets_keep_their_side_data(self, asset):
+        # The first packets of these streams carry "Skip Samples" side data.
+        def decode(packets):
+            decoder = AudioPacketDecoder(parameters)
+            return torch.cat([s.data for s in self._decode(decoder, packets)], dim=1)
+
+        demuxer = Demuxer(asset.path, streams="audio")
+        parameters = demuxer.streams[0].decoder_parameters
+        packets = list(demuxer)
+        _, (_, _, _, _, _, side_data, *_) = packets[0].__reduce__()
+        assert side_data[0] == "Skip Samples"
+
+        restored = [pickle.loads(pickle.dumps(p)) for p in packets]
+        torch.testing.assert_close(decode(restored), decode(packets), atol=0, rtol=0)
+
+    def test_dropping_side_data_changes_the_output(self):
+        # Makes sure test_pickled_packets_keep_their_side_data tests something:
+        # for this MP3, the side data tells the decoder how many priming samples
+        # to drop.
+        demuxer = Demuxer(NASA_AUDIO_MP3.path, streams="audio")
+        parameters = demuxer.streams[0].decoder_parameters
+        packets = list(demuxer)
+
+        func, (data, pts, dts, duration, flags, *_) = packets[0].__reduce__()
+        stripped = func(
+            data, pts, dts, duration, flags, [], torch.empty(0, dtype=torch.uint8), 0, 0
+        )
+
+        def num_samples(packets):
+            decoder = AudioPacketDecoder(parameters)
+            return sum(s.num_samples for s in self._decode(decoder, packets))
+
+        assert num_samples([stripped] + packets[1:]) > num_samples(packets)
+
+    def test_decode_in_another_process(self):
+        # The whole point of picklable packets and decoder parameters: demux in
+        # one process, decode in another.
+        demuxer = Demuxer(NASA_VIDEO.path)
+        parameters = demuxer.streams[0].decoder_parameters
+        packets = list(demuxer)
+
+        context = torch.multiprocessing.get_context("spawn")
+        with concurrent.futures.ProcessPoolExecutor(1, mp_context=context) as pool:
+            got = pool.submit(_decode_in_worker, parameters, packets).result()
+
+        expected = self._decode_sequential(NASA_VIDEO.path, "cpu")
+        assert len(got) == len(expected)
+        for frame, expected_frame in zip(got, expected):
+            assert_frames_equal(frame, expected_frame.data)
 
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn

@@ -13,6 +13,7 @@
 #include <pybind11/pybind11.h>
 #pragma pop_macro("TORCH_TARGET_VERSION")
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <string>
 
@@ -91,6 +92,10 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool, int)");
   m.def(
       "_blocks_demuxer_seek(Tensor(a!) demuxer, float seconds, int? stream_index=None) -> ()");
+  m.def(
+      "_blocks_packet_state(Tensor packet) -> (Tensor, int, int, int, int, str, Tensor)");
+  m.def(
+      "_blocks_create_packet(Tensor data, int pts, int dts, int duration, int flags, str[] side_data, Tensor side_data_payload) -> Tensor");
   m.def(
       "_blocks_demuxer_scan(Tensor(a!) demuxer, int? stream_index=None) -> (Tensor, Tensor, Tensor, int, int)");
   m.def(
@@ -926,7 +931,129 @@ std::string escape_json_string(const std::string& value) {
   return result + "\"";
 }
 
+torch::stable::Tensor bytes_to_tensor(const std::vector<uint8_t>& bytes) {
+  torch::stable::Tensor tensor =
+      torch::stable::empty({static_cast<int64_t>(bytes.size())}, kStableUInt8);
+  if (!bytes.empty()) {
+    std::memcpy(tensor.mutable_data_ptr(), bytes.data(), bytes.size());
+  }
+  return tensor;
+}
+
+std::vector<uint8_t> tensor_to_bytes(
+    const torch::stable::Tensor& tensor,
+    const std::string& name) {
+  STD_TORCH_CHECK(
+      tensor.scalar_type() == kStableUInt8 && tensor.dim() == 1 &&
+          tensor.is_contiguous(),
+      name,
+      " must be a contiguous 1D uint8 tensor.");
+  const auto* data = tensor.const_data_ptr<uint8_t>();
+  return std::vector<uint8_t>(data, data + tensor.numel());
+}
 } // namespace
+
+// (data, pts, dts, duration, flags, side_data_json, side_data_payload): what
+// _blocks_create_packet() takes to build the same packet again. pts and dts
+// are INT64_MIN (AV_NOPTS_VALUE) when unset. side_data_json is
+// [[name, size], ...], and the side data payloads are concatenated in
+// side_data_payload, in that order.
+using OpsPacketStateOutput = std::tuple<
+    torch::stable::Tensor,
+    int64_t,
+    int64_t,
+    int64_t,
+    int64_t,
+    std::string,
+    torch::stable::Tensor>;
+
+OpsPacketStateOutput _blocks_packet_state(torch::stable::Tensor& packet) {
+  const AVPacket* av_packet = unwrap_tensor_to_pointer<AVPacket>(packet);
+  std::vector<uint8_t> data(av_packet->data, av_packet->data + av_packet->size);
+
+  std::stringstream side_data_json;
+  side_data_json << "[";
+  std::vector<uint8_t> side_data_payload;
+  bool first = true;
+  for (int i = 0; i < av_packet->side_data_elems; ++i) {
+    const AVPacketSideData& side_data = av_packet->side_data[i];
+    const char* name = av_packet_side_data_name(side_data.type);
+    STD_TORCH_CHECK(
+        name != nullptr,
+        "Packet has side data of an unknown type (",
+        static_cast<int>(side_data.type),
+        ").");
+    side_data_json << (first ? "" : ", ") << "[" << escape_json_string(name)
+                   << ", " << side_data.size << "]";
+    first = false;
+    side_data_payload.insert(
+        side_data_payload.end(),
+        side_data.data,
+        side_data.data + side_data.size);
+  }
+  side_data_json << "]";
+
+  return std::make_tuple(
+      bytes_to_tensor(data),
+      av_packet->pts,
+      av_packet->dts,
+      av_packet->duration,
+      static_cast<int64_t>(av_packet->flags),
+      side_data_json.str(),
+      bytes_to_tensor(side_data_payload));
+}
+
+// The inverse of _blocks_packet_state(). `side_data` alternates side data
+// names and the sizes of their payloads, which are concatenated in
+// `side_data_payload`.
+torch::stable::Tensor _blocks_create_packet(
+    const torch::stable::Tensor& data,
+    int64_t pts,
+    int64_t dts,
+    int64_t duration,
+    int64_t flags,
+    std::vector<std::string> side_data,
+    const torch::stable::Tensor& side_data_payload) {
+  std::vector<uint8_t> bytes = tensor_to_bytes(data, "data");
+  std::vector<uint8_t> payload =
+      tensor_to_bytes(side_data_payload, "side_data_payload");
+  STD_TORCH_CHECK(
+      side_data.size() % 2 == 0, "side_data must alternate names and sizes.");
+  STD_TORCH_CHECK(
+      bytes.size() <= static_cast<size_t>(std::numeric_limits<int>::max()),
+      "Packet data is too large.");
+
+  UniqueAVPacket packet(av_packet_alloc());
+  STD_TORCH_CHECK(packet != nullptr, "Failed to allocate packet");
+  // av_new_packet() allocates the zeroed AV_INPUT_BUFFER_PADDING_SIZE bytes
+  // decoders need past the end of the data.
+  int status = av_new_packet(packet.get(), static_cast<int>(bytes.size()));
+  STD_TORCH_CHECK(
+      status == AVSUCCESS,
+      "Failed to allocate packet data: ",
+      get_ffmpeg_error_string_from_error_code(status));
+  if (!bytes.empty()) {
+    std::memcpy(packet->data, bytes.data(), bytes.size());
+  }
+  packet->pts = pts;
+  packet->dts = dts;
+  packet->duration = duration;
+  packet->flags = static_cast<int>(flags);
+
+  size_t offset = 0;
+  for (size_t i = 0; i < side_data.size(); i += 2) {
+    size_t size = std::stoull(side_data[i + 1]);
+    STD_TORCH_CHECK(
+        offset + size <= payload.size(),
+        "side_data sizes exceed the payload size.");
+    uint8_t* destination = av_packet_new_side_data(
+        packet.get(), side_data_type_from_name(side_data[i]), size);
+    STD_TORCH_CHECK(destination != nullptr, "Failed to allocate side data");
+    std::memcpy(destination, payload.data() + offset, size);
+    offset += size;
+  }
+  return wrap_pointer_to_tensor(std::move(packet));
+}
 
 void _blocks_demuxer_seek(
     torch::stable::Tensor& demuxer,
@@ -1822,6 +1949,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "_blocks_demuxer_next_packet", TORCH_BOX(&_blocks_demuxer_next_packet));
   m.impl("_blocks_demuxer_seek", TORCH_BOX(&_blocks_demuxer_seek));
+  m.impl("_blocks_packet_state", TORCH_BOX(&_blocks_packet_state));
+  m.impl("_blocks_create_packet", TORCH_BOX(&_blocks_create_packet));
   m.impl("_blocks_demuxer_scan", TORCH_BOX(&_blocks_demuxer_scan));
   m.impl(
       "_blocks_demuxer_decoder_parameters",
