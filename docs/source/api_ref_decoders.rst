@@ -150,6 +150,14 @@ Decoding
     VideoPacketDecoder
     AudioPacketDecoder
 
+.. autosummary::
+    :toctree: generated/
+    :nosignatures:
+    :template: dataclass.rst
+
+    VideoPacketDecoderParameters
+    AudioPacketDecoderParameters
+
 Conversion
 ^^^^^^^^^^
 

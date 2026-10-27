@@ -7,6 +7,7 @@
 import concurrent.futures
 import contextlib
 import copy
+import dataclasses
 import gc
 import io
 import itertools
@@ -17,6 +18,7 @@ import queue
 import socket
 import subprocess
 import threading
+from fractions import Fraction
 from functools import partial
 from multiprocessing.reduction import ForkingPickler
 from typing import NamedTuple
@@ -32,6 +34,7 @@ from torchcodec.decoders import (
     AudioConverter,
     AudioDecoder,
     AudioPacketDecoder,
+    AudioPacketDecoderParameters,
     AudioStream,
     AudioStreamMetadata,
     ColorConverter,
@@ -54,6 +57,7 @@ from torchcodec.decoders import (
     set_nvdec_cache_capacity,
     VideoDecoder,
     VideoPacketDecoder,
+    VideoPacketDecoderParameters,
     VideoStream,
     VideoStreamMetadata,
     WavDecoder,
@@ -6465,6 +6469,127 @@ class TestLowLevel:
         for raw_frame in frames:
             assert math.isnan(raw_frame.pts_seconds)
             assert math.isnan(converter.convert(raw_frame).pts_seconds)
+
+    # ===== decoder parameters =====
+
+    @staticmethod
+    def _init_fields(parameters):
+        return {
+            f.name: getattr(parameters, f.name)
+            for f in dataclasses.fields(parameters)
+            if f.init
+        }
+
+    def test_decoder_parameters_time_base(self):
+        assert VideoPacketDecoderParameters("h264", (2, 60)).time_base == Fraction(
+            1, 30
+        )
+        assert VideoPacketDecoderParameters(
+            "h264", Fraction(1001, 30000)
+        ).time_base == Fraction(1001, 30000)
+
+    def test_decoder_parameters_codec_tag(self):
+        parameters = Demuxer(NASA_VIDEO.path).streams[0].decoder_parameters
+        assert (
+            VideoPacketDecoderParameters("h264", (1, 2), codec_tag="avc1").codec_tag
+            == parameters.codec_tag
+        )
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        (
+            (dict(time_base=(1, 0)), "denominator of 0"),
+            (dict(time_base=(0, 1)), "must be positive"),
+            (dict(time_base=(-1, 2)), "must be positive"),
+            (dict(time_base=0.5), "Fraction or a tuple"),
+            (dict(time_base=(1, 2, 3)), "Fraction or a tuple"),
+            (dict(time_base=(1.0, 2)), "Fraction or a tuple"),
+            (dict(codec=""), "non-empty string"),
+            (dict(codec_tag="avc"), "4-character"),
+            (dict(sample_aspect_ratio=(1, 0)), "denominator of 0"),
+        ),
+    )
+    def test_invalid_decoder_parameters(self, kwargs, match):
+        kwargs = {"codec": "h264", "time_base": (1, 30), **kwargs}
+        with pytest.raises(ValueError, match=match):
+            VideoPacketDecoderParameters(**kwargs)
+
+    def test_decoder_parameters_are_picklable(self):
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        for stream in demuxer.streams:
+            parameters = stream.decoder_parameters
+            restored = pickle.loads(pickle.dumps(parameters))
+            assert restored == parameters
+            assert (
+                restored._packets_may_be_misaligned_after_reset
+                == parameters._packets_may_be_misaligned_after_reset
+            )
+
+        parameters = Demuxer(SINE_STEREO_MP2_MPEG_PS.path).streams[0].decoder_parameters
+        assert parameters._packets_may_be_misaligned_after_reset
+        assert pickle.loads(
+            pickle.dumps(parameters)
+        )._packets_may_be_misaligned_after_reset
+
+    def test_decoder_parameters_repr(self):
+        parameters = Demuxer(NASA_VIDEO.path).streams[0].decoder_parameters
+        text = repr(parameters)
+        assert text.startswith("VideoPacketDecoderParameters(codec='h264', ")
+        assert "time_base=1/30000" in text
+        assert "extradata=<48 bytes>" in text
+        assert "None" not in text
+        assert repr(VideoPacketDecoderParameters("h264", (1, 2))) == (
+            "VideoPacketDecoderParameters(codec='h264', time_base=1/2)"
+        )
+
+    @pytest.mark.parametrize(
+        "asset, expected",
+        (
+            (
+                NASA_VIDEO,
+                dict(
+                    codec="h264",
+                    time_base=Fraction(1, 30000),
+                    width=480,
+                    height=270,
+                    pixel_format="yuv420p",
+                    color_space="bt709",
+                    r_frame_rate=Fraction(30000, 1001),
+                    rotation=None,
+                ),
+            ),
+            (NASA_VIDEO_ROTATED, dict(codec="h264", rotation=90)),
+            (
+                H265_VIDEO,
+                dict(codec="hevc", time_base=Fraction(1, 10240), width=128),
+            ),
+        ),
+    )
+    def test_video_decoder_parameters(self, asset, expected):
+        parameters = Demuxer(asset.path).streams[0].decoder_parameters
+        assert isinstance(parameters, VideoPacketDecoderParameters)
+        for name, value in expected.items():
+            assert getattr(parameters, name) == value
+        assert len(parameters.extradata) > 0
+
+    def test_audio_decoder_parameters(self):
+        parameters = (
+            Demuxer(NASA_AUDIO.path, streams="audio").streams[0].decoder_parameters
+        )
+        assert isinstance(parameters, AudioPacketDecoderParameters)
+        assert parameters.codec == "aac"
+        assert parameters.time_base == Fraction(1, 16000)
+        assert parameters.sample_rate == 16000
+        assert parameters.sample_format == "fltp"
+        assert parameters.channel_layout == "stereo"
+
+    @pytest.mark.parametrize("asset", (NASA_VIDEO, NASA_VIDEO_ROTATED, H265_VIDEO))
+    def test_decoder_parameters_can_be_rebuilt_from_their_fields(self, asset):
+        # Everything a demuxer knows about a stream is in the public fields.
+        parameters = Demuxer(asset.path).streams[0].decoder_parameters
+        assert (
+            VideoPacketDecoderParameters(**self._init_fields(parameters)) == parameters
+        )
 
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn

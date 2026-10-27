@@ -23,6 +23,7 @@ extern "C" {
 #include "AVIOContextHolder.h"
 #include "AudioConverter.h"
 #include "ColorConverter.h"
+#include "DecoderParameters.h"
 #include "Demuxer.h"
 #include "Encoder.h"
 #include "FileIO.h"
@@ -92,6 +93,8 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_demuxer_seek(Tensor(a!) demuxer, float seconds, int? stream_index=None) -> ()");
   m.def(
       "_blocks_demuxer_scan(Tensor(a!) demuxer, int? stream_index=None) -> (Tensor, Tensor, Tensor, int, int)");
+  m.def(
+      "_blocks_demuxer_decoder_parameters(Tensor demuxer, int stream_index) -> str");
   m.def(
       "_blocks_create_packet_decoder(Tensor demuxer, *, int? stream_index=None, int? num_threads=None, str device=\"cpu\") -> Tensor");
   m.def(
@@ -911,6 +914,20 @@ OpsPacketOutput _blocks_demuxer_next_packet(torch::stable::Tensor& demuxer) {
       wrap_pointer_to_tensor(std::move(packet)), false, stream_index);
 }
 
+namespace {
+std::string escape_json_string(const std::string& value) {
+  std::string result = "\"";
+  for (char c : value) {
+    if (c == '"' || c == '\\') {
+      result += '\\';
+    }
+    result += c;
+  }
+  return result + "\"";
+}
+
+} // namespace
+
 void _blocks_demuxer_seek(
     torch::stable::Tensor& demuxer,
     double seconds,
@@ -939,6 +956,27 @@ OpsScanOutput _blocks_demuxer_scan(
       index.is_key_frame,
       static_cast<int64_t>(index.time_base.num),
       static_cast<int64_t>(index.time_base.den));
+}
+
+// A JSON object of the stream's decoder parameters, as strings. See
+// decoder_parameters_to_strings().
+std::string _blocks_demuxer_decoder_parameters(
+    torch::stable::Tensor& demuxer,
+    int64_t stream_index) {
+  Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
+  std::map<std::string, std::string> values =
+      decoder_parameters_to_strings(get_decoder_parameters(
+          *demuxer_ptr->format_context(),
+          demuxer_ptr->resolve_stream_index(static_cast<int>(stream_index))));
+
+  std::stringstream json;
+  json << "{";
+  for (auto it = values.begin(); it != values.end(); ++it) {
+    json << (it == values.begin() ? "" : ", ") << escape_json_string(it->first)
+         << ": " << escape_json_string(it->second);
+  }
+  json << "}";
+  return json.str();
 }
 
 torch::stable::Tensor _blocks_create_packet_decoder(
@@ -1782,6 +1820,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "_blocks_create_packet_decoder",
       TORCH_BOX(&_blocks_create_packet_decoder));
+  m.impl(
+      "_blocks_demuxer_decoder_parameters",
+      TORCH_BOX(&_blocks_demuxer_decoder_parameters));
   m.impl(
       "_blocks_packet_decoder_send_packet",
       TORCH_BOX(&_blocks_packet_decoder_send_packet));

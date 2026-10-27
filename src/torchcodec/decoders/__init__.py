@@ -9,6 +9,7 @@ from ._audio_decoder import AudioDecoder  # noqa
 from ._blocks import (  # noqa
     AudioConverter,
     AudioPacketDecoder,
+    AudioPacketDecoderParameters,
     AudioStream,
     AudioStreamHeaderMetadata,
     ColorConverter,
@@ -22,6 +23,7 @@ from ._blocks import (  # noqa
     RawFrame,
     StreamMetadata,
     VideoPacketDecoder,
+    VideoPacketDecoderParameters,
     VideoStream,
     VideoStreamHeaderMetadata,
 )

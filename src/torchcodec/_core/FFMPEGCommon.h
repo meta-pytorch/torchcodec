@@ -72,6 +72,14 @@ extern "C" {
 #define FFMPEG_SWS_COLORSPACE_DETAILS_FAILS_ON_YUV_TO_YUV 0
 #endif
 
+// FFmpeg 6.1 added AVCodecParameters.coded_side_data, replacing the stream's
+// own side data.
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(60, 31, 100)
+#define FFMPEG_HAS_CODED_SIDE_DATA 1
+#else
+#define FFMPEG_HAS_CODED_SIDE_DATA 0
+#endif
+
 // FFmpeg 6 renamed AVFrame.pkt_duration to AVFrame.duration.
 #if LIBAVUTIL_VERSION_MAJOR < 58
 #define FFMPEG_HAS_FRAME_DURATION 0
@@ -141,6 +149,9 @@ using UniqueAVCodecContext = std::unique_ptr<
     AVCodecContext,
     Deleterp<AVCodecContext, void, avcodec_free_context>>;
 using SharedAVCodecContext = std::shared_ptr<AVCodecContext>;
+using UniqueAVCodecParameters = std::unique_ptr<
+    AVCodecParameters,
+    Deleterp<AVCodecParameters, void, avcodec_parameters_free>>;
 
 // create SharedAVCodecContext with custom deleter
 inline SharedAVCodecContext make_shared_av_codec_context(AVCodecContext* ctx) {
