@@ -5332,8 +5332,8 @@ class TestLowLevel:
         video = SINE_STEREO_MP2_MPEG_PS
 
         def key(frame):
-            # The last frame of this asset has no pts: NaN, which isn't equal
-            # to itself.
+            # The last frame of this asset has no pts: NaN, which can't be used
+            # as a dict key (it can, but it can't be accessed for comparison).
             return None if math.isnan(frame.pts_seconds) else frame.pts_seconds
 
         sequential = {

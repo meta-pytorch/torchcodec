@@ -977,8 +977,7 @@ void _blocks_packet_decoder_reset(torch::stable::Tensor& decoder) {
   unwrap_tensor_to_pointer<PacketDecoder>(decoder)->reset();
 }
 
-// (frame_handle, status, pts_seconds, duration_seconds, storage). pts_seconds
-// is NaN when the frame has no pts.
+// (frame_handle, status, pts_seconds, duration_seconds, storage).
 using OpsReceiveFrameOutput = std::tuple<
     torch::stable::Tensor,
     int64_t,
@@ -1025,8 +1024,7 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
 // (samples, status, pts_seconds, duration_seconds, sample_rate,
 // sample_format). `samples` is [num_channels, num_samples] in the frame's own
 // sample type; there is no frame handle because, unlike a video frame, nothing
-// downstream needs the AVFrame itself. pts_seconds is NaN when the frame has no
-// pts.
+// downstream needs the AVFrame itself.
 using OpsReceiveAudioFrameOutput = std::
     tuple<torch::stable::Tensor, int64_t, double, double, int64_t, std::string>;
 
