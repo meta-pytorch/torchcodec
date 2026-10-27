@@ -536,7 +536,10 @@ def _detect_image_format(data: torch.Tensor) -> str:
     # Sniff the codec from the leading "magic" bytes of the encoded data.
     # This used to be implemented in C++ in torchvision, but benchmarks show
     # this is negligible in Python
-    header = bytes(data[:64].tolist())
+    return _detect_image_format_from_header(bytes(data[:64].tolist()))
+
+
+def _detect_image_format_from_header(header: bytes) -> str:
     if header[:3] == b"\xff\xd8\xff":
         return "jpeg"
     if header[:8] == b"\x89PNG\r\n\x1a\n":

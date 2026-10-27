@@ -40,6 +40,7 @@ from ._image_decoders import (  # noqa
     decode_webp,
     ImageReadMode,
 )
+from ._image_metadata import get_image_metadata, ImageMetadata  # noqa
 from ._video_decoder import CpuFallbackStatus, VideoDecoder  # noqa
 from ._wav_decoder import WavDecoder  # noqa
 

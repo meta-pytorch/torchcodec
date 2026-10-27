@@ -28,6 +28,24 @@ torch::stable::Tensor decode_avif(
       "prebuilt wheel, please report it to the TorchCodec repo.");
 }
 
+std::vector<int64_t> probe_avif(
+    [[maybe_unused]] const torch::stable::Tensor& input) {
+  STD_TORCH_CHECK(
+      false,
+      "get_image_metadata: torchcodec was not compiled with libavif support. "
+      "Rebuild torchcodec with TORCHCODEC_BUILD_AVIF=1. If you see this error "
+      "in a prebuilt wheel, please report it to the TorchCodec repo.");
+}
+
+std::vector<int64_t> probe_avif_from_file(
+    [[maybe_unused]] std::string filename) {
+  STD_TORCH_CHECK(
+      false,
+      "get_image_metadata: torchcodec was not compiled with libavif support. "
+      "Rebuild torchcodec with TORCHCODEC_BUILD_AVIF=1. If you see this error "
+      "in a prebuilt wheel, please report it to the TorchCodec repo.");
+}
+
 } // namespace facebook::torchcodec
 
 #else
@@ -191,6 +209,67 @@ torch::stable::Tensor decode_avif(
     output = select_row(output, 0);
   }
   return output;
+}
+
+namespace {
+
+ImageProbeResult parse_and_probe(avifDecoder* decoder) {
+  auto result = avifDecoderParse(decoder);
+  STD_TORCH_CHECK(
+      result == AVIF_RESULT_OK,
+      "avifDecoderParse failed: ",
+      avifResultToString(result));
+
+  int64_t width = decoder->image->width;
+  int64_t height = decoder->image->height;
+  ExifOrientation exif_orientation = avif_exif_orientation(decoder->image);
+  if (swaps_width_and_height(exif_orientation)) {
+    std::swap(width, height);
+  }
+  bool has_orientation = (decoder->image->transformFlags &
+                          (AVIF_TRANSFORM_IROT | AVIF_TRANSFORM_IMIR)) != 0;
+  // Same frame count logic as decode_avif().
+  int64_t num_frames =
+      decoder->imageSequenceTrackPresent ? decoder->imageCount : 1;
+  return {
+      width,
+      height,
+      decoder->alphaPresent ? 4 : 3,
+      static_cast<int64_t>(decoder->image->depth),
+      num_frames,
+      has_orientation ? static_cast<int64_t>(exif_orientation)
+                      : NO_ORIENTATION};
+}
+
+} // namespace
+
+ImageProbeResult probe_avif(const torch::stable::Tensor& input) {
+  auto contig_input = validate_encoded_data(input);
+
+  DecoderPtr decoder(avifDecoderCreate());
+  STD_TORCH_CHECK(decoder != nullptr, "Failed to create avif decoder.");
+
+  auto result = avifDecoderSetIOMemory(
+      decoder.get(),
+      contig_input.const_data_ptr<uint8_t>(),
+      contig_input.numel());
+  STD_TORCH_CHECK(
+      result == AVIF_RESULT_OK,
+      "avifDecoderSetIOMemory failed: ",
+      avifResultToString(result));
+  return parse_and_probe(decoder.get());
+}
+
+ImageProbeResult probe_avif_from_file(std::string filename) {
+  DecoderPtr decoder(avifDecoderCreate());
+  STD_TORCH_CHECK(decoder != nullptr, "Failed to create avif decoder.");
+
+  auto result = avifDecoderSetIOFile(decoder.get(), filename.c_str());
+  STD_TORCH_CHECK(
+      result == AVIF_RESULT_OK,
+      "avifDecoderSetIOFile failed: ",
+      avifResultToString(result));
+  return parse_and_probe(decoder.get());
 }
 
 } // namespace facebook::torchcodec

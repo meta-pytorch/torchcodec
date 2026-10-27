@@ -45,7 +45,9 @@ from torchcodec.decoders import (
     Demuxer,
     FrameIndex,
     get_container_metadata,
+    get_image_metadata,
     get_nvdec_cache_capacity,
+    ImageMetadata,
     ImageReadMode,
     Packet,
     RawAudioSamples,
@@ -7963,3 +7965,287 @@ class TestImageDecoder:
         finally:
             # Don't leak the (failure-poisoned) cache to other tests.
             iru.load_heic_library.cache_clear()
+
+
+class TestGetImageMetadata:
+    @staticmethod
+    def _assert_matches_decode(metadata, source):
+        # Every metadata field is defined by what the decoders output.
+        decoded = decode_image(source, mode="UNCHANGED", output_dtype="auto")
+        num_frames = decoded.shape[0] if decoded.ndim == 4 else 1
+        assert metadata.num_frames == num_frames
+        assert metadata.num_channels == decoded.shape[-3]
+        assert metadata.height == decoded.shape[-2]
+        assert metadata.width == decoded.shape[-1]
+        if metadata.format in ("png", "avif", "heic"):
+            assert (metadata.bit_depth > 8) == (decoded.dtype == torch.uint16)
+
+    @pytest.mark.parametrize(
+        "make_source",
+        (
+            pytest.param(lambda a: a.path, id="path"),
+            pytest.param(lambda a: str(a.path), id="str"),
+            pytest.param(lambda a: a.path.read_bytes(), id="bytes"),
+            pytest.param(
+                lambda a: torch.frombuffer(
+                    bytearray(a.path.read_bytes()), dtype=torch.uint8
+                ),
+                id="tensor",
+            ),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "asset, fmt, num_channels, bit_depth, num_frames",
+        (
+            pytest.param(GRADIENT_JPEG, "jpeg", 3, 8, 1, marks=pytest.mark.needs_jpeg),
+            pytest.param(GRAYSCALE_JPEG, "jpeg", 1, 8, 1, marks=pytest.mark.needs_jpeg),
+            pytest.param(CMYK_JPEG, "jpeg", 4, 8, 1, marks=pytest.mark.needs_jpeg),
+            pytest.param(GRADIENT_PNG, "png", 3, 8, 1, marks=pytest.mark.needs_png),
+            pytest.param(GRAYSCALE_PNG, "png", 1, 8, 1, marks=pytest.mark.needs_png),
+            pytest.param(RGBA_PNG, "png", 4, 8, 1, marks=pytest.mark.needs_png),
+            pytest.param(
+                GRAYSCALE_ALPHA_PNG, "png", 2, 8, 1, marks=pytest.mark.needs_png
+            ),
+            pytest.param(
+                GRADIENT_16BIT_PNG, "png", 3, 16, 1, marks=pytest.mark.needs_png
+            ),
+            pytest.param(
+                GRAYSCALE_16BIT_PNG, "png", 1, 16, 1, marks=pytest.mark.needs_png
+            ),
+            pytest.param(
+                GRADIENT_INTERLACED_PNG, "png", 3, 8, 1, marks=pytest.mark.needs_png
+            ),
+            pytest.param(GRADIENT_WEBP, "webp", 3, 8, 1, marks=pytest.mark.needs_webp),
+            pytest.param(RGBA_WEBP, "webp", 4, 8, 1, marks=pytest.mark.needs_webp),
+            pytest.param(GRADIENT_GIF, "gif", 3, 8, 1),
+            pytest.param(ANIMATED_GIF, "gif", 4, 8, 4),
+            pytest.param(TRANSPARENT_GIF, "gif", 4, 8, 1),
+            pytest.param(FRAME_EXCEEDS_SCREEN_GIF, "gif", 4, 8, 1),
+            pytest.param(GRADIENT_AVIF, "avif", 3, 8, 1, marks=pytest.mark.needs_avif),
+            pytest.param(RGBA_AVIF, "avif", 4, 8, 1, marks=pytest.mark.needs_avif),
+            pytest.param(
+                GRADIENT_10BIT_AVIF, "avif", 3, 10, 1, marks=pytest.mark.needs_avif
+            ),
+            pytest.param(
+                GRADIENT_12BIT_AVIF, "avif", 3, 12, 1, marks=pytest.mark.needs_avif
+            ),
+            pytest.param(GRADIENT_HEIC, "heic", 3, 8, 1, marks=pytest.mark.needs_heic),
+            pytest.param(RGBA_HEIC, "heic", 4, 8, 1, marks=pytest.mark.needs_heic),
+            pytest.param(
+                GRADIENT_10BIT_HEIC, "heic", 3, 10, 1, marks=pytest.mark.needs_heic
+            ),
+            pytest.param(
+                GRADIENT_ROTATED_HEIC, "heic", 3, 8, 1, marks=pytest.mark.needs_heic
+            ),
+            pytest.param(
+                GRADIENT_MIRRORED_HEIC, "heic", 3, 8, 1, marks=pytest.mark.needs_heic
+            ),
+            pytest.param(ANIMATED_HEIC, "heic", 3, 8, 3, marks=pytest.mark.needs_heic),
+        ),
+    )
+    def test_matches_decode(
+        self, asset, fmt, num_channels, bit_depth, num_frames, make_source
+    ):
+        metadata = get_image_metadata(make_source(asset))
+        rotation = {
+            GRADIENT_ROTATED_HEIC.filename: -90.0,
+            GRADIENT_MIRRORED_HEIC.filename: 0.0,
+        }.get(asset.filename)
+        assert metadata == ImageMetadata(
+            format=fmt,
+            width=asset.width,
+            height=asset.height,
+            num_channels=num_channels,
+            bit_depth=bit_depth,
+            num_frames=num_frames,
+            rotation=rotation,
+        )
+        self._assert_matches_decode(metadata, make_source(asset))
+
+    @pytest.mark.parametrize(
+        "fmt, ext, save_kwargs",
+        (
+            pytest.param("JPEG", "jpg", {}, marks=pytest.mark.needs_jpeg, id="jpeg"),
+            pytest.param("PNG", "png", {}, marks=pytest.mark.needs_png, id="png"),
+            pytest.param("WEBP", "webp", {}, marks=pytest.mark.needs_webp, id="webp"),
+            pytest.param("AVIF", "avif", {}, marks=pytest.mark.needs_avif, id="avif"),
+        ),
+    )
+    @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
+    def test_exif_orientation(self, tmp_path, orientation, fmt, ext, save_kwargs):
+        # Width and height are reported after orientation is applied.
+        img = Image.fromarray(numpy.zeros((40, 60, 3), dtype=numpy.uint8))
+        exif = img.getexif()
+        exif[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
+        path = tmp_path / f"exif_{orientation}.{ext}"
+        img.save(path, fmt, exif=exif.tobytes(), **save_kwargs)
+
+        metadata = get_image_metadata(path)
+        # 0 isn't a valid EXIF orientation, so the decoders ignore it. AVIF
+        # stores orientation as irot/imir properties, which aren't written for
+        # the identity orientation 1.
+        if orientation == 0 or (fmt == "AVIF" and orientation == 1):
+            assert metadata.rotation is None
+        else:
+            expected_rotation = {1: 0, 2: 0, 3: 180, 4: 180, 5: 90, 6: -90}
+            expected_rotation |= {7: -90, 8: 90}
+            assert metadata.rotation == expected_rotation[orientation]
+        if orientation in (5, 6, 7, 8):
+            assert (metadata.width, metadata.height) == (40, 60)
+        else:
+            assert (metadata.width, metadata.height) == (60, 40)
+        self._assert_matches_decode(metadata, path)
+
+    @needs_png
+    @pytest.mark.parametrize("orientation", (1, 3, 6, 8))
+    def test_rotation_convention(self, tmp_path, orientation):
+        # Same convention as VideoStreamMetadata.rotation: the decoded image is
+        # the stored one, rotated counter-clockwise by `rotation` degrees.
+        arr = torch.randint(0, 256, (40, 60, 3), dtype=torch.uint8).numpy()
+        img = Image.fromarray(arr)
+        exif = img.getexif()
+        exif[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
+        path = tmp_path / "img.png"
+        img.save(path, exif=exif.tobytes())
+
+        rotation = get_image_metadata(path).rotation
+        stored = torch.from_numpy(arr).permute(2, 0, 1)
+        expected = torch.rot90(stored, k=int(rotation // 90), dims=(-2, -1))
+        torch.testing.assert_close(decode_image(path), expected, rtol=0, atol=0)
+
+    @needs_jpeg
+    def test_jpeg_orientation_comes_from_first_app1(self):
+        # The decoder only reads the orientation from the first APP1 segment,
+        # so an XMP segment before the EXIF one hides the orientation.
+        buf = io.BytesIO()
+        img = Image.fromarray(numpy.zeros((40, 60, 3), dtype=numpy.uint8))
+        exif = img.getexif()
+        exif[0x0112] = 6
+        img.save(buf, "JPEG", exif=exif.tobytes())
+        data = buf.getvalue()
+        xmp = b"http://ns.adobe.com/xap/1.0/\x00<x:xmpmeta/>"
+        xmp_segment = b"\xff\xe1" + (len(xmp) + 2).to_bytes(2, "big") + xmp
+        data = data[:2] + xmp_segment + data[2:]
+
+        metadata = get_image_metadata(data)
+        assert metadata.rotation is None
+        assert (metadata.width, metadata.height) == (60, 40)
+        self._assert_matches_decode(metadata, data)
+
+    @needs_png
+    @pytest.mark.parametrize(
+        "pil_mode, save_kwargs, num_channels, bit_depth",
+        (
+            ("P", {}, 3, 8),
+            ("P", {"transparency": 0}, 4, 8),
+            ("P", {"bits": 4}, 3, 8),
+            ("L", {"transparency": 0}, 1, 8),
+            ("RGB", {"transparency": (0, 0, 0)}, 3, 8),
+            ("1", {}, 1, 1),
+        ),
+    )
+    def test_png_color_types(
+        self, tmp_path, pil_mode, save_kwargs, num_channels, bit_depth
+    ):
+        # Palettes are expanded to RGB(A) by the decoder, and a tRNS chunk only
+        # adds an alpha channel to palette images.
+        img = Image.fromarray(numpy.zeros((40, 60, 3), dtype=numpy.uint8))
+        path = tmp_path / "img.png"
+        img.convert(pil_mode).save(path, **save_kwargs)
+
+        metadata = get_image_metadata(path)
+        assert metadata.num_channels == num_channels
+        assert metadata.bit_depth == bit_depth
+        self._assert_matches_decode(metadata, path)
+
+    @pytest.mark.parametrize(
+        "fmt, ext, save_kwargs",
+        (
+            pytest.param("WEBP", "webp", {}, marks=pytest.mark.needs_webp, id="webp"),
+            pytest.param(
+                "WEBP",
+                "webp",
+                {"lossless": True},
+                marks=pytest.mark.needs_webp,
+                id="webp-lossless",
+            ),
+            pytest.param("GIF", "gif", {}, id="gif"),
+            pytest.param("AVIF", "avif", {}, marks=pytest.mark.needs_avif, id="avif"),
+        ),
+    )
+    @pytest.mark.parametrize("pil_mode", ("RGB", "RGBA"))
+    def test_animated(self, tmp_path, fmt, ext, save_kwargs, pil_mode):
+        frames = [
+            Image.fromarray(numpy.full((40, 60, 4), value, dtype=numpy.uint8)).convert(
+                pil_mode
+            )
+            for value in (0, 100, 200)
+        ]
+        path = tmp_path / f"animated.{ext}"
+        frames[0].save(
+            path, fmt, save_all=True, append_images=frames[1:], **save_kwargs
+        )
+
+        metadata = get_image_metadata(path)
+        assert metadata.num_frames == 3
+        assert (metadata.width, metadata.height) == (60, 40)
+        self._assert_matches_decode(metadata, path)
+
+    def test_heic_does_not_need_libheif(self, monkeypatch):
+        # Unlike decode_heic, getting the metadata of a HEIC file works without
+        # libheif.
+        from torchcodec import _internally_replaced_utils as iru
+
+        iru.load_heic_library.cache_clear()
+
+        def boom(path):
+            raise OSError("libheif.so.1: cannot open shared object file")
+
+        monkeypatch.setattr(torch.ops, "load_library", boom)
+        try:
+            metadata = get_image_metadata(GRADIENT_HEIC.path)
+        finally:
+            iru.load_heic_library.cache_clear()
+        assert (metadata.width, metadata.height) == (1280, 720)
+
+    def test_unrecognized_format_raises(self):
+        with pytest.raises(ValueError, match="Unsupported or unrecognized image"):
+            get_image_metadata(b"not an image at all")
+
+    def test_bad_source_type_raises(self):
+        with pytest.raises(TypeError, match="Unknown source type"):
+            get_image_metadata(123)
+
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            GRADIENT_JPEG,
+            CMYK_JPEG,
+            GRADIENT_PNG,
+            GRADIENT_16BIT_PNG,
+            GRADIENT_WEBP,
+            RGBA_WEBP,
+            GRADIENT_GIF,
+            ANIMATED_GIF,
+            GRADIENT_AVIF,
+            GRADIENT_HEIC,
+            ANIMATED_HEIC,
+        ),
+    )
+    def test_truncated(self, asset):
+        # Truncating the data anywhere must either still work (if the headers
+        # are intact) or raise a RuntimeError.
+        data = asset.path.read_bytes()
+        cut_points = sorted(set(range(1, min(len(data), 300))) | {len(data) // 2})
+        for cut in cut_points:
+            try:
+                get_image_metadata(data[:cut])
+            except RuntimeError:
+                pass
+            except ValueError as e:
+                # Too short for the format to be detected.
+                assert "Unsupported or unrecognized image" in str(e)
+
+    def test_corrupt_png_raises(self):
+        with pytest.raises(RuntimeError, match="truncated or corrupted"):
+            get_image_metadata(SIGSEGV_PNG.path)

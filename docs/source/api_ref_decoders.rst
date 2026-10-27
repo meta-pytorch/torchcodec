@@ -88,6 +88,7 @@ Image Decoding
     decode_gif
     decode_avif
     decode_heic
+    get_image_metadata
 
 .. autosummary::
     :toctree: generated/
@@ -95,6 +96,13 @@ Image Decoding
     :template: enum.rst
 
     ImageReadMode
+
+.. autosummary::
+    :toctree: generated/
+    :nosignatures:
+    :template: dataclass.rst
+
+    ImageMetadata
 
 
 .. _decoders_low_level:
