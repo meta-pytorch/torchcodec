@@ -146,7 +146,8 @@ Raises:
 
 pts_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
-The [pts](../glossary.html#term-pts) of this frame, in seconds.
+The [pts](../glossary.html#term-pts) of this frame, in seconds. `NaN` if the frame has no
+timestamp (e.g. in raw H.264 streams).
 
 *property*rotation*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 

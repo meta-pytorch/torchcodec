@@ -50,7 +50,8 @@ The number of samples per channel, i.e. `data.shape[1]`.
 
 pts_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
-The [pts](../glossary.html#term-pts) of the first sample, in seconds.
+The [pts](../glossary.html#term-pts) of the first sample, in seconds. `NaN` if it is
+unknown.
 
 sample_rate*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
