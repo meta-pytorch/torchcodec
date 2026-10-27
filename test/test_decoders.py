@@ -6479,8 +6479,35 @@ class TestLowLevel:
         frames = list(self._decode(decoder, self._demux(demuxer)))
         assert len(frames) == 30
         for raw_frame in frames:
+            assert raw_frame.pts is None
             assert math.isnan(raw_frame.pts_seconds)
             assert math.isnan(converter.convert(raw_frame).pts_seconds)
+
+    # ===== integer pts =====
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_raw_frame_pts_is_exact(self, device):
+        frame_index = Demuxer(NASA_VIDEO.path).streams[0].scan()
+        demuxer, decoder, _ = self._make_stages(NASA_VIDEO.path, device)
+        assert decoder.time_base == Fraction(
+            frame_index._time_base_num, frame_index._time_base_den
+        )
+
+        frames = list(self._decode(decoder, self._demux(demuxer)))
+        assert [f.pts for f in frames] == frame_index._pts.tolist()
+        for frame in frames:
+            assert frame.pts_seconds == float(frame.pts * decoder.time_base)
+
+    def test_raw_audio_samples_pts_is_exact(self):
+        demuxer = Demuxer(NASA_AUDIO.path, streams="audio")
+        decoder = demuxer.streams[0].make_decoder()
+        samples = list(self._decode(decoder, self._demux(demuxer)))
+        assert samples
+        for raw_samples in samples:
+            assert isinstance(raw_samples.pts, int)
+            assert raw_samples.pts_seconds == pytest.approx(
+                float(raw_samples.pts * decoder.time_base)
+            )
 
     # ===== decoder parameters =====
 
@@ -6901,6 +6928,183 @@ class TestLowLevel:
         assert len(got) == len(expected)
         for frame, expected_frame in zip(got, expected):
             assert_frames_equal(frame, expected_frame.data)
+
+    # ===== packets from bytes =====
+
+    @staticmethod
+    def _rebuild_from_bytes(packet, from_tensor=False, **overrides):
+        kwargs = dict(
+            pts=packet.pts,
+            dts=packet.dts,
+            duration=packet.duration,
+            is_key_frame=packet.is_key_frame,
+            side_data=packet.side_data,
+            stream_index=packet.stream_index,
+        )
+        kwargs.update(overrides)
+        if from_tensor:
+            return Packet.from_tensor(packet.data, **kwargs)
+        return Packet.from_bytes(packet.data.numpy().tobytes(), **kwargs)
+
+    @pytest.mark.parametrize("from_tensor", (False, True))
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_packets_from_bytes_decode_like_demuxed_ones(self, from_tensor, device):
+        demuxer = Demuxer(NASA_VIDEO.path)
+        parameters = demuxer.streams[0].decoder_parameters
+        packets = [self._rebuild_from_bytes(p, from_tensor) for p in demuxer]
+
+        decoder = VideoPacketDecoder(parameters, device)
+        converter = ColorConverter(device=device)
+        got = list(self._convert(converter, self._decode(decoder, packets)))
+        expected = self._decode_sequential(NASA_VIDEO.path, device)
+        assert len(got) == len(expected)
+        for frame, expected_frame in zip(got, expected):
+            assert frame.pts_seconds == expected_frame.pts_seconds
+            assert frame.duration_seconds == expected_frame.duration_seconds
+            assert_frames_equal(frame.data, expected_frame.data)
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_packets_from_bytes_only_need_pts(self, device):
+        # The NASA video has B-frames, so its packets' dts differ from their
+        # pts, but the decoder doesn't need them.
+        demuxer = Demuxer(NASA_VIDEO.path)
+        parameters = VideoPacketDecoderParameters(
+            "h264",
+            (1, 30000),
+            extradata=demuxer.streams[0].decoder_parameters.extradata,
+        )
+        packets = list(demuxer)
+        assert any(p.pts != p.dts for p in packets)
+        rebuilt = [
+            Packet.from_bytes(p.data.numpy().tobytes(), pts=p.pts) for p in packets
+        ]
+
+        decoder = VideoPacketDecoder(parameters, device)
+        got = list(self._decode(decoder, rebuilt))
+        expected = list(self._decoded_frames(NASA_VIDEO.path, device))
+        assert [f.pts for f in got] == [f.pts for f in expected]
+
+        decoder.reset()
+        no_pts = [Packet.from_bytes(p.data.numpy().tobytes()) for p in packets]
+        got = list(self._decode(decoder, no_pts))
+        assert len(got) == len(expected)
+        assert all(f.pts is None for f in got)
+
+    def test_decode_targets_with_a_reused_decoder(self):
+        # Packets come from storage one GOP at a time, as in
+        # https://github.com/meta-pytorch/torchcodec/pull/1585: from the key
+        # frame preceding each target up to the target.
+        demuxer = Demuxer(NASA_VIDEO.path)
+        stream = demuxer.streams[0]
+        frame_index = stream.scan()
+        rows = [(p.data.numpy().tobytes(), p.pts, p.is_key_frame) for p in demuxer]
+        expected = {
+            f.pts: f.planes[0] for f in self._decoded_frames(NASA_VIDEO.path, "cpu")
+        }
+
+        decoder = VideoPacketDecoder(stream.decoder_parameters)
+
+        def decode_target(target_pts):
+            decoder.reset()
+            start = max(
+                i
+                for i, (_, pts, is_key) in enumerate(rows)
+                if is_key and pts <= target_pts
+            )
+            for data, pts, _ in rows[start:]:
+                for raw_frame in decoder.decode(Packet.from_bytes(data, pts=pts)):
+                    if raw_frame.pts == target_pts:
+                        return raw_frame
+            for raw_frame in decoder.drain():
+                if raw_frame.pts == target_pts:
+                    return raw_frame
+
+        for target_pts in frame_index._pts[[0, 50, 3, 200, 199]].tolist():
+            raw_frame = decode_target(target_pts)
+            torch.testing.assert_close(
+                raw_frame.planes[0], expected[target_pts], atol=0, rtol=0
+            )
+
+    def test_packet_accessors(self):
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        video, audio = demuxer.streams
+        frame_index = video.scan()
+        packets = list(demuxer)
+        video_packets = [p for p in packets if p.stream_index == video.index]
+        audio_packets = [p for p in packets if p.stream_index == audio.index]
+
+        assert sorted(p.pts for p in video_packets) == frame_index._pts.tolist()
+        assert [p.is_key_frame for p in sorted(video_packets, key=lambda p: p.pts)] == (
+            frame_index.is_key_frame.tolist()
+        )
+        assert all(p.duration > 0 for p in video_packets)
+        assert all(p.data.dtype == torch.uint8 and p.data.numel() > 0 for p in packets)
+        assert video_packets[0].side_data == {}
+        assert list(audio_packets[0].side_data) == ["Skip Samples"]
+
+        packet = Packet.from_bytes(
+            b"some data",
+            pts=3,
+            dts=1,
+            duration=2,
+            is_key_frame=True,
+            side_data={"Skip Samples": bytes(10)},
+            stream_index=4,
+        )
+        assert (packet.pts, packet.dts, packet.duration) == (3, 1, 2)
+        assert packet.is_key_frame
+        assert packet.side_data == {"Skip Samples": bytes(10)}
+        assert packet.stream_index == 4
+        assert packet.data.numpy().tobytes() == b"some data"
+
+        packet = Packet.from_bytes(bytearray(b"x"))
+        assert (packet.pts, packet.dts, packet.duration) == (None, None, 0)
+        assert not packet.is_key_frame
+
+        restored = pickle.loads(pickle.dumps(Packet.from_bytes(b"x", pts=5)))
+        assert restored.pts == 5
+        assert restored.data.numpy().tobytes() == b"x"
+
+    def test_packet_from_bytes_copies(self):
+        data = bytearray(b"abc")
+        tensor = torch.tensor([1, 2, 3], dtype=torch.uint8)
+        from_bytes, from_tensor = Packet.from_bytes(data), Packet.from_tensor(tensor)
+        data[0] = 0
+        tensor[0] = 0
+        assert from_bytes.data.tolist() == [97, 98, 99]
+        assert from_tensor.data.tolist() == [1, 2, 3]
+
+    @pytest.mark.parametrize(
+        "build, error, match",
+        (
+            (lambda: Packet.from_bytes(b""), ValueError, "must not be empty"),
+            (lambda: Packet.from_bytes("abc"), TypeError, "must be bytes"),
+            (lambda: Packet.from_tensor(b"abc"), TypeError, "must be a tensor"),
+            (
+                lambda: Packet.from_tensor(torch.empty(0, dtype=torch.uint8)),
+                ValueError,
+                "must not be empty",
+            ),
+            (
+                lambda: Packet.from_tensor(torch.ones(3, dtype=torch.int32)),
+                ValueError,
+                "1D uint8 CPU tensor",
+            ),
+            (
+                lambda: Packet.from_tensor(torch.ones(2, 2, dtype=torch.uint8)),
+                ValueError,
+                "1D uint8 CPU tensor",
+            ),
+            (
+                lambda: Packet.from_bytes(b"x", side_data={"nope": b"x"}),
+                RuntimeError,
+                "Unknown side data type",
+            ),
+        ),
+    )
+    def test_invalid_packets(self, build, error, match):
+        with pytest.raises(error, match=match):
+            build()
 
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn

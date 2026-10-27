@@ -92,6 +92,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool, int)");
   m.def(
       "_blocks_demuxer_seek(Tensor(a!) demuxer, float seconds, int? stream_index=None) -> ()");
+  m.def("_blocks_packet_timing(Tensor packet) -> (int, int, int, int)");
   m.def(
       "_blocks_packet_state(Tensor packet) -> (Tensor, int, int, int, int, str, Tensor)");
   m.def(
@@ -107,9 +108,10 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
   m.def("_blocks_packet_decoder_reset(Tensor(a!) decoder) -> ()");
   m.def(
-      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, Tensor)");
+      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, int, float, float, Tensor)");
   m.def(
-      "_blocks_audio_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, int, str)");
+      "_blocks_audio_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, int, float, float, int, str)");
+  m.def("_blocks_packet_decoder_time_base(Tensor decoder) -> (int, int)");
   m.def(
       "_blocks_create_color_converter(str device=\"cpu\", str output_dtype=\"uint8\") -> Tensor");
   m.def(
@@ -1003,6 +1005,17 @@ OpsPacketStateOutput _blocks_packet_state(torch::stable::Tensor& packet) {
       bytes_to_tensor(side_data_payload));
 }
 
+// (pts, dts, duration, flags): the cheap part of _blocks_packet_state().
+std::tuple<int64_t, int64_t, int64_t, int64_t> _blocks_packet_timing(
+    torch::stable::Tensor& packet) {
+  const AVPacket* av_packet = unwrap_tensor_to_pointer<AVPacket>(packet);
+  return std::make_tuple(
+      av_packet->pts,
+      av_packet->dts,
+      av_packet->duration,
+      static_cast<int64_t>(av_packet->flags));
+}
+
 // The inverse of _blocks_packet_state(). `side_data` alternates side data
 // names and the sizes of their payloads, which are concatenated in
 // `side_data_payload`.
@@ -1145,9 +1158,11 @@ void _blocks_packet_decoder_reset(torch::stable::Tensor& decoder) {
   unwrap_tensor_to_pointer<PacketDecoder>(decoder)->reset();
 }
 
-// (frame_handle, status, pts_seconds, duration_seconds, storage).
+// (frame_handle, status, pts, pts_seconds, duration_seconds, storage). `pts`
+// is in the decoder's time base, and is INT64_MIN when the frame has none.
 using OpsReceiveFrameOutput = std::tuple<
     torch::stable::Tensor,
+    int64_t,
     int64_t,
     double,
     double,
@@ -1170,13 +1185,13 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
     return std::make_tuple(
         torch::stable::full({1}, 0, kStableInt64),
         static_cast<int64_t>(status),
+        INT64_MIN,
         0.0,
         0.0,
         torch::stable::empty({int64_t(0)}, kStableUInt8));
   }
   AVRational time_base = decoder_ptr->time_base();
-  double pts_seconds =
-      pts_to_seconds_or_nan(get_pts_or_dts(*av_frame), time_base);
+  int64_t pts = get_pts_or_dts(*av_frame);
   double duration_seconds = pts_to_seconds(get_duration(*av_frame), time_base);
   torch::stable::Tensor storage =
       decoder_ptr->get_frame_storage(*av_frame).value_or(
@@ -1184,17 +1199,24 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
   return std::make_tuple(
       wrap_pointer_to_tensor(std::move(av_frame)),
       static_cast<int64_t>(0),
-      pts_seconds,
+      pts,
+      pts_to_seconds_or_nan(pts, time_base),
       duration_seconds,
       storage);
 }
 
-// (samples, status, pts_seconds, duration_seconds, sample_rate,
+// (samples, status, pts, pts_seconds, duration_seconds, sample_rate,
 // sample_format). `samples` is [num_channels, num_samples] in the frame's own
 // sample type; there is no frame handle because, unlike a video frame, nothing
-// downstream needs the AVFrame itself.
-using OpsReceiveAudioFrameOutput = std::
-    tuple<torch::stable::Tensor, int64_t, double, double, int64_t, std::string>;
+// downstream needs the AVFrame itself. `pts` is as for video frames.
+using OpsReceiveAudioFrameOutput = std::tuple<
+    torch::stable::Tensor,
+    int64_t,
+    int64_t,
+    double,
+    double,
+    int64_t,
+    std::string>;
 
 OpsReceiveAudioFrameOutput _blocks_audio_packet_decoder_receive_frame(
     torch::stable::Tensor& decoder) {
@@ -1210,6 +1232,7 @@ OpsReceiveAudioFrameOutput _blocks_audio_packet_decoder_receive_frame(
     return std::make_tuple(
         torch::stable::empty({int64_t(0)}, kStableUInt8),
         static_cast<int64_t>(status),
+        INT64_MIN,
         0.0,
         0.0,
         static_cast<int64_t>(0),
@@ -1217,16 +1240,26 @@ OpsReceiveAudioFrameOutput _blocks_audio_packet_decoder_receive_frame(
   }
 
   AVRational time_base = decoder_ptr->time_base();
+  int64_t pts = get_pts_or_dts(*av_frame);
   const char* sample_format_name =
       av_get_sample_fmt_name(static_cast<AVSampleFormat>(av_frame->format));
   return std::make_tuple(
       get_audio_samples(*av_frame),
       static_cast<int64_t>(0),
-      pts_to_seconds_or_nan(get_pts_or_dts(*av_frame), time_base),
+      pts,
+      pts_to_seconds_or_nan(pts, time_base),
       pts_to_seconds(get_duration(*av_frame), time_base),
       static_cast<int64_t>(av_frame->sample_rate),
       std::string(
           sample_format_name == nullptr ? "unknown" : sample_format_name));
+}
+
+std::tuple<int64_t, int64_t> _blocks_packet_decoder_time_base(
+    torch::stable::Tensor& decoder) {
+  AVRational time_base =
+      unwrap_tensor_to_pointer<PacketDecoder>(decoder)->time_base();
+  return {
+      static_cast<int64_t>(time_base.num), static_cast<int64_t>(time_base.den)};
 }
 
 torch::stable::Tensor _blocks_create_color_converter(
@@ -1950,6 +1983,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       "_blocks_demuxer_next_packet", TORCH_BOX(&_blocks_demuxer_next_packet));
   m.impl("_blocks_demuxer_seek", TORCH_BOX(&_blocks_demuxer_seek));
   m.impl("_blocks_packet_state", TORCH_BOX(&_blocks_packet_state));
+  m.impl("_blocks_packet_timing", TORCH_BOX(&_blocks_packet_timing));
   m.impl("_blocks_create_packet", TORCH_BOX(&_blocks_create_packet));
   m.impl("_blocks_demuxer_scan", TORCH_BOX(&_blocks_demuxer_scan));
   m.impl(
@@ -1969,6 +2003,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "_blocks_audio_packet_decoder_receive_frame",
       TORCH_BOX(&_blocks_audio_packet_decoder_receive_frame));
+  m.impl(
+      "_blocks_packet_decoder_time_base",
+      TORCH_BOX(&_blocks_packet_decoder_time_base));
   m.impl("_blocks_convert_frame", TORCH_BOX(&_blocks_convert_frame));
   m.impl(
       "_blocks_audio_converter_convert",

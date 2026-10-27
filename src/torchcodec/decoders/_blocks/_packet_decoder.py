@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from fractions import Fraction
 from typing import Generic, TypeVar
 
 import torch
@@ -17,6 +18,7 @@ from torchcodec._core.ops import (
     _blocks_packet_decoder_reset,
     _blocks_packet_decoder_send_eof,
     _blocks_packet_decoder_send_packet,
+    _blocks_packet_decoder_time_base,
 )
 
 from .._decoder_utils import convert_device_to_str
@@ -25,7 +27,7 @@ from ._decoder_parameters import (
     AudioPacketDecoderParameters,
     VideoPacketDecoderParameters,
 )
-from ._frame import Packet, RawAudioSamples, RawFrame
+from ._frame import _NO_PTS, Packet, RawAudioSamples, RawFrame
 from ._helpers import _process_local
 
 
@@ -62,6 +64,12 @@ class _BasePacketDecoder(Generic[_Decoded]):
         # packet, and again after every reset(), so it is adopted rather than
         # tracked: the decoder never needs a reference back to the demuxer.
         self._generation = None
+
+    @property
+    def time_base(self) -> Fraction:
+        """The unit of the integer :term:`pts` of the frames this decoder
+        produces: a pts of ``n`` is ``n * time_base`` seconds."""
+        return Fraction(*_blocks_packet_decoder_time_base(self._handle))
 
     def _receive_ready_frames(self) -> list[_Decoded]:
         raise NotImplementedError
@@ -206,7 +214,7 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
     def _receive_ready_frames(self) -> list[RawFrame]:
         frames = []
         while True:
-            handle, status, pts_seconds, duration_seconds, storage = (
+            handle, status, pts, pts_seconds, duration_seconds, storage = (
                 _blocks_packet_decoder_receive_frame(self._handle)
             )
             if status != 0:  # EAGAIN (need more packets) or EOF: nothing ready
@@ -214,6 +222,7 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
             frames.append(
                 RawFrame(
                     handle,
+                    None if pts == _NO_PTS else pts,
                     pts_seconds,
                     duration_seconds,
                     storage=storage if storage.numel() > 0 else None,
@@ -310,7 +319,7 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
     def _receive_ready_frames(self) -> list[RawAudioSamples]:
         samples = []
         while True:
-            data, status, pts_seconds, duration_seconds, sample_rate, _ = (
+            data, status, pts, pts_seconds, duration_seconds, sample_rate, _ = (
                 _blocks_audio_packet_decoder_receive_frame(self._handle)
             )
             if status != 0:  # EAGAIN (need more packets) or EOF: nothing ready
@@ -319,6 +328,7 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
                 RawAudioSamples(
                     data=data,
                     sample_rate=sample_rate,
+                    pts=None if pts == _NO_PTS else pts,
                     pts_seconds=pts_seconds,
                     duration_seconds=duration_seconds,
                     # Carried onward so AudioConverter can make the same check:
