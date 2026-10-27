@@ -100,7 +100,8 @@ class RawFrame:
     """
 
     pts_seconds: float
-    """The :term:`pts` of this frame, in seconds."""
+    """The :term:`pts` of this frame, in seconds. ``NaN`` if the frame has no
+    timestamp (e.g. in raw H.264 streams)."""
     duration_seconds: float
     """How long this frame is displayed for, in seconds."""
     storage_cuda: torch.Tensor | None
@@ -294,7 +295,8 @@ class RawAudioSamples:
     sample_rate: int
     """The source's sample rate, in Hz."""
     pts_seconds: float
-    """The :term:`pts` of the first sample, in seconds."""
+    """The :term:`pts` of the first sample, in seconds. ``NaN`` if it is
+    unknown."""
     duration_seconds: float
     """How long these samples last, in seconds."""
     # See Packet._generation.

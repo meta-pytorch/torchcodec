@@ -13,6 +13,7 @@
 #include <pybind11/pybind11.h>
 #pragma pop_macro("TORCH_TARGET_VERSION")
 #include <cstdint>
+#include <limits>
 #include <string>
 
 extern "C" {
@@ -976,13 +977,21 @@ void _blocks_packet_decoder_reset(torch::stable::Tensor& decoder) {
   unwrap_tensor_to_pointer<PacketDecoder>(decoder)->reset();
 }
 
-// (frame_handle, status, pts_seconds, duration_seconds, storage).
+// (frame_handle, status, pts_seconds, duration_seconds, storage). pts_seconds
+// is NaN when the frame has no pts.
 using OpsReceiveFrameOutput = std::tuple<
     torch::stable::Tensor,
     int64_t,
     double,
     double,
     torch::stable::Tensor>;
+
+namespace {
+double pts_to_seconds_or_nan(int64_t pts, const AVRational& time_base) {
+  return pts == INT64_MIN ? std::numeric_limits<double>::quiet_NaN()
+                          : pts_to_seconds(pts, time_base);
+}
+} // namespace
 
 OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
     torch::stable::Tensor& decoder) {
@@ -999,7 +1008,8 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
         torch::stable::empty({int64_t(0)}, kStableUInt8));
   }
   AVRational time_base = decoder_ptr->time_base();
-  double pts_seconds = pts_to_seconds(get_pts_or_dts(*av_frame), time_base);
+  double pts_seconds =
+      pts_to_seconds_or_nan(get_pts_or_dts(*av_frame), time_base);
   double duration_seconds = pts_to_seconds(get_duration(*av_frame), time_base);
   torch::stable::Tensor storage =
       decoder_ptr->get_frame_storage(*av_frame).value_or(
@@ -1015,7 +1025,8 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
 // (samples, status, pts_seconds, duration_seconds, sample_rate,
 // sample_format). `samples` is [num_channels, num_samples] in the frame's own
 // sample type; there is no frame handle because, unlike a video frame, nothing
-// downstream needs the AVFrame itself.
+// downstream needs the AVFrame itself. pts_seconds is NaN when the frame has no
+// pts.
 using OpsReceiveAudioFrameOutput = std::
     tuple<torch::stable::Tensor, int64_t, double, double, int64_t, std::string>;
 
@@ -1045,7 +1056,7 @@ OpsReceiveAudioFrameOutput _blocks_audio_packet_decoder_receive_frame(
   return std::make_tuple(
       get_audio_samples(*av_frame),
       static_cast<int64_t>(0),
-      pts_to_seconds(get_pts_or_dts(*av_frame), time_base),
+      pts_to_seconds_or_nan(get_pts_or_dts(*av_frame), time_base),
       pts_to_seconds(get_duration(*av_frame), time_base),
       static_cast<int64_t>(av_frame->sample_rate),
       std::string(
