@@ -61,7 +61,7 @@ def _assert_regular_sampler(clips, expected_seconds_between_clip_starts=None):
     # For all samplers, we can at least assert that seconds_between_clip_starts
     # is constant.
     for diff in seconds_between_clip_starts:
-        assert diff == pytest.approx(seconds_between_clip_starts[0], abs=0.05)
+        assert diff == pytest.approx(seconds_between_clip_starts[0].item(), abs=0.05)
 
 
 @pytest.mark.parametrize("sampler", (clips_at_random_indices, clips_at_regular_indices))
