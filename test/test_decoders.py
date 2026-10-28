@@ -3815,6 +3815,20 @@ def _make_raw_h264(tmp_path, num_frames=30):
     return path
 
 
+def _make_raw_hevc(tmp_path, num_frames=30):
+    path = tmp_path / "raw.hevc"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-i", str(NASA_VIDEO.path), "-map", "0:3", "-frames:v", str(num_frames),
+            "-c:v", "libx265", "-x265-params", "keyint=10:min-keyint=10:log-level=error",
+            "-f", "hevc", str(path),
+        ],
+        check=True,
+    )  # fmt: skip
+    return path
+
+
 def _low_level_devices():
     return ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
 
@@ -6510,6 +6524,57 @@ class TestLowLevel:
             assert raw_samples.pts_seconds == pytest.approx(
                 float(raw_samples.pts * decoder.time_base)
             )
+
+    # ===== streams without timestamps =====
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize("make_raw_stream", (_make_raw_h264, _make_raw_hevc))
+    def test_scan_stream_without_timestamps(self, tmp_path, make_raw_stream):
+        path = make_raw_stream(tmp_path)
+        demuxer = Demuxer(path)
+        frame_index = demuxer.streams[0].scan()
+
+        expected = list(self._decoded_frames(path, "cpu"))
+        assert len(frame_index) == len(expected) == 30
+        # In decoding order: for open GOPs, that's not where the keyframes are
+        # displayed.
+        assert frame_index.key_frame_indices.tolist() == [
+            i for i, packet in enumerate(Demuxer(path)) if packet.is_key_frame
+        ]
+        assert len(frame_index.key_frame_indices) == 3
+        assert frame_index.pts_seconds.isnan().all()
+        assert (frame_index.duration_seconds > 0).all()
+        with pytest.raises(ValueError, match="no timestamps"):
+            frame_index.index_at(0.5)
+        with pytest.raises(ValueError, match="no timestamps"):
+            frame_index.key_frame_seconds_for(0.5)
+
+        # The scan rewound the demuxer.
+        decoder = demuxer.streams[0].make_decoder()
+        got = list(self._decode(decoder, self._demux(demuxer)))
+        assert len(got) == len(expected)
+        for raw_frame, expected_raw_frame in zip(got, expected):
+            for plane, expected_plane in zip(
+                raw_frame.planes, expected_raw_frame.planes
+            ):
+                torch.testing.assert_close(plane, expected_plane, atol=0, rtol=0)
+
+    @needs_ffmpeg_cli
+    def test_rewind_stream_without_timestamps(self, tmp_path):
+        path = _make_raw_h264(tmp_path)
+        expected = [p.data for p in Demuxer(path)]
+
+        demuxer = Demuxer(path)
+        for _ in range(12):
+            next(demuxer)
+        demuxer.seek(0)
+        got = [p.data for p in demuxer]
+        assert len(got) == len(expected)
+        for data, expected_data in zip(got, expected):
+            assert torch.equal(data, expected_data)
+
+        with pytest.raises(RuntimeError, match="can only be rewound"):
+            demuxer.seek(0.5)
 
     # ===== decoder parameters =====
 
