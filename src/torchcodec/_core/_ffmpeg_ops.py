@@ -116,6 +116,7 @@ _blocks_demuxer_next_packet = (
 )
 _blocks_demuxer_seek = torch.ops.torchcodec_ns._blocks_demuxer_seek.default
 _blocks_packet_state = torch.ops.torchcodec_ns._blocks_packet_state.default
+_blocks_packet_timing = torch.ops.torchcodec_ns._blocks_packet_timing.default
 _blocks_create_packet = torch.ops.torchcodec_ns._blocks_create_packet.default
 _blocks_demuxer_scan = torch.ops.torchcodec_ns._blocks_demuxer_scan.default
 _blocks_create_packet_decoder = (
@@ -138,6 +139,9 @@ _blocks_packet_decoder_receive_frame = (
 )
 _blocks_audio_packet_decoder_receive_frame = (
     torch.ops.torchcodec_ns._blocks_audio_packet_decoder_receive_frame.default
+)
+_blocks_packet_decoder_time_base = (
+    torch.ops.torchcodec_ns._blocks_packet_decoder_time_base.default
 )
 _blocks_create_color_converter = (
     torch.ops.torchcodec_ns._blocks_create_color_converter.default
