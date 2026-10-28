@@ -657,17 +657,18 @@ class ImageMetadata:
     """
 
     format: str
-    """The image format: ``"jpeg"``."""
+    """The image format, e.g. ``"jpeg"``."""
     width: int
-    """Width of the decoded image, in pixels. This is the **post-rotation**
-    width: for 90 or -90 degree :attr:`rotation`, width and height are swapped
-    compared to the dimensions stored in the file."""
+    """Width of the decoded image, **post-rotation**. This is the width of the
+    tensor returned by :func:`decode_image` or the format-specific decoders,
+    which always apply the EXIF orientation."""
     height: int
-    """Height of the decoded image, in pixels. Like :attr:`width`, this is the
-    **post-rotation** height."""
+    """Height of the decoded image, **post-rotation**. This is the height of the
+    tensor returned by :func:`decode_image` or the format-specific decoders,
+    which always apply the EXIF orientation."""
     num_channels: int
-    """Number of channels of the decoded image when decoding with
-    ``mode="UNCHANGED"``."""
+    """Number of channels of the image. This is the number of channels
+    of the decoded image when decoding with ``mode="UNCHANGED"``."""
     bit_depth: int
     """Number of bits per channel in the encoded image. When greater than 8,
     decoding with ``output_dtype="auto"`` returns a ``torch.uint16`` tensor."""
@@ -679,14 +680,11 @@ class ImageMetadata:
     """Rotation angle in degrees (counter-clockwise: one of 0, 90, -90 or 180)
     from the EXIF orientation metadata, or None if the image has no orientation
     metadata. The decoders always apply it, so the returned images are in the
-    correct orientation. This uses the same convention as
-    :attr:`VideoStreamMetadata.rotation
-    <torchcodec.decoders.VideoStreamMetadata.rotation>`.
+    correct orientation.
 
-    The orientation metadata can also specify a mirroring, which the decoders
+    The EXIF orientation metadata can also specify a mirroring, which the decoders
     apply too but isn't reported here, since it doesn't change the image
-    dimensions. In that case, this is the rotation applied after mirroring the
-    image left to right."""
+    dimensions."""
 
 
 class _ByteSource:
@@ -882,10 +880,7 @@ def get_image_metadata(source: str | Path | bytes | torch.Tensor) -> ImageMetada
     """Get the metadata of an encoded image, without decoding it.
 
     The format is detected from the encoded data, like in
-    :func:`~torchcodec.decoders.decode_image`. Only JPEG images are supported.
-    Only the image headers are parsed, so this is much faster than decoding.
-    When ``source`` is a path, only the parts of the file that hold the headers
-    are read.
+    :func:`~torchcodec.decoders.decode_image`.
 
     See :class:`ImageMetadata` for the returned attributes, which all describe
     the output of the decoders.

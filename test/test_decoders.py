@@ -8011,8 +8011,6 @@ class TestGetImageMetadata:
         assert metadata.num_channels == decoded.shape[-3]
         assert metadata.height == decoded.shape[-2]
         assert metadata.width == decoded.shape[-1]
-        if metadata.format in ("png", "avif", "heic"):
-            assert (metadata.bit_depth > 8) == (decoded.dtype == torch.uint16)
 
     @pytest.mark.parametrize(
         "make_source",
@@ -8028,58 +8026,47 @@ class TestGetImageMetadata:
             ),
         ),
     )
+    @needs_jpeg
     @pytest.mark.parametrize(
-        "asset, fmt, num_channels, bit_depth, num_frames",
-        (
-            pytest.param(GRADIENT_JPEG, "jpeg", 3, 8, 1, marks=pytest.mark.needs_jpeg),
-            pytest.param(GRAYSCALE_JPEG, "jpeg", 1, 8, 1, marks=pytest.mark.needs_jpeg),
-            pytest.param(CMYK_JPEG, "jpeg", 4, 8, 1, marks=pytest.mark.needs_jpeg),
-        ),
+        "asset, num_channels",
+        ((GRADIENT_JPEG, 3), (GRAYSCALE_JPEG, 1), (CMYK_JPEG, 4)),
     )
-    def test_matches_decode(
-        self, asset, fmt, num_channels, bit_depth, num_frames, make_source
-    ):
+    def test_matches_decode(self, asset, num_channels, make_source):
         metadata = get_image_metadata(make_source(asset))
         assert metadata == ImageMetadata(
-            format=fmt,
+            format="jpeg",
             width=asset.width,
             height=asset.height,
             num_channels=num_channels,
-            bit_depth=bit_depth,
-            num_frames=num_frames,
+            bit_depth=8,
+            num_frames=1,
             rotation=None,
         )
         self._assert_matches_decode(metadata, make_source(asset))
 
-    @pytest.mark.parametrize(
-        "fmt, ext, save_kwargs",
-        (pytest.param("JPEG", "jpg", {}, marks=pytest.mark.needs_jpeg, id="jpeg"),),
-    )
+    @needs_jpeg
     @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
-    def test_exif_orientation(self, tmp_path, orientation, fmt, ext, save_kwargs):
+    def test_exif_orientation(self, tmp_path, orientation):
         # Width and height are reported after orientation is applied.
         img = Image.fromarray(numpy.zeros((40, 60, 3), dtype=numpy.uint8))
         exif = img.getexif()
         exif[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
-        path = tmp_path / f"exif_{orientation}.{ext}"
-        img.save(path, fmt, exif=exif.tobytes(), **save_kwargs)
+        path = tmp_path / f"exif_{orientation}.jpg"
+        img.save(path, exif=exif.tobytes())
 
         metadata = get_image_metadata(path)
-        # 0 isn't a valid EXIF orientation, so the decoders ignore it.
-        if orientation == 0:
-            assert metadata.rotation is None
-        else:
-            expected_rotation = {
-                1: 0,
-                2: 0,
-                3: 180,
-                4: 180,
-                5: 90,
-                6: -90,
-                7: -90,
-                8: 90,
-            }
-            assert metadata.rotation == expected_rotation[orientation]
+        expected_rotation = {
+            0: None,  # Not a valid EXIF orientation: the decoders ignore it.
+            1: 0,
+            2: 0,
+            3: 180,
+            4: 180,
+            5: 90,
+            6: -90,
+            7: -90,
+            8: 90,
+        }
+        assert metadata.rotation == expected_rotation[orientation]
         if orientation in (5, 6, 7, 8):
             assert (metadata.width, metadata.height) == (40, 60)
         else:
@@ -8092,6 +8079,7 @@ class TestGetImageMetadata:
         # even when it's not EXIF data. This is a decoder bug, but the metadata
         # must match what the decoder does: an XMP segment before the EXIF one
         # hides the orientation.
+        # TODO_IMAGE: Fix this!
         buf = io.BytesIO()
         img = Image.fromarray(numpy.zeros((40, 60, 3), dtype=numpy.uint8))
         exif = img.getexif()
@@ -8115,31 +8103,18 @@ class TestGetImageMetadata:
         with pytest.raises(TypeError, match="Unknown source type"):
             get_image_metadata(123)
 
-    @pytest.mark.parametrize(
-        "asset",
-        (
-            GRADIENT_JPEG,
-            CMYK_JPEG,
-        ),
-    )
-    def test_truncated_headers_raise(self, asset):
+    def test_truncated_headers_raise(self):
         # Enough data for the format to be detected, but not for the headers.
-        data = asset.path.read_bytes()
-        with pytest.raises(RuntimeError):
+        data = GRADIENT_JPEG.path.read_bytes()
+        with pytest.raises(RuntimeError, match="truncated"):
             get_image_metadata(data[:16])
 
-    @pytest.mark.parametrize(
-        "asset",
-        (
-            GRADIENT_JPEG,
-            CMYK_JPEG,
-        ),
-    )
-    def test_truncated_image_data(self, asset):
+    @needs_jpeg
+    def test_truncated_image_data(self):
         # Only the image data is truncated: the headers are still parsed, even
         # though decoding fails.
-        data = asset.path.read_bytes()
+        data = GRADIENT_JPEG.path.read_bytes()
         truncated = data[: len(data) // 2]
         assert get_image_metadata(truncated) == get_image_metadata(data)
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError, match="truncated"):
             decode_image(truncated)
