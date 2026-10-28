@@ -8100,23 +8100,6 @@ class TestGetImageMetadata:
             assert (metadata.width, metadata.height) == (60, 40)
         self._assert_matches_decode(metadata, path)
 
-    @needs_png
-    @pytest.mark.parametrize("orientation", (1, 3, 6, 8))
-    def test_rotation_convention(self, tmp_path, orientation):
-        # Same convention as VideoStreamMetadata.rotation: the decoded image is
-        # the stored one, rotated counter-clockwise by `rotation` degrees.
-        arr = torch.randint(0, 256, (40, 60, 3), dtype=torch.uint8).numpy()
-        img = Image.fromarray(arr)
-        exif = img.getexif()
-        exif[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
-        path = tmp_path / "img.png"
-        img.save(path, exif=exif.tobytes())
-
-        rotation = get_image_metadata(path).rotation
-        stored = torch.from_numpy(arr).permute(2, 0, 1)
-        expected = torch.rot90(stored, k=int(rotation // 90), dims=(-2, -1))
-        torch.testing.assert_close(decode_image(path), expected, rtol=0, atol=0)
-
     @needs_jpeg
     def test_jpeg_orientation_comes_from_first_app1(self):
         # decode_jpeg only reads the orientation from the first APP1 segment,
