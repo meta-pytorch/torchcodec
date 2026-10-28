@@ -26,7 +26,7 @@ torch::stable::Tensor decode_gif(
       "prebuilt wheel, please report it to the TorchCodec repo.");
 }
 
-std::vector<int64_t> probe_gif(
+std::vector<int64_t> probe_gif_from_tensor(
     [[maybe_unused]] const torch::stable::Tensor& input) {
   STD_TORCH_CHECK(
       false,
@@ -55,6 +55,7 @@ std::vector<int64_t> probe_gif_from_file(
 #include <cstdint>
 #include <optional>
 
+#include "Exif.h"
 #include "FileIO.h"
 #include "ImageCommon.h"
 #include "giflib/gif_lib.h"
@@ -439,12 +440,17 @@ ImageProbeResult probe_and_close(GifFileType* gif_file) {
       num_images > 0, "GIF file should contain at least one image!");
 
   return {
-      width, height, has_transparency ? 4 : 3, 8, num_images, NO_ORIENTATION};
+      width,
+      height,
+      has_transparency ? 4 : 3,
+      8,
+      num_images,
+      static_cast<int64_t>(exif_private::ExifOrientation::Unspecified)};
 }
 
 } // namespace
 
-ImageProbeResult probe_gif(const torch::stable::Tensor& input) {
+ImageProbeResult probe_gif_from_tensor(const torch::stable::Tensor& input) {
   auto contig_input = validate_encoded_data(input);
 
   int error = D_GIF_SUCCEEDED;
@@ -460,8 +466,12 @@ ImageProbeResult probe_gif(const torch::stable::Tensor& input) {
   return probe_and_close(gif_file);
 }
 
+// Same as probe_gif_from_tensor, but streams the file in small chunks instead
+// of requiring all of it in memory. GIF has no frame count in its header, so
+// the whole file is still read, but this avoids loading the whole file into a
+// tensor first and is still faster for large GIFs. Note that for decoding we
+// always load into a tensor because the speed difference is negligible then.
 ImageProbeResult probe_gif_from_file(std::string filename) {
-  // We don't use DGifOpenFileName(): it opens the file in text mode on Windows.
   FileIO file(filename, FileIO::Mode::Read);
   int error = D_GIF_SUCCEEDED;
   GifFileType* gif_file =

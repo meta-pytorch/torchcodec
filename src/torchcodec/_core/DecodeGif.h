@@ -23,7 +23,7 @@ FORCE_PUBLIC_VISIBILITY torch::stable::Tensor decode_gif(
     const torch::stable::Tensor& input,
     int64_t mode);
 
-FORCE_PUBLIC_VISIBILITY std::vector<int64_t> probe_gif(
+FORCE_PUBLIC_VISIBILITY std::vector<int64_t> probe_gif_from_tensor(
     const torch::stable::Tensor& input);
 
 FORCE_PUBLIC_VISIBILITY std::vector<int64_t> probe_gif_from_file(

@@ -104,7 +104,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "encode_jpeg_to_file_like(Tensor img, int file_like_context, int quality) -> ()");
   m.def("encode_jpeg_to_tensor_cuda(Tensor img, int quality) -> Tensor");
-  m.def("probe_gif(Tensor input) -> int[]");
+  m.def("probe_gif_from_tensor(Tensor input) -> int[]");
   m.def("probe_gif_from_file(str filename) -> int[]");
 }
 
@@ -116,7 +116,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("decode_avif", TORCH_BOX(&decode_avif));
   m.impl("encode_png_to_file", TORCH_BOX(&encode_png_to_file));
   m.impl("encode_png_to_file_like", TORCH_BOX(&encode_png_to_file_like));
-  m.impl("probe_gif", TORCH_BOX(&probe_gif));
+  m.impl("probe_gif_from_tensor", TORCH_BOX(&probe_gif_from_tensor));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
