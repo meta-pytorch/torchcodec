@@ -665,11 +665,11 @@ class ImageMetadata:
     width: int
     """Width of the decoded image, **post-rotation**. This is the width of the
     tensor returned by :func:`decode_image` or the format-specific decoders,
-    which always apply the EXIF orientation."""
+    which always apply the orientation metadata."""
     height: int
     """Height of the decoded image, **post-rotation**. This is the height of the
     tensor returned by :func:`decode_image` or the format-specific decoders,
-    which always apply the EXIF orientation."""
+    which always apply the orientation metadata."""
     num_channels: int
     """Number of channels of the image. This is the number of channels
     of the decoded image when decoding with ``mode="UNCHANGED"``."""
@@ -682,8 +682,7 @@ class ImageMetadata:
     multi-image files."""
     rotation: float | None
     """Rotation angle in degrees (counter-clockwise: one of 0, 90, -90 or 180)
-    from the orientation metadata (EXIF orientation, or the AVIF/HEIC rotation
-    and mirroring properties), or None if the image has no orientation
+    from the orientation metadata, or None if the image has no orientation
     metadata. The decoders always apply it, so the returned images are in the
     correct orientation.
 
@@ -1283,39 +1282,22 @@ def _av1c_depth(av1c: bytes) -> int:
     return 8
 
 
-def _flip_h(grid):
-    return tuple(row[::-1] for row in grid)
-
-
-def _flip_v(grid):
-    return grid[::-1]
-
-
-def _transpose(grid):
-    return tuple(zip(*grid))
-
-
-def _rotate_ccw(grid):
-    return _flip_v(_transpose(grid))
-
-
-# libheif applies the irot and imir properties in association order, so we
-# compose them by applying them to a small grid of distinct values, and look up
-# which EXIF orientation produces the same result. The transforms below are the
-# ones of exif_orientation_transform() in Exif.h.
-_ORIENTATION_REFERENCE_GRID = ((0, 1, 2), (3, 4, 5))
-_ORIENTATION_FROM_GRID = {
-    transform(_ORIENTATION_REFERENCE_GRID): orientation
-    for orientation, transform in {
-        1: lambda g: g,
-        2: _flip_h,
-        3: lambda g: _flip_h(_flip_v(g)),
-        4: _flip_v,
-        5: _transpose,
-        6: lambda g: _flip_h(_transpose(g)),
-        7: lambda g: _flip_h(_flip_v(_transpose(g))),
-        8: lambda g: _flip_v(_transpose(g)),
-    }.items()
+# EXIF orientation of the irot angle (counter-clockwise quarter turns) and imir
+# axis (None if there's no imir). The HEIF spec mandates that irot comes before
+# imir. Same as avif_exif_orientation() in DecodeAvif.cpp.
+_EXIF_ORIENTATION_FROM_IROT_IMIR = {
+    (0, None): 1,
+    (0, 0): 4,
+    (0, 1): 2,
+    (1, None): 8,
+    (1, 0): 5,
+    (1, 1): 7,
+    (2, None): 3,
+    (2, 0): 2,
+    (2, 1): 4,
+    (3, None): 6,
+    (3, 0): 7,
+    (3, 1): 5,
 }
 
 
@@ -1363,8 +1345,7 @@ def _probe_heic(src: _ByteSource) -> ImageMetadata:
     item_id = top_level[0]
 
     width, height = _ispe_size(meta, item_id)
-    grid = _ORIENTATION_REFERENCE_GRID
-    has_orientation = False
+    irot = imir = None
     for prop_type, payload in meta.properties(item_id):
         if prop_type == b"clap":
             w_num, w_den, h_num, h_den = struct.unpack_from(">iIiI", payload)
@@ -1373,17 +1354,15 @@ def _probe_heic(src: _ByteSource) -> ImageMetadata:
             width = (w_num + w_den // 2) // w_den
             height = (h_num + h_den // 2) // h_den
         elif prop_type == b"irot":
-            has_orientation = True
-            angle = payload[0] & 0x03  # counter-clockwise quarter turns
-            for _ in range(angle):
-                grid = _rotate_ccw(grid)
-            if angle in (1, 3):
+            irot = payload[0] & 0x03
+            if irot in (1, 3):
                 width, height = height, width
         elif prop_type == b"imir":
-            has_orientation = True
-            # Axis 0 exchanges the top and bottom, axis 1 the left and right.
-            grid = _flip_v(grid) if payload[0] & 0x01 == 0 else _flip_h(grid)
-    orientation = _ORIENTATION_FROM_GRID[grid] if has_orientation else None
+            imir = payload[0] & 0x01
+    if irot is None and imir is None:
+        orientation = None
+    else:
+        orientation = _EXIF_ORIENTATION_FROM_IROT_IMIR[(irot or 0, imir)]
 
     # Luma bit depth, from the first non-derived image down the 'dimg' chain.
     coded_id = item_id
