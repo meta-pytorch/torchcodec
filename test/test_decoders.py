@@ -45,7 +45,9 @@ from torchcodec.decoders import (
     Demuxer,
     FrameIndex,
     get_container_metadata,
+    get_image_metadata,
     get_nvdec_cache_capacity,
+    ImageMetadata,
     ImageReadMode,
     Packet,
     RawAudioSamples,
@@ -7997,3 +7999,122 @@ class TestImageDecoder:
         finally:
             # Don't leak the (failure-poisoned) cache to other tests.
             iru.load_heic_library.cache_clear()
+
+
+class TestGetImageMetadata:
+    @staticmethod
+    def _assert_matches_decode(metadata, source):
+        # Every metadata field is defined by what the decoders output.
+        decoded = decode_image(source, mode="UNCHANGED", output_dtype="auto")
+        num_frames = decoded.shape[0] if decoded.ndim == 4 else 1
+        assert metadata.num_frames == num_frames
+        assert metadata.num_channels == decoded.shape[-3]
+        assert metadata.height == decoded.shape[-2]
+        assert metadata.width == decoded.shape[-1]
+
+    @pytest.mark.parametrize(
+        "make_source",
+        (
+            pytest.param(lambda a: a.path, id="path"),
+            pytest.param(lambda a: str(a.path), id="str"),
+            pytest.param(lambda a: a.path.read_bytes(), id="bytes"),
+            pytest.param(
+                lambda a: torch.frombuffer(
+                    bytearray(a.path.read_bytes()), dtype=torch.uint8
+                ),
+                id="tensor",
+            ),
+        ),
+    )
+    @needs_jpeg
+    @pytest.mark.parametrize(
+        "asset, num_channels",
+        ((GRADIENT_JPEG, 3), (GRAYSCALE_JPEG, 1), (CMYK_JPEG, 4)),
+    )
+    def test_matches_decode(self, asset, num_channels, make_source):
+        metadata = get_image_metadata(make_source(asset))
+        assert metadata == ImageMetadata(
+            format="jpeg",
+            width=asset.width,
+            height=asset.height,
+            num_channels=num_channels,
+            bit_depth=8,
+            num_frames=1,
+            rotation=None,
+        )
+        self._assert_matches_decode(metadata, make_source(asset))
+
+    @needs_jpeg
+    @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
+    def test_exif_orientation(self, tmp_path, orientation):
+        # Width and height are reported after orientation is applied.
+        img = Image.fromarray(numpy.zeros((40, 60, 3), dtype=numpy.uint8))
+        exif = img.getexif()
+        exif[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
+        path = tmp_path / f"exif_{orientation}.jpg"
+        img.save(path, exif=exif.tobytes())
+
+        metadata = get_image_metadata(path)
+        expected_rotation = {
+            0: None,  # Not a valid EXIF orientation: the decoders ignore it.
+            1: 0,
+            2: 0,
+            3: 180,
+            4: 180,
+            5: 90,
+            6: -90,
+            7: -90,
+            8: 90,
+        }
+        assert metadata.rotation == expected_rotation[orientation]
+        if orientation in (5, 6, 7, 8):
+            assert (metadata.width, metadata.height) == (40, 60)
+        else:
+            assert (metadata.width, metadata.height) == (60, 40)
+        self._assert_matches_decode(metadata, path)
+
+    @needs_jpeg
+    def test_jpeg_orientation_comes_from_first_app1(self):
+        # decode_jpeg only reads the orientation from the first APP1 segment,
+        # even when it's not EXIF data. This is a decoder bug, but the metadata
+        # must match what the decoder does: an XMP segment before the EXIF one
+        # hides the orientation.
+        # TODO_IMAGE: Fix this!
+        buf = io.BytesIO()
+        img = Image.fromarray(numpy.zeros((40, 60, 3), dtype=numpy.uint8))
+        exif = img.getexif()
+        exif[0x0112] = 6
+        img.save(buf, "JPEG", exif=exif.tobytes())
+        data = buf.getvalue()
+        xmp = b"http://ns.adobe.com/xap/1.0/\x00<x:xmpmeta/>"
+        xmp_segment = b"\xff\xe1" + (len(xmp) + 2).to_bytes(2, "big") + xmp
+        data = data[:2] + xmp_segment + data[2:]
+
+        metadata = get_image_metadata(data)
+        assert metadata.rotation is None
+        assert (metadata.width, metadata.height) == (60, 40)
+        self._assert_matches_decode(metadata, data)
+
+    def test_unrecognized_format_raises(self):
+        with pytest.raises(ValueError, match="Unsupported or unrecognized image"):
+            get_image_metadata(b"not an image at all")
+
+    def test_bad_source_type_raises(self):
+        with pytest.raises(TypeError, match="Unknown source type"):
+            get_image_metadata(123)
+
+    def test_truncated_headers_raise(self):
+        # Enough data for the format to be detected, but not for the headers.
+        data = GRADIENT_JPEG.path.read_bytes()
+        with pytest.raises(RuntimeError, match="truncated"):
+            get_image_metadata(data[:16])
+
+    @needs_jpeg
+    def test_truncated_image_data(self):
+        # Only the image data is truncated: the headers are still parsed, even
+        # though decoding fails.
+        data = GRADIENT_JPEG.path.read_bytes()
+        truncated = data[: len(data) // 2]
+        assert get_image_metadata(truncated) == get_image_metadata(data)
+        with pytest.raises(RuntimeError, match="truncated"):
+            decode_image(truncated)
