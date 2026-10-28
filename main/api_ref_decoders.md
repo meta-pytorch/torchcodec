@@ -47,8 +47,12 @@ For low-level control over the decoding process, see Low-level decoding APIs for
 | [`decode_gif`](generated/torchcodec.decoders.decode_gif.html#torchcodec.decoders.decode_gif) | Decode a GIF image into a `[N]CHW` tensor. |
 | [`decode_avif`](generated/torchcodec.decoders.decode_avif.html#torchcodec.decoders.decode_avif) | Decode an AVIF image into a `[N]CHW` tensor. |
 | [`decode_heic`](generated/torchcodec.decoders.decode_heic.html#torchcodec.decoders.decode_heic) | Decode an HEIC/HEIF image into a `[N]CHW` tensor - requires `libheif`! |
+| [`get_image_metadata`](generated/torchcodec.decoders.get_image_metadata.html#torchcodec.decoders.get_image_metadata) | Get the metadata of an encoded image, without decoding it. |
 
 | [`ImageReadMode`](generated/torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode) | Color mode for image decoding. |
+| --- | --- |
+
+| [`ImageMetadata`](generated/torchcodec.decoders.ImageMetadata.html#torchcodec.decoders.ImageMetadata) | Metadata of an encoded image, as returned by [`get_image_metadata()`](generated/torchcodec.decoders.get_image_metadata.html#torchcodec.decoders.get_image_metadata). |
 | --- | --- |
 
 ## Low-level decoding APIs for video and audio
