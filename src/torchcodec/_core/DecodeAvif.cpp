@@ -223,7 +223,10 @@ ImageProbeResult parse_and_probe(avifDecoder* decoder) {
   int64_t width = decoder->image->width;
   int64_t height = decoder->image->height;
   ExifOrientation exif_orientation = avif_exif_orientation(decoder->image);
-  if (swaps_width_and_height(exif_orientation)) {
+  if (exif_orientation == ExifOrientation::LeftTop ||
+      exif_orientation == ExifOrientation::RightTop ||
+      exif_orientation == ExifOrientation::RightBottom ||
+      exif_orientation == ExifOrientation::LeftBottom) {
     std::swap(width, height);
   }
   bool has_orientation = (decoder->image->transformFlags &
@@ -260,6 +263,10 @@ ImageProbeResult probe_avif_from_tensor(const torch::stable::Tensor& input) {
   return parse_and_probe(decoder.get());
 }
 
+// Same as probe_avif_from_tensor, but only reads the parts of the file that
+// libavif needs, instead of requiring all of it in memory. Similarly to what we
+// do with the gif probe, this avoids loading the whole file into a tensor which
+// matters for large files.
 ImageProbeResult probe_avif_from_file(std::string filename) {
   DecoderPtr decoder(avifDecoderCreate());
   STD_TORCH_CHECK(decoder != nullptr, "Failed to create avif decoder.");
