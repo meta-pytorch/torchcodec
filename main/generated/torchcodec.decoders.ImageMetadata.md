@@ -40,11 +40,12 @@ Number of frames (or images) in the file
 rotation*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 one of 0, 90, -90 or 180)
-from the EXIF orientation metadata, or None if the image has no orientation
-metadata. The decoders always apply it, so the returned images are in the
-correct orientation.
+from the orientation metadata (EXIF orientation, or the AVIF rotation and
+mirroring properties), or None if the image has no orientation metadata. The
+decoders always apply it, so the returned images are in the correct
+orientation.
 
-The EXIF orientation metadata can also specify a mirroring, which the decoders
+The orientation metadata can also specify a mirroring, which the decoders
 apply too but isn't reported here, since it doesn't change the image
 dimensions.
 
