@@ -8048,6 +8048,8 @@ class TestGetImageMetadata:
             pytest.param(
                 GRADIENT_INTERLACED_PNG, "png", 3, 8, 1, marks=pytest.mark.needs_png
             ),
+            pytest.param(GRADIENT_WEBP, "webp", 3, 8, 1, marks=pytest.mark.needs_webp),
+            pytest.param(RGBA_WEBP, "webp", 4, 8, 1, marks=pytest.mark.needs_webp),
         ),
     )
     def test_matches_decode(
@@ -8070,6 +8072,7 @@ class TestGetImageMetadata:
         (
             pytest.param("JPEG", "jpg", {}, marks=pytest.mark.needs_jpeg, id="jpeg"),
             pytest.param("PNG", "png", {}, marks=pytest.mark.needs_png, id="png"),
+            pytest.param("WEBP", "webp", {}, marks=pytest.mark.needs_webp, id="webp"),
         ),
     )
     @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
@@ -8148,6 +8151,37 @@ class TestGetImageMetadata:
         assert metadata.bit_depth == bit_depth
         self._assert_matches_decode(metadata, path)
 
+    @pytest.mark.parametrize(
+        "fmt, ext, save_kwargs",
+        (
+            pytest.param("WEBP", "webp", {}, marks=pytest.mark.needs_webp, id="webp"),
+            pytest.param(
+                "WEBP",
+                "webp",
+                {"lossless": True},
+                marks=pytest.mark.needs_webp,
+                id="webp-lossless",
+            ),
+        ),
+    )
+    @pytest.mark.parametrize("pil_mode", ("RGB", "RGBA"))
+    def test_animated(self, tmp_path, fmt, ext, save_kwargs, pil_mode):
+        frames = [
+            Image.fromarray(numpy.full((40, 60, 4), value, dtype=numpy.uint8)).convert(
+                pil_mode
+            )
+            for value in (0, 100, 200)
+        ]
+        path = tmp_path / f"animated.{ext}"
+        frames[0].save(
+            path, fmt, save_all=True, append_images=frames[1:], **save_kwargs
+        )
+
+        metadata = get_image_metadata(path)
+        assert metadata.num_frames == 3
+        assert (metadata.width, metadata.height) == (60, 40)
+        self._assert_matches_decode(metadata, path)
+
     def test_unrecognized_format_raises(self):
         with pytest.raises(ValueError, match="Unsupported or unrecognized image"):
             get_image_metadata(b"not an image at all")
@@ -8163,6 +8197,8 @@ class TestGetImageMetadata:
             (CMYK_JPEG, r"truncated"),
             (GRADIENT_PNG, r"truncated"),
             (GRADIENT_16BIT_PNG, r"truncated"),
+            (GRADIENT_WEBP, r"truncated"),
+            (RGBA_WEBP, r"truncated"),
         ),
     )
     def test_truncated_headers_raise(self, asset, match):
@@ -8178,6 +8214,8 @@ class TestGetImageMetadata:
             (CMYK_JPEG, r"truncated"),
             (GRADIENT_PNG, r"corrupted"),
             (GRADIENT_16BIT_PNG, r"corrupted"),
+            (GRADIENT_WEBP, r"corrupted or truncated"),
+            (RGBA_WEBP, r"corrupted or truncated"),
         ),
     )
     def test_truncated_image_data(self, asset, match):

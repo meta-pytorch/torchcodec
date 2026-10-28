@@ -958,9 +958,125 @@ def _probe_png(src: _ByteSource) -> ImageMetadata:
     )
 
 
+# ----------------------------------------------------------------------------
+# WebP
+# ----------------------------------------------------------------------------
+
+_WEBP_ANIMATION_FLAG = 0x02
+_WEBP_EXIF_FLAG = 0x08
+_WEBP_ALPHA_FLAG = 0x10
+
+
+def _vp8_dimensions(src: _ByteSource, payload_pos: int) -> tuple[int, int]:
+    header = src.read_exact(payload_pos, 10)
+    if header[3:6] != b"\x9d\x01\x2a":
+        raise RuntimeError("Invalid VP8 bitstream signature.")
+    width, height = struct.unpack_from("<HH", header, 6)
+    width, height = width & 0x3FFF, height & 0x3FFF
+    if width == 0 or height == 0:
+        raise RuntimeError("Invalid VP8 dimensions.")
+    return width, height
+
+
+def _vp8l_info(src: _ByteSource, payload_pos: int) -> tuple[int, int, bool]:
+    header = src.read_exact(payload_pos, 5)
+    if header[0] != 0x2F:
+        raise RuntimeError("Invalid VP8L bitstream signature.")
+    (bits,) = struct.unpack_from("<I", header, 1)
+    if bits >> 29 != 0:
+        raise RuntimeError("Invalid VP8L version.")
+    width = (bits & 0x3FFF) + 1
+    height = ((bits >> 14) & 0x3FFF) + 1
+    has_alpha = bool((bits >> 28) & 1)
+    return width, height, has_alpha
+
+
+def _probe_webp(src: _ByteSource) -> ImageMetadata:
+    # Mirrors WebPGetFeatures() (dimensions and alpha), WebPAnimDecoder (frame
+    # count and canvas size) and WebPDemux (the EXIF chunk, which libwebpdemux
+    # only exposes when the VP8X EXIF flag is set).
+    first_type, first_size = struct.unpack("<4sI", src.read_exact(12, 8))
+    orientation = None
+    if first_type == b"VP8 ":
+        width, height = _vp8_dimensions(src, 20)
+        has_alpha = False
+        num_frames = 1
+    elif first_type == b"VP8L":
+        width, height, has_alpha = _vp8l_info(src, 20)
+        num_frames = 1
+    elif first_type == b"VP8X":
+        vp8x = src.read_exact(20, 10)
+        flags = vp8x[0]
+        canvas_width = int.from_bytes(vp8x[4:7], "little") + 1
+        canvas_height = int.from_bytes(vp8x[7:10], "little") + 1
+        is_animated = bool(flags & _WEBP_ANIMATION_FLAG)
+
+        num_anmf = 0
+        seen_alph = False
+        bitstream = None  # (width, height, vp8l_alpha_or_None) of first image
+        exif = None
+        pos = 20 + first_size + (first_size & 1)
+        while True:
+            header = src.read(pos, 8)
+            if len(header) < 8:
+                break
+            chunk_type, chunk_size = struct.unpack("<4sI", header)
+            if chunk_type == b"ANMF":
+                num_anmf += 1
+            elif not is_animated and bitstream is None:
+                if chunk_type == b"ALPH":
+                    seen_alph = True
+                elif chunk_type == b"VP8 ":
+                    bitstream = (*_vp8_dimensions(src, pos + 8), None)
+                elif chunk_type == b"VP8L":
+                    bitstream = _vp8l_info(src, pos + 8)
+            if chunk_type == b"EXIF" and exif is None and flags & _WEBP_EXIF_FLAG:
+                exif = src.read_exact(pos + 8, chunk_size)
+            pos += 8 + chunk_size + (chunk_size & 1)
+
+        if exif is not None:
+            if exif[:6] == b"Exif\x00\x00":
+                exif = exif[6:]
+            if len(exif) > 0:
+                orientation = _exif_orientation(exif)
+
+        if is_animated:
+            if num_anmf == 0:
+                raise RuntimeError("Animated WebP has no frames.")
+            width, height = canvas_width, canvas_height
+            has_alpha = bool(flags & _WEBP_ALPHA_FLAG)
+            num_frames = num_anmf
+        else:
+            if bitstream is None:
+                raise RuntimeError("WebP has no VP8 or VP8L bitstream.")
+            width, height, vp8l_alpha = bitstream
+            if (width, height) != (canvas_width, canvas_height):
+                raise RuntimeError("WebP canvas and bitstream dimensions differ.")
+            if vp8l_alpha is None:
+                has_alpha = bool(flags & _WEBP_ALPHA_FLAG) or seen_alph
+            else:
+                has_alpha = vp8l_alpha or seen_alph
+            num_frames = 1
+    else:
+        raise RuntimeError(f"Unexpected first WebP chunk: {first_type!r}.")
+
+    if orientation is not None and 5 <= orientation <= 8:
+        width, height = height, width
+    return ImageMetadata(
+        format="webp",
+        width=width,
+        height=height,
+        num_channels=4 if has_alpha else 3,
+        bit_depth=8,
+        num_frames=num_frames,
+        rotation=_ROTATION_FROM_EXIF_ORIENTATION[orientation],
+    )
+
+
 _PY_PROBES = {
     "jpeg": _probe_jpeg,
     "png": _probe_png,
+    "webp": _probe_webp,
 }
 
 
