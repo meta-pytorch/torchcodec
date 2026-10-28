@@ -38,6 +38,8 @@ from ._image_decoders import (  # noqa
     decode_jpeg,
     decode_png,
     decode_webp,
+    get_image_metadata,
+    ImageMetadata,
     ImageReadMode,
 )
 from ._video_decoder import CpuFallbackStatus, VideoDecoder  # noqa

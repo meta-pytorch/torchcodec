@@ -4,7 +4,10 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+import ctypes
+import struct
 import warnings
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Literal
@@ -536,7 +539,10 @@ def _detect_image_format(data: torch.Tensor) -> str:
     # Sniff the codec from the leading "magic" bytes of the encoded data.
     # This used to be implemented in C++ in torchvision, but benchmarks show
     # this is negligible in Python
-    header = bytes(data[:64].tolist())
+    return _detect_image_format_from_header(bytes(data[:64].tolist()))
+
+
+def _detect_image_format_from_header(header: bytes) -> str:
     if header[:3] == b"\xff\xd8\xff":
         return "jpeg"
     if header[:8] == b"\x89PNG\r\n\x1a\n":
@@ -640,3 +646,291 @@ def decode_image(
     }
     fmt = _detect_image_format(data)
     return format_to_decoder[fmt](data, mode=mode, output_dtype=output_dtype)  # type: ignore[operator]
+
+
+@dataclass(frozen=True)
+class ImageMetadata:
+    """Metadata of an encoded image, as returned by :func:`get_image_metadata`.
+
+    Every attribute describes the tensor that :func:`decode_image` (or the
+    matching format-specific decoder) returns for this image.
+    """
+
+    format: str
+    """The image format: ``"jpeg"``."""
+    width: int
+    """Width of the decoded image, in pixels. This is the **post-rotation**
+    width: for 90 or -90 degree :attr:`rotation`, width and height are swapped
+    compared to the dimensions stored in the file."""
+    height: int
+    """Height of the decoded image, in pixels. Like :attr:`width`, this is the
+    **post-rotation** height."""
+    num_channels: int
+    """Number of channels of the decoded image when decoding with
+    ``mode="UNCHANGED"``."""
+    bit_depth: int
+    """Number of bits per channel in the encoded image. When greater than 8,
+    decoding with ``output_dtype="auto"`` returns a ``torch.uint16`` tensor."""
+    num_frames: int
+    """Number of frames (or images) in the file: 1 for still images, and the
+    size of the leading ``N`` dimension of the decoded tensor for animated or
+    multi-image files."""
+    rotation: float | None
+    """Rotation angle in degrees (counter-clockwise: one of 0, 90, -90 or 180)
+    from the EXIF orientation metadata, or None if the image has no orientation
+    metadata. The decoders always apply it, so the returned images are in the
+    correct orientation. This uses the same convention as
+    :attr:`VideoStreamMetadata.rotation
+    <torchcodec.decoders.VideoStreamMetadata.rotation>`.
+
+    The orientation metadata can also specify a mirroring, which the decoders
+    apply too but isn't reported here, since it doesn't change the image
+    dimensions. In that case, this is the rotation applied after mirroring the
+    image left to right."""
+
+
+class _ByteSource:
+    # Random access over the encoded bytes. Paths are read lazily, so probing a
+    # large file usually only reads its first few KB.
+
+    def __init__(self, source):
+        self._file = None
+        if isinstance(source, (str, Path)):
+            self._file = open(source, "rb")
+            self._buf = None
+            self.size = Path(source).stat().st_size
+        elif isinstance(source, (bytes, bytearray)):
+            self._buf = memoryview(source)
+            self.size = len(source)
+        elif isinstance(source, torch.Tensor):
+            if (
+                source.dtype != torch.uint8
+                or source.ndim != 1
+                or source.device.type != "cpu"
+            ):
+                raise ValueError(
+                    "Input tensor must be a 1-dimensional uint8 CPU tensor, got "
+                    f"dtype={source.dtype}, ndim={source.ndim}, device={source.device}."
+                )
+            # Zero-copy view of the tensor's data. The view doesn't own the
+            # memory, so we keep a reference to the tensor.
+            self._tensor = source.contiguous()
+            self._buf = memoryview(
+                (ctypes.c_ubyte * self._tensor.numel()).from_address(
+                    self._tensor.data_ptr()
+                )
+            )
+            self.size = len(self._buf)
+        else:
+            raise TypeError(
+                f"Unknown source type: {type(source)}. "
+                "Supported types are str, Path, bytes and torch.Tensor."
+            )
+
+    def read(self, offset: int, size: int) -> bytes:
+        # Returns fewer than `size` bytes when reading past the end.
+        if self._buf is not None:
+            return bytes(self._buf[offset : offset + size])
+        assert self._file is not None
+        self._file.seek(offset)
+        return self._file.read(size)
+
+    def read_exact(self, offset: int, size: int) -> bytes:
+        data = self.read(offset, size)
+        if len(data) != size:
+            raise RuntimeError("Image is truncated or corrupted.")
+        return data
+
+    def close(self):
+        if self._file is not None:
+            self._file.close()
+
+
+def _swaps_width_and_height(orientation: int | None) -> bool:
+    # EXIF orientations 5 to 8 involve a 90 or 270 degree rotation.
+    return orientation is not None and 5 <= orientation <= 8
+
+
+_EXIF_INCORRECT_TAG = 0xFFFF
+
+
+def _exif_orientation(tiff: bytes) -> int | None:
+    # Port of fetch_exif_orientation() from Exif.h, quirks included, so that we
+    # report exactly the orientation the decoders apply. `tiff` starts at the
+    # TIFF header (i.e. after any "Exif\0\0" prefix). Returns the EXIF
+    # orientation in [1, 8], or None if there's none (or it's invalid, in which
+    # case the decoders don't apply anything either).
+    n = len(tiff)
+    byte_order = "<" if tiff[:2] == b"II" else ">"
+
+    def u16(offset):
+        if offset + 1 >= n:
+            return _EXIF_INCORRECT_TAG
+        return struct.unpack_from(byte_order + "H", tiff, offset)[0]
+
+    if u16(2) != 0x2A:
+        return None
+    offset = (
+        _EXIF_INCORRECT_TAG
+        if 7 >= n
+        else struct.unpack_from(byte_order + "I", tiff, 4)[0]
+    )
+    num_entries = u16(offset)
+    offset += 2
+    for _ in range(num_entries):
+        tag = u16(offset)
+        if tag == _EXIF_INCORRECT_TAG:
+            break
+        if tag == 0x0112:
+            orientation = u16(offset + 8)
+            return orientation if 1 <= orientation <= 8 else None
+        offset += 12
+    return None
+
+
+# ----------------------------------------------------------------------------
+# JPEG
+# ----------------------------------------------------------------------------
+
+# SOFn markers that libjpeg-turbo can decode. The other SOFn markers
+# (hierarchical, and the reserved JPG marker) make jpeg_read_header() fail.
+_JPEG_SUPPORTED_SOF = frozenset((0xC0, 0xC1, 0xC2, 0xC3, 0xC9, 0xCA, 0xCB))
+_JPEG_UNSUPPORTED_SOF = frozenset((0xC5, 0xC6, 0xC7, 0xC8, 0xCD, 0xCE, 0xCF))
+
+
+def _probe_jpeg(src: _ByteSource) -> tuple:
+    # Walks the markers up to the first SOS, like jpeg_read_header(). The
+    # decoder takes the EXIF orientation from the first APP1 segment, whatever
+    # it contains.
+    pos = 2  # skip SOI, already checked by the format sniffer
+    sof = None
+    orientation = None
+    seen_app1 = False
+    while True:
+        chunk = src.read(pos, 4)
+        if len(chunk) < 2:
+            raise RuntimeError("JPEG is truncated: no SOS marker found.")
+        if chunk[0] != 0xFF:
+            # libjpeg skips garbage bytes between markers.
+            window = src.read(pos, 4096)
+            idx = window.find(b"\xff")
+            pos += idx if idx > 0 else len(window)
+            continue
+        marker = chunk[1]
+        if marker == 0xFF:  # fill byte
+            pos += 1
+            continue
+        if marker == 0xDA:  # SOS
+            break
+        if marker == 0xD9:  # EOI
+            raise RuntimeError("JPEG has no image data.")
+        if marker == 0x01 or 0xD0 <= marker <= 0xD7:  # standalone markers
+            pos += 2
+            continue
+        if len(chunk) < 4:
+            raise RuntimeError("JPEG is truncated.")
+        segment_length = (chunk[2] << 8) | chunk[3]
+        if segment_length < 2:
+            raise RuntimeError("Invalid JPEG marker segment length.")
+        if marker in _JPEG_SUPPORTED_SOF:
+            if sof is not None:
+                raise RuntimeError("JPEG has more than one SOF marker.")
+            precision, height, width, num_components = struct.unpack(
+                ">BHHB", src.read_exact(pos + 4, 6)
+            )
+            if segment_length != 8 + 3 * num_components:
+                raise RuntimeError("Invalid JPEG SOF marker length.")
+            if height == 0 or width == 0 or num_components == 0:
+                raise RuntimeError("Empty JPEG image (DNL not supported).")
+            sof = (precision, height, width, num_components)
+        elif marker in _JPEG_UNSUPPORTED_SOF:
+            raise RuntimeError(f"Unsupported JPEG process: SOF type 0x{marker:02x}.")
+        elif marker == 0xE1 and not seen_app1:
+            seen_app1 = True
+            payload = src.read_exact(pos + 4, segment_length - 2)
+            if len(payload) > 6:
+                orientation = _exif_orientation(payload[6:])
+        pos += 2 + segment_length
+
+    if sof is None:
+        raise RuntimeError("JPEG has no SOF marker before SOS.")
+    precision, height, width, num_components = sof
+    if _swaps_width_and_height(orientation):
+        width, height = height, width
+    return width, height, num_components, precision, 1, orientation
+
+
+_PY_PROBES = {
+    "jpeg": _probe_jpeg,
+}
+
+# Rotation of each EXIF orientation, when decomposed into an optional
+# left-to-right mirroring followed by a rotation.
+_ROTATION_FROM_EXIF_ORIENTATION = {
+    1: 0.0,
+    2: 0.0,
+    3: 180.0,
+    4: 180.0,
+    5: 90.0,
+    6: -90.0,
+    7: -90.0,
+    8: 90.0,
+}
+
+
+def get_image_metadata(source: str | Path | bytes | torch.Tensor) -> ImageMetadata:
+    """Get the metadata of an encoded image, without decoding it.
+
+    The format is detected from the encoded data, like in
+    :func:`~torchcodec.decoders.decode_image`. Only JPEG images are supported.
+    Only the image headers are parsed, so this is much faster than decoding.
+    When ``source`` is a path, only the parts of the file that hold the headers
+    are read.
+
+    See :class:`ImageMetadata` for the returned attributes, which all describe
+    the output of the decoders.
+
+    Example:
+
+        .. code-block:: python
+
+            from torchcodec.decoders import get_image_metadata
+
+            metadata = get_image_metadata("image.jpg")
+            print(metadata.width, metadata.height)
+
+    Args:
+        source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
+            The encoded image data: a path (``str`` or ``pathlib.Path``), a
+            ``bytes`` object, or a 1-D uint8 ``torch.Tensor`` of the raw encoded
+            bytes.
+
+    Returns:
+        ImageMetadata: The image metadata.
+    """
+    src = _ByteSource(source)
+    try:
+        fmt = _detect_image_format_from_header(src.read(0, 64))
+        if fmt not in _PY_PROBES:
+            raise NotImplementedError(
+                f"get_image_metadata() doesn't support {fmt.upper()} images yet."
+            )
+        probe_result = _PY_PROBES[fmt](src)
+    except (struct.error, IndexError):
+        raise RuntimeError("Image is truncated or corrupted.") from None
+    finally:
+        src.close()
+    width, height, num_channels, bit_depth, num_frames, orientation = probe_result
+    return ImageMetadata(
+        format=fmt,
+        width=width,
+        height=height,
+        num_channels=num_channels,
+        bit_depth=bit_depth,
+        num_frames=num_frames,
+        rotation=(
+            None
+            if orientation is None
+            else _ROTATION_FROM_EXIF_ORIENTATION[orientation]
+        ),
+    )
