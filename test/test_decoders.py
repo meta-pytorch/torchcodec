@@ -8011,6 +8011,7 @@ class TestGetImageMetadata:
         assert metadata.num_channels == decoded.shape[-3]
         assert metadata.height == decoded.shape[-2]
         assert metadata.width == decoded.shape[-1]
+        assert (metadata.bit_depth > 8) == (decoded.dtype == torch.uint16)
 
     @pytest.mark.parametrize(
         "make_source",
@@ -8026,33 +8027,59 @@ class TestGetImageMetadata:
             ),
         ),
     )
-    @needs_jpeg
     @pytest.mark.parametrize(
-        "asset, num_channels",
-        ((GRADIENT_JPEG, 3), (GRAYSCALE_JPEG, 1), (CMYK_JPEG, 4)),
+        "asset, fmt, num_channels, bit_depth, num_frames",
+        (
+            pytest.param(GRADIENT_JPEG, "jpeg", 3, 8, 1, marks=pytest.mark.needs_jpeg),
+            pytest.param(GRAYSCALE_JPEG, "jpeg", 1, 8, 1, marks=pytest.mark.needs_jpeg),
+            pytest.param(CMYK_JPEG, "jpeg", 4, 8, 1, marks=pytest.mark.needs_jpeg),
+            pytest.param(GRADIENT_PNG, "png", 3, 8, 1, marks=pytest.mark.needs_png),
+            pytest.param(GRAYSCALE_PNG, "png", 1, 8, 1, marks=pytest.mark.needs_png),
+            pytest.param(RGBA_PNG, "png", 4, 8, 1, marks=pytest.mark.needs_png),
+            pytest.param(
+                GRAYSCALE_ALPHA_PNG, "png", 2, 8, 1, marks=pytest.mark.needs_png
+            ),
+            pytest.param(
+                GRADIENT_16BIT_PNG, "png", 3, 16, 1, marks=pytest.mark.needs_png
+            ),
+            pytest.param(
+                GRAYSCALE_16BIT_PNG, "png", 1, 16, 1, marks=pytest.mark.needs_png
+            ),
+            pytest.param(
+                GRADIENT_INTERLACED_PNG, "png", 3, 8, 1, marks=pytest.mark.needs_png
+            ),
+        ),
     )
-    def test_matches_decode(self, asset, num_channels, make_source):
+    def test_matches_decode(
+        self, asset, fmt, num_channels, bit_depth, num_frames, make_source
+    ):
         metadata = get_image_metadata(make_source(asset))
         assert metadata == ImageMetadata(
-            format="jpeg",
+            format=fmt,
             width=asset.width,
             height=asset.height,
             num_channels=num_channels,
-            bit_depth=8,
-            num_frames=1,
+            bit_depth=bit_depth,
+            num_frames=num_frames,
             rotation=None,
         )
         self._assert_matches_decode(metadata, make_source(asset))
 
-    @needs_jpeg
+    @pytest.mark.parametrize(
+        "fmt, ext, save_kwargs",
+        (
+            pytest.param("JPEG", "jpg", {}, marks=pytest.mark.needs_jpeg, id="jpeg"),
+            pytest.param("PNG", "png", {}, marks=pytest.mark.needs_png, id="png"),
+        ),
+    )
     @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
-    def test_exif_orientation(self, tmp_path, orientation):
+    def test_exif_orientation(self, tmp_path, orientation, fmt, ext, save_kwargs):
         # Width and height are reported after orientation is applied.
         img = Image.fromarray(numpy.zeros((40, 60, 3), dtype=numpy.uint8))
         exif = img.getexif()
         exif[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
-        path = tmp_path / f"exif_{orientation}.jpg"
-        img.save(path, exif=exif.tobytes())
+        path = tmp_path / f"exif_{orientation}.{ext}"
+        img.save(path, fmt, exif=exif.tobytes(), **save_kwargs)
 
         metadata = get_image_metadata(path)
         expected_rotation = {
@@ -8095,6 +8122,32 @@ class TestGetImageMetadata:
         assert (metadata.width, metadata.height) == (60, 40)
         self._assert_matches_decode(metadata, data)
 
+    @needs_png
+    @pytest.mark.parametrize(
+        "pil_mode, save_kwargs, num_channels, bit_depth",
+        (
+            ("P", {}, 3, 8),
+            ("P", {"transparency": 0}, 4, 8),
+            ("P", {"bits": 4}, 3, 8),
+            ("L", {"transparency": 0}, 1, 8),
+            ("RGB", {"transparency": (0, 0, 0)}, 3, 8),
+            ("1", {}, 1, 1),
+        ),
+    )
+    def test_png_color_types(
+        self, tmp_path, pil_mode, save_kwargs, num_channels, bit_depth
+    ):
+        # Palettes are expanded to RGB(A) by the decoder, and a tRNS chunk only
+        # adds an alpha channel to palette images.
+        img = Image.fromarray(numpy.zeros((40, 60, 3), dtype=numpy.uint8))
+        path = tmp_path / "img.png"
+        img.convert(pil_mode).save(path, **save_kwargs)
+
+        metadata = get_image_metadata(path)
+        assert metadata.num_channels == num_channels
+        assert metadata.bit_depth == bit_depth
+        self._assert_matches_decode(metadata, path)
+
     def test_unrecognized_format_raises(self):
         with pytest.raises(ValueError, match="Unsupported or unrecognized image"):
             get_image_metadata(b"not an image at all")
@@ -8103,18 +8156,39 @@ class TestGetImageMetadata:
         with pytest.raises(TypeError, match="Unknown source type"):
             get_image_metadata(123)
 
-    def test_truncated_headers_raise(self):
+    @pytest.mark.parametrize(
+        "asset, match",
+        (
+            (GRADIENT_JPEG, r"truncated"),
+            (CMYK_JPEG, r"truncated"),
+            (GRADIENT_PNG, r"truncated"),
+            (GRADIENT_16BIT_PNG, r"truncated"),
+        ),
+    )
+    def test_truncated_headers_raise(self, asset, match):
         # Enough data for the format to be detected, but not for the headers.
-        data = GRADIENT_JPEG.path.read_bytes()
-        with pytest.raises(RuntimeError, match="truncated"):
+        data = asset.path.read_bytes()
+        with pytest.raises(RuntimeError, match=match):
             get_image_metadata(data[:16])
 
-    @needs_jpeg
-    def test_truncated_image_data(self):
+    @pytest.mark.parametrize(
+        "asset, match",
+        (
+            (GRADIENT_JPEG, r"truncated"),
+            (CMYK_JPEG, r"truncated"),
+            (GRADIENT_PNG, r"corrupted"),
+            (GRADIENT_16BIT_PNG, r"corrupted"),
+        ),
+    )
+    def test_truncated_image_data(self, asset, match):
         # Only the image data is truncated: the headers are still parsed, even
         # though decoding fails.
-        data = GRADIENT_JPEG.path.read_bytes()
+        data = asset.path.read_bytes()
         truncated = data[: len(data) // 2]
         assert get_image_metadata(truncated) == get_image_metadata(data)
-        with pytest.raises(RuntimeError, match="truncated"):
+        with pytest.raises(RuntimeError, match=match):
             decode_image(truncated)
+
+    def test_corrupt_png_raises(self):
+        with pytest.raises(RuntimeError, match="truncated or corrupted"):
+            get_image_metadata(SIGSEGV_PNG.path)
