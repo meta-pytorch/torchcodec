@@ -20,7 +20,7 @@ height*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
 Height of the decoded image, **post-rotation**. This is the height of the
 tensor returned by [`decode_image()`](torchcodec.decoders.decode_image.html#torchcodec.decoders.decode_image) or the format-specific decoders,
-which always apply the EXIF orientation.
+which always apply the orientation metadata.
 
 num_channels*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
@@ -40,10 +40,9 @@ Number of frames (or images) in the file
 rotation*: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 one of 0, 90, -90 or 180)
-from the orientation metadata (EXIF orientation, or the AVIF rotation and
-mirroring properties), or None if the image has no orientation metadata. The
-decoders always apply it, so the returned images are in the correct
-orientation.
+from the orientation metadata, or None if the image has no orientation
+metadata. The decoders always apply it, so the returned images are in the
+correct orientation.
 
 The orientation metadata can also specify a mirroring, which the decoders
 apply too but isn't reported here, since it doesn't change the image
@@ -57,4 +56,4 @@ width*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
 Width of the decoded image, **post-rotation**. This is the width of the
 tensor returned by [`decode_image()`](torchcodec.decoders.decode_image.html#torchcodec.decoders.decode_image) or the format-specific decoders,
-which always apply the EXIF orientation.
+which always apply the orientation metadata.

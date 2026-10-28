@@ -148,10 +148,10 @@ The following frame metadata fields are needed
  .. code-block:: none
 
     Running ffprobe:
-    ffprobe -i /tmp/tmpyj_7lkq3/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+    ffprobe -i /tmp/tmpoawr2aww/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
     Running ffprobe:
-    ffprobe -i /tmp/tmpyj_7lkq3/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+    ffprobe -i /tmp/tmpoawr2aww/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
     Sample of fields in custom frame mappings:
     frame['key_frame'] = 1, frame['pts'] = 0, frame['duration'] = 1
@@ -224,15 +224,15 @@ object. As video length or resolution increases, the performance gain compared t
 
     Running benchmarks on short_video.mp4
     Creating a VideoDecoder object with custom_frame_mappings:
-    med = 6.12ms +- 0.03
+    med = 6.12ms +- 0.02
     Creating a VideoDecoder object with seek_mode='exact':
-    med = 6.40ms +- 0.02
+    med = 6.41ms +- 0.02
 
     Running benchmarks on long_video.mp4
     Creating a VideoDecoder object with custom_frame_mappings:
-    med = 25.46ms +- 0.14
+    med = 25.24ms +- 0.11
     Creating a VideoDecoder object with seek_mode='exact':
-    med = 43.17ms +- 0.43
+    med = 43.45ms +- 0.37
 
 
 
@@ -282,15 +282,15 @@ so the performance benefits are realized.
 
     Running benchmarks on short_video.mp4
     Decoding frames with custom_frame_mappings:
-    med = 18.32ms +- 0.04
+    med = 18.19ms +- 0.04
     Decoding frames with seek_mode='exact':
-    med = 18.59ms +- 0.04
+    med = 18.41ms +- 0.05
 
     Running benchmarks on long_video.mp4
     Decoding frames with custom_frame_mappings:
-    med = 37.62ms +- 0.13
+    med = 37.36ms +- 0.11
     Decoding frames with seek_mode='exact':
-    med = 55.92ms +- 0.45
+    med = 55.79ms +- 0.46
 
 
 
@@ -418,7 +418,7 @@ Which mode should I use?
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 23.790 seconds)
+   **Total running time of the script:** (0 minutes 23.503 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_custom_frame_mappings.py:

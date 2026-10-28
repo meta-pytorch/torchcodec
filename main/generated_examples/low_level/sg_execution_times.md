@@ -1,10 +1,10 @@
 # Computation times
 
-**00:29.908** total execution time for 4 files **from generated_examples/low_level**:
+**00:29.544** total execution time for 4 files **from generated_examples/low_level**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Multi-threaded decoding pipelines](pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py) (`pipelines.py`) | 00:26.685 | 0.0 |
-| [Build your own decoding pipeline](basics.html#sphx-glr-generated-examples-low-level-basics-py) (`basics.py`) | 00:01.537 | 0.0 |
-| [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-low-level-raw-data-py) (`raw_data.py`) | 00:01.233 | 0.0 |
-| [Low-level APIs and CUDA streams synchronization](cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) (`cuda_streams.py`) | 00:00.453 | 0.0 |
+| [Multi-threaded decoding pipelines](pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py) (`pipelines.py`) | 00:26.333 | 0.0 |
+| [Build your own decoding pipeline](basics.html#sphx-glr-generated-examples-low-level-basics-py) (`basics.py`) | 00:01.541 | 0.0 |
+| [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-low-level-raw-data-py) (`raw_data.py`) | 00:01.221 | 0.0 |
+| [Low-level APIs and CUDA streams synchronization](cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) (`cuda_streams.py`) | 00:00.449 | 0.0 |
