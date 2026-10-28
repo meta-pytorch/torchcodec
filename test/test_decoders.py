@@ -8050,6 +8050,10 @@ class TestGetImageMetadata:
             ),
             pytest.param(GRADIENT_WEBP, "webp", 3, 8, 1, marks=pytest.mark.needs_webp),
             pytest.param(RGBA_WEBP, "webp", 4, 8, 1, marks=pytest.mark.needs_webp),
+            pytest.param(GRADIENT_GIF, "gif", 3, 8, 1),
+            pytest.param(ANIMATED_GIF, "gif", 4, 8, 4),
+            pytest.param(TRANSPARENT_GIF, "gif", 4, 8, 1),
+            pytest.param(FRAME_EXCEEDS_SCREEN_GIF, "gif", 4, 8, 1),
         ),
     )
     def test_matches_decode(
@@ -8162,6 +8166,7 @@ class TestGetImageMetadata:
                 marks=pytest.mark.needs_webp,
                 id="webp-lossless",
             ),
+            pytest.param("GIF", "gif", {}, id="gif"),
         ),
     )
     @pytest.mark.parametrize("pil_mode", ("RGB", "RGBA"))
@@ -8199,6 +8204,8 @@ class TestGetImageMetadata:
             (GRADIENT_16BIT_PNG, r"truncated"),
             (GRADIENT_WEBP, r"truncated"),
             (RGBA_WEBP, r"truncated"),
+            (GRADIENT_GIF, r"DGifOpen\(\) failed"),
+            (ANIMATED_GIF, r"DGifOpen\(\) failed"),
         ),
     )
     def test_truncated_headers_raise(self, asset, match):

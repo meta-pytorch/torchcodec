@@ -26,6 +26,24 @@ torch::stable::Tensor decode_gif(
       "prebuilt wheel, please report it to the TorchCodec repo.");
 }
 
+std::vector<int64_t> probe_gif(
+    [[maybe_unused]] const torch::stable::Tensor& input) {
+  STD_TORCH_CHECK(
+      false,
+      "get_image_metadata: torchcodec was not compiled with GIF support. "
+      "Rebuild torchcodec with TORCHCODEC_BUILD_GIF=1. If you see this error "
+      "in a prebuilt wheel, please report it to the TorchCodec repo.");
+}
+
+std::vector<int64_t> probe_gif_from_file(
+    [[maybe_unused]] std::string filename) {
+  STD_TORCH_CHECK(
+      false,
+      "get_image_metadata: torchcodec was not compiled with GIF support. "
+      "Rebuild torchcodec with TORCHCODEC_BUILD_GIF=1. If you see this error "
+      "in a prebuilt wheel, please report it to the TorchCodec repo.");
+}
+
 } // namespace facebook::torchcodec
 
 #else
@@ -33,9 +51,11 @@ torch::stable::Tensor decode_gif(
 #include <torch/headeronly/core/MemoryFormat.h>
 
 #include <algorithm>
+#include <climits>
 #include <cstdint>
 #include <optional>
 
+#include "FileIO.h"
 #include "ImageCommon.h"
 #include "giflib/gif_lib.h"
 
@@ -60,6 +80,12 @@ int read_callback(GifFileType* gif_file, GifByteType* output, int bytes) {
   source_ctx->ptr += num_bytes_to_read;
   source_ctx->count -= num_bytes_to_read;
   return static_cast<int>(num_bytes_to_read);
+}
+
+// Same as read_callback, reading from a file instead of a tensor.
+int file_read_callback(GifFileType* gif_file, GifByteType* output, int bytes) {
+  auto* file = static_cast<FileIO*>(gif_file->UserData);
+  return std::max(file->read(output, bytes), 0);
 }
 
 } // namespace
@@ -330,6 +356,121 @@ torch::stable::Tensor decode_gif(
   STD_TORCH_CHECK(error == D_GIF_SUCCEEDED, "DGifCloseFile() failed - ", error);
 
   return output;
+}
+
+namespace {
+
+// Walks the records like DGifSlurp() does, but skips the image data instead of
+// LZW-decoding it. Closes gif_file.
+ImageProbeResult probe_and_close(GifFileType* gif_file) {
+  int error = D_GIF_SUCCEEDED;
+
+  auto fail = [&]() {
+    auto gif_error = gif_file->Error;
+    DGifCloseFile(gif_file, &error);
+    STD_TORCH_CHECK(false, "Failed to parse GIF - ", gif_error);
+  };
+
+  int64_t num_images = 0;
+  int64_t first_image_width = 0;
+  int64_t first_image_height = 0;
+  // Like DGifSavedExtensionToGCB(), only the first graphics control extension
+  // preceding an image applies to it.
+  bool seen_gcb_for_next_image = false;
+  bool has_transparency = false;
+  GifRecordType record_type;
+  do {
+    if (DGifGetRecordType(gif_file, &record_type) == GIF_ERROR) {
+      fail();
+    }
+    if (record_type == IMAGE_DESC_RECORD_TYPE) {
+      if (DGifGetImageDesc(gif_file) == GIF_ERROR) {
+        fail();
+      }
+      const GifImageDesc& desc = gif_file->Image;
+      if (desc.Width <= 0 || desc.Height <= 0 ||
+          desc.Width > (INT_MAX / desc.Height)) {
+        fail();
+      }
+      if (num_images == 0) {
+        first_image_width = desc.Width;
+        first_image_height = desc.Height;
+      }
+      ++num_images;
+      seen_gcb_for_next_image = false;
+
+      int code_size = 0;
+      GifByteType* code_block = nullptr;
+      if (DGifGetCode(gif_file, &code_size, &code_block) == GIF_ERROR) {
+        fail();
+      }
+      while (code_block != nullptr) {
+        if (DGifGetCodeNext(gif_file, &code_block) == GIF_ERROR) {
+          fail();
+        }
+      }
+    } else if (record_type == EXTENSION_RECORD_TYPE) {
+      int ext_code = 0;
+      GifByteType* ext_data = nullptr;
+      if (DGifGetExtension(gif_file, &ext_code, &ext_data) == GIF_ERROR) {
+        fail();
+      }
+      if (ext_data != nullptr && ext_code == GRAPHICS_EXT_FUNC_CODE &&
+          !seen_gcb_for_next_image) {
+        seen_gcb_for_next_image = true;
+        GraphicsControlBlock gcb;
+        if (DGifExtensionToGCB(ext_data[0], ext_data + 1, &gcb) == GIF_OK &&
+            gcb.TransparentColor != NO_TRANSPARENT_COLOR) {
+          has_transparency = true;
+        }
+      }
+      while (ext_data != nullptr) {
+        if (DGifGetExtensionNext(gif_file, &ext_data) == GIF_ERROR) {
+          fail();
+        }
+      }
+    }
+  } while (record_type != TERMINATE_RECORD_TYPE);
+
+  int64_t width = std::max<int64_t>(gif_file->SWidth, first_image_width);
+  int64_t height = std::max<int64_t>(gif_file->SHeight, first_image_height);
+  DGifCloseFile(gif_file, &error);
+  STD_TORCH_CHECK(
+      num_images > 0, "GIF file should contain at least one image!");
+
+  return {
+      width, height, has_transparency ? 4 : 3, 8, num_images, NO_ORIENTATION};
+}
+
+} // namespace
+
+ImageProbeResult probe_gif(const torch::stable::Tensor& input) {
+  auto contig_input = validate_encoded_data(input);
+
+  int error = D_GIF_SUCCEEDED;
+  SourceCtx source_ctx{
+      .ptr = contig_input.const_data_ptr<uint8_t>(),
+      .count = static_cast<size_t>(contig_input.numel())};
+  GifFileType* gif_file =
+      DGifOpen(static_cast<void*>(&source_ctx), read_callback, &error);
+  STD_TORCH_CHECK(
+      (gif_file != nullptr) && (error == D_GIF_SUCCEEDED),
+      "DGifOpen() failed - ",
+      error);
+  return probe_and_close(gif_file);
+}
+
+ImageProbeResult probe_gif_from_file(std::string filename) {
+  // We don't use DGifOpenFileName(): it opens the file in text mode on Windows.
+  FileIO file(filename, FileIO::Mode::Read);
+  int error = D_GIF_SUCCEEDED;
+  GifFileType* gif_file =
+      DGifOpen(static_cast<void*>(&file), file_read_callback, &error);
+  STD_TORCH_CHECK(
+      (gif_file != nullptr) && (error == D_GIF_SUCCEEDED),
+      "DGifOpen() failed - ",
+      error);
+  return probe_and_close(gif_file);
 }
 
 } // namespace facebook::torchcodec

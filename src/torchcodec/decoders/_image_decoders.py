@@ -21,6 +21,8 @@ from torchcodec._core.ops import (
     decode_png as _decode_png,
     decode_webp as _decode_webp,
     get_decode_heic as _get_decode_heic,
+    probe_gif as _probe_gif,
+    probe_gif_from_file as _probe_gif_from_file,
 )
 
 
@@ -1079,6 +1081,33 @@ _PY_PROBES = {
     "webp": _probe_webp,
 }
 
+# Probed in C++. The probes take a path directly, so that they can read the
+# file lazily.
+_CPP_PROBES = {
+    "gif": (_probe_gif, _probe_gif_from_file),
+}
+_CPP_NO_ORIENTATION = -1
+
+
+def _cpp_probe(fmt: str, source: str | Path | bytes | torch.Tensor) -> ImageMetadata:
+    probe, probe_from_file = _CPP_PROBES[fmt]
+    if isinstance(source, (str, Path)):
+        result = probe_from_file(str(source))
+    else:
+        result = probe(_source_to_tensor(source))
+    width, height, num_channels, bit_depth, num_frames, orientation = result
+    if orientation == _CPP_NO_ORIENTATION:
+        orientation = None
+    return ImageMetadata(
+        format=fmt,
+        width=width,
+        height=height,
+        num_channels=num_channels,
+        bit_depth=bit_depth,
+        num_frames=num_frames,
+        rotation=_ROTATION_FROM_EXIF_ORIENTATION[orientation],
+    )
+
 
 def get_image_metadata(source: str | Path | bytes | torch.Tensor) -> ImageMetadata:
     """Get the metadata of an encoded image, without decoding it.
@@ -1109,6 +1138,8 @@ def get_image_metadata(source: str | Path | bytes | torch.Tensor) -> ImageMetada
     """
     with _ByteSource(source) as src:
         fmt = _detect_image_format_from_header(src.read(0, 64))
+        if fmt in _CPP_PROBES:
+            return _cpp_probe(fmt, source)
         if fmt not in _PY_PROBES:
             raise ValueError(
                 f"get_image_metadata() doesn't support {fmt.upper()} images yet."

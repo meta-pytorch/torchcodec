@@ -9,6 +9,8 @@
 #include <torch/csrc/stable/ops.h>
 #include <torch/headeronly/util/Exception.h>
 
+#include <vector>
+
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
@@ -80,6 +82,12 @@ inline bool should_return_rgb(ImageReadMode mode, bool has_alpha) {
           ". This should never happen, please report a bug to the TorchCodec repo.");
   }
 }
+
+// The probe_* functions return {width, height, num_channels, bit_depth,
+// num_frames, orientation}: see ImageMetadata in decoders/_image_decoders.py.
+// orientation is NO_ORIENTATION when the image has no orientation metadata.
+using ImageProbeResult = std::vector<int64_t>;
+constexpr int64_t NO_ORIENTATION = -1;
 
 // Validates that `input` is a non-empty, 1-dimensional, uint8 CPU tensor of
 // encoded image bytes, and returns a contiguous version of it.
