@@ -711,7 +711,9 @@ class _ByteSource:
                     f"dtype={source.dtype}, ndim={source.ndim}, device={source.device}."
                 )
             # Zero-copy view of the tensor's data. The view doesn't own the
-            # memory, so we keep a reference to the tensor.
+            # memory, so we keep a reference to the tensor. Slightly crazy, but
+            # this is what gets us bytes (the python type) instead of
+            # torch.uint8 which we'd have to copy to bytes.
             self._tensor = source.contiguous()
             self._buf = memoryview(
                 (ctypes.c_ubyte * self._tensor.numel()).from_address(
@@ -739,14 +741,12 @@ class _ByteSource:
             raise RuntimeError("Image is truncated or corrupted.")
         return data
 
-    def close(self):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
         if self._file is not None:
             self._file.close()
-
-
-def _swaps_width_and_height(orientation: int | None) -> bool:
-    # EXIF orientations 5 to 8 involve a 90 or 270 degree rotation.
-    return orientation is not None and 5 <= orientation <= 8
 
 
 _EXIF_INCORRECT_TAG = 0xFFFF
@@ -786,6 +786,21 @@ def _exif_orientation(tiff: bytes) -> int | None:
     return None
 
 
+# Rotation of each EXIF orientation, when decomposed into an optional
+# left-to-right mirroring followed by a rotation.
+_ROTATION_FROM_EXIF_ORIENTATION = {
+    None: None,
+    1: 0.0,
+    2: 0.0,
+    3: 180.0,
+    4: 180.0,
+    5: 90.0,
+    6: -90.0,
+    7: -90.0,
+    8: 90.0,
+}
+
+
 # ----------------------------------------------------------------------------
 # JPEG
 # ----------------------------------------------------------------------------
@@ -796,7 +811,7 @@ _JPEG_SUPPORTED_SOF = frozenset((0xC0, 0xC1, 0xC2, 0xC3, 0xC9, 0xCA, 0xCB))
 _JPEG_UNSUPPORTED_SOF = frozenset((0xC5, 0xC6, 0xC7, 0xC8, 0xCD, 0xCE, 0xCF))
 
 
-def _probe_jpeg(src: _ByteSource) -> tuple:
+def _probe_jpeg(src: _ByteSource) -> ImageMetadata:
     # Walks the markers up to the first SOS, like jpeg_read_header(). The
     # decoder takes the EXIF orientation from the first APP1 segment, whatever
     # it contains.
@@ -853,26 +868,21 @@ def _probe_jpeg(src: _ByteSource) -> tuple:
     if sof is None:
         raise RuntimeError("JPEG has no SOF marker before SOS.")
     precision, height, width, num_components = sof
-    if _swaps_width_and_height(orientation):
+    if orientation is not None and 5 <= orientation <= 8:
         width, height = height, width
-    return width, height, num_components, precision, 1, orientation
+    return ImageMetadata(
+        format="jpeg",
+        width=width,
+        height=height,
+        num_channels=num_components,
+        bit_depth=precision,
+        num_frames=1,
+        rotation=_ROTATION_FROM_EXIF_ORIENTATION[orientation],
+    )
 
 
 _PY_PROBES = {
     "jpeg": _probe_jpeg,
-}
-
-# Rotation of each EXIF orientation, when decomposed into an optional
-# left-to-right mirroring followed by a rotation.
-_ROTATION_FROM_EXIF_ORIENTATION = {
-    1: 0.0,
-    2: 0.0,
-    3: 180.0,
-    4: 180.0,
-    5: 90.0,
-    6: -90.0,
-    7: -90.0,
-    8: 90.0,
 }
 
 
@@ -903,29 +913,13 @@ def get_image_metadata(source: str | Path | bytes | torch.Tensor) -> ImageMetada
     Returns:
         ImageMetadata: The image metadata.
     """
-    src = _ByteSource(source)
-    try:
+    with _ByteSource(source) as src:
         fmt = _detect_image_format_from_header(src.read(0, 64))
         if fmt not in _PY_PROBES:
-            raise NotImplementedError(
+            raise ValueError(
                 f"get_image_metadata() doesn't support {fmt.upper()} images yet."
             )
-        probe_result = _PY_PROBES[fmt](src)
-    except (struct.error, IndexError):
-        raise RuntimeError("Image is truncated or corrupted.") from None
-    finally:
-        src.close()
-    width, height, num_channels, bit_depth, num_frames, orientation = probe_result
-    return ImageMetadata(
-        format=fmt,
-        width=width,
-        height=height,
-        num_channels=num_channels,
-        bit_depth=bit_depth,
-        num_frames=num_frames,
-        rotation=(
-            None
-            if orientation is None
-            else _ROTATION_FROM_EXIF_ORIENTATION[orientation]
-        ),
-    )
+        try:
+            return _PY_PROBES[fmt](src)
+        except (struct.error, IndexError):
+            raise RuntimeError("Image is truncated or corrupted.") from None
