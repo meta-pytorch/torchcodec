@@ -881,8 +881,86 @@ def _probe_jpeg(src: _ByteSource) -> ImageMetadata:
     )
 
 
+# ----------------------------------------------------------------------------
+# PNG
+# ----------------------------------------------------------------------------
+
+_PNG_VALID_BIT_DEPTHS = {
+    0: (1, 2, 4, 8, 16),  # gray
+    2: (8, 16),  # RGB
+    3: (1, 2, 4, 8),  # palette
+    4: (8, 16),  # gray + alpha
+    6: (8, 16),  # RGBA
+}
+
+
+def _probe_png(src: _ByteSource) -> ImageMetadata:
+    # Reads IHDR and walks the chunks up to the first IDAT, which is what
+    # png_read_info() sees. In particular, an eXIf chunk after IDAT is ignored
+    # by the decoder.
+    ihdr = src.read_exact(8, 8 + 13)
+    length, chunk_type = struct.unpack_from(">I4s", ihdr)
+    if chunk_type != b"IHDR" or length != 13:
+        raise RuntimeError("PNG is missing its IHDR chunk.")
+    width, height, bit_depth, color_type = struct.unpack_from(">IIBB", ihdr, 8)
+    if not (0 < width < 2**31 and 0 < height < 2**31):
+        raise RuntimeError(f"Invalid PNG dimensions: {width}x{height}.")
+    if bit_depth not in _PNG_VALID_BIT_DEPTHS.get(color_type, ()):
+        raise RuntimeError(
+            f"Invalid PNG color type ({color_type}) and bit depth ({bit_depth})."
+        )
+
+    pos = 8 + 12 + 13
+    num_palette = None
+    has_trns = False
+    exif = None
+    while True:
+        length, chunk_type = struct.unpack(">I4s", src.read_exact(pos, 8))
+        if chunk_type == b"IDAT":
+            break
+        if chunk_type == b"IEND":
+            raise RuntimeError("PNG has no IDAT chunk.")
+        if chunk_type == b"PLTE":
+            num_palette = length // 3
+        elif chunk_type == b"tRNS" and not has_trns:
+            # libpng ignores (with a warning) tRNS chunks that are invalid for
+            # the color type.
+            if color_type == 3:
+                has_trns = num_palette is not None and 0 < length <= num_palette
+            elif color_type == 0:
+                has_trns = length == 2
+            elif color_type == 2:
+                has_trns = length == 6
+        elif chunk_type == b"eXIf" and exif is None and length >= 2:
+            payload = src.read_exact(pos + 8, length)
+            if payload[0] == payload[1] and payload[0] in b"MI":
+                exif = payload
+        pos += 12 + length
+    if color_type == 3 and num_palette is None:
+        raise RuntimeError("PNG palette image has no PLTE chunk before IDAT.")
+
+    orientation = _exif_orientation(exif) if exif is not None else None
+    if orientation is not None and 5 <= orientation <= 8:
+        width, height = height, width
+    if color_type == 3:
+        num_channels = 4 if has_trns else 3
+        bit_depth = 8  # palette entries are 8-bit RGB(A)
+    else:
+        num_channels = {0: 1, 2: 3, 4: 2, 6: 4}[color_type]
+    return ImageMetadata(
+        format="png",
+        width=width,
+        height=height,
+        num_channels=num_channels,
+        bit_depth=bit_depth,
+        num_frames=1,
+        rotation=_ROTATION_FROM_EXIF_ORIENTATION[orientation],
+    )
+
+
 _PY_PROBES = {
     "jpeg": _probe_jpeg,
+    "png": _probe_png,
 }
 
 
