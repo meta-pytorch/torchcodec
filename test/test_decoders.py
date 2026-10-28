@@ -8054,6 +8054,14 @@ class TestGetImageMetadata:
             pytest.param(ANIMATED_GIF, "gif", 4, 8, 4),
             pytest.param(TRANSPARENT_GIF, "gif", 4, 8, 1),
             pytest.param(FRAME_EXCEEDS_SCREEN_GIF, "gif", 4, 8, 1),
+            pytest.param(GRADIENT_AVIF, "avif", 3, 8, 1, marks=pytest.mark.needs_avif),
+            pytest.param(RGBA_AVIF, "avif", 4, 8, 1, marks=pytest.mark.needs_avif),
+            pytest.param(
+                GRADIENT_10BIT_AVIF, "avif", 3, 10, 1, marks=pytest.mark.needs_avif
+            ),
+            pytest.param(
+                GRADIENT_12BIT_AVIF, "avif", 3, 12, 1, marks=pytest.mark.needs_avif
+            ),
         ),
     )
     def test_matches_decode(
@@ -8077,6 +8085,7 @@ class TestGetImageMetadata:
             pytest.param("JPEG", "jpg", {}, marks=pytest.mark.needs_jpeg, id="jpeg"),
             pytest.param("PNG", "png", {}, marks=pytest.mark.needs_png, id="png"),
             pytest.param("WEBP", "webp", {}, marks=pytest.mark.needs_webp, id="webp"),
+            pytest.param("AVIF", "avif", {}, marks=pytest.mark.needs_avif, id="avif"),
         ),
     )
     @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
@@ -8100,6 +8109,10 @@ class TestGetImageMetadata:
             7: -90,
             8: 90,
         }
+        if fmt == "AVIF":
+            # AVIF stores orientation as irot/imir properties, which aren't
+            # written for the identity orientation 1.
+            expected_rotation[1] = None
         assert metadata.rotation == expected_rotation[orientation]
         if orientation in (5, 6, 7, 8):
             assert (metadata.width, metadata.height) == (40, 60)
@@ -8167,6 +8180,7 @@ class TestGetImageMetadata:
                 id="webp-lossless",
             ),
             pytest.param("GIF", "gif", {}, id="gif"),
+            pytest.param("AVIF", "avif", {}, marks=pytest.mark.needs_avif, id="avif"),
         ),
     )
     @pytest.mark.parametrize("pil_mode", ("RGB", "RGBA"))
@@ -8206,6 +8220,7 @@ class TestGetImageMetadata:
             (RGBA_WEBP, r"truncated"),
             (GRADIENT_GIF, r"DGifOpen\(\) failed"),
             (ANIMATED_GIF, r"DGifOpen\(\) failed"),
+            (GRADIENT_AVIF, r"Truncated data"),
         ),
     )
     def test_truncated_headers_raise(self, asset, match):

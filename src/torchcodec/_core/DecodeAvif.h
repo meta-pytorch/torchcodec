@@ -6,6 +6,9 @@
 
 #pragma once
 
+#include <string>
+#include <vector>
+
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
@@ -15,5 +18,13 @@ FORCE_PUBLIC_VISIBILITY torch::stable::Tensor decode_avif(
     int64_t mode,
     int64_t output_dtype,
     int64_t num_threads);
+
+FORCE_PUBLIC_VISIBILITY std::vector<int64_t> probe_avif_from_tensor(
+    const torch::stable::Tensor& input);
+
+// Same as probe_avif_from_tensor, but only reads the parts of the file that
+// libavif needs, instead of requiring all of it in memory.
+FORCE_PUBLIC_VISIBILITY std::vector<int64_t> probe_avif_from_file(
+    std::string filename);
 
 } // namespace facebook::torchcodec

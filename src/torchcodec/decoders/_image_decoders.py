@@ -21,6 +21,8 @@ from torchcodec._core.ops import (
     decode_png as _decode_png,
     decode_webp as _decode_webp,
     get_decode_heic as _get_decode_heic,
+    probe_avif_from_file as _probe_avif_from_file,
+    probe_avif_from_tensor as _probe_avif_from_tensor,
     probe_gif_from_file as _probe_gif_from_file,
     probe_gif_from_tensor as _probe_gif_from_tensor,
 )
@@ -680,11 +682,12 @@ class ImageMetadata:
     multi-image files."""
     rotation: float | None
     """Rotation angle in degrees (counter-clockwise: one of 0, 90, -90 or 180)
-    from the EXIF orientation metadata, or None if the image has no orientation
-    metadata. The decoders always apply it, so the returned images are in the
-    correct orientation.
+    from the orientation metadata (EXIF orientation, or the AVIF rotation and
+    mirroring properties), or None if the image has no orientation metadata. The
+    decoders always apply it, so the returned images are in the correct
+    orientation.
 
-    The EXIF orientation metadata can also specify a mirroring, which the decoders
+    The orientation metadata can also specify a mirroring, which the decoders
     apply too but isn't reported here, since it doesn't change the image
     dimensions."""
 
@@ -1084,6 +1087,7 @@ _PY_PROBES = {
 
 _CPP_PROBES = {
     "gif": (_probe_gif_from_tensor, _probe_gif_from_file),
+    "avif": (_probe_avif_from_tensor, _probe_avif_from_file),
 }
 
 

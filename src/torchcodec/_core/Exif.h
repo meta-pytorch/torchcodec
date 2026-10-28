@@ -192,6 +192,15 @@ inline ExifOrientation fetch_exif_orientation(
   return exif_orientation;
 }
 
+// Whether applying the orientation involves a 90 or 270 degree rotation, which
+// swaps the image's width and height.
+inline bool swaps_width_and_height(ExifOrientation orientation) {
+  return orientation == ExifOrientation::LeftTop ||
+      orientation == ExifOrientation::RightTop ||
+      orientation == ExifOrientation::RightBottom ||
+      orientation == ExifOrientation::LeftBottom;
+}
+
 inline torch::stable::Tensor exif_orientation_transform(
     const torch::stable::Tensor& image,
     ExifOrientation orientation) {
