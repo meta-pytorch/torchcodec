@@ -612,6 +612,9 @@ def decode_image(
     directly: :func:`decode_jpeg`, :func:`decode_png`, :func:`decode_webp`,
     :func:`decode_gif`, :func:`decode_avif`, :func:`decode_heic`.
 
+    To get the dimensions, number of frames, etc. of an image without decoding
+    it, use :func:`get_image_metadata`.
+
     Example:
 
         .. code-block:: python
