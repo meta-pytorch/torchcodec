@@ -23,6 +23,7 @@ extern "C" {
 #include "AVIOContextHolder.h"
 #include "AudioConverter.h"
 #include "ColorConverter.h"
+#include "DecoderParameters.h"
 #include "Demuxer.h"
 #include "Encoder.h"
 #include "FileIO.h"
@@ -93,7 +94,9 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "_blocks_demuxer_scan(Tensor(a!) demuxer, int? stream_index=None) -> (Tensor, Tensor, Tensor, int, int)");
   m.def(
-      "_blocks_create_packet_decoder(Tensor demuxer, *, int? stream_index=None, int? num_threads=None, str device=\"cpu\") -> Tensor");
+      "_blocks_demuxer_decoder_parameters(Tensor demuxer, int stream_index) -> str");
+  m.def(
+      "_blocks_create_packet_decoder(str[] fields, *, int? num_threads=None, str device=\"cpu\", str? decoder=None) -> Tensor");
   m.def(
       "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
@@ -911,6 +914,20 @@ OpsPacketOutput _blocks_demuxer_next_packet(torch::stable::Tensor& demuxer) {
       wrap_pointer_to_tensor(std::move(packet)), false, stream_index);
 }
 
+namespace {
+std::string escape_json_string(const std::string& value) {
+  std::string result = "\"";
+  for (char c : value) {
+    if (c == '"' || c == '\\') {
+      result += '\\';
+    }
+    result += c;
+  }
+  return result + "\"";
+}
+
+} // namespace
+
 void _blocks_demuxer_seek(
     torch::stable::Tensor& demuxer,
     double seconds,
@@ -941,23 +958,47 @@ OpsScanOutput _blocks_demuxer_scan(
       static_cast<int64_t>(index.time_base.den));
 }
 
-torch::stable::Tensor _blocks_create_packet_decoder(
+// A JSON object of the stream's decoder parameters, as strings. See
+// decoder_parameters_to_strings().
+std::string _blocks_demuxer_decoder_parameters(
     torch::stable::Tensor& demuxer,
-    std::optional<int64_t> stream_index,
-    std::optional<int64_t> num_threads,
-    std::string device) {
+    int64_t stream_index) {
   Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
+  std::map<std::string, std::string> values =
+      decoder_parameters_to_strings(get_decoder_parameters(
+          *demuxer_ptr->format_context(),
+          demuxer_ptr->resolve_stream_index(static_cast<int>(stream_index))));
+
+  std::stringstream json;
+  json << "{";
+  for (auto it = values.begin(); it != values.end(); ++it) {
+    json << (it == values.begin() ? "" : ", ") << escape_json_string(it->first)
+         << ": " << escape_json_string(it->second);
+  }
+  json << "}";
+  return json.str();
+}
+
+// `fields` alternates the keys and values of decoder_parameters_from_strings().
+torch::stable::Tensor _blocks_create_packet_decoder(
+    std::vector<std::string> fields,
+    std::optional<int64_t> num_threads,
+    std::string device,
+    std::optional<std::string> decoder) {
   validate_device_interface(device);
+  STD_TORCH_CHECK(
+      fields.size() % 2 == 0, "fields must alternate keys and values.");
+
   std::optional<int> thread_count;
   if (num_threads.has_value()) {
     thread_count = static_cast<int>(num_threads.value());
   }
-  auto decoder = std::make_unique<PacketDecoder>(
-      *demuxer_ptr,
-      to_optional_int(stream_index),
+  auto packet_decoder = std::make_unique<PacketDecoder>(
+      decoder_parameters_from_strings(unflatten_extra_options(fields)),
       StableDevice(device),
-      thread_count);
-  return wrap_pointer_to_tensor<PacketDecoder>(std::move(decoder));
+      thread_count,
+      decoder);
+  return wrap_pointer_to_tensor<PacketDecoder>(std::move(packet_decoder));
 }
 
 int64_t _blocks_packet_decoder_send_packet(
@@ -1701,6 +1742,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
       "_blocks_create_demuxer_from_file_like",
       TORCH_BOX(&_blocks_create_demuxer_from_file_like));
   m.impl(
+      "_blocks_create_packet_decoder",
+      TORCH_BOX(&_blocks_create_packet_decoder));
+  m.impl(
       "_blocks_create_color_converter",
       TORCH_BOX(&_blocks_create_color_converter));
   m.impl(
@@ -1780,8 +1824,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("_blocks_demuxer_seek", TORCH_BOX(&_blocks_demuxer_seek));
   m.impl("_blocks_demuxer_scan", TORCH_BOX(&_blocks_demuxer_scan));
   m.impl(
-      "_blocks_create_packet_decoder",
-      TORCH_BOX(&_blocks_create_packet_decoder));
+      "_blocks_demuxer_decoder_parameters",
+      TORCH_BOX(&_blocks_demuxer_decoder_parameters));
   m.impl(
       "_blocks_packet_decoder_send_packet",
       TORCH_BOX(&_blocks_packet_decoder_send_packet));

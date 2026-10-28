@@ -496,8 +496,7 @@ void SingleStreamDecoder::add_video_stream(
   // Pass the resolved options (AUTO -> UINT8/FLOAT32) so the device interface
   // sees a definite OutputDtype.
   device_interface_->initialize_video(
-      stream_info.stream,
-      format_context_,
+      get_decoder_parameters(*format_context_, stream_info.stream_index),
       stream_info.video_stream_options,
       transforms_,
       resized_output_dims_);

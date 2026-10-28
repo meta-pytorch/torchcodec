@@ -13,7 +13,7 @@
 #include <string_view>
 #include <vector>
 
-#include "Demuxer.h"
+#include "DecoderParameters.h"
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
 #include "StableABICompat.h"
@@ -29,16 +29,27 @@ SharedAVCodecContext create_and_open_codec_context(
     DeviceInterface* device_interface,
     std::optional<int> thread_count);
 
+// Same, from the codec parameters and time base of a stream.
+SharedAVCodecContext create_and_open_codec_context(
+    const AVCodecParameters* codec_parameters,
+    AVRational time_base,
+    const AVCodec* av_codec,
+    DeviceInterface* device_interface,
+    std::optional<int> thread_count);
+
 // Decode building block: turns compressed packets into decoded frames - (YUV)
 // pictures for a video stream, samples in the codec's own format for an audio
-// one. Configured from one of a Demuxer's streams; stateful. Not thread-safe.
+// one. Configured from the DecoderParameters of the stream whose packets it
+// decodes; stateful. Not thread-safe.
 class FORCE_PUBLIC_VISIBILITY PacketDecoder {
  public:
+  // `decoder_name` selects a specific FFmpeg decoder, which must decode the
+  // codec of `parameters`. By default, FFmpeg's (or the device's) choice.
   explicit PacketDecoder(
-      const Demuxer& demuxer,
-      std::optional<int> stream_index = std::nullopt,
+      const DecoderParameters& parameters,
       const StableDevice& device = StableDevice(kStableCPU),
-      std::optional<int> ffmpeg_thread_count = std::nullopt);
+      std::optional<int> ffmpeg_thread_count = std::nullopt,
+      const std::optional<std::string>& decoder_name = std::nullopt);
 
   // Feed one packet to the decoder. Borrows `packet` (does not take ownership).
   int send_packet(const AVPacket& packet);
@@ -74,14 +85,9 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   SharedAVCodecContext codec_context_;
   AVRational time_base_ = {};
   AVMediaType media_type_ = AVMEDIA_TYPE_VIDEO;
-  // Stamped onto every frame we hand out, so downstream stages can read the
-  // rotation off the frame itself instead of knowing about the stream. Held by
-  // value: we're only handed the Demuxer at construction and it may well be
-  // gone by the time we decode.
+  // See DecoderParameters.
   std::optional<std::array<int32_t, 9>> display_matrix_;
-  // The MPEG-PS demuxer doesn't return proper packets just after a seek, so the
-  // first ones we're fed may not be decodable. See send_packet().
-  bool is_mpeg_ps_ = false;
+  bool packets_may_be_misaligned_after_reset_ = false;
   bool packet_data_may_be_misaligned_ = false;
   AudioPtsExtrapolator audio_pts_extrapolator_;
 };

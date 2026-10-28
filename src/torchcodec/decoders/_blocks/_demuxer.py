@@ -29,6 +29,7 @@ from torchcodec._core._metadata import (
 from torchcodec._core.ops import (
     _blocks_demuxer_add_stream,
     _blocks_demuxer_container_json_metadata,
+    _blocks_demuxer_decoder_parameters,
     _blocks_demuxer_get_audio_video_stream_indices,
     _blocks_demuxer_next_packet,
     _blocks_demuxer_scan,
@@ -36,8 +37,10 @@ from torchcodec._core.ops import (
     _blocks_demuxer_stream_json_metadata,
 )
 
-from .._decoder_utils import convert_device_to_str
-
+from ._decoder_parameters import (
+    AudioPacketDecoderParameters,
+    VideoPacketDecoderParameters,
+)
 from ._frame import Packet
 from ._helpers import _process_local
 from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
@@ -227,6 +230,13 @@ class _Stream:
             self.index,
         )
 
+    def _read_decoder_parameters(self, cls):
+        return cls._from_strings(
+            json.loads(
+                _blocks_demuxer_decoder_parameters(self._demuxer._handle, self.index)
+            )
+        )
+
     def __repr__(self) -> str:
         return f"{type(self).__name__}(index={self.index})"
 
@@ -258,6 +268,16 @@ class VideoStream(_Stream):
         suffixes mark.
         """
         return cast(VideoStreamHeaderMetadata, self._read_metadata())
+
+    @cached_property
+    def decoder_parameters(self) -> VideoPacketDecoderParameters:
+        """Everything FFmpeg knows about this stream that a
+        :class:`VideoPacketDecoder` needs to decode its packets.
+
+        Unlike the stream, these can be pickled: send them to another process
+        along with the stream's packets to decode them there.
+        """
+        return self._read_decoder_parameters(VideoPacketDecoderParameters)
 
     def scan(self) -> FrameIndex:
         """Demux this stream from end to end, without decoding it (a
@@ -315,10 +335,8 @@ class VideoStream(_Stream):
         Returns:
             VideoPacketDecoder: A decoder for this stream's packets.
         """
-        if num_ffmpeg_threads is None:
-            raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
-        return VideoPacketDecoder._from_stream(
-            self, convert_device_to_str(device), num_ffmpeg_threads
+        return VideoPacketDecoder(
+            self.decoder_parameters, device, num_ffmpeg_threads=num_ffmpeg_threads
         )
 
 
@@ -343,13 +361,23 @@ class AudioStream(_Stream):
         """
         return cast(AudioStreamHeaderMetadata, self._read_metadata())
 
+    @cached_property
+    def decoder_parameters(self) -> AudioPacketDecoderParameters:
+        """Everything FFmpeg knows about this stream that an
+        :class:`AudioPacketDecoder` needs to decode its packets.
+
+        Unlike the stream, these can be pickled: send them to another process
+        along with the stream's packets to decode them there.
+        """
+        return self._read_decoder_parameters(AudioPacketDecoderParameters)
+
     def make_decoder(self) -> AudioPacketDecoder:
         """Build the :class:`AudioPacketDecoder` for this stream.
 
         Returns:
             AudioPacketDecoder: A decoder for this stream's packets.
         """
-        return AudioPacketDecoder._from_stream(self, "cpu")
+        return AudioPacketDecoder(self.decoder_parameters)
 
 
 @_process_local(

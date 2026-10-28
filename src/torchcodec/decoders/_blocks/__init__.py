@@ -14,6 +14,10 @@ from torchcodec._core._metadata import (
 
 from ._audio_converter import AudioConverter
 from ._color_converter import ColorConverter
+from ._decoder_parameters import (
+    AudioPacketDecoderParameters,
+    VideoPacketDecoderParameters,
+)
 from ._demuxer import (
     AudioStream,
     Demuxer,
@@ -31,6 +35,8 @@ __all__ = [
     "AudioStream",
     "VideoPacketDecoder",
     "AudioPacketDecoder",
+    "VideoPacketDecoderParameters",
+    "AudioPacketDecoderParameters",
     "ColorConverter",
     "AudioConverter",
     "Packet",
