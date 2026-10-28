@@ -8062,12 +8062,28 @@ class TestGetImageMetadata:
             pytest.param(
                 GRADIENT_12BIT_AVIF, "avif", 3, 12, 1, marks=pytest.mark.needs_avif
             ),
+            pytest.param(GRADIENT_HEIC, "heic", 3, 8, 1, marks=pytest.mark.needs_heic),
+            pytest.param(RGBA_HEIC, "heic", 4, 8, 1, marks=pytest.mark.needs_heic),
+            pytest.param(
+                GRADIENT_10BIT_HEIC, "heic", 3, 10, 1, marks=pytest.mark.needs_heic
+            ),
+            pytest.param(
+                GRADIENT_ROTATED_HEIC, "heic", 3, 8, 1, marks=pytest.mark.needs_heic
+            ),
+            pytest.param(
+                GRADIENT_MIRRORED_HEIC, "heic", 3, 8, 1, marks=pytest.mark.needs_heic
+            ),
+            pytest.param(ANIMATED_HEIC, "heic", 3, 8, 3, marks=pytest.mark.needs_heic),
         ),
     )
     def test_matches_decode(
         self, asset, fmt, num_channels, bit_depth, num_frames, make_source
     ):
         metadata = get_image_metadata(make_source(asset))
+        rotation = {
+            GRADIENT_ROTATED_HEIC.filename: -90.0,
+            GRADIENT_MIRRORED_HEIC.filename: 0.0,
+        }.get(asset.filename)
         assert metadata == ImageMetadata(
             format=fmt,
             width=asset.width,
@@ -8075,7 +8091,7 @@ class TestGetImageMetadata:
             num_channels=num_channels,
             bit_depth=bit_depth,
             num_frames=num_frames,
-            rotation=None,
+            rotation=rotation,
         )
         self._assert_matches_decode(metadata, make_source(asset))
 
@@ -8201,6 +8217,23 @@ class TestGetImageMetadata:
         assert (metadata.width, metadata.height) == (60, 40)
         self._assert_matches_decode(metadata, path)
 
+    def test_heic_does_not_need_libheif(self, monkeypatch):
+        # Unlike decode_heic, getting the metadata of a HEIC file works without
+        # libheif.
+        from torchcodec import _internally_replaced_utils as iru
+
+        iru.load_heic_library.cache_clear()
+
+        def boom(path):
+            raise OSError("libheif.so.1: cannot open shared object file")
+
+        monkeypatch.setattr(torch.ops, "load_library", boom)
+        try:
+            metadata = get_image_metadata(GRADIENT_HEIC.path)
+        finally:
+            iru.load_heic_library.cache_clear()
+        assert (metadata.width, metadata.height) == (1280, 720)
+
     def test_unrecognized_format_raises(self):
         with pytest.raises(ValueError, match="Unsupported or unrecognized image"):
             get_image_metadata(b"not an image at all")
@@ -8221,6 +8254,8 @@ class TestGetImageMetadata:
             (GRADIENT_GIF, r"DGifOpen\(\) failed"),
             (ANIMATED_GIF, r"DGifOpen\(\) failed"),
             (GRADIENT_AVIF, r"Truncated data"),
+            (GRADIENT_HEIC, r"no 'meta' box"),
+            (ANIMATED_HEIC, r"no 'meta' box"),
         ),
     )
     def test_truncated_headers_raise(self, asset, match):
@@ -8238,6 +8273,9 @@ class TestGetImageMetadata:
             (GRADIENT_16BIT_PNG, r"corrupted"),
             (GRADIENT_WEBP, r"corrupted or truncated"),
             (RGBA_WEBP, r"corrupted or truncated"),
+            pytest.param(
+                GRADIENT_HEIC, "Unexpected end of file", marks=pytest.mark.needs_heic
+            ),
         ),
     )
     def test_truncated_image_data(self, asset, match):

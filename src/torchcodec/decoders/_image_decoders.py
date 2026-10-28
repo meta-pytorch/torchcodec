@@ -682,10 +682,10 @@ class ImageMetadata:
     multi-image files."""
     rotation: float | None
     """Rotation angle in degrees (counter-clockwise: one of 0, 90, -90 or 180)
-    from the orientation metadata (EXIF orientation, or the AVIF rotation and
-    mirroring properties), or None if the image has no orientation metadata. The
-    decoders always apply it, so the returned images are in the correct
-    orientation.
+    from the orientation metadata (EXIF orientation, or the AVIF/HEIC rotation
+    and mirroring properties), or None if the image has no orientation
+    metadata. The decoders always apply it, so the returned images are in the
+    correct orientation.
 
     The orientation metadata can also specify a mirroring, which the decoders
     apply too but isn't reported here, since it doesn't change the image
@@ -1079,10 +1079,363 @@ def _probe_webp(src: _ByteSource) -> ImageMetadata:
     )
 
 
+# ----------------------------------------------------------------------------
+# HEIC (ISOBMFF / HEIF)
+# ----------------------------------------------------------------------------
+
+
+def _iter_boxes(data: bytes, start: int, end: int):
+    # Yields (box_type, payload_start, payload_end) for the boxes in
+    # data[start:end].
+    pos = start
+    while pos + 8 <= end:
+        size, box_type = struct.unpack_from(">I4s", data, pos)
+        header_size = 8
+        if size == 1:
+            if pos + 16 > end:
+                raise RuntimeError("ISOBMFF box is truncated.")
+            (size,) = struct.unpack_from(">Q", data, pos + 8)
+            header_size = 16
+        elif size == 0:
+            size = end - pos
+        if box_type == b"uuid":
+            header_size += 16
+        if size < header_size or pos + size > end:
+            raise RuntimeError("Invalid or truncated ISOBMFF box.")
+        yield box_type, pos + header_size, pos + size
+        pos += size
+
+
+def _iter_top_level_boxes(src: _ByteSource):
+    # Like _iter_boxes, over the whole file, reading only box headers and the
+    # payloads we ask for. Yields (box_type, payload_start, payload_end).
+    pos = 0
+    while True:
+        header = src.read(pos, 16)
+        if len(header) < 8:
+            return
+        size, box_type = struct.unpack_from(">I4s", header)
+        header_size = 8
+        if size == 1:
+            if len(header) < 16:
+                raise RuntimeError("ISOBMFF box is truncated.")
+            (size,) = struct.unpack_from(">Q", header, 8)
+            header_size = 16
+        elif size == 0:  # the box extends to the end of the file
+            size = src.size - pos
+        if size < header_size:
+            raise RuntimeError("Invalid ISOBMFF box size.")
+        yield box_type, pos + header_size, pos + size
+        pos += size
+
+
+class _HeifMeta:
+    # The parts of a 'meta' box we need: items, their references, and their
+    # associated properties (in association order).
+
+    def __init__(self, data: bytes):
+        self.primary_id = None
+        self.item_types: dict[int, bytes] = {}
+        self.hidden: set[int] = set()
+        # refs[ref_type][from_id] = [to_ids...], in file order
+        self.refs: dict[bytes, dict[int, list[int]]] = {}
+        self._refs_to: dict[bytes, dict[int, list[int]]] = {}
+        self._properties: list[tuple[bytes, bytes]] = []
+        self._associations: dict[int, list[int]] = {}
+
+        for box_type, start, end in _iter_boxes(data, 4, len(data)):
+            if box_type == b"pitm":
+                version = data[start]
+                fmt = ">H" if version == 0 else ">I"
+                (self.primary_id,) = struct.unpack_from(fmt, data, start + 4)
+            elif box_type == b"iinf":
+                version = data[start]
+                entries_start = start + 4 + (2 if version == 0 else 4)
+                for infe_type, s, e in _iter_boxes(data, entries_start, end):
+                    if infe_type == b"infe":
+                        self._parse_infe(data, s, e)
+            elif box_type == b"iref":
+                version = data[start]
+                id_fmt, id_size = (">H", 2) if version == 0 else (">I", 4)
+                for ref_type, s, e in _iter_boxes(data, start + 4, end):
+                    (from_id,) = struct.unpack_from(id_fmt, data, s)
+                    (count,) = struct.unpack_from(">H", data, s + id_size)
+                    first = s + id_size + 2
+                    if first + count * id_size > e:
+                        raise RuntimeError("Invalid 'iref' box.")
+                    to_ids = [
+                        struct.unpack_from(id_fmt, data, first + i * id_size)[0]
+                        for i in range(count)
+                    ]
+                    self.refs.setdefault(ref_type, {}).setdefault(from_id, []).extend(
+                        to_ids
+                    )
+                    for to_id in to_ids:
+                        self._refs_to.setdefault(ref_type, {}).setdefault(
+                            to_id, []
+                        ).append(from_id)
+            elif box_type == b"iprp":
+                for iprp_type, s, e in _iter_boxes(data, start, end):
+                    if iprp_type == b"ipco":
+                        self._properties = [
+                            (t, data[ps:pe]) for t, ps, pe in _iter_boxes(data, s, e)
+                        ]
+                    elif iprp_type == b"ipma":
+                        self._parse_ipma(data, s, e)
+
+    def _parse_infe(self, data, start, end):
+        version = data[start]
+        if version < 2:
+            return
+        flags = int.from_bytes(data[start + 1 : start + 4], "big")
+        if version == 2:
+            (item_id,) = struct.unpack_from(">H", data, start + 4)
+            item_type = data[start + 8 : start + 12]
+        else:
+            (item_id,) = struct.unpack_from(">I", data, start + 4)
+            item_type = data[start + 10 : start + 14]
+        self.item_types[item_id] = bytes(item_type)
+        if flags & 1:
+            self.hidden.add(item_id)
+
+    def _parse_ipma(self, data, start, end):
+        version = data[start]
+        flags = int.from_bytes(data[start + 1 : start + 4], "big")
+        (entry_count,) = struct.unpack_from(">I", data, start + 4)
+        pos = start + 8
+        for _ in range(entry_count):
+            if version < 1:
+                (item_id,) = struct.unpack_from(">H", data, pos)
+                pos += 2
+            else:
+                (item_id,) = struct.unpack_from(">I", data, pos)
+                pos += 4
+            num_associations = data[pos]
+            pos += 1
+            indices = self._associations.setdefault(item_id, [])
+            for _ in range(num_associations):
+                if flags & 1:
+                    (value,) = struct.unpack_from(">H", data, pos)
+                    pos += 2
+                    indices.append(value & 0x7FFF)
+                else:
+                    indices.append(data[pos] & 0x7F)
+                    pos += 1
+
+    def properties(self, item_id: int) -> list[tuple[bytes, bytes]]:
+        # (property_type, property_payload) pairs, in association order.
+        # Property indices are 1-based; 0 means "no property".
+        return [
+            self._properties[i - 1]
+            for i in self._associations.get(item_id, ())
+            if 0 < i <= len(self._properties)
+        ]
+
+    def find_property(self, item_id: int, property_type: bytes) -> bytes | None:
+        for t, payload in self.properties(item_id):
+            if t == property_type:
+                return payload
+        return None
+
+    def refs_from(self, ref_type: bytes, from_id: int) -> list[int]:
+        return self.refs.get(ref_type, {}).get(from_id, [])
+
+    def refs_to(self, ref_type: bytes, to_id: int) -> list[int]:
+        return self._refs_to.get(ref_type, {}).get(to_id, [])
+
+
+_HEIC_ALPHA_URNS = (
+    b"urn:mpeg:avc:2015:auxid:1",
+    b"urn:mpeg:hevc:2015:auxid:1",
+    b"urn:mpeg:mpegB:cicp:systems:auxiliary:alpha",
+)
+
+
+def _aux_type(auxc_payload: bytes | None) -> bytes | None:
+    # auxC is a FullBox holding a null-terminated URN.
+    if auxc_payload is None:
+        return None
+    return auxc_payload[4:].split(b"\x00", 1)[0]
+
+
+def _ispe_size(meta: _HeifMeta, item_id: int) -> tuple[int, int]:
+    ispe = meta.find_property(item_id, b"ispe")
+    if ispe is None or len(ispe) < 12:
+        raise RuntimeError(f"Image item {item_id} has no valid 'ispe' property.")
+    return struct.unpack_from(">II", ispe, 4)
+
+
+def _read_meta_box(src: _ByteSource) -> bytes:
+    # Returns the payload of the top-level 'meta' box, skipping everything else
+    # (e.g. 'mdat') without reading it.
+    for box_type, start, end in _iter_top_level_boxes(src):
+        if box_type == b"meta":
+            return src.read_exact(start, end - start)
+    raise RuntimeError("HEIC has no 'meta' box.")
+
+
+def _av1c_depth(av1c: bytes) -> int:
+    flags = av1c[2]
+    if flags & 0x20:  # twelve_bit
+        return 12
+    if flags & 0x40:  # high_bitdepth
+        return 10
+    return 8
+
+
+def _flip_h(grid):
+    return tuple(row[::-1] for row in grid)
+
+
+def _flip_v(grid):
+    return grid[::-1]
+
+
+def _transpose(grid):
+    return tuple(zip(*grid))
+
+
+def _rotate_ccw(grid):
+    return _flip_v(_transpose(grid))
+
+
+# libheif applies the irot and imir properties in association order, so we
+# compose them by applying them to a small grid of distinct values, and look up
+# which EXIF orientation produces the same result. The transforms below are the
+# ones of exif_orientation_transform() in Exif.h.
+_ORIENTATION_REFERENCE_GRID = ((0, 1, 2), (3, 4, 5))
+_ORIENTATION_FROM_GRID = {
+    transform(_ORIENTATION_REFERENCE_GRID): orientation
+    for orientation, transform in {
+        1: lambda g: g,
+        2: _flip_h,
+        3: lambda g: _flip_h(_flip_v(g)),
+        4: _flip_v,
+        5: _transpose,
+        6: lambda g: _flip_h(_transpose(g)),
+        7: lambda g: _flip_h(_flip_v(_transpose(g))),
+        8: lambda g: _flip_v(_transpose(g)),
+    }.items()
+}
+
+
+_HEIC_IMAGE_ITEM_TYPES = frozenset(
+    (
+        b"jpeg",
+        b"hvc1",
+        b"av01",
+        b"vvc1",
+        b"avc1",
+        b"unci",
+        b"j2k1",
+        b"mski",
+        b"grid",
+        b"iovl",
+        b"iden",
+        b"tili",
+    )
+)
+_HEIC_DERIVED_ITEM_TYPES = frozenset((b"grid", b"iovl", b"iden"))
+
+
+def _probe_heic(src: _ByteSource) -> ImageMetadata:
+    # Mirrors libheif: the top-level images are the non-hidden image items that
+    # aren't thumbnails or auxiliary images, in item-ID order. The decoder uses
+    # the first one's geometry (and requires every other one to match).
+    meta = _HeifMeta(_read_meta_box(src))
+
+    image_ids = sorted(
+        i for i, t in meta.item_types.items() if t in _HEIC_IMAGE_ITEM_TYPES
+    )
+    if meta.primary_id not in image_ids or meta.primary_id in meta.hidden:
+        raise RuntimeError(
+            "'pitm' box references an unsupported or non-existing image."
+        )
+    top_level = [
+        i
+        for i in image_ids
+        if i not in meta.hidden
+        and not meta.refs_from(b"thmb", i)
+        and not meta.refs_from(b"auxl", i)
+    ]
+    if not top_level:
+        raise RuntimeError("HEIC file should contain at least one top-level image.")
+    item_id = top_level[0]
+
+    width, height = _ispe_size(meta, item_id)
+    grid = _ORIENTATION_REFERENCE_GRID
+    has_orientation = False
+    for prop_type, payload in meta.properties(item_id):
+        if prop_type == b"clap":
+            w_num, w_den, h_num, h_den = struct.unpack_from(">iIiI", payload)
+            if w_den == 0 or h_den == 0:
+                raise RuntimeError("Invalid 'clap' property.")
+            width = (w_num + w_den // 2) // w_den
+            height = (h_num + h_den // 2) // h_den
+        elif prop_type == b"irot":
+            has_orientation = True
+            angle = payload[0] & 0x03  # counter-clockwise quarter turns
+            for _ in range(angle):
+                grid = _rotate_ccw(grid)
+            if angle in (1, 3):
+                width, height = height, width
+        elif prop_type == b"imir":
+            has_orientation = True
+            # Axis 0 exchanges the top and bottom, axis 1 the left and right.
+            grid = _flip_v(grid) if payload[0] & 0x01 == 0 else _flip_h(grid)
+    orientation = _ORIENTATION_FROM_GRID[grid] if has_orientation else None
+
+    # Luma bit depth, from the first non-derived image down the 'dimg' chain.
+    coded_id = item_id
+    for _ in range(len(meta.item_types) + 1):
+        if meta.item_types.get(coded_id) not in _HEIC_DERIVED_ITEM_TYPES:
+            break
+        children = meta.refs_from(b"dimg", coded_id)
+        if not children:
+            raise RuntimeError("Derived HEIC image has no input image.")
+        coded_id = children[0]
+    coded_type = meta.item_types.get(coded_id)
+    if coded_type == b"hvc1":
+        hvcc = meta.find_property(coded_id, b"hvcC")
+        if hvcc is None or len(hvcc) < 18:
+            raise RuntimeError("No hvcC property in hvc1 type image.")
+        bit_depth = (hvcc[17] & 0x07) + 8
+    elif coded_type == b"av01":
+        av1c = meta.find_property(coded_id, b"av1C")
+        if av1c is None:
+            raise RuntimeError("No av1C property in av01 type image.")
+        bit_depth = _av1c_depth(av1c)
+    elif coded_type == b"jpeg":
+        bit_depth = 8
+    else:
+        raise RuntimeError(f"Unsupported HEIC image item type: {coded_type!r}.")
+
+    def has_alpha_aux(image_id):
+        return any(
+            _aux_type(meta.find_property(i, b"auxC")) in _HEIC_ALPHA_URNS
+            for i in meta.refs_to(b"auxl", image_id)
+        )
+
+    has_alpha = has_alpha_aux(item_id) or (
+        meta.item_types[item_id] == b"grid"
+        and any(has_alpha_aux(t) for t in meta.refs_from(b"dimg", item_id))
+    )
+    return ImageMetadata(
+        format="heic",
+        width=width,
+        height=height,
+        num_channels=4 if has_alpha else 3,
+        bit_depth=bit_depth,
+        num_frames=len(top_level),
+        rotation=_ROTATION_FROM_EXIF_ORIENTATION[orientation],
+    )
+
+
 _PY_PROBES = {
     "jpeg": _probe_jpeg,
     "png": _probe_png,
     "webp": _probe_webp,
+    "heic": _probe_heic,
 }
 
 _CPP_PROBES = {
@@ -1140,10 +1493,6 @@ def get_image_metadata(source: str | Path | bytes | torch.Tensor) -> ImageMetada
         fmt = _detect_image_format_from_header(src.read(0, 64))
         if fmt in _CPP_PROBES:
             return _cpp_probe(fmt, source)
-        elif fmt not in _PY_PROBES:
-            raise ValueError(
-                f"get_image_metadata() doesn't support {fmt.upper()} images yet."
-            )
         try:
             return _PY_PROBES[fmt](src)
         except (struct.error, IndexError):
