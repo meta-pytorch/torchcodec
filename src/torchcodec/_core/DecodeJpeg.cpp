@@ -36,6 +36,7 @@ torch::stable::Tensor decode_jpeg(
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <string_view>
 #include <tuple>
 
 #include "Exif.h"
@@ -50,7 +51,7 @@ namespace {
 // Main libjpeg docs:
 // https://github.com/libjpeg-turbo/libjpeg-turbo/blob/main/doc/libjpeg.txt
 
-constexpr uint16_t EXIF_APP1 = 0xe1;
+constexpr uint16_t APP1 = 0xe1;
 
 // Helpers to convert a CMYK line to RGB or grayscale, since libjpeg doesn't
 // handle that directly.
@@ -113,25 +114,39 @@ void convert_line_cmyk_to_gray(
 ExifOrientation fetch_jpeg_exif_orientation(j_decompress_ptr jpeg_ctx) {
   STD_TORCH_CHECK(jpeg_ctx != nullptr, "jpeg_ctx cannot be null");
 
-  // APP1 segments can also hold other payloads, e.g. XMP, so we look for the
-  // first one starting with the "Exif\0\0" header.
-  constexpr size_t exif_header_size = 6;
-  jpeg_saved_marker_ptr exif_marker = jpeg_ctx->marker_list;
-  while (exif_marker != nullptr) {
-    if (exif_marker->marker == EXIF_APP1 &&
-        exif_marker->data_length > exif_header_size &&
-        std::memcmp(exif_marker->data, "Exif\0\0", exif_header_size) == 0) {
-      break;
+  // APP1 segments hold either EXIF or XMP data, identified by their header.
+  // Like Pillow, we use the first EXIF segment and the last XMP one.
+  constexpr std::string_view exif_header("Exif\0\0", 6);
+  constexpr std::string_view xmp_header("http://ns.adobe.com/xap/1.0/\0", 29);
+  jpeg_saved_marker_ptr exif_marker = nullptr;
+  jpeg_saved_marker_ptr xmp_marker = nullptr;
+  for (auto marker = jpeg_ctx->marker_list; marker != nullptr;
+       marker = marker->next) {
+    if (marker->marker != APP1) {
+      continue;
     }
-    exif_marker = exif_marker->next;
+    std::string_view payload(
+        reinterpret_cast<const char*>(marker->data), marker->data_length);
+    if (payload.starts_with(exif_header)) {
+      if (exif_marker == nullptr && payload.size() > exif_header.size()) {
+        exif_marker = marker;
+      }
+    } else if (payload.starts_with(xmp_header)) {
+      xmp_marker = marker;
+    }
   }
 
-  if (exif_marker == nullptr) {
-    return ExifOrientation::Unspecified;
+  ExifOrientation orientation = ExifOrientation::Unspecified;
+  if (exif_marker != nullptr) {
+    orientation = fetch_exif_orientation_after_prefixes(
+        exif_marker->data, exif_marker->data_length);
   }
-
-  return fetch_exif_orientation_after_prefixes(
-      exif_marker->data, exif_marker->data_length);
+  if (orientation == ExifOrientation::Unspecified && xmp_marker != nullptr) {
+    orientation = fetch_xmp_orientation(
+        xmp_marker->data + xmp_header.size(),
+        xmp_marker->data_length - xmp_header.size());
+  }
+  return orientation;
 }
 
 // Error context that gets passed by libjpeg to its callbacks
@@ -220,8 +235,9 @@ std::tuple<int, bool> read_header_and_start(
   jpeg_ctx.src->bytes_in_buffer = input_len;
   jpeg_ctx.src->next_input_byte = input_ptr;
 
-  // Tells libjpeg to save APP1 markers (EXIF) in memory for later retrieval.
-  jpeg_save_markers(&jpeg_ctx, EXIF_APP1, 0xffff);
+  // Tells libjpeg to save APP1 markers (EXIF and XMP) in memory for later
+  // retrieval.
+  jpeg_save_markers(&jpeg_ctx, APP1, 0xffff);
 
   jpeg_read_header(&jpeg_ctx, TRUE);
 

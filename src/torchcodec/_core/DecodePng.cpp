@@ -194,7 +194,8 @@ bool decode_raw_profile_exif(
 
 // Finds the orientation the way Pillow's ImageOps.exif_transpose() does, after
 // it loaded the whole file: from the eXIf chunk, or else from an ImageMagick
-// "Raw profile type exif" text chunk. Both can come before or after the image
+// "Raw profile type exif" text chunk, and if the EXIF data has no orientation,
+// from the XMP text chunk. All of these can come before or after the image
 // data, i.e. in info_ptr or in end_info.
 ExifOrientation fetch_png_orientation(
     png_structp png_ptr,
@@ -203,7 +204,9 @@ ExifOrientation fetch_png_orientation(
   png_bytep exif = nullptr;
   png_uint_32 num_exif = 0;
   std::string_view raw_profile_exif;
+  std::string_view xmp;
   bool found_raw_profile_exif = false;
+  bool found_xmp = false;
   for (png_infop info : {info_ptr, end_info}) {
     if (info == nullptr) {
       continue;
@@ -219,10 +222,13 @@ ExifOrientation fetch_png_orientation(
           texts[i].compression >= PNG_ITXT_COMPRESSION_NONE
               ? texts[i].itxt_length
               : texts[i].text_length);
-      // Like Pillow, we keep the last chunk with this keyword.
+      // Like Pillow, we keep the last chunk for each keyword.
       if (std::strcmp(texts[i].key, "Raw profile type exif") == 0) {
         raw_profile_exif = text;
         found_raw_profile_exif = true;
+      } else if (std::strcmp(texts[i].key, "XML:com.adobe.xmp") == 0) {
+        xmp = text;
+        found_xmp = true;
       }
     }
   }
@@ -236,6 +242,10 @@ ExifOrientation fetch_png_orientation(
       decode_raw_profile_exif(raw_profile_exif, decoded_exif)) {
     orientation = fetch_exif_orientation_after_prefixes(
         decoded_exif.data(), decoded_exif.size());
+  }
+  if (orientation == ExifOrientation::Unspecified && found_xmp) {
+    orientation = fetch_xmp_orientation(
+        reinterpret_cast<const unsigned char*>(xmp.data()), xmp.size());
   }
   return orientation;
 }

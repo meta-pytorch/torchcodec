@@ -6563,13 +6563,57 @@ def _raw_profile_exif(orientation):
     return f"\nexif\n{len(exif_hex) // 2:8d}\n" + "\n".join(lines) + "\n"
 
 
-def _png(exif=None, raw_profile=None, zip_raw_profile=False, after_idat=()):
-    # A PNG with an optional eXIf chunk, and an optional "Raw profile type exif"
-    # text chunk (zTXt if zip_raw_profile, tEXt otherwise). Chunks whose type is
-    # in after_idat are moved after the (single) IDAT chunk.
+def _xmp(orientation):
+    return (
+        '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF '
+        'xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description '
+        'xmlns:tiff="http://ns.adobe.com/tiff/1.0/" '
+        f'tiff:Orientation="{orientation}"/></rdf:RDF></x:xmpmeta>'
+    ).encode()
+
+
+def _jpeg(exif=None, xmps=()):
+    # A JPEG with an optional EXIF APP1 segment, and an XMP APP1 segment for each
+    # entry of xmps, in that order. The XMP segments come right after SOI.
+    buf = io.BytesIO()
+    _orientation_test_image().save(buf, "JPEG", quality=95, exif=exif or b"")
+    data = buf.getvalue()
+    segments = b""
+    for xmp in xmps:
+        payload = b"http://ns.adobe.com/xap/1.0/\x00" + xmp
+        segments += b"\xff\xe1" + (len(payload) + 2).to_bytes(2, "big") + payload
+    return data[:2] + segments + data[2:]
+
+
+def _encode(fmt, **save_kwargs):
+    buf = io.BytesIO()
+    _orientation_test_image().save(buf, fmt, **save_kwargs)
+    return buf.getvalue()
+
+
+def _png(
+    exif=None,
+    raw_profile=None,
+    zip_raw_profile=False,
+    xmp=None,
+    xmp_chunk="iTXt",
+    after_idat=(),
+):
+    # A PNG with an optional eXIf chunk, an optional "Raw profile type exif"
+    # text chunk (zTXt if zip_raw_profile, tEXt otherwise), and an optional
+    # "XML:com.adobe.xmp" text chunk (xmp_chunk is "iTXt", "compressed iTXt" or
+    # "tEXt"). Chunks whose type is in after_idat are moved after the (single)
+    # IDAT chunk.
     pnginfo = PngImagePlugin.PngInfo()
     if raw_profile is not None:
         pnginfo.add_text("Raw profile type exif", raw_profile, zip=zip_raw_profile)
+    if xmp is not None:
+        if xmp_chunk == "tEXt":
+            pnginfo.add_text("XML:com.adobe.xmp", xmp.decode())
+        else:
+            pnginfo.add_itxt(
+                "XML:com.adobe.xmp", xmp.decode(), zip=xmp_chunk == "compressed iTXt"
+            )
     buf = io.BytesIO()
     _orientation_test_image().save(buf, "PNG", exif=exif, pnginfo=pnginfo)
     data = buf.getvalue()
@@ -6608,6 +6652,91 @@ _PNG_ORIENTATION_CASES = (
     pytest.param(
         lambda: _png(raw_profile=_raw_profile_exif(8), after_idat=(b"tEXt",)),
         id="raw_profile_after_idat",
+    ),
+    pytest.param(lambda: _png(xmp=_xmp(6)), id="xmp"),
+    pytest.param(
+        lambda: _png(xmp=_xmp(8), xmp_chunk="compressed iTXt"), id="compressed_xmp"
+    ),
+    pytest.param(lambda: _png(xmp=_xmp(5), xmp_chunk="tEXt"), id="xmp_in_text_chunk"),
+    pytest.param(
+        lambda: _png(exif=_exif_bytes(), xmp=_xmp(6)),
+        id="exif_without_orientation_and_xmp",
+    ),
+    pytest.param(
+        lambda: _png(raw_profile=_raw_profile_exif(1), xmp=_xmp(6)),
+        id="raw_profile_takes_precedence_over_xmp",
+    ),
+    pytest.param(lambda: _png(xmp=_xmp(6), after_idat=(b"iTXt",)), id="xmp_after_idat"),
+    pytest.param(
+        # The eXIf chunk has no orientation, so the chunks after the image data
+        # must still be read.
+        lambda: _png(exif=_exif_bytes(), xmp=_xmp(6), after_idat=(b"iTXt",)),
+        id="exif_without_orientation_and_xmp_after_idat",
+    ),
+)
+
+# JPEG, WebP and AVIF images with an XMP orientation. It's only used when there's
+# no EXIF orientation (or, for AVIF, no irot/imir transform).
+_XMP_ORIENTATION_CASES = (
+    pytest.param(
+        lambda: _jpeg(xmps=[_xmp(6)]), marks=pytest.mark.needs_jpeg, id="jpeg_xmp"
+    ),
+    pytest.param(
+        lambda: _jpeg(
+            xmps=[
+                b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF><rdf:Description>'
+                b"<tiff:Orientation>8</tiff:Orientation>"
+                b"</rdf:Description></rdf:RDF></x:xmpmeta>"
+            ]
+        ),
+        marks=pytest.mark.needs_jpeg,
+        id="jpeg_xmp_element_form",
+    ),
+    pytest.param(
+        lambda: _jpeg(xmps=[_xmp(9)]),
+        marks=pytest.mark.needs_jpeg,
+        id="jpeg_xmp_invalid_orientation",
+    ),
+    pytest.param(
+        lambda: _jpeg(exif=_exif_bytes(), xmps=[_xmp(6)]),
+        marks=pytest.mark.needs_jpeg,
+        id="jpeg_exif_without_orientation_and_xmp",
+    ),
+    pytest.param(
+        lambda: _jpeg(exif=_exif_bytes(1), xmps=[_xmp(6)]),
+        marks=pytest.mark.needs_jpeg,
+        id="jpeg_exif_takes_precedence_over_xmp",
+    ),
+    pytest.param(
+        lambda: _jpeg(xmps=[_xmp(3), _xmp(6)]),
+        marks=pytest.mark.needs_jpeg,
+        id="jpeg_last_xmp_is_used",
+    ),
+    pytest.param(
+        lambda: _encode("WEBP", lossless=True, xmp=_xmp(6)),
+        marks=pytest.mark.needs_webp,
+        id="webp_xmp",
+    ),
+    pytest.param(
+        lambda: _encode("WEBP", lossless=True, exif=_exif_bytes(1), xmp=_xmp(6)),
+        marks=pytest.mark.needs_webp,
+        id="webp_exif_takes_precedence_over_xmp",
+    ),
+    pytest.param(
+        lambda: _encode("AVIF", quality=100, xmp=_xmp(6)),
+        marks=pytest.mark.needs_avif,
+        id="avif_xmp",
+    ),
+    pytest.param(
+        lambda: _encode("AVIF", quality=100, exif=_exif_bytes(), xmp=_xmp(8)),
+        marks=pytest.mark.needs_avif,
+        id="avif_exif_without_orientation_and_xmp",
+    ),
+    pytest.param(
+        # Pillow writes the EXIF orientation as irot/imir transforms.
+        lambda: _encode("AVIF", quality=100, exif=_exif_bytes(3), xmp=_xmp(6)),
+        marks=pytest.mark.needs_avif,
+        id="avif_irot_takes_precedence_over_xmp",
     ),
 )
 
@@ -7093,6 +7222,23 @@ class TestImageDecoder:
             ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
         )
         torch.testing.assert_close(decoded, reference)
+
+    @pytest.mark.parametrize("make_image", _XMP_ORIENTATION_CASES)
+    def test_xmp_orientation_matches_pil(self, make_image):
+        data = make_image()
+        decoded = decode_image(data, mode="RGB")
+        reference = self._pil_to_tensor(
+            ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+        )
+        # JPEG and AVIF are lossy, and Pillow's decoders can differ slightly from
+        # ours.
+        torch.testing.assert_close(decoded, reference, rtol=0, atol=2)
+
+        # b"\xff\xd8" is the JPEG SOI marker: also check nvJPEG, whose output is
+        # slightly different from libjpeg's.
+        if data[:2] == b"\xff\xd8" and torch.cuda.is_available():
+            decoded_cuda = decode_jpeg(data, mode="RGB", device="cuda").cpu()
+            torch.testing.assert_close(decoded_cuda, reference, rtol=0, atol=5)
 
     @needs_png
     def test_png_garbage_after_idat(self):
@@ -8174,6 +8320,17 @@ class TestImageDecoder:
 
 
 class TestGetImageMetadata:
+    def _assert_orientation_matches_pil(self, data):
+        metadata = get_image_metadata(data)
+
+        img = Image.open(io.BytesIO(data))
+        transposed = ImageOps.exif_transpose(img)  # Loads the whole file.
+        orientation = img.getexif().get(0x0112)
+        expected_rotation = {1: 0, 2: 0, 3: 180, 4: 180, 5: 90, 6: -90, 7: -90, 8: 90}
+        assert metadata.rotation == expected_rotation.get(orientation)
+        assert (metadata.width, metadata.height) == transposed.size
+        self._assert_matches_decode(metadata, data)
+
     @staticmethod
     def _assert_matches_decode(metadata, source):
         # Every metadata field is defined by what the decoders output.
@@ -8333,16 +8490,11 @@ class TestGetImageMetadata:
     @needs_png
     @pytest.mark.parametrize("make_png", _PNG_ORIENTATION_CASES)
     def test_png_orientation_matches_pil(self, make_png):
-        data = make_png()
-        metadata = get_image_metadata(data)
+        self._assert_orientation_matches_pil(make_png())
 
-        img = Image.open(io.BytesIO(data))
-        transposed = ImageOps.exif_transpose(img)  # Loads the whole file.
-        orientation = img.getexif().get(0x0112)
-        expected_rotation = {1: 0, 2: 0, 3: 180, 4: 180, 5: 90, 6: -90, 7: -90, 8: 90}
-        assert metadata.rotation == expected_rotation.get(orientation)
-        assert (metadata.width, metadata.height) == transposed.size
-        self._assert_matches_decode(metadata, data)
+    @pytest.mark.parametrize("make_image", _XMP_ORIENTATION_CASES)
+    def test_xmp_orientation_matches_pil(self, make_image):
+        self._assert_orientation_matches_pil(make_image())
 
     @needs_png
     @pytest.mark.parametrize(

@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import ctypes
+import re
 import struct
 import warnings
 import zlib
@@ -763,9 +764,9 @@ _EXIF_INCORRECT_TAG = 0xFFFF
 def _exif_orientation(tiff: bytes) -> int | None:
     # Port of fetch_exif_orientation() from Exif.h, quirks included, so that we
     # report exactly the orientation the decoders apply. `tiff` starts at the
-    # TIFF header (i.e. after any "Exif\0\0" prefix). Returns the EXIF
-    # orientation in [1, 8], or None if there's none (or it's invalid, in which
-    # case the decoders don't apply anything either).
+    # TIFF header (i.e. after any "Exif\0\0" prefix). Returns the value of the
+    # EXIF orientation tag, or None if there's no such tag. Values outside of
+    # [1, 8] are invalid, and the decoders don't apply anything for them.
     n = len(tiff)
     byte_order = "<" if tiff[:2] == b"II" else ">"
 
@@ -788,8 +789,7 @@ def _exif_orientation(tiff: bytes) -> int | None:
         if tag == _EXIF_INCORRECT_TAG:
             break
         if tag == 0x0112:
-            orientation = u16(offset + 8)
-            return orientation if 1 <= orientation <= 8 else None
+            return u16(offset + 8)
         offset += 12
     return None
 
@@ -801,11 +801,16 @@ def _exif_orientation_after_prefixes(exif: bytes) -> int | None:
     return _exif_orientation(exif) if exif else None
 
 
+def _xmp_orientation(xmp: bytes) -> int | None:
+    # Port of fetch_xmp_orientation() from Exif.h.
+    match = re.search(rb'tiff:Orientation(?:="|>)([0-9])', xmp)
+    return int(match[1]) if match else None
+
+
 # Rotation of each EXIF orientation, when decomposed into an optional
-# left-to-right mirroring followed by a rotation.
-_ROTATION_FROM_EXIF_ORIENTATION = {
-    None: None,
-    -1: None,  # ExifOrientation::Unspecified, returned by the C++ probes.
+# left-to-right mirroring followed by a rotation. Invalid orientations aren't
+# applied by the decoders and aren't in here: look them up with .get().
+_ROTATION_FROM_EXIF_ORIENTATION: dict[int | None, float] = {
     1: 0.0,
     2: 0.0,
     3: 180.0,
@@ -825,16 +830,17 @@ _ROTATION_FROM_EXIF_ORIENTATION = {
 # (hierarchical, and the reserved JPG marker) make jpeg_read_header() fail.
 _JPEG_SUPPORTED_SOF = frozenset((0xC0, 0xC1, 0xC2, 0xC3, 0xC9, 0xCA, 0xCB))
 _JPEG_UNSUPPORTED_SOF = frozenset((0xC5, 0xC6, 0xC7, 0xC8, 0xCD, 0xCE, 0xCF))
+_JPEG_XMP_HEADER = b"http://ns.adobe.com/xap/1.0/\x00"
 
 
 def _probe_jpeg(src: _ByteSource) -> ImageMetadata:
-    # Walks the markers up to the first SOS, like jpeg_read_header(). The
-    # decoder takes the EXIF orientation from the first APP1 segment that starts
-    # with the "Exif\0\0" header.
+    # Walks the markers up to the first SOS, like jpeg_read_header(). Like
+    # fetch_jpeg_exif_orientation() in DecodeJpeg.cpp, takes the orientation
+    # from the first EXIF APP1 segment, or else from the last XMP one.
     pos = 2  # skip SOI, already checked by the format sniffer
     sof = None
-    orientation = None
-    seen_exif = False
+    exif = None
+    xmp = None
     while True:
         chunk = src.read(pos, 4)
         if len(chunk) < 2:
@@ -874,16 +880,21 @@ def _probe_jpeg(src: _ByteSource) -> ImageMetadata:
             sof = (precision, height, width, num_components)
         elif marker in _JPEG_UNSUPPORTED_SOF:
             raise RuntimeError(f"Unsupported JPEG process: SOF type 0x{marker:02x}.")
-        elif marker == 0xE1 and not seen_exif:
+        elif marker == 0xE1:
             payload = src.read_exact(pos + 4, segment_length - 2)
-            if len(payload) > 6 and payload[:6] == b"Exif\x00\x00":
-                seen_exif = True
-                orientation = _exif_orientation_after_prefixes(payload)
+            if payload.startswith(b"Exif\x00\x00"):
+                if exif is None and len(payload) > 6:
+                    exif = payload
+            elif payload.startswith(_JPEG_XMP_HEADER):
+                xmp = payload[len(_JPEG_XMP_HEADER) :]
         pos += 2 + segment_length
 
     if sof is None:
         raise RuntimeError("JPEG has no SOF marker before SOS.")
     precision, height, width, num_components = sof
+    orientation = _exif_orientation_after_prefixes(exif) if exif is not None else None
+    if orientation is None and xmp is not None:
+        orientation = _xmp_orientation(xmp)
     if orientation is not None and 5 <= orientation <= 8:
         width, height = height, width
     return ImageMetadata(
@@ -893,7 +904,7 @@ def _probe_jpeg(src: _ByteSource) -> ImageMetadata:
         num_channels=num_components,
         bit_depth=precision,
         num_frames=1,
-        rotation=_ROTATION_FROM_EXIF_ORIENTATION[orientation],
+        rotation=_ROTATION_FROM_EXIF_ORIENTATION.get(orientation),
     )
 
 
@@ -971,6 +982,7 @@ def _probe_png(src: _ByteSource) -> ImageMetadata:
     has_trns = False
     exif = None
     raw_profile = None
+    xmp = None
     seen_idat = False
     while True:
         header = src.read(pos, 8)
@@ -987,7 +999,7 @@ def _probe_png(src: _ByteSource) -> ImageMetadata:
             seen_idat = True
             if color_type == 3 and num_palette is None:
                 raise RuntimeError("PNG palette image has no PLTE chunk before IDAT.")
-            if exif is not None:
+            if exif is not None and _exif_orientation(exif) is not None:
                 # The chunks after the image data can't change the orientation.
                 break
             if src.read(pos + 12 + length + 4, 4) == b"IDAT":
@@ -1022,9 +1034,13 @@ def _probe_png(src: _ByteSource) -> ImageMetadata:
         elif chunk_type in (b"tEXt", b"zTXt", b"iTXt"):
             payload = src.read(pos + 8, length)
             text = _png_text(chunk_type, payload) if len(payload) == length else None
-            # Like Pillow, we keep the last chunk with this keyword.
-            if text is not None and text[0] == b"Raw profile type exif":
-                raw_profile = text[1]
+            if text is not None:
+                keyword, value = text
+                # Like Pillow, we keep the last chunk with each keyword.
+                if keyword == b"Raw profile type exif":
+                    raw_profile = value
+                elif keyword == b"XML:com.adobe.xmp":
+                    xmp = value
         pos += 12 + length
 
     # Same logic as fetch_png_orientation() in DecodePng.cpp.
@@ -1042,6 +1058,8 @@ def _probe_png(src: _ByteSource) -> ImageMetadata:
             pass
         else:
             orientation = _exif_orientation_after_prefixes(raw_profile_exif)
+    if orientation is None and xmp is not None:
+        orientation = _xmp_orientation(xmp)
     if orientation is not None and 5 <= orientation <= 8:
         width, height = height, width
     if color_type == 3:
@@ -1056,7 +1074,7 @@ def _probe_png(src: _ByteSource) -> ImageMetadata:
         num_channels=num_channels,
         bit_depth=bit_depth,
         num_frames=1,
-        rotation=_ROTATION_FROM_EXIF_ORIENTATION[orientation],
+        rotation=_ROTATION_FROM_EXIF_ORIENTATION.get(orientation),
     )
 
 
@@ -1065,6 +1083,7 @@ def _probe_png(src: _ByteSource) -> ImageMetadata:
 # ----------------------------------------------------------------------------
 
 _WEBP_ANIMATION_FLAG = 0x02
+_WEBP_XMP_FLAG = 0x04
 _WEBP_EXIF_FLAG = 0x08
 _WEBP_ALPHA_FLAG = 0x10
 
@@ -1095,8 +1114,8 @@ def _vp8l_info(src: _ByteSource, payload_pos: int) -> tuple[int, int, bool]:
 
 def _probe_webp(src: _ByteSource) -> ImageMetadata:
     # Mirrors WebPGetFeatures() (dimensions and alpha), WebPAnimDecoder (frame
-    # count and canvas size) and WebPDemux (the EXIF chunk, which libwebpdemux
-    # only exposes when the VP8X EXIF flag is set).
+    # count and canvas size) and WebPDemux (the EXIF and XMP chunks, which
+    # libwebpdemux only exposes when the matching VP8X flag is set).
     first_type, first_size = struct.unpack("<4sI", src.read_exact(12, 8))
     orientation = None
     if first_type == b"VP8 ":
@@ -1117,6 +1136,7 @@ def _probe_webp(src: _ByteSource) -> ImageMetadata:
         seen_alph = False
         bitstream = None  # (width, height, vp8l_alpha_or_None) of first image
         exif = None
+        xmp = None
         pos = 20 + first_size + (first_size & 1)
         while True:
             header = src.read(pos, 8)
@@ -1134,10 +1154,14 @@ def _probe_webp(src: _ByteSource) -> ImageMetadata:
                     bitstream = _vp8l_info(src, pos + 8)
             if chunk_type == b"EXIF" and exif is None and flags & _WEBP_EXIF_FLAG:
                 exif = src.read_exact(pos + 8, chunk_size)
+            elif chunk_type == b"XMP " and xmp is None and flags & _WEBP_XMP_FLAG:
+                xmp = src.read_exact(pos + 8, chunk_size)
             pos += 8 + chunk_size + (chunk_size & 1)
 
         if exif is not None:
             orientation = _exif_orientation_after_prefixes(exif)
+        if orientation is None and xmp is not None:
+            orientation = _xmp_orientation(xmp)
 
         if is_animated:
             if num_anmf == 0:
@@ -1168,7 +1192,7 @@ def _probe_webp(src: _ByteSource) -> ImageMetadata:
         num_channels=4 if has_alpha else 3,
         bit_depth=8,
         num_frames=num_frames,
-        rotation=_ROTATION_FROM_EXIF_ORIENTATION[orientation],
+        rotation=_ROTATION_FROM_EXIF_ORIENTATION.get(orientation),
     )
 
 
@@ -1500,7 +1524,7 @@ def _probe_heic(src: _ByteSource) -> ImageMetadata:
         num_channels=4 if has_alpha else 3,
         bit_depth=bit_depth,
         num_frames=len(top_level),
-        rotation=_ROTATION_FROM_EXIF_ORIENTATION[orientation],
+        rotation=_ROTATION_FROM_EXIF_ORIENTATION.get(orientation),
     )
 
 
@@ -1531,7 +1555,7 @@ def _cpp_probe(fmt: str, source: str | Path | bytes | torch.Tensor) -> ImageMeta
         num_channels=num_channels,
         bit_depth=bit_depth,
         num_frames=num_frames,
-        rotation=_ROTATION_FROM_EXIF_ORIENTATION[orientation],
+        rotation=_ROTATION_FROM_EXIF_ORIENTATION.get(orientation),
     )
 
 

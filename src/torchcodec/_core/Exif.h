@@ -211,6 +211,34 @@ inline ExifOrientation fetch_exif_orientation_after_prefixes(
       reinterpret_cast<const unsigned char*>(exif.data()), exif.size());
 }
 
+// Not from OpenCV. For an image whose EXIF has no orientation, Pillow's
+// getexif() takes it from the XMP packet instead: the first match of the regex
+// `tiff:Orientation(="|>)([0-9])`. We do the same so that we rotate exactly
+// the images Pillow's ImageOps.exif_transpose() rotates.
+inline ExifOrientation fetch_xmp_orientation(
+    const unsigned char* xmp,
+    size_t size) {
+  constexpr std::string_view tag = "tiff:Orientation";
+  std::string_view data(reinterpret_cast<const char*>(xmp), size);
+  for (size_t pos = data.find(tag); pos != std::string_view::npos;
+       pos = data.find(tag, pos + 1)) {
+    std::string_view rest = data.substr(pos + tag.size());
+    size_t digit_pos;
+    if (rest.starts_with("=\"")) {
+      digit_pos = 2;
+    } else if (rest.starts_with(">")) {
+      digit_pos = 1;
+    } else {
+      continue;
+    }
+    if (rest.size() > digit_pos && rest[digit_pos] >= '0' &&
+        rest[digit_pos] <= '9') {
+      return static_cast<ExifOrientation>(rest[digit_pos] - '0');
+    }
+  }
+  return ExifOrientation::Unspecified;
+}
+
 inline torch::stable::Tensor exif_orientation_transform(
     const torch::stable::Tensor& image,
     ExifOrientation orientation) {

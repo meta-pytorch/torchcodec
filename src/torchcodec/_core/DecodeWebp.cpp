@@ -48,8 +48,9 @@ using namespace exif_private;
 namespace {
 
 // Find the EXIF orientation by asking libwebpdemux for the "EXIF" chunk (which
-// only exists in extended VP8X files and holds raw TIFF-formatted EXIF data).
-// Returns Unspecified (i.e. no rotation) when there's no usable EXIF chunk.
+// only exists in extended VP8X files and holds raw TIFF-formatted EXIF data),
+// falling back to the "XMP " chunk when EXIF has no orientation. Returns
+// Unspecified (i.e. no rotation) when neither has one.
 ExifOrientation fetch_webp_exif_orientation(const uint8_t* data, size_t size) {
   WebPData webp_data;
   WebPDataInit(&webp_data);
@@ -68,6 +69,13 @@ ExifOrientation fetch_webp_exif_orientation(const uint8_t* data, size_t size) {
     // JPEG APP1 segment).
     orientation = fetch_exif_orientation_after_prefixes(
         chunk_iter.chunk.bytes, chunk_iter.chunk.size);
+    WebPDemuxReleaseChunkIterator(&chunk_iter);
+  }
+
+  if (orientation == ExifOrientation::Unspecified &&
+      WebPDemuxGetChunk(demux, "XMP ", 1, &chunk_iter)) {
+    orientation =
+        fetch_xmp_orientation(chunk_iter.chunk.bytes, chunk_iter.chunk.size);
     WebPDemuxReleaseChunkIterator(&chunk_iter);
   }
 

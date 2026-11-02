@@ -103,6 +103,29 @@ ExifOrientation avif_exif_orientation(const avifImage* image) {
   }
 }
 
+// Returns Unspecified when the image has no orientation metadata. Like
+// Pillow, we take the orientation from irot/imir and ignore the EXIF one.
+// Pillow also falls back to the XMP orientation when irot/imir don't rotate
+// or mirror and the EXIF data has no orientation tag, so we do too.
+ExifOrientation avif_orientation(const avifImage* image) {
+  bool has_transform = (image->transformFlags &
+                        (AVIF_TRANSFORM_IROT | AVIF_TRANSFORM_IMIR)) != 0;
+  ExifOrientation orientation = has_transform ? avif_exif_orientation(image)
+                                              : ExifOrientation::Unspecified;
+  if ((orientation == ExifOrientation::Unspecified ||
+       orientation == ExifOrientation::TopLeft) &&
+      image->xmp.size > 0 &&
+      fetch_exif_orientation_after_prefixes(
+          image->exif.data, image->exif.size) == ExifOrientation::Unspecified) {
+    ExifOrientation xmp_orientation =
+        fetch_xmp_orientation(image->xmp.data, image->xmp.size);
+    if (xmp_orientation != ExifOrientation::Unspecified) {
+      orientation = xmp_orientation;
+    }
+  }
+  return orientation;
+}
+
 } // namespace
 
 torch::stable::Tensor decode_avif(
@@ -136,8 +159,9 @@ torch::stable::Tensor decode_avif(
       "avifDecoderParse failed: ",
       avifResultToString(result));
 
-  // irot/imir are populated during parse and are constant across the sequence.
-  ExifOrientation exif_orientation = avif_exif_orientation(decoder->image);
+  // irot/imir, EXIF and XMP are populated during parse and are constant across
+  // the sequence.
+  ExifOrientation exif_orientation = avif_orientation(decoder->image);
 
   // We detect animation via imageSequenceTrackPresent (the signal that
   // specifically means "image sequence"), not imageCount. imageCount can also
@@ -222,15 +246,13 @@ ImageProbeResult parse_and_probe(avifDecoder* decoder) {
 
   int64_t width = decoder->image->width;
   int64_t height = decoder->image->height;
-  ExifOrientation exif_orientation = avif_exif_orientation(decoder->image);
+  ExifOrientation exif_orientation = avif_orientation(decoder->image);
   if (exif_orientation == ExifOrientation::LeftTop ||
       exif_orientation == ExifOrientation::RightTop ||
       exif_orientation == ExifOrientation::RightBottom ||
       exif_orientation == ExifOrientation::LeftBottom) {
     std::swap(width, height);
   }
-  bool has_orientation = (decoder->image->transformFlags &
-                          (AVIF_TRANSFORM_IROT | AVIF_TRANSFORM_IMIR)) != 0;
   // Same frame count logic as decode_avif().
   int64_t num_frames =
       decoder->imageSequenceTrackPresent ? decoder->imageCount : 1;
@@ -240,8 +262,7 @@ ImageProbeResult parse_and_probe(avifDecoder* decoder) {
       decoder->alphaPresent ? 4 : 3,
       static_cast<int64_t>(decoder->image->depth),
       num_frames,
-      static_cast<int64_t>(
-          has_orientation ? exif_orientation : ExifOrientation::Unspecified)};
+      static_cast<int64_t>(exif_orientation)};
 }
 
 } // namespace

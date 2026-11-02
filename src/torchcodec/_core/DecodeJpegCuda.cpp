@@ -31,7 +31,7 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
 
 #else
 
-#include <cstring>
+#include <string_view>
 
 #include "CUDACommon.h"
 #include "Cache.h"
@@ -71,9 +71,9 @@ using namespace exif_private;
 
 namespace {
 
-// Scan a JPEG bitstream for the APP1/EXIF segment and return its orientation.
-// On the CPU jpeg decoder, we rely on libjpeg for that. Here, we have to parse
-// it ourselves.
+// Scan a JPEG bitstream for the APP1 EXIF and XMP segments and return the
+// orientation. On the CPU jpeg decoder, we rely on libjpeg for finding the
+// segments. Here, we have to parse them ourselves.
 ExifOrientation fetch_exif_orientation_from_jpeg_bytes(
     const unsigned char* jpeg,
     size_t size) {
@@ -82,12 +82,18 @@ ExifOrientation fetch_exif_orientation_from_jpeg_bytes(
   constexpr unsigned char SOS = 0xDA; // start of scan: no more metadata markers
   constexpr unsigned char EOI = 0xD9;
   constexpr unsigned char APP1 = 0xE1;
-  constexpr size_t exif_header_size = 6; // "Exif\0\0"
+  constexpr std::string_view exif_header("Exif\0\0", 6);
+  constexpr std::string_view xmp_header("http://ns.adobe.com/xap/1.0/\0", 29);
 
   if (size < 2 || jpeg[0] != MARKER_PREFIX || jpeg[1] != SOI) {
     return ExifOrientation::Unspecified;
   }
 
+  // Like Pillow, we use the first EXIF segment and the last XMP one.
+  std::string_view exif;
+  std::string_view xmp;
+  bool found_exif = false;
+  bool found_xmp = false;
   size_t pos = 2;
   while (pos + 4 <= size && jpeg[pos] == MARKER_PREFIX) {
     unsigned char marker = jpeg[pos + 1];
@@ -101,16 +107,32 @@ ExifOrientation fetch_exif_orientation_from_jpeg_bytes(
       break;
     }
 
-    if (marker == APP1 && segment_length >= 2 + exif_header_size) {
-      const unsigned char* payload = jpeg + pos + 4;
-      if (std::memcmp(payload, "Exif\0\0", exif_header_size) == 0) {
-        return fetch_exif_orientation_after_prefixes(
-            payload, segment_length - 2);
+    if (marker == APP1) {
+      std::string_view payload(
+          reinterpret_cast<const char*>(jpeg + pos + 4), segment_length - 2);
+      if (payload.starts_with(exif_header)) {
+        if (!found_exif) {
+          exif = payload;
+          found_exif = true;
+        }
+      } else if (payload.starts_with(xmp_header)) {
+        xmp = payload.substr(xmp_header.size());
+        found_xmp = true;
       }
     }
     pos += 2 + segment_length;
   }
-  return ExifOrientation::Unspecified;
+
+  ExifOrientation orientation = ExifOrientation::Unspecified;
+  if (found_exif) {
+    orientation = fetch_exif_orientation_after_prefixes(
+        reinterpret_cast<const unsigned char*>(exif.data()), exif.size());
+  }
+  if (orientation == ExifOrientation::Unspecified && found_xmp) {
+    orientation = fetch_xmp_orientation(
+        reinterpret_cast<const unsigned char*>(xmp.data()), xmp.size());
+  }
+  return orientation;
 }
 
 // We cache decoder objects for the same reason we cache NVDEC decoders: they're
