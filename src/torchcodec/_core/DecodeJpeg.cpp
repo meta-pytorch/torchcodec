@@ -130,10 +130,8 @@ ExifOrientation fetch_jpeg_exif_orientation(j_decompress_ptr jpeg_ctx) {
     return ExifOrientation::Unspecified;
   }
 
-  auto* exif_data_ptr = exif_marker->data + exif_header_size;
-  auto size = exif_marker->data_length - exif_header_size;
-
-  return fetch_exif_orientation(exif_data_ptr, size);
+  return fetch_exif_orientation_after_prefixes(
+      exif_marker->data, exif_marker->data_length);
 }
 
 // Error context that gets passed by libjpeg to its callbacks

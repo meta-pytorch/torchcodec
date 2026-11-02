@@ -6503,14 +6503,19 @@ def _heic_param(*values):
     return pytest.param(decode_heic, *values, marks=pytest.mark.needs_heic, id="heic")
 
 
-def _jpeg_with_xmp_before_exif():
-    # A JPEG with EXIF orientation 6, and an XMP APP1 segment before the EXIF
-    # APP1 segment. The image is smooth so that nvJPEG and libjpeg outputs are
-    # close, but not symmetric so that a wrong orientation is caught.
+def _orientation_test_image():
+    # Smooth so that nvJPEG and libjpeg outputs are close, but not symmetric so
+    # that a wrong orientation is caught.
     y, x = numpy.mgrid[0:40, 0:60]
-    img = Image.fromarray(
+    return Image.fromarray(
         numpy.stack([x * 4, y * 6, (x + 2 * y) * 1.5], axis=-1).astype(numpy.uint8)
     )
+
+
+def _jpeg_with_xmp_before_exif():
+    # A JPEG with EXIF orientation 6, and an XMP APP1 segment before the EXIF
+    # APP1 segment.
+    img = _orientation_test_image()
     exif = img.getexif()
     exif[0x0112] = 6  # 0x0112 is the EXIF orientation tag
     buf = io.BytesIO()
@@ -6520,6 +6525,24 @@ def _jpeg_with_xmp_before_exif():
     xmp_segment = b"\xff\xe1" + (len(xmp) + 2).to_bytes(2, "big") + xmp
     # Right after the SOI marker, so before Pillow's EXIF segment.
     return data[:2] + xmp_segment + data[2:]
+
+
+def _image_with_repeated_exif_prefix(fmt):
+    # EXIF orientation 6, with EXIF data that starts with two "Exif\0\0"
+    # prefixes. Exif.tobytes() already adds one.
+    img = _orientation_test_image()
+    exif = img.getexif()
+    exif[0x0112] = 6  # 0x0112 is the EXIF orientation tag
+    if fmt == "JPEG":
+        exif_bytes = b"Exif\x00\x00" + exif.tobytes()
+        save_kwargs = {"quality": 95}
+    else:
+        # When saving WebP, Pillow strips one prefix.
+        exif_bytes = b"Exif\x00\x00" * 2 + exif.tobytes()
+        save_kwargs = {"lossless": True}
+    buf = io.BytesIO()
+    img.save(buf, fmt, exif=exif_bytes, **save_kwargs)
+    return buf.getvalue()
 
 
 class TestImageDecoder:
@@ -6971,6 +6994,26 @@ class TestImageDecoder:
         torch.testing.assert_close(
             decoded, reference, rtol=0, atol=2 if device == "cpu" else 5
         )
+
+    @pytest.mark.parametrize(
+        "decode_fn, fmt, atol",
+        (
+            _jpeg_param("JPEG", 2),
+            # nvJPEG's output is slightly different from libjpeg's.
+            _jpeg_cuda_param("JPEG", 5),
+            _webp_param("WEBP", 0),
+        ),
+    )
+    def test_repeated_exif_prefix(self, decode_fn, fmt, atol):
+        # Like Pillow, we skip any number of "Exif\0\0" prefixes.
+        data = _image_with_repeated_exif_prefix(fmt)
+        decoded = decode_fn(data, mode="RGB").cpu()
+        reference = self._pil_to_tensor(
+            ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+        )
+
+        assert decoded.shape == reference.shape == (3, 60, 40)
+        torch.testing.assert_close(decoded, reference, rtol=0, atol=atol)
 
     @needs_heic
     @needs_png
@@ -8177,6 +8220,20 @@ class TestGetImageMetadata:
     @needs_jpeg
     def test_jpeg_xmp_before_exif(self):
         data = _jpeg_with_xmp_before_exif()
+        metadata = get_image_metadata(data)
+        assert metadata.rotation == -90
+        assert (metadata.width, metadata.height) == (40, 60)
+        self._assert_matches_decode(metadata, data)
+
+    @pytest.mark.parametrize(
+        "fmt",
+        (
+            pytest.param("JPEG", marks=pytest.mark.needs_jpeg),
+            pytest.param("WEBP", marks=pytest.mark.needs_webp),
+        ),
+    )
+    def test_repeated_exif_prefix(self, fmt):
+        data = _image_with_repeated_exif_prefix(fmt)
         metadata = get_image_metadata(data)
         assert metadata.rotation == -90
         assert (metadata.width, metadata.height) == (40, 60)

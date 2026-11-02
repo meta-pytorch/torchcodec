@@ -104,8 +104,8 @@ ExifOrientation fetch_exif_orientation_from_jpeg_bytes(
     if (marker == APP1 && segment_length >= 2 + exif_header_size) {
       const unsigned char* payload = jpeg + pos + 4;
       if (std::memcmp(payload, "Exif\0\0", exif_header_size) == 0) {
-        return fetch_exif_orientation(
-            payload + exif_header_size, segment_length - 2 - exif_header_size);
+        return fetch_exif_orientation_after_prefixes(
+            payload, segment_length - 2);
       }
     }
     pos += 2 + segment_length;
