@@ -113,9 +113,14 @@ void convert_line_cmyk_to_gray(
 ExifOrientation fetch_jpeg_exif_orientation(j_decompress_ptr jpeg_ctx) {
   STD_TORCH_CHECK(jpeg_ctx != nullptr, "jpeg_ctx cannot be null");
 
+  // APP1 segments can also hold other payloads, e.g. XMP, so we look for the
+  // first one starting with the "Exif\0\0" header.
+  constexpr size_t exif_header_size = 6;
   jpeg_saved_marker_ptr exif_marker = jpeg_ctx->marker_list;
   while (exif_marker != nullptr) {
-    if (exif_marker->marker == EXIF_APP1) {
+    if (exif_marker->marker == EXIF_APP1 &&
+        exif_marker->data_length > exif_header_size &&
+        std::memcmp(exif_marker->data, "Exif\0\0", exif_header_size) == 0) {
       break;
     }
     exif_marker = exif_marker->next;
@@ -125,13 +130,8 @@ ExifOrientation fetch_jpeg_exif_orientation(j_decompress_ptr jpeg_ctx) {
     return ExifOrientation::Unspecified;
   }
 
-  constexpr size_t start_offset = 6;
-  if (exif_marker->data_length <= start_offset) {
-    return ExifOrientation::Unspecified;
-  }
-
-  auto* exif_data_ptr = exif_marker->data + start_offset;
-  auto size = exif_marker->data_length - start_offset;
+  auto* exif_data_ptr = exif_marker->data + exif_header_size;
+  auto size = exif_marker->data_length - exif_header_size;
 
   return fetch_exif_orientation(exif_data_ptr, size);
 }

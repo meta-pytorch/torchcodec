@@ -6503,6 +6503,25 @@ def _heic_param(*values):
     return pytest.param(decode_heic, *values, marks=pytest.mark.needs_heic, id="heic")
 
 
+def _jpeg_with_xmp_before_exif():
+    # A JPEG with EXIF orientation 6, and an XMP APP1 segment before the EXIF
+    # APP1 segment. The image is smooth so that nvJPEG and libjpeg outputs are
+    # close, but not symmetric so that a wrong orientation is caught.
+    y, x = numpy.mgrid[0:40, 0:60]
+    img = Image.fromarray(
+        numpy.stack([x * 4, y * 6, (x + 2 * y) * 1.5], axis=-1).astype(numpy.uint8)
+    )
+    exif = img.getexif()
+    exif[0x0112] = 6  # 0x0112 is the EXIF orientation tag
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=95, exif=exif.tobytes())
+    data = buf.getvalue()
+    xmp = b"http://ns.adobe.com/xap/1.0/\x00<x:xmpmeta/>"
+    xmp_segment = b"\xff\xe1" + (len(xmp) + 2).to_bytes(2, "big") + xmp
+    # Right after the SOI marker, so before Pillow's EXIF segment.
+    return data[:2] + xmp_segment + data[2:]
+
+
 class TestImageDecoder:
 
     # ===== shared helpers =====
@@ -6933,6 +6952,25 @@ class TestImageDecoder:
             reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
             assert decoded.shape == reference.shape
             assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_jpeg
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_jpeg_xmp_before_exif(self, device):
+        # APP1 segments can hold XMP too: the orientation must come from the
+        # first EXIF one, not from the first APP1 one.
+        data = _jpeg_with_xmp_before_exif()
+        decoded = decode_jpeg(data, mode="RGB", device=device).cpu()
+        reference = self._pil_to_tensor(
+            ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+        )
+
+        assert decoded.shape == reference.shape == (3, 60, 40)
+        # nvJPEG's output is slightly different from libjpeg's.
+        torch.testing.assert_close(
+            decoded, reference, rtol=0, atol=2 if device == "cpu" else 5
+        )
 
     @needs_heic
     @needs_png
@@ -8137,25 +8175,11 @@ class TestGetImageMetadata:
         self._assert_matches_decode(metadata, path)
 
     @needs_jpeg
-    def test_jpeg_orientation_comes_from_first_app1(self):
-        # decode_jpeg only reads the orientation from the first APP1 segment,
-        # even when it's not EXIF data. This is a decoder bug, but the metadata
-        # must match what the decoder does: an XMP segment before the EXIF one
-        # hides the orientation.
-        # TODO_IMAGE: Fix this!
-        buf = io.BytesIO()
-        img = Image.fromarray(numpy.zeros((40, 60, 3), dtype=numpy.uint8))
-        exif = img.getexif()
-        exif[0x0112] = 6
-        img.save(buf, "JPEG", exif=exif.tobytes())
-        data = buf.getvalue()
-        xmp = b"http://ns.adobe.com/xap/1.0/\x00<x:xmpmeta/>"
-        xmp_segment = b"\xff\xe1" + (len(xmp) + 2).to_bytes(2, "big") + xmp
-        data = data[:2] + xmp_segment + data[2:]
-
+    def test_jpeg_xmp_before_exif(self):
+        data = _jpeg_with_xmp_before_exif()
         metadata = get_image_metadata(data)
-        assert metadata.rotation is None
-        assert (metadata.width, metadata.height) == (60, 40)
+        assert metadata.rotation == -90
+        assert (metadata.width, metadata.height) == (40, 60)
         self._assert_matches_decode(metadata, data)
 
     @needs_png

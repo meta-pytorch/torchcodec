@@ -818,12 +818,12 @@ _JPEG_UNSUPPORTED_SOF = frozenset((0xC5, 0xC6, 0xC7, 0xC8, 0xCD, 0xCE, 0xCF))
 
 def _probe_jpeg(src: _ByteSource) -> ImageMetadata:
     # Walks the markers up to the first SOS, like jpeg_read_header(). The
-    # decoder takes the EXIF orientation from the first APP1 segment, whatever
-    # it contains.
+    # decoder takes the EXIF orientation from the first APP1 segment that starts
+    # with the "Exif\0\0" header.
     pos = 2  # skip SOI, already checked by the format sniffer
     sof = None
     orientation = None
-    seen_app1 = False
+    seen_exif = False
     while True:
         chunk = src.read(pos, 4)
         if len(chunk) < 2:
@@ -863,10 +863,10 @@ def _probe_jpeg(src: _ByteSource) -> ImageMetadata:
             sof = (precision, height, width, num_components)
         elif marker in _JPEG_UNSUPPORTED_SOF:
             raise RuntimeError(f"Unsupported JPEG process: SOF type 0x{marker:02x}.")
-        elif marker == 0xE1 and not seen_app1:
-            seen_app1 = True
+        elif marker == 0xE1 and not seen_exif:
             payload = src.read_exact(pos + 4, segment_length - 2)
-            if len(payload) > 6:
+            if len(payload) > 6 and payload[:6] == b"Exif\x00\x00":
+                seen_exif = True
                 orientation = _exif_orientation(payload[6:])
         pos += 2 + segment_length
 
