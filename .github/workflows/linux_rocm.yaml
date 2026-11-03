@@ -59,13 +59,15 @@ jobs:
           # Build may cover several Python versions; the GPU test job only
           # needs one. Take the first unique python_version, then one entry
           # per ROCm version so install-and-test stays in sync with the wheel.
+          # Emit hyphenated keys (python-version / rocm-version) to match the
+          # rest of torchcodec's workflows.
           test_matrix=$(echo "$matrix" | jq -c '
             (.include | map(.python_version) | unique | .[0]) as $py
             | {include: [
                 .include[]
                 | select(.python_version == $py)
-                | {python_version: .python_version, rocm_version: .gpu_arch_version}
-              ] | unique_by(.rocm_version)}
+                | {"python-version": .python_version, "rocm-version": .gpu_arch_version}
+              ] | unique_by(."rocm-version")}
           ')
           echo "test-matrix=$test_matrix" >> "$GITHUB_OUTPUT"
           echo "::group::Filtered test matrix"
@@ -113,15 +115,15 @@ jobs:
       repository: meta-pytorch/torchcodec
       runner: "linux.rocm.gpu.meta-pytorch.mi350.1"
       gpu-arch-type: "rocm"
-      gpu-arch-version: ${{ matrix.rocm_version }}
+      gpu-arch-version: ${{ matrix.rocm-version }}
       # ROCm self-hosted runners are not on EC2, so they can't pull the default
       # ECR-hosted docker image (no AWS credentials). Use a Docker Hub image and
       # run without sudo, matching pytorch/vision's ROCm job.
-      docker-image: pytorch/manylinux2_28-builder:rocm${{ matrix.rocm_version }}
+      docker-image: pytorch/manylinux2_28-builder:rocm${{ matrix.rocm-version }}
       no-sudo: true
       timeout: 120
       test-infra-ref: main
-      download-artifact: meta-pytorch_torchcodec__${{ matrix.python_version }}_rocm${{ matrix.rocm_version }}_x86_64
+      download-artifact: meta-pytorch_torchcodec__${{ matrix.python-version }}_rocm${{ matrix.rocm-version }}_x86_64
       script: |
         set -euo pipefail
 
@@ -142,8 +144,8 @@ jobs:
         # linux_job_v2 runs the script in the manylinux container's base conda
         # env, whose Python may not match the wheel. Create and activate a
         # matching Python env (conda is sourced by linux_job_v2).
-        echo '::group::Create Python ${{ matrix.python_version }} env'
-        conda create -y -n test -c conda-forge python=${{ matrix.python_version }} pip
+        echo '::group::Create Python ${{ matrix.python-version }} env'
+        conda create -y -n test -c conda-forge python=${{ matrix.python-version }} pip
         conda activate test
         python --version
         echo '::endgroup::'
@@ -152,7 +154,7 @@ jobs:
 
         echo '::group::Install PyTorch (ROCm)'
         pip install --progress-bar=off --pre torch "rocm[devel]" \
-          --index-url https://download.pytorch.org/whl/nightly/rocm${{ matrix.rocm_version }}
+          --index-url https://download.pytorch.org/whl/nightly/rocm${{ matrix.rocm-version }}
         echo '::endgroup::'
 
         # Prevent the checked-out src/ tree from shadowing the installed wheel.
