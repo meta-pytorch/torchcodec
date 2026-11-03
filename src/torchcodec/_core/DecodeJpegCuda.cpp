@@ -502,14 +502,6 @@ void CUDAJpegDecoder::decode_software(
     ImageReadMode mode,
     cudaStream_t stream,
     std::vector<torch::stable::Tensor>& output_tensors) {
-  // The host stage writes into the attached pinned buffer, and the transfer
-  // stage enqueues an async copy out of it. Before the host stage overwrites a
-  // pinned buffer, the copy last enqueued from it must have completed. We
-  // alternate between two pinned buffers and synchronize the stream between the
-  // host and transfer stages of each image: the host stage of image i then
-  // overlaps with the GPU work of image i-1, and the sync guarantees that image
-  // i-1's copy is done before image i+1's host stage reuses its buffer. The
-  // first image doesn't need the sync since no copy is pending.
   int buffer_index = 0;
   bool needs_sync = false;
   for (size_t idx : indices) {
@@ -556,6 +548,30 @@ void CUDAJpegDecoder::decode_software(
         status);
 
     if (needs_sync) {
+      // Why this sync exists:
+      //
+      // The nvjpeg software path is a 3 stage process:
+      // - CPU partial decoding into a pinned buffer
+      // - CPU -> GPU transfer
+      // - GPU final decode
+      //
+      // The supposedly simple nvjpegDecode() API does all three in one
+      // call. But it is not safe and doesn't work when decoding multiple images
+      // in succession: this isn't documented by nvjpeg, but the CPU partial
+      // decoding of image i would be re-using the CPU buffer of image i-1
+      // before the CPU->GPU transfer has finished. This is what caused #1802
+      //
+      // So we use the lower-level APIs and we:
+      // - rely on 2 pinned buffers (A and B below) instead of 1, always
+      //   alternating between them
+      // - add a cudaStreamSynchronize() between the CPU decoding and the
+      //   CPU->GPU transfer.
+      //
+      // Effectively, the sync means that before enqueing the CPU->GPU transfer
+      // of image i on buffer A, we wait for the completion of the CPU->GPU
+      // transfer and GPU decoding work of image i-1 from buffer B. Which means
+      // that buffer B will be safe to use by image i+1, *and* it still allows
+      // us to overlap the GPU work of image i with the CPU work of image i+1.
       cudaError_t cuda_status = cudaStreamSynchronize(stream);
       STD_TORCH_CHECK(
           cuda_status == cudaSuccess,

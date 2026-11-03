@@ -7148,8 +7148,8 @@ class TestImageDecoder:
         "mode", ("UNCHANGED", "RGB", "GRAY", "RGB_ALPHA", "GRAY_ALPHA")
     )
     def test_cuda_jpeg_matches_cpu(self, asset, mode):
-        # Baseline JPEGs take the HW path on GPUs that have a HW JPEG engine,
-        # and the SW path otherwise. Progressive JPEGs always take the SW path.
+        # Note that this will only exercise either the HW path or SW path
+        # depending on the GPU.
         cpu = decode_jpeg(asset.path, mode=mode)
         gpu = decode_jpeg(asset.path, mode=mode, device="cuda")
         assert gpu.device.type == "cuda"
