@@ -23,11 +23,15 @@ namespace facebook::torchcodec {
 // Creates, configures and opens a codec context for `stream` using `av_codec`,
 // registering the hardware device (if any) via `device_interface`. Shared by
 // SingleStreamDecoder and PacketDecoder to avoid duplicating codec setup.
+// `codec_whitelist`, when non-null, is FFmpeg's comma-separated restriction on
+// which decoders may be opened; a codec context does not inherit it from the
+// format context its parameters came from.
 SharedAVCodecContext create_and_open_codec_context(
     AVStream* stream,
     const AVCodec* av_codec,
     DeviceInterface* device_interface,
-    std::optional<int> thread_count);
+    std::optional<int> thread_count,
+    const char* codec_whitelist = nullptr);
 
 // Decode building block: turns compressed packets into decoded frames - (YUV)
 // pictures for a video stream, samples in the codec's own format for an audio

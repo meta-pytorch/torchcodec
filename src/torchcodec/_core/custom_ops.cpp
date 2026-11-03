@@ -48,7 +48,8 @@ namespace facebook::torchcodec {
 //   https://github.com/pytorch/pytorch/tree/main/aten/src/ATen/native#readme
 //
 STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
-  m.def("create_from_file(str filename, str? seek_mode=None) -> Tensor");
+  m.def(
+      "create_from_file(str filename, str? seek_mode=None, str? format_whitelist=None, str? codec_whitelist=None) -> Tensor");
   m.def(
       "create_from_tensor(Tensor video_tensor, str? seek_mode=None) -> Tensor");
   m.def(
@@ -515,14 +516,17 @@ std::vector<Transform*> make_transforms(
 // Create a SingleStreamDecoder from file and wrap the pointer in a tensor.
 torch::stable::Tensor create_from_file(
     std::string filename,
-    std::optional<std::string> seek_mode = std::nullopt) {
+    std::optional<std::string> seek_mode = std::nullopt,
+    const std::optional<std::string>& format_whitelist = std::nullopt,
+    const std::optional<std::string>& codec_whitelist = std::nullopt) {
   SeekMode real_seek = SeekMode::exact;
   if (seek_mode.has_value()) {
     real_seek = seek_mode_from_string(seek_mode.value());
   }
 
   std::unique_ptr<SingleStreamDecoder> unique_decoder =
-      std::make_unique<SingleStreamDecoder>(filename, real_seek);
+      std::make_unique<SingleStreamDecoder>(
+          filename, real_seek, format_whitelist, codec_whitelist);
 
   return wrap_decoder_pointer_to_tensor(std::move(unique_decoder));
 }
