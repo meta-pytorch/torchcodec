@@ -233,13 +233,54 @@ CUDAJpegDecoder::CUDAJpegDecoder(const torch::stable::Device& target_device)
         status);
   }
 
-  // Software path state, used by nvjpegDecode() for progressive JPEGs and for
-  // everything when there's no HW engine.
-  status = nvjpegJpegStateCreate(nvjpeg_handle_, &nvjpeg_state_sw_);
+  // Software path objects, used for progressive JPEGs and for everything when
+  // there's no HW engine.
+  status =
+      nvjpegDecoderCreate(nvjpeg_handle_, NVJPEG_BACKEND_DEFAULT, &sw_decoder_);
   STD_TORCH_CHECK(
       status == NVJPEG_STATUS_SUCCESS,
-      "Failed to create nvjpeg decode state: ",
+      "Failed to create nvjpeg decoder: ",
       status);
+
+  status =
+      nvjpegDecoderStateCreate(nvjpeg_handle_, sw_decoder_, &sw_decoder_state_);
+  STD_TORCH_CHECK(
+      status == NVJPEG_STATUS_SUCCESS,
+      "Failed to create nvjpeg decoder state: ",
+      status);
+
+  status = nvjpegDecodeParamsCreate(nvjpeg_handle_, &sw_decode_params_);
+  STD_TORCH_CHECK(
+      status == NVJPEG_STATUS_SUCCESS,
+      "Failed to create nvjpeg decode params: ",
+      status);
+
+  status = nvjpegBufferDeviceCreate(nvjpeg_handle_, NULL, &sw_device_buffer_);
+  STD_TORCH_CHECK(
+      status == NVJPEG_STATUS_SUCCESS,
+      "Failed to create nvjpeg device buffer: ",
+      status);
+
+  status = nvjpegStateAttachDeviceBuffer(sw_decoder_state_, sw_device_buffer_);
+  STD_TORCH_CHECK(
+      status == NVJPEG_STATUS_SUCCESS,
+      "Failed to attach nvjpeg device buffer: ",
+      status);
+
+  for (int i = 0; i < kNumSwPinnedBuffers; ++i) {
+    status =
+        nvjpegBufferPinnedCreate(nvjpeg_handle_, NULL, &sw_pinned_buffers_[i]);
+    STD_TORCH_CHECK(
+        status == NVJPEG_STATUS_SUCCESS,
+        "Failed to create nvjpeg pinned buffer: ",
+        status);
+
+    status = nvjpegJpegStreamCreate(nvjpeg_handle_, &sw_jpeg_streams_[i]);
+    STD_TORCH_CHECK(
+        status == NVJPEG_STATUS_SUCCESS,
+        "Failed to create jpeg stream: ",
+        status);
+  }
 }
 
 CUDAJpegDecoder::~CUDAJpegDecoder() {
@@ -248,7 +289,14 @@ CUDAJpegDecoder::~CUDAJpegDecoder() {
   // reached during normal process teardown, because we just leak the entire
   // decoder cache, just like we leak the NVDEC cache to avoid weird CUDA
   // teardown issues.
-  nvjpegJpegStateDestroy(nvjpeg_state_sw_);
+  for (int i = 0; i < kNumSwPinnedBuffers; ++i) {
+    nvjpegJpegStreamDestroy(sw_jpeg_streams_[i]);
+    nvjpegBufferPinnedDestroy(sw_pinned_buffers_[i]);
+  }
+  nvjpegJpegStateDestroy(sw_decoder_state_);
+  nvjpegBufferDeviceDestroy(sw_device_buffer_);
+  nvjpegDecodeParamsDestroy(sw_decode_params_);
+  nvjpegDecoderDestroy(sw_decoder_);
   if (hw_decode_available_) {
     nvjpegJpegStreamDestroy(nvjpeg_stream_);
     nvjpegJpegStateDestroy(nvjpeg_state_hw_);
@@ -454,22 +502,104 @@ void CUDAJpegDecoder::decode_software(
     ImageReadMode mode,
     cudaStream_t stream,
     std::vector<torch::stable::Tensor>& output_tensors) {
+  int buffer_index = 0;
+  bool needs_sync = false;
   for (size_t idx : indices) {
     auto [output_tensor, nvjpeg_image, output_format] =
         allocate_output(encoded_images[idx], mode);
+
     // Decode each image straight to its own native format (see
     // output_format_for_image), so grayscale sources stay single-channel.
-    nvjpegStatus_t status = nvjpegDecode(
+    nvjpegStatus_t status =
+        nvjpegDecodeParamsSetOutputFormat(sw_decode_params_, output_format);
+    STD_TORCH_CHECK(
+        status == NVJPEG_STATUS_SUCCESS,
+        "Failed to set nvjpeg output format: ",
+        status);
+
+    status = nvjpegJpegStreamParse(
         nvjpeg_handle_,
-        nvjpeg_state_sw_,
         encoded_images[idx].const_data_ptr<uint8_t>(),
         encoded_images[idx].numel(),
-        output_format,
-        &nvjpeg_image,
+        /*save_metadata=*/0,
+        /*save_stream=*/0,
+        sw_jpeg_streams_[buffer_index]);
+    STD_TORCH_CHECK(
+        status == NVJPEG_STATUS_SUCCESS,
+        "Failed to decode JPEG (nvjpegJpegStreamParse): ",
+        status);
+
+    status = nvjpegStateAttachPinnedBuffer(
+        sw_decoder_state_, sw_pinned_buffers_[buffer_index]);
+    STD_TORCH_CHECK(
+        status == NVJPEG_STATUS_SUCCESS,
+        "Failed to attach nvjpeg pinned buffer: ",
+        status);
+
+    status = nvjpegDecodeJpegHost(
+        nvjpeg_handle_,
+        sw_decoder_,
+        sw_decoder_state_,
+        sw_decode_params_,
+        sw_jpeg_streams_[buffer_index]);
+    STD_TORCH_CHECK(
+        status == NVJPEG_STATUS_SUCCESS,
+        "Failed to decode JPEG (nvjpegDecodeJpegHost): ",
+        status);
+
+    if (needs_sync) {
+      // Why this sync exists:
+      //
+      // The nvjpeg software path is a 3 stage process:
+      // - CPU partial decoding into a pinned buffer
+      // - CPU -> GPU transfer
+      // - GPU final decode
+      //
+      // The supposedly simple nvjpegDecode() API does all three in one
+      // call. But it is not safe and doesn't work when decoding multiple images
+      // in succession: this isn't documented by nvjpeg, but the CPU partial
+      // decoding of image i would be re-using the CPU buffer of image i-1
+      // before the CPU->GPU transfer has finished. This is what caused #1802
+      //
+      // So we use the lower-level APIs and we:
+      // - rely on 2 pinned buffers (A and B below) instead of 1, always
+      //   alternating between them
+      // - add a cudaStreamSynchronize() between the CPU decoding and the
+      //   CPU->GPU transfer.
+      //
+      // Effectively, the sync means that before enqueing the CPU->GPU transfer
+      // of image i on buffer A, we wait for the completion of the CPU->GPU
+      // transfer and GPU decoding work of image i-1 from buffer B. Which means
+      // that buffer B will be safe to use by image i+1, *and* it still allows
+      // us to overlap the GPU work of image i with the CPU work of image i+1.
+      cudaError_t cuda_status = cudaStreamSynchronize(stream);
+      STD_TORCH_CHECK(
+          cuda_status == cudaSuccess,
+          "Failed to synchronize CUDA stream: ",
+          cuda_status);
+    }
+
+    status = nvjpegDecodeJpegTransferToDevice(
+        nvjpeg_handle_,
+        sw_decoder_,
+        sw_decoder_state_,
+        sw_jpeg_streams_[buffer_index],
         stream);
     STD_TORCH_CHECK(
-        status == NVJPEG_STATUS_SUCCESS, "nvjpegDecode failed: ", status);
+        status == NVJPEG_STATUS_SUCCESS,
+        "Failed to decode JPEG (nvjpegDecodeJpegTransferToDevice): ",
+        status);
+
+    status = nvjpegDecodeJpegDevice(
+        nvjpeg_handle_, sw_decoder_, sw_decoder_state_, &nvjpeg_image, stream);
+    STD_TORCH_CHECK(
+        status == NVJPEG_STATUS_SUCCESS,
+        "Failed to decode JPEG (nvjpegDecodeJpegDevice): ",
+        status);
+
     output_tensors[idx] = output_tensor;
+    buffer_index = (buffer_index + 1) % kNumSwPinnedBuffers;
+    needs_sync = true;
   }
 }
 
