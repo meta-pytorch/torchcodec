@@ -301,6 +301,37 @@ class TestDecoder:
 
 class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    @pytest.mark.parametrize("as_string", (False, True))
+    def test_decode_whitelists(self, seek_mode, as_string):
+        # The restrictions have to reach FFmpeg, not just be accepted: a
+        # whitelist naming neither this file's demuxer nor its decoder must
+        # stop it before any of its bytes choose what runs.
+        source = str(NASA_VIDEO.path) if as_string else NASA_VIDEO.path
+        with pytest.raises(RuntimeError):
+            VideoDecoder(source, seek_mode=seek_mode, format_whitelist="ogg")
+        with pytest.raises(RuntimeError):
+            VideoDecoder(source, seek_mode=seek_mode, codec_whitelist="vp8")
+
+        decoder = VideoDecoder(
+            source,
+            seek_mode=seek_mode,
+            format_whitelist="mov,mp4,m4a,3gp,3g2,mj2",
+            codec_whitelist="h264,aac",
+        )
+        assert decoder.metadata.codec == "h264"
+        assert decoder[0].shape == (3, 270, 480)
+
+    @pytest.mark.parametrize(
+        "options", ({"format_whitelist": "mov"}, {"codec_whitelist": "h264"})
+    )
+    def test_decode_whitelists_reject_non_file_sources(self, options):
+        # Only the file-path constructor can carry them, so a source kind that
+        # cannot must be refused rather than silently decoded unrestricted.
+        for source in (b"", torch.empty(0, dtype=torch.uint8), io.BytesIO()):
+            with pytest.raises(ValueError, match="only supported for file paths"):
+                VideoDecoder(source, **options)
+
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_metadata(self, seek_mode):
         decoder = VideoDecoder(NASA_VIDEO.path, seek_mode=seek_mode)
         assert isinstance(decoder.metadata, VideoStreamMetadata)

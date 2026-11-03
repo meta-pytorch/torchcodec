@@ -32,9 +32,16 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   // --------------------------------------------------------------------------
 
   // Creates a SingleStreamDecoder from the video at videoFilePath.
+  // format_whitelist and codec_whitelist are FFmpeg's comma-separated
+  // restrictions on which demuxers and decoders the file may instantiate.
+  // Callers decoding untrusted media should pass both: the format context
+  // applies them to the probe decoders avformat_find_stream_info opens, and
+  // the codec restriction is carried into the stream's own decoder.
   explicit SingleStreamDecoder(
       const std::string& video_file_path,
-      SeekMode seek_mode = SeekMode::exact);
+      SeekMode seek_mode = SeekMode::exact,
+      const std::optional<std::string>& format_whitelist = std::nullopt,
+      const std::optional<std::string>& codec_whitelist = std::nullopt);
 
   // Creates a SingleStreamDecoder using the provided AVIOContext inside the
   // AVIOContextHolder. The AVIOContextHolder wraps an IOInterface that

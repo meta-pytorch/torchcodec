@@ -31,13 +31,36 @@ namespace facebook::torchcodec {
 
 SingleStreamDecoder::SingleStreamDecoder(
     const std::string& video_file_path,
-    SeekMode seek_mode)
+    SeekMode seek_mode,
+    const std::optional<std::string>& format_whitelist,
+    const std::optional<std::string>& codec_whitelist)
     : seek_mode_(seek_mode) {
   set_ffmpeg_log_level();
 
+  // Both restrictions have to be in place before the file is opened: the
+  // demuxer is chosen by avformat_open_input, and avformat_find_stream_info()
+  // below opens probe decoders of its own off the format context.
+  UniqueAVDictionary options;
+  if (format_whitelist.has_value()) {
+    int option_status = av_dict_set(
+        options.get_address(), "format_whitelist", format_whitelist->c_str(), 0);
+    STD_TORCH_CHECK(
+        option_status >= 0,
+        "Could not set format whitelist: ",
+        get_ffmpeg_error_string_from_error_code(option_status));
+  }
+  if (codec_whitelist.has_value()) {
+    int option_status = av_dict_set(
+        options.get_address(), "codec_whitelist", codec_whitelist->c_str(), 0);
+    STD_TORCH_CHECK(
+        option_status >= 0,
+        "Could not set codec whitelist: ",
+        get_ffmpeg_error_string_from_error_code(option_status));
+  }
+
   AVFormatContext* raw_context = nullptr;
   int status = avformat_open_input(
-      &raw_context, video_file_path.c_str(), nullptr, nullptr);
+      &raw_context, video_file_path.c_str(), nullptr, options.get_address());
   STD_TORCH_CHECK(
       status == 0,
       "Could not open input file: " + video_file_path + " " +
@@ -383,11 +406,14 @@ void SingleStreamDecoder::add_stream(
   }
 
   // Create + configure + open the codec context (shared with PacketDecoder).
+  // A caller-allocated AVCodecContext does not inherit codec_whitelist from
+  // the format context, so it is handed over explicitly.
   stream_info.codec_context = create_and_open_codec_context(
       stream_info.stream,
       av_codec,
       device_interface_.get(),
-      ffmpeg_thread_count);
+      ffmpeg_thread_count,
+      format_context_->codec_whitelist);
 
   // Initialize the device interface with the codec context
   device_interface_->initialize(stream_info.codec_context);

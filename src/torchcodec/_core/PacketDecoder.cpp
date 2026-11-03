@@ -17,7 +17,8 @@ SharedAVCodecContext create_and_open_codec_context(
     AVStream* stream,
     const AVCodec* av_codec,
     DeviceInterface* device_interface,
-    std::optional<int> thread_count) {
+    std::optional<int> thread_count,
+    const char* codec_whitelist) {
   AVCodecContext* raw_codec_context = avcodec_alloc_context3(av_codec);
   STD_TORCH_CHECK(
       raw_codec_context != nullptr, "Failed to allocate codec context");
@@ -30,6 +31,14 @@ SharedAVCodecContext create_and_open_codec_context(
 
   codec_context->thread_count = thread_count.value_or(0);
   codec_context->pkt_timebase = stream->time_base;
+
+  if (codec_whitelist != nullptr) {
+    ret = av_opt_set(codec_context.get(), "codec_whitelist", codec_whitelist, 0);
+    STD_TORCH_CHECK(
+        ret == AVSUCCESS,
+        "Could not set codec whitelist: ",
+        get_ffmpeg_error_string_from_error_code(ret));
+  }
 
   // We must register the hardware device context with the codec context before
   // calling avcodec_open2(). Otherwise, decoding will happen on the CPU and not
