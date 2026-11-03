@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Low-level APIs and CUDA streams synchronization &#8212; TorchCodec 0.18.0.dev20261028+cu130 Documentation</title>
+    <title>Low-level APIs and CUDA streams synchronization &#8212; TorchCodec 0.18.0.dev20261103+cu130 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../../_static/documentation_options.js?v=76d2e6da"></script>
+    <script src="../../_static/documentation_options.js?v=40d66efd"></script>
     <script src="../../_static/doctools.js?v=888ff710"></script>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -1304,7 +1304,7 @@ explicit memory knob:</p>
 </section>
 <section id="option-2-let-the-allocator-handle-it">
 <h3>Option 2: let the allocator handle it<a class="headerlink" href="#option-2-let-the-allocator-handle-it" title="Link to this heading">#</a></h3>
-<p><a class="reference external" href="https://docs.pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html#torch.Tensor.record_stream" title="(in PyTorch v2.14)"><code class="xref py py-meth docutils literal notranslate"><span class="pre">torch.Tensor.record_stream()</span></code></a> tells the allocator that another stream is
+<p><a class="reference external" href="https://docs.pytorch.org/docs/stable/generated/torch.Tensor.record_stream.html#torch.Tensor.record_stream" title="(in PyTorch v2.15)"><code class="xref py py-meth docutils literal notranslate"><span class="pre">torch.Tensor.record_stream()</span></code></a> tells the allocator that another stream is
 using the block, so it withholds it from reuse until your reads complete. Call
 it on <a class="reference internal" href="../../generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame.storage_cuda" title="torchcodec.decoders.RawFrame.storage_cuda"><code class="xref py py-attr docutils literal notranslate"><span class="pre">RawFrame.storage_cuda</span></code></a>, right after queueing your reads.</p>
 <p>This never stalls the decoder, so you keep full overlap, and you pay in memory
