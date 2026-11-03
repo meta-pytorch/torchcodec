@@ -100,6 +100,7 @@ from .utils import (
     GRADIENT_JPEG,
     GRADIENT_MIRRORED_HEIC,
     GRADIENT_PNG,
+    GRADIENT_PROGRESSIVE_JPEG,
     GRADIENT_ROTATED_HEIC,
     GRADIENT_WEBP,
     GRAYSCALE_16BIT_PNG,
@@ -7140,13 +7141,15 @@ class TestImageDecoder:
 
     @needs_cuda
     @needs_jpeg
-    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG))
+    @pytest.mark.parametrize(
+        "asset", (GRADIENT_JPEG, GRAYSCALE_JPEG, GRADIENT_PROGRESSIVE_JPEG)
+    )
     @pytest.mark.parametrize(
         "mode", ("UNCHANGED", "RGB", "GRAY", "RGB_ALPHA", "GRAY_ALPHA")
     )
     def test_cuda_jpeg_matches_cpu(self, asset, mode):
-        # Note that this will only exercise either the HW path or SW path
-        # depending on the GPU.
+        # Baseline JPEGs take the HW path on GPUs that have a HW JPEG engine,
+        # and the SW path otherwise. Progressive JPEGs always take the SW path.
         cpu = decode_jpeg(asset.path, mode=mode)
         gpu = decode_jpeg(asset.path, mode=mode, device="cuda")
         assert gpu.device.type == "cuda"
@@ -7177,6 +7180,45 @@ class TestImageDecoder:
 
     @needs_cuda
     @needs_jpeg
+    @pytest.mark.parametrize("mode", ("UNCHANGED", "GRAY", "RGB"))
+    def test_cuda_jpeg_batch_mixed_hw_and_sw(self, mode):
+        # On GPUs with a HW JPEG engine, the baseline JPEGs of this batch are
+        # decoded by the HW path and the progressive ones by the SW path, so this
+        # checks that both paths run in a single call and that each output lands
+        # at the index of its source. On other GPUs, everything takes the SW path.
+        assets = [
+            GRADIENT_JPEG,
+            GRADIENT_PROGRESSIVE_JPEG,
+            GRAYSCALE_JPEG,
+            GRADIENT_PROGRESSIVE_JPEG,
+            GRADIENT_JPEG,
+        ]
+        batch = decode_jpeg([a.path for a in assets], mode=mode, device="cuda")
+        assert len(batch) == len(assets)
+        for decoded, asset in zip(batch, assets):
+            assert decoded.shape[1:] == (asset.height, asset.width)
+            single = decode_jpeg(asset.path, mode=mode, device="cuda")
+            assert decoded.shape == single.shape
+            torch.testing.assert_close(decoded, single, atol=0, rtol=0)
+
+    @needs_cuda
+    @needs_jpeg
+    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRADIENT_PROGRESSIVE_JPEG))
+    def test_cuda_jpeg_batch_no_corruption(self, asset):
+        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1802
+        # On the nvJPEG SW path (progressive JPEGs, and all JPEGs on GPUs without
+        # a HW JPEG engine), decoding an image could overwrite nvJPEG host buffers
+        # that the previous image's queued GPU work had yet to read, corrupting
+        # all but the last image of the batch. The race is timing-dependent,
+        # hence the many iterations.
+        single = decode_jpeg(asset.path, mode="RGB", device="cuda")
+        for _ in range(50):
+            batch = decode_jpeg([asset.path] * 3, mode="RGB", device="cuda")
+            for decoded in batch:
+                torch.testing.assert_close(decoded, single, atol=0, rtol=0)
+
+    @needs_cuda
+    @needs_jpeg
     def test_cuda_jpeg_single_vs_list_return_type(self):
         single = decode_jpeg(GRADIENT_JPEG.path, mode="RGB", device="cuda")
         assert isinstance(single, torch.Tensor)
@@ -7188,7 +7230,7 @@ class TestImageDecoder:
     @needs_jpeg
     def test_cuda_jpeg_errors(self):
         # Corrupt input raises.
-        with pytest.raises(RuntimeError, match="nvjpegDecode failed:"):
+        with pytest.raises(RuntimeError, match="Failed to decode JPEG"):
             decode_jpeg(CORRUPT_JPEG.path, device="cuda")
 
         cuda_data = torch.frombuffer(

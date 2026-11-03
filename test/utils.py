@@ -297,6 +297,16 @@ GRAYSCALE_JPEG = TestImage(
 # Image.fromarray(rgb).convert("CMYK").save("cmyk.jpg", quality=90)
 CMYK_JPEG = TestImage(filename="cmyk.jpg", width=1280, height=720, num_channels=4)
 
+# 360p progressive RGB JPEG. nvJPEG's HW engine doesn't support progressive
+# JPEGs, so on GPUs that have one, this is decoded by the SW path. Its size
+# differs from GRADIENT_JPEG on purpose so that batch tests can tell them apart.
+# Generated with the GRADIENT_JPEG recipe above with h, w = 360, 640, then:
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save(
+#     "gradient_progressive.jpg", quality=90, progressive=True)
+GRADIENT_PROGRESSIVE_JPEG = TestImage(
+    filename="gradient_progressive.jpg", width=640, height=360, num_channels=3
+)
+
 # JPEG with a bad Huffman table (damaged but still decodable). Taken from
 # torchvision's test assets (test/assets/damaged_jpeg/bad_huffman.jpg).
 BAD_HUFFMAN_JPEG = TestImage(
