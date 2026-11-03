@@ -108,6 +108,8 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("probe_avif_from_tensor(Tensor input) -> int[]");
   m.def("probe_avif_from_file(str filename) -> int[]");
   m.def("probe_gif_from_file(str filename) -> int[]");
+  m.def("png_skip_idat_chunks_from_tensor(Tensor input, int offset) -> int");
+  m.def("png_skip_idat_chunks_from_file(str filename, int offset) -> int");
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
@@ -120,11 +122,17 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("encode_png_to_file_like", TORCH_BOX(&encode_png_to_file_like));
   m.impl("probe_gif_from_tensor", TORCH_BOX(&probe_gif_from_tensor));
   m.impl("probe_avif_from_tensor", TORCH_BOX(&probe_avif_from_tensor));
+  m.impl(
+      "png_skip_idat_chunks_from_tensor",
+      TORCH_BOX(&png_skip_idat_chunks_from_tensor));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("probe_avif_from_file", TORCH_BOX(&probe_avif_from_file));
   m.impl("probe_gif_from_file", TORCH_BOX(&probe_gif_from_file));
+  m.impl(
+      "png_skip_idat_chunks_from_file",
+      TORCH_BOX(&png_skip_idat_chunks_from_file));
 }
 
 // The JPEG encoders are registered as CompositeExplicitAutograd (rather than
