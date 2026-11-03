@@ -790,6 +790,13 @@ def _exif_orientation(tiff: bytes) -> int | None:
     return None
 
 
+def _exif_orientation_after_prefixes(exif: bytes) -> int | None:
+    # Like Pillow's Exif.load(), skips any number of "Exif\0\0" prefixes.
+    while exif.startswith(b"Exif\x00\x00"):
+        exif = exif[6:]
+    return _exif_orientation(exif) if exif else None
+
+
 # Rotation of each EXIF orientation, when decomposed into an optional
 # left-to-right mirroring followed by a rotation.
 _ROTATION_FROM_EXIF_ORIENTATION = {
@@ -867,7 +874,7 @@ def _probe_jpeg(src: _ByteSource) -> ImageMetadata:
             payload = src.read_exact(pos + 4, segment_length - 2)
             if len(payload) > 6 and payload[:6] == b"Exif\x00\x00":
                 seen_exif = True
-                orientation = _exif_orientation(payload[6:])
+                orientation = _exif_orientation_after_prefixes(payload)
         pos += 2 + segment_length
 
     if sof is None:
@@ -1040,10 +1047,7 @@ def _probe_webp(src: _ByteSource) -> ImageMetadata:
             pos += 8 + chunk_size + (chunk_size & 1)
 
         if exif is not None:
-            if exif[:6] == b"Exif\x00\x00":
-                exif = exif[6:]
-            if len(exif) > 0:
-                orientation = _exif_orientation(exif)
+            orientation = _exif_orientation_after_prefixes(exif)
 
         if is_animated:
             if num_anmf == 0:
