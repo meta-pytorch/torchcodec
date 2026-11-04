@@ -4381,12 +4381,9 @@ class TestLowLevel:
         ),
     )
     def test_video_packet_decoder_from_hand_built_codec_parameters(self, device, video):
-        # Hand-built parameters have no container, so NVDEC picks its bitstream
-        # filter from the codec alone, instead of from the container as it does
-        # with a Demuxer. This checks that it still picks a filter that works
-        # for these videos' formats. NVDEC needs width, height and
-        # pixel_format, or it silently decodes on the CPU, and it computes the
-        # frames' durations from r_frame_rate.
+        # On CUDA, this checks NVDEC's bitstream filter choice: hand-built
+        # parameters have no container, so NVDEC picks the filter from the codec
+        # alone, instead of from the container as it does with a Demuxer.
         demuxer = Demuxer(video.path)
         stream_params = demuxer.streams[0].codec_parameters
         params = VideoCodecParameters(
@@ -4413,6 +4410,46 @@ class TestLowLevel:
             torch.testing.assert_close(frame.data, expected_frame.data, rtol=0, atol=0)
             assert frame.pts_seconds == expected_frame.pts_seconds
             assert frame.duration_seconds == expected_frame.duration_seconds
+
+    @needs_cuda
+    def test_nvdec_needs_dimensions_pixel_format_and_frame_rate(self):
+        # This test documents what NVDEC needs in hand-built codec parameters.
+        # Without width, height and pixel_format, it may silently decode on the
+        # CPU: it does for MPEG-4, but not for H.264 and HEVC whose decoders
+        # read them from the extradata. Without r_frame_rate, the frames'
+        # durations are 0.
+        asset = TEST_SRC_2_720P_MPEG4
+
+        def decode(params, device):
+            demuxer = Demuxer(asset.path)
+            decoder = VideoPacketDecoder(params, device)
+            converter = ColorConverter(device=device)
+            frames = [converter.convert(f) for p in demuxer for f in decoder.decode(p)]
+            return frames + [converter.convert(f) for f in decoder.drain()]
+
+        # dataclasses.replace() drops the container, like hand-built parameters.
+        params = dataclasses.replace(Demuxer(asset.path).streams[0].codec_parameters)
+        nvdec_frames = decode(params, "cuda")
+        assert all(f.duration_seconds > 0 for f in nvdec_frames)
+
+        frames = decode(dataclasses.replace(params, r_frame_rate=None), "cuda")
+        assert all(f.duration_seconds == 0 for f in frames)
+
+        frames = decode(
+            dataclasses.replace(params, width=None, height=None, pixel_format=None),
+            "cuda",
+        )
+        cpu_frames = decode(params, "cpu")
+        assert frames[0].data.device.type == "cuda"
+        # We don't expose the .cpu_fallback on the PacketDecoder yet, so we
+        # can't cleanly check that it actually fell back to the CPU. Below is
+        # the best we can do.
+        assert not torch.equal(frames[0].data, nvdec_frames[0].data)
+        # Not exact: CPU-decoded frames go through a different color conversion
+        # when they're uploaded to the GPU.
+        torch.testing.assert_close(
+            frames[0].data.cpu(), cpu_frames[0].data, rtol=0, atol=2
+        )
 
     def test_audio_packet_decoder_from_pickled_codec_parameters(self):
         def decode(make_decoder):
