@@ -496,13 +496,11 @@ void BetaCudaDeviceInterface::initialize_color_conversion(
 }
 
 void BetaCudaDeviceInterface::initialize_video_decoding(
-    const AVStream* av_stream,
-    const UniqueDecodingAVFormatContext& av_format_ctx,
+    const CodecParameters& codec_parameters,
     const VideoStreamOptions& video_stream_options) {
-  STD_TORCH_CHECK(av_stream != nullptr, "AVStream cannot be null");
   CudaContextGuard context_guard(device_.index());
   decoding_initialized_ = true;
-  rotation_ = rotation_from_degrees(get_rotation_from_stream(av_stream));
+  rotation_ = rotation_from_degrees(get_rotation(codec_parameters));
   output_dtype_ = video_stream_options.output_dtype;
 
   auto maybe_surface_format = nvcuvid_available_
@@ -522,18 +520,18 @@ void BetaCudaDeviceInterface::initialize_video_decoding(
         cpu_interface_ != nullptr, "Failed to create CPU device interface");
     cpu_interface_->initialize(codec_context_);
     cpu_interface_->initialize_video_decoding(
-        av_stream, av_format_ctx, video_stream_options);
+        codec_parameters, video_stream_options);
     return;
   }
 
   surface_format_ = maybe_surface_format.value();
-  time_base_ = av_stream->time_base;
-  frame_rate_avg_from_ffmpeg_ = av_stream->r_frame_rate;
+  time_base_ = codec_parameters.time_base;
+  frame_rate_avg_from_ffmpeg_ = codec_parameters.r_frame_rate;
 
-  const AVCodecParameters* codec_par = av_stream->codecpar;
+  const AVCodecParameters* codec_par = codec_parameters.codecpar.get();
   STD_TORCH_CHECK(codec_par != nullptr, "CodecParameters cannot be null");
 
-  initialize_bsf(codec_par, av_format_ctx);
+  initialize_bsf(codec_par, codec_parameters.container_format);
 
   // On VP9 when there are alt-ref frames, the NVCUVID parser reports incorrect
   // timestamps. We don't know why. It's just incorrect. And because our decode
@@ -644,24 +642,21 @@ void BetaCudaDeviceInterface::initialize(
 
 void BetaCudaDeviceInterface::initialize_bsf(
     const AVCodecParameters* codec_par,
-    const UniqueDecodingAVFormatContext& av_format_ctx) {
+    const AVInputFormat* container_format) {
   // Setup bit stream filters (BSF):
   // https://ffmpeg.org/doxygen/7.0/group__lavc__bsf.html
   // This is only needed for some formats, like H264 or HEVC.
 
   STD_TORCH_CHECK(codec_par != nullptr, "codecPar cannot be null");
-  STD_TORCH_CHECK(av_format_ctx != nullptr, "AVFormatContext cannot be null");
   STD_TORCH_CHECK(
-      av_format_ctx->iformat != nullptr,
-      "AVFormatContext->iformat cannot be null");
+      container_format != nullptr, "container_format cannot be null");
   std::string filter_name;
 
   // Matching logic is taken from DALI
   switch (codec_par->codec_id) {
     case AV_CODEC_ID_H264: {
-      const std::string format_name = av_format_ctx->iformat->long_name
-          ? av_format_ctx->iformat->long_name
-          : "";
+      const std::string format_name =
+          container_format->long_name ? container_format->long_name : "";
 
       if (format_name == "QuickTime / MOV" ||
           format_name == "FLV (Flash Video)" ||
@@ -673,9 +668,8 @@ void BetaCudaDeviceInterface::initialize_bsf(
     }
 
     case AV_CODEC_ID_HEVC: {
-      const std::string format_name = av_format_ctx->iformat->long_name
-          ? av_format_ctx->iformat->long_name
-          : "";
+      const std::string format_name =
+          container_format->long_name ? container_format->long_name : "";
 
       if (format_name == "QuickTime / MOV" ||
           format_name == "FLV (Flash Video)" ||
@@ -686,7 +680,7 @@ void BetaCudaDeviceInterface::initialize_bsf(
     }
     case AV_CODEC_ID_MPEG4: {
       const std::string format_name =
-          av_format_ctx->iformat->name ? av_format_ctx->iformat->name : "";
+          container_format->name ? container_format->name : "";
       if (format_name == "avi") {
         filter_name = "mpeg4_unpack_bframes";
       }

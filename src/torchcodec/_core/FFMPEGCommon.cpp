@@ -879,7 +879,6 @@ const int32_t* get_display_matrix_from_stream(const AVStream* av_stream) {
   return display_matrix;
 }
 
-namespace {
 std::optional<double> get_rotation_from_display_matrix(
     const int32_t* display_matrix) {
   if (display_matrix == nullptr) {
@@ -898,7 +897,6 @@ std::optional<double> get_rotation_from_display_matrix(
 
   return rotation;
 }
-} // namespace
 
 std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
   return get_rotation_from_display_matrix(

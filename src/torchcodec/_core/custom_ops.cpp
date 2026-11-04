@@ -1082,7 +1082,7 @@ OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
           to_optional_string(av_chroma_location_name(codecpar.chroma_location));
     }
     video_delay = unless_default(codecpar.video_delay);
-    rotation = params.rotation;
+    rotation = get_rotation(params);
   } else if (codecpar.codec_type == AVMEDIA_TYPE_AUDIO) {
     sample_format = to_optional_string(
         av_get_sample_fmt_name(static_cast<AVSampleFormat>(codecpar.format)));
@@ -1109,8 +1109,7 @@ torch::stable::Tensor _blocks_create_packet_decoder(
     thread_count = static_cast<int>(num_threads.value());
   }
   auto decoder = std::make_unique<PacketDecoder>(
-      *demuxer_ptr,
-      to_optional_int(stream_index),
+      demuxer_ptr->get_codec_parameters(to_optional_int(stream_index)),
       StableDevice(device),
       thread_count);
   return wrap_pointer_to_tensor<PacketDecoder>(std::move(decoder));

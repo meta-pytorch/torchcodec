@@ -13,8 +13,10 @@
 
 namespace facebook::torchcodec {
 
-SharedAVCodecContext create_and_open_codec_context(
-    AVStream* stream,
+namespace {
+SharedAVCodecContext open_codec_context(
+    const AVCodecParameters& codecpar,
+    const AVRational& time_base,
     const AVCodec* av_codec,
     DeviceInterface* device_interface,
     std::optional<int> thread_count) {
@@ -24,12 +26,11 @@ SharedAVCodecContext create_and_open_codec_context(
   SharedAVCodecContext codec_context =
       make_shared_av_codec_context(raw_codec_context);
 
-  int ret =
-      avcodec_parameters_to_context(codec_context.get(), stream->codecpar);
+  int ret = avcodec_parameters_to_context(codec_context.get(), &codecpar);
   STD_TORCH_CHECK(ret == AVSUCCESS, "avcodec_parameters_to_context failed");
 
   codec_context->thread_count = thread_count.value_or(0);
-  codec_context->pkt_timebase = stream->time_base;
+  codec_context->pkt_timebase = time_base;
 
   // We must register the hardware device context with the codec context before
   // calling avcodec_open2(). Otherwise, decoding will happen on the CPU and not
@@ -39,32 +40,55 @@ SharedAVCodecContext create_and_open_codec_context(
   STD_TORCH_CHECK(
       ret >= AVSUCCESS, get_ffmpeg_error_string_from_error_code(ret));
 
-  codec_context->time_base = stream->time_base;
+  codec_context->time_base = time_base;
   return codec_context;
 }
 
-namespace {
 const AVCodec* find_decoder(
-    AVStream* stream,
+    const AVCodecParameters& codecpar,
     DeviceInterface* device_interface) {
-  const AVCodec* av_codec = avcodec_find_decoder(stream->codecpar->codec_id);
+  const AVCodec* av_codec = avcodec_find_decoder(codecpar.codec_id);
   STD_TORCH_CHECK(av_codec != nullptr, "Codec not found");
-  if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-    av_codec = device_interface->find_codec(stream->codecpar->codec_id)
-                   .value_or(av_codec);
+  if (codecpar.codec_type == AVMEDIA_TYPE_VIDEO) {
+    av_codec =
+        device_interface->find_codec(codecpar.codec_id).value_or(av_codec);
   }
   return av_codec;
 }
 } // namespace
 
+SharedAVCodecContext create_and_open_codec_context(
+    const CodecParameters& codec_parameters,
+    const AVCodec* av_codec,
+    DeviceInterface* device_interface,
+    std::optional<int> thread_count) {
+  return open_codec_context(
+      *codec_parameters.codecpar,
+      codec_parameters.time_base,
+      av_codec,
+      device_interface,
+      thread_count);
+}
+
+SharedAVCodecContext create_and_open_codec_context(
+    AVStream* stream,
+    const AVCodec* av_codec,
+    DeviceInterface* device_interface,
+    std::optional<int> thread_count) {
+  return open_codec_context(
+      *stream->codecpar,
+      stream->time_base,
+      av_codec,
+      device_interface,
+      thread_count);
+}
+
 PacketDecoder::PacketDecoder(
-    const Demuxer& demuxer,
-    std::optional<int> stream_index,
+    const CodecParameters& codec_parameters,
     const StableDevice& device,
     std::optional<int> ffmpeg_thread_count) {
-  AVStream* stream = demuxer.format_context()
-                         ->streams[demuxer.resolve_stream_index(stream_index)];
-  media_type_ = stream->codecpar->codec_type;
+  const AVCodecParameters& codecpar = *codec_parameters.codecpar;
+  media_type_ = codecpar.codec_type;
 
   bool is_audio = media_type_ == AVMEDIA_TYPE_AUDIO;
   STD_TORCH_CHECK(
@@ -76,25 +100,23 @@ PacketDecoder::PacketDecoder(
       device_interface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");
 
-  time_base_ = stream->time_base;
+  time_base_ = codec_parameters.time_base;
 
-  is_mpeg_ps_ =
-      std::string_view(demuxer.format_context()->iformat->name) == "mpeg";
+  is_mpeg_ps_ = codec_parameters.container_format != nullptr &&
+      std::string_view(codec_parameters.container_format->name) == "mpeg";
 
   if (is_audio) {
     // Audio codecs are hardcoded to a single FFmpeg thread, see
     // https://github.com/pytorch/torchcodec/issues/1253.
     ffmpeg_thread_count = 1;
     audio_pts_extrapolator_ = AudioPtsExtrapolator(time_base_);
-  } else if (const int32_t* matrix = get_display_matrix_from_stream(stream)) {
-    display_matrix_.emplace();
-    std::copy(
-        matrix, matrix + display_matrix_->size(), display_matrix_->begin());
+  } else {
+    display_matrix_ = codec_parameters.display_matrix;
   }
 
-  const AVCodec* av_codec = find_decoder(stream, device_interface_.get());
+  const AVCodec* av_codec = find_decoder(codecpar, device_interface_.get());
   codec_context_ = create_and_open_codec_context(
-      stream, av_codec, device_interface_.get(), ffmpeg_thread_count);
+      codec_parameters, av_codec, device_interface_.get(), ffmpeg_thread_count);
   device_interface_->initialize(codec_context_);
 
   if (is_audio) {
@@ -118,8 +140,7 @@ PacketDecoder::PacketDecoder(
   options.output_dtype =
       stream_bit_depth > 8 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
 
-  device_interface_->initialize_video_decoding(
-      stream, demuxer.format_context(), options);
+  device_interface_->initialize_video_decoding(codec_parameters, options);
 }
 
 int PacketDecoder::send_packet(const AVPacket& packet) {

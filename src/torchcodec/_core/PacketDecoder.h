@@ -13,16 +13,24 @@
 #include <string_view>
 #include <vector>
 
-#include "Demuxer.h"
+#include "CodecParameters.h"
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
-// Creates, configures and opens a codec context for `stream` using `av_codec`,
-// registering the hardware device (if any) via `device_interface`. Shared by
-// SingleStreamDecoder and PacketDecoder to avoid duplicating codec setup.
+// Creates, configures and opens a codec context for `codec_parameters` using
+// `av_codec`, registering the hardware device (if any) via `device_interface`.
+SharedAVCodecContext create_and_open_codec_context(
+    const CodecParameters& codec_parameters,
+    const AVCodec* av_codec,
+    DeviceInterface* device_interface,
+    std::optional<int> thread_count);
+
+// Same, for a demuxed stream. SingleStreamDecoder uses this overload and
+// PacketDecoder the one above, so that they share the codec setup instead of
+// duplicating it.
 SharedAVCodecContext create_and_open_codec_context(
     AVStream* stream,
     const AVCodec* av_codec,
@@ -31,12 +39,11 @@ SharedAVCodecContext create_and_open_codec_context(
 
 // Decode building block: turns compressed packets into decoded frames - (YUV)
 // pictures for a video stream, samples in the codec's own format for an audio
-// one. Configured from one of a Demuxer's streams; stateful. Not thread-safe.
+// one. Configured from a stream's CodecParameters; stateful. Not thread-safe.
 class FORCE_PUBLIC_VISIBILITY PacketDecoder {
  public:
   explicit PacketDecoder(
-      const Demuxer& demuxer,
-      std::optional<int> stream_index = std::nullopt,
+      const CodecParameters& codec_parameters,
       const StableDevice& device = StableDevice(kStableCPU),
       std::optional<int> ffmpeg_thread_count = std::nullopt);
 
@@ -75,9 +82,7 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   AVRational time_base_ = {};
   AVMediaType media_type_ = AVMEDIA_TYPE_VIDEO;
   // Stamped onto every frame we hand out, so downstream stages can read the
-  // rotation off the frame itself instead of knowing about the stream. Held by
-  // value: we're only handed the Demuxer at construction and it may well be
-  // gone by the time we decode.
+  // rotation off the frame itself instead of knowing about the stream.
   std::optional<std::array<int32_t, 9>> display_matrix_;
   // The MPEG-PS demuxer doesn't return proper packets just after a seek, so the
   // first ones we're fed may not be decodable. See send_packet().

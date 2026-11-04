@@ -52,9 +52,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void initialize(const SharedAVCodecContext& codec_context) override;
 
+  using DeviceInterface::initialize_video_decoding;
   void initialize_video_decoding(
-      const AVStream* av_stream,
-      const UniqueDecodingAVFormatContext& av_format_ctx,
+      const CodecParameters& codec_parameters,
       const VideoStreamOptions& video_stream_options) override;
 
   void initialize_color_conversion(
@@ -93,7 +93,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void initialize_bsf(
       const AVCodecParameters* codec_par,
-      const UniqueDecodingAVFormatContext& av_format_ctx);
+      const AVInputFormat* container_format);
   // Apply the bitstream filter. Returns nullptr when there is no filter to
   // apply and the packet can be sent as-is.
   UniqueAVPacket apply_bsf(const AVPacket& packet);
