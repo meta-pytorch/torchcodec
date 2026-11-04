@@ -23,30 +23,39 @@ CodecParameters::CodecParameters(
       status >= 0,
       "Failed to copy the codec parameters: ",
       get_ffmpeg_error_string_from_error_code(status));
-  if (const int32_t* matrix = get_display_matrix_from_stream(&av_stream)) {
-    display_matrix.emplace();
-    std::copy(matrix, matrix + display_matrix->size(), display_matrix->begin());
+  if (get_display_matrix(*this) == nullptr) {
+    if (const int32_t* matrix = get_display_matrix_from_stream(&av_stream)) {
+      display_matrix.emplace();
+      std::copy(
+          matrix, matrix + display_matrix->size(), display_matrix->begin());
+    }
   }
 }
 
-std::optional<double> get_rotation(const CodecParameters& codec_parameters) {
-  if (!codec_parameters.display_matrix.has_value()) {
-    return std::nullopt;
+const int32_t* get_display_matrix(const CodecParameters& codec_parameters) {
+  for (const AVPacketSideData* side_data :
+       get_coded_side_data(*codec_parameters.codecpar)) {
+    if (side_data->type == AV_PKT_DATA_DISPLAYMATRIX) {
+      return reinterpret_cast<const int32_t*>(side_data->data);
+    }
   }
-  return get_rotation_from_display_matrix(
-      codec_parameters.display_matrix->data());
+  return codec_parameters.display_matrix.has_value()
+      ? codec_parameters.display_matrix->data()
+      : nullptr;
+}
+
+std::optional<double> get_rotation(const CodecParameters& codec_parameters) {
+  return get_rotation_from_display_matrix(get_display_matrix(codec_parameters));
 }
 
 std::vector<AVPacketSideData> get_stream_side_data(
     const CodecParameters& codec_parameters) {
   std::vector<AVPacketSideData> entries;
-  bool has_display_matrix = false;
   for (const AVPacketSideData* side_data :
        get_coded_side_data(*codec_parameters.codecpar)) {
     entries.push_back(*side_data);
-    has_display_matrix |= side_data->type == AV_PKT_DATA_DISPLAYMATRIX;
   }
-  if (codec_parameters.display_matrix.has_value() && !has_display_matrix) {
+  if (codec_parameters.display_matrix.has_value()) {
     AVPacketSideData entry = {};
     entry.data = reinterpret_cast<uint8_t*>(
         const_cast<int32_t*>(codec_parameters.display_matrix->data()));
