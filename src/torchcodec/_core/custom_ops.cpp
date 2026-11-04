@@ -1039,7 +1039,7 @@ OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
   bit_rate = unless_default(codecpar.bit_rate);
   bits_per_coded_sample = unless_default(codecpar.bits_per_coded_sample);
   bits_per_raw_sample = unless_default(codecpar.bits_per_raw_sample);
-  for (const AVPacketSideData& side_data : get_stream_side_data(params)) {
+  for (const AVPacketSideData& side_data : params.get_stream_side_data()) {
     const char* name = av_packet_side_data_name(side_data.type);
     // A type this FFmpeg can't name is a type it doesn't know what to do with
     // either, so there's nothing a decoder would read from it.

@@ -79,6 +79,14 @@ extern "C" {
 #define FFMPEG_HAS_FRAME_DURATION 1
 #endif
 
+// FFmpeg 6.1 moved the stream-level side data, e.g. the display matrix, from
+// AVStream to AVCodecParameters.coded_side_data.
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(60, 31, 100)
+#define FFMPEG_HAS_CODED_SIDE_DATA 1
+#else
+#define FFMPEG_HAS_CODED_SIDE_DATA 0
+#endif
+
 namespace facebook::torchcodec {
 
 // Mirrors cudaVideoSurfaceFormat. Needed here because we don't want to include
@@ -447,11 +455,6 @@ constexpr int kUnknownProfileOrLevel = -99;
 // The frame rate the codec reports, or {0, 1} when it doesn't report one.
 // Always {0, 1} before FFmpeg 6.1, which added AVCodecParameters.framerate.
 AVRational get_framerate(const AVCodecParameters& codecpar);
-
-// The side data that applies to the whole stream. Always empty before FFmpeg
-// 6.1, where it was on AVStream rather than on AVCodecParameters.
-std::vector<const AVPacketSideData*> get_coded_side_data(
-    const AVCodecParameters& codecpar);
 
 // FFmpeg's description of the channel layout, e.g. "stereo", or nullopt when
 // there are no channels.

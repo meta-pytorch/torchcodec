@@ -23,46 +23,40 @@ CodecParameters::CodecParameters(
       status >= 0,
       "Failed to copy the codec parameters: ",
       get_ffmpeg_error_string_from_error_code(status));
-  if (get_display_matrix(*this) == nullptr) {
-    if (const int32_t* matrix = get_display_matrix_from_stream(&av_stream)) {
-      display_matrix.emplace();
-      std::copy(
-          matrix, matrix + display_matrix->size(), display_matrix->begin());
-    }
+  // From FFmpeg 6.1, this reads the display matrix from the coded side data,
+  // which we just copied into codecpar. Before that, it reads it from the
+  // AVStream, and display_matrix is the only place where we keep it: see
+  // get_stream_side_data().
+  if (const int32_t* matrix = get_display_matrix_from_stream(&av_stream)) {
+    display_matrix.emplace();
+    std::copy(matrix, matrix + display_matrix->size(), display_matrix->begin());
   }
 }
 
-const int32_t* get_display_matrix(const CodecParameters& codec_parameters) {
-  for (const AVPacketSideData* side_data :
-       get_coded_side_data(*codec_parameters.codecpar)) {
-    if (side_data->type == AV_PKT_DATA_DISPLAYMATRIX) {
-      return reinterpret_cast<const int32_t*>(side_data->data);
-    }
-  }
-  return codec_parameters.display_matrix.has_value()
-      ? codec_parameters.display_matrix->data()
-      : nullptr;
+std::optional<double> CodecParameters::get_rotation() const {
+  return get_rotation_from_display_matrix(
+      display_matrix.has_value() ? display_matrix->data() : nullptr);
 }
 
-std::optional<double> get_rotation(const CodecParameters& codec_parameters) {
-  return get_rotation_from_display_matrix(get_display_matrix(codec_parameters));
-}
-
-std::vector<AVPacketSideData> get_stream_side_data(
-    const CodecParameters& codec_parameters) {
+std::vector<AVPacketSideData> CodecParameters::get_stream_side_data() const {
   std::vector<AVPacketSideData> entries;
-  for (const AVPacketSideData* side_data :
-       get_coded_side_data(*codec_parameters.codecpar)) {
-    entries.push_back(*side_data);
+#if FFMPEG_HAS_CODED_SIDE_DATA
+  // The display matrix, if any, is one of them.
+  for (int i = 0; i < codecpar->nb_coded_side_data; ++i) {
+    entries.push_back(codecpar->coded_side_data[i]);
   }
-  if (codec_parameters.display_matrix.has_value()) {
+#else
+  // AVCodecParameters has no side data before FFmpeg 6.1: it was on the
+  // AVStream, and the display matrix is the only one we keep.
+  if (display_matrix.has_value()) {
     AVPacketSideData entry = {};
     entry.data = reinterpret_cast<uint8_t*>(
-        const_cast<int32_t*>(codec_parameters.display_matrix->data()));
-    entry.size = sizeof(*codec_parameters.display_matrix);
+        const_cast<int32_t*>(display_matrix->data()));
+    entry.size = sizeof(*display_matrix);
     entry.type = AV_PKT_DATA_DISPLAYMATRIX;
     entries.push_back(entry);
   }
+#endif
   return entries;
 }
 

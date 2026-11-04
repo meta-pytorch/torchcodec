@@ -110,10 +110,8 @@ PacketDecoder::PacketDecoder(
     // https://github.com/pytorch/torchcodec/issues/1253.
     ffmpeg_thread_count = 1;
     audio_pts_extrapolator_ = AudioPtsExtrapolator(time_base_);
-  } else if (const int32_t* matrix = get_display_matrix(codec_parameters)) {
-    display_matrix_.emplace();
-    std::copy(
-        matrix, matrix + display_matrix_->size(), display_matrix_->begin());
+  } else {
+    display_matrix_ = codec_parameters.display_matrix;
   }
 
   const AVCodec* av_codec = find_decoder(codecpar, device_interface_.get());

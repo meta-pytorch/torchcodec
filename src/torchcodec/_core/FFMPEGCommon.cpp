@@ -921,17 +921,6 @@ AVRational get_framerate([[maybe_unused]] const AVCodecParameters& codecpar) {
 #endif
 }
 
-std::vector<const AVPacketSideData*> get_coded_side_data(
-    [[maybe_unused]] const AVCodecParameters& codecpar) {
-  std::vector<const AVPacketSideData*> side_data;
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(60, 31, 100)
-  for (int i = 0; i < codecpar.nb_coded_side_data; ++i) {
-    side_data.push_back(&codecpar.coded_side_data[i]);
-  }
-#endif
-  return side_data;
-}
-
 std::optional<std::string> get_channel_layout_name(
     const AVCodecParameters& codecpar) {
 #if FFMPEG_HAS_CH_LAYOUT
