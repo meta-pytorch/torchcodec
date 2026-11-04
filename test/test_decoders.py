@@ -4241,8 +4241,12 @@ class TestLowLevel:
             sample_rate=16000,
             channel_layout="stereo",
             frame_size=1024,
+            initial_padding=params.initial_padding,
         )
         assert len(params.extradata) == 5
+        # The AAC encoder delay, signaled by the MP4 edit list. Only some FFmpeg
+        # versions report it as the initial padding.
+        assert params.initial_padding in (None, 1024)
 
     def test_codec_parameters_rotation(self):
         (video,) = Demuxer(NASA_VIDEO_ROTATED.path).streams
