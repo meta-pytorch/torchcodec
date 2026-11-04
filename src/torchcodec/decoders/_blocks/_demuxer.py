@@ -39,8 +39,6 @@ from torchcodec._core.ops import (
     _blocks_demuxer_stream_json_metadata,
 )
 
-from .._decoder_utils import convert_device_to_str
-
 from ._codec_parameters import AudioCodecParameters, VideoCodecParameters
 from ._frame import Packet
 from ._helpers import _process_local
@@ -241,6 +239,7 @@ class _Stream:
         )
         names = [r.name for r in _blocks_demuxer_get_codec_parameters._schema.returns]
         fields: dict[str, Any] = dict(zip(names, outputs))
+        container_format = fields.pop("container_format")
 
         # The binary fields come as contiguous uint8 CPU tensors, we want them
         # to be bytes (the Python type).
@@ -264,7 +263,9 @@ class _Stream:
             for name, value in fields.items()
             if value is not None
         }
-        return cls(**kwargs)
+        params = cls(**kwargs)
+        object.__setattr__(params, "_container_format", container_format)
+        return params
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(index={self.index})"
@@ -360,10 +361,8 @@ class VideoStream(_Stream):
         Returns:
             VideoPacketDecoder: A decoder for this stream's packets.
         """
-        if num_ffmpeg_threads is None:
-            raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
-        return VideoPacketDecoder._from_stream(
-            self, convert_device_to_str(device), num_ffmpeg_threads
+        return VideoPacketDecoder(
+            self.codec_parameters, device, num_ffmpeg_threads=num_ffmpeg_threads
         )
 
 
@@ -400,7 +399,7 @@ class AudioStream(_Stream):
         Returns:
             AudioPacketDecoder: A decoder for this stream's packets.
         """
-        return AudioPacketDecoder._from_stream(self, "cpu")
+        return AudioPacketDecoder(self.codec_parameters)
 
 
 @_process_local(

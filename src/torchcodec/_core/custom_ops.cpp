@@ -96,9 +96,11 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   // The return names are the fields of VideoCodecParameters and
   // AudioCodecParameters, which Python matches them against.
   m.def(
-      "_blocks_demuxer_get_codec_parameters(Tensor demuxer, int stream_index) -> (str codec, int[] time_base, Tensor? extradata, int? codec_tag, int? profile, int? level, int? bit_rate, int? bits_per_coded_sample, int? bits_per_raw_sample, str[] coded_side_data_names, Tensor[] coded_side_data_values, int? width, int? height, str? pixel_format, int[]? sample_aspect_ratio, int[]? framerate, int[]? r_frame_rate, str? field_order, str? color_range, str? color_primaries, str? color_transfer_characteristic, str? color_space, str? chroma_location, int? video_delay, str? sample_format, int? sample_rate, str? channel_layout, int? block_align, int? frame_size, int? initial_padding, int? trailing_padding, int? seek_preroll)");
+      "_blocks_demuxer_get_codec_parameters(Tensor demuxer, int stream_index) -> (str codec, int[] time_base, Tensor? extradata, int? codec_tag, int? profile, int? level, int? bit_rate, int? bits_per_coded_sample, int? bits_per_raw_sample, str[] coded_side_data_names, Tensor[] coded_side_data_values, int? width, int? height, str? pixel_format, int[]? sample_aspect_ratio, int[]? framerate, int[]? r_frame_rate, str? field_order, str? color_range, str? color_primaries, str? color_transfer_characteristic, str? color_space, str? chroma_location, int? video_delay, str? sample_format, int? sample_rate, str? channel_layout, int? block_align, int? frame_size, int? initial_padding, int? trailing_padding, int? seek_preroll, str? container_format)");
+  // Takes the fields of VideoCodecParameters and AudioCodecParameters, under
+  // their names.
   m.def(
-      "_blocks_create_packet_decoder(Tensor demuxer, *, int? stream_index=None, int? num_threads=None, str device=\"cpu\") -> Tensor");
+      "_blocks_create_packet_decoder(str media_type, str codec, int[] time_base, *, Tensor? extradata=None, int? codec_tag=None, int? profile=None, int? level=None, int? bit_rate=None, int? bits_per_coded_sample=None, int? bits_per_raw_sample=None, str[]? coded_side_data_names=None, Tensor[]? coded_side_data_values=None, int? width=None, int? height=None, str? pixel_format=None, int[]? sample_aspect_ratio=None, int[]? framerate=None, int[]? r_frame_rate=None, str? field_order=None, str? color_range=None, str? color_primaries=None, str? color_transfer_characteristic=None, str? color_space=None, str? chroma_location=None, int? video_delay=None, str? sample_format=None, int? sample_rate=None, str? channel_layout=None, int? block_align=None, int? frame_size=None, int? initial_padding=None, int? trailing_padding=None, int? seek_preroll=None, str? container_format=None, int? num_threads=None, str device=\"cpu\") -> Tensor");
   m.def(
       "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
@@ -1013,7 +1015,8 @@ using OpsCodecParametersOutput = std::tuple<
     std::optional<int64_t>, // frame_size
     std::optional<int64_t>, // initial_padding
     std::optional<int64_t>, // trailing_padding
-    std::optional<int64_t>>; // seek_preroll
+    std::optional<int64_t>, // seek_preroll
+    std::optional<std::string>>; // container_format
 
 // Enums are returned as FFmpeg's names for them.
 OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
@@ -1025,7 +1028,7 @@ OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
   const AVCodecParameters& codecpar = *params.codecpar;
 
   OpsCodecParametersOutput output;
-  auto& [codec, time_base, extradata, codec_tag, profile, level, bit_rate, bits_per_coded_sample, bits_per_raw_sample, coded_side_data_names, coded_side_data_values, width, height, pixel_format, sample_aspect_ratio, framerate, r_frame_rate, field_order, color_range, color_primaries, color_transfer_characteristic, color_space, chroma_location, video_delay, sample_format, sample_rate, channel_layout, block_align, frame_size, initial_padding, trailing_padding, seek_preroll] =
+  auto& [codec, time_base, extradata, codec_tag, profile, level, bit_rate, bits_per_coded_sample, bits_per_raw_sample, coded_side_data_names, coded_side_data_values, width, height, pixel_format, sample_aspect_ratio, framerate, r_frame_rate, field_order, color_range, color_primaries, color_transfer_characteristic, color_space, chroma_location, video_delay, sample_format, sample_rate, channel_layout, block_align, frame_size, initial_padding, trailing_padding, seek_preroll, container_format] =
       output;
 
   codec = avcodec_get_name(codecpar.codec_id);
@@ -1092,24 +1095,260 @@ OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
     trailing_padding = unless_default(codecpar.trailing_padding);
     seek_preroll = unless_default(codecpar.seek_preroll);
   }
+  if (params.container_format != nullptr) {
+    container_format = params.container_format->name;
+  }
   return output;
 }
 
+namespace {
+// The schema's ints are int64, and FFmpeg's fields mostly int: a value that
+// doesn't fit is an error, not something to truncate.
+template <typename T>
+T checked_cast(const char* field, int64_t value) {
+  STD_TORCH_CHECK(
+      value >= std::numeric_limits<T>::min() &&
+          value <= std::numeric_limits<T>::max(),
+      field,
+      " is out of range: ",
+      value,
+      ".");
+  return static_cast<T>(value);
+}
+
+AVRational to_rational(const char* field, const std::vector<int64_t>& value) {
+  STD_TORCH_CHECK(
+      value.size() == 2,
+      field,
+      " must be [num, den], got ",
+      value.size(),
+      " values.");
+  return {
+      checked_cast<int>(field, value[0]), checked_cast<int>(field, value[1])};
+}
+
+// FFmpeg's *_from_name() functions return a negative value for unknown names.
+template <typename Enum>
+Enum checked_enum(const char* field, const std::string& name, int value) {
+  STD_TORCH_CHECK(value >= 0, "Unknown ", field, ": ", name, ".");
+  return static_cast<Enum>(value);
+}
+
+void check_bytes(const char* field, const torch::stable::Tensor& tensor) {
+  STD_TORCH_CHECK(
+      tensor.scalar_type() == kStableUInt8 && tensor.dim() == 1 &&
+          tensor.is_contiguous() && tensor.device().type() == kStableCPU,
+      field,
+      " must be a contiguous 1D uint8 CPU tensor.");
+}
+} // namespace
+
 torch::stable::Tensor _blocks_create_packet_decoder(
-    torch::stable::Tensor& demuxer,
-    std::optional<int64_t> stream_index,
+    std::string media_type,
+    std::string codec,
+    std::vector<int64_t> time_base,
+    std::optional<torch::stable::Tensor> extradata,
+    std::optional<int64_t> codec_tag,
+    std::optional<int64_t> profile,
+    std::optional<int64_t> level,
+    std::optional<int64_t> bit_rate,
+    std::optional<int64_t> bits_per_coded_sample,
+    std::optional<int64_t> bits_per_raw_sample,
+    std::optional<std::vector<std::string>> coded_side_data_names,
+    std::optional<std::vector<torch::stable::Tensor>> coded_side_data_values,
+    std::optional<int64_t> width,
+    std::optional<int64_t> height,
+    std::optional<std::string> pixel_format,
+    std::optional<std::vector<int64_t>> sample_aspect_ratio,
+    std::optional<std::vector<int64_t>> framerate,
+    std::optional<std::vector<int64_t>> r_frame_rate,
+    std::optional<std::string> field_order,
+    std::optional<std::string> color_range,
+    std::optional<std::string> color_primaries,
+    std::optional<std::string> color_transfer_characteristic,
+    std::optional<std::string> color_space,
+    std::optional<std::string> chroma_location,
+    std::optional<int64_t> video_delay,
+    std::optional<std::string> sample_format,
+    std::optional<int64_t> sample_rate,
+    std::optional<std::string> channel_layout,
+    std::optional<int64_t> block_align,
+    std::optional<int64_t> frame_size,
+    std::optional<int64_t> initial_padding,
+    std::optional<int64_t> trailing_padding,
+    std::optional<int64_t> seek_preroll,
+    std::optional<std::string> container_format,
     std::optional<int64_t> num_threads,
     std::string device) {
-  Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
   validate_device_interface(device);
+
+  CodecParameters params;
+  AVCodecParameters& codecpar = *params.codecpar;
+
+  const AVCodecDescriptor* descriptor =
+      avcodec_descriptor_get_by_name(codec.c_str());
+  STD_TORCH_CHECK(descriptor != nullptr, "Unknown codec: ", codec, ".");
+  AVMediaType expected_type = parse_media_type(media_type);
+  STD_TORCH_CHECK(
+      descriptor->type == expected_type,
+      "'",
+      codec,
+      "' is not a ",
+      media_type,
+      " codec.");
+  codecpar.codec_type = descriptor->type;
+  codecpar.codec_id = descriptor->id;
+  params.time_base = to_rational("time_base", time_base);
+
+  if (extradata.has_value()) {
+    check_bytes("extradata", *extradata);
+    int size = checked_cast<int>("extradata size", extradata->numel());
+    // Zeroed padding past the end, which FFmpeg's parsers read into.
+    codecpar.extradata = static_cast<uint8_t*>(
+        av_mallocz(static_cast<size_t>(size) + AV_INPUT_BUFFER_PADDING_SIZE));
+    STD_TORCH_CHECK(
+        codecpar.extradata != nullptr, "Failed to allocate the extradata.");
+    std::memcpy(codecpar.extradata, extradata->const_data_ptr<uint8_t>(), size);
+    codecpar.extradata_size = size;
+  }
+  if (codec_tag.has_value()) {
+    codecpar.codec_tag = checked_cast<uint32_t>("codec_tag", *codec_tag);
+  }
+  if (profile.has_value()) {
+    codecpar.profile = checked_cast<int>("profile", *profile);
+  }
+  if (level.has_value()) {
+    codecpar.level = checked_cast<int>("level", *level);
+  }
+  if (bit_rate.has_value()) {
+    codecpar.bit_rate = *bit_rate;
+  }
+  if (bits_per_coded_sample.has_value()) {
+    codecpar.bits_per_coded_sample =
+        checked_cast<int>("bits_per_coded_sample", *bits_per_coded_sample);
+  }
+  if (bits_per_raw_sample.has_value()) {
+    codecpar.bits_per_raw_sample =
+        checked_cast<int>("bits_per_raw_sample", *bits_per_raw_sample);
+  }
+  if (coded_side_data_names.has_value()) {
+    STD_TORCH_CHECK(
+        coded_side_data_values.has_value() &&
+            coded_side_data_values->size() == coded_side_data_names->size(),
+        "coded_side_data_names and coded_side_data_values must have the same "
+        "length.");
+    for (size_t i = 0; i < coded_side_data_names->size(); ++i) {
+      const torch::stable::Tensor& value = (*coded_side_data_values)[i];
+      check_bytes("coded_side_data values", value);
+      params.add_stream_side_data(
+          get_packet_side_data_type_from_name((*coded_side_data_names)[i]),
+          value.const_data_ptr<uint8_t>(),
+          value.numel());
+    }
+  }
+
+  if (width.has_value()) {
+    codecpar.width = checked_cast<int>("width", *width);
+  }
+  if (height.has_value()) {
+    codecpar.height = checked_cast<int>("height", *height);
+  }
+  if (pixel_format.has_value()) {
+    codecpar.format = checked_enum<AVPixelFormat>(
+        "pixel_format", *pixel_format, av_get_pix_fmt(pixel_format->c_str()));
+  }
+  if (sample_aspect_ratio.has_value()) {
+    codecpar.sample_aspect_ratio =
+        to_rational("sample_aspect_ratio", *sample_aspect_ratio);
+  }
+  if (framerate.has_value()) {
+    set_framerate(codecpar, to_rational("framerate", *framerate));
+  }
+  if (r_frame_rate.has_value()) {
+    params.r_frame_rate = to_rational("r_frame_rate", *r_frame_rate);
+  }
+  if (field_order.has_value()) {
+    codecpar.field_order = get_field_order_from_name(*field_order);
+  }
+  if (color_range.has_value()) {
+    codecpar.color_range = checked_enum<AVColorRange>(
+        "color_range",
+        *color_range,
+        av_color_range_from_name(color_range->c_str()));
+  }
+  if (color_primaries.has_value()) {
+    codecpar.color_primaries = checked_enum<AVColorPrimaries>(
+        "color_primaries",
+        *color_primaries,
+        av_color_primaries_from_name(color_primaries->c_str()));
+  }
+  if (color_transfer_characteristic.has_value()) {
+    codecpar.color_trc = checked_enum<AVColorTransferCharacteristic>(
+        "color_transfer_characteristic",
+        *color_transfer_characteristic,
+        av_color_transfer_from_name(color_transfer_characteristic->c_str()));
+  }
+  if (color_space.has_value()) {
+    codecpar.color_space = checked_enum<AVColorSpace>(
+        "color_space",
+        *color_space,
+        av_color_space_from_name(color_space->c_str()));
+  }
+  if (chroma_location.has_value()) {
+    codecpar.chroma_location = checked_enum<AVChromaLocation>(
+        "chroma_location",
+        *chroma_location,
+        av_chroma_location_from_name(chroma_location->c_str()));
+  }
+  if (video_delay.has_value()) {
+    codecpar.video_delay = checked_cast<int>("video_delay", *video_delay);
+  }
+
+  if (sample_format.has_value()) {
+    codecpar.format = checked_enum<AVSampleFormat>(
+        "sample_format",
+        *sample_format,
+        av_get_sample_fmt(sample_format->c_str()));
+  }
+  if (sample_rate.has_value()) {
+    codecpar.sample_rate = checked_cast<int>("sample_rate", *sample_rate);
+  }
+  if (channel_layout.has_value()) {
+    set_channel_layout(codecpar, *channel_layout);
+  }
+  if (block_align.has_value()) {
+    codecpar.block_align = checked_cast<int>("block_align", *block_align);
+  }
+  if (frame_size.has_value()) {
+    codecpar.frame_size = checked_cast<int>("frame_size", *frame_size);
+  }
+  if (initial_padding.has_value()) {
+    codecpar.initial_padding =
+        checked_cast<int>("initial_padding", *initial_padding);
+  }
+  if (trailing_padding.has_value()) {
+    codecpar.trailing_padding =
+        checked_cast<int>("trailing_padding", *trailing_padding);
+  }
+  if (seek_preroll.has_value()) {
+    codecpar.seek_preroll = checked_cast<int>("seek_preroll", *seek_preroll);
+  }
+
+  if (container_format.has_value()) {
+    params.container_format = av_find_input_format(container_format->c_str());
+    STD_TORCH_CHECK(
+        params.container_format != nullptr,
+        "Unknown container_format: ",
+        *container_format,
+        ".");
+  }
+
   std::optional<int> thread_count;
   if (num_threads.has_value()) {
-    thread_count = static_cast<int>(num_threads.value());
+    thread_count = checked_cast<int>("num_threads", *num_threads);
   }
   auto decoder = std::make_unique<PacketDecoder>(
-      demuxer_ptr->get_codec_parameters(to_optional_int(stream_index)),
-      StableDevice(device),
-      thread_count);
+      params, StableDevice(device), thread_count);
   return wrap_pointer_to_tensor<PacketDecoder>(std::move(decoder));
 }
 
@@ -1857,6 +2096,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
       "_blocks_create_color_converter",
       TORCH_BOX(&_blocks_create_color_converter));
   m.impl(
+      "_blocks_create_packet_decoder",
+      TORCH_BOX(&_blocks_create_packet_decoder));
+  m.impl(
       "_blocks_create_audio_converter",
       TORCH_BOX(&_blocks_create_audio_converter));
   m.impl(
@@ -1935,9 +2177,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "_blocks_demuxer_get_codec_parameters",
       TORCH_BOX(&_blocks_demuxer_get_codec_parameters));
-  m.impl(
-      "_blocks_create_packet_decoder",
-      TORCH_BOX(&_blocks_create_packet_decoder));
   m.impl(
       "_blocks_packet_decoder_send_packet",
       TORCH_BOX(&_blocks_packet_decoder_send_packet));

@@ -649,7 +649,10 @@ void BetaCudaDeviceInterface::initialize_bsf(
 
   STD_TORCH_CHECK(codec_par != nullptr, "codecPar cannot be null");
   STD_TORCH_CHECK(
-      container_format != nullptr, "container_format cannot be null");
+      container_format != nullptr,
+      "Decoding on CUDA with the NVDEC backend needs codec parameters that come "
+      "from a Demuxer (stream.codec_parameters) for now. Decode on the CPU, or "
+      "use the FFmpeg CUDA backend.");
   std::string filter_name;
 
   // Matching logic is taken from DALI

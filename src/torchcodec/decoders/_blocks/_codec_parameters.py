@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import dataclass, KW_ONLY
+from dataclasses import dataclass, field, KW_ONLY
 from fractions import Fraction
 
 
@@ -38,6 +38,12 @@ class _CodecParameters:
     bits_per_coded_sample: int | None = None
     bits_per_raw_sample: int | None = None
     coded_side_data: dict[str, bytes] | None = None
+    # FFmpeg's name of the container format the stream was demuxed from, e.g.
+    # "mpeg". Some decoding behavior depends on it, so it's carried along with
+    # the parameters, including through pickling, but it's not part of the API.
+    _container_format: str | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self):
         if not isinstance(self.codec, str) or not self.codec:
@@ -48,9 +54,9 @@ class _CodecParameters:
 
     def __repr__(self) -> str:
         fields = ", ".join(
-            f"{field.name}={_short_repr(getattr(self, field.name))}"
-            for field in dataclasses.fields(self)
-            if getattr(self, field.name) is not None
+            f"{f.name}={_short_repr(getattr(self, f.name))}"
+            for f in dataclasses.fields(self)
+            if f.repr and getattr(self, f.name) is not None
         )
         return f"{type(self).__name__}({fields})"
 

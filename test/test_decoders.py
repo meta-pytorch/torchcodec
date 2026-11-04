@@ -4346,6 +4346,115 @@ class TestLowLevel:
         with pytest.raises(ValueError, match=match):
             VideoCodecParameters(**kwargs)
 
+    # ===== packet decoders built from codec parameters =====
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    @pytest.mark.parametrize("video", (NASA_VIDEO, NASA_VIDEO_ROTATED))
+    def test_video_packet_decoder_from_pickled_codec_parameters(self, device, video):
+        # What the decoding process of a multi-process pipeline does.
+        demuxer = Demuxer(video.path)
+        params = pickle.loads(pickle.dumps(demuxer.streams[0].codec_parameters))
+        decoder = VideoPacketDecoder(params, device)
+        converter = ColorConverter(device=device)
+
+        raw_frames = [f for packet in demuxer for f in decoder.decode(packet)]
+        raw_frames += decoder.drain()
+
+        # VideoDecoder builds its decoder from the demuxed stream directly.
+        expected = VideoDecoder(video.path, device=device)
+        assert len(raw_frames) == len(expected)
+        for i, raw_frame in enumerate(raw_frames):
+            assert_frames_equal(converter.convert(raw_frame).data, expected[i])
+
+    def test_video_packet_decoder_from_hand_built_codec_parameters(self):
+        # H.264 packets copied out of an MP4 only need the avcC box, i.e. the
+        # extradata, to be decoded on the CPU.
+        demuxer = Demuxer(NASA_VIDEO.path)
+        stream_params = demuxer.streams[0].codec_parameters
+        params = VideoCodecParameters(
+            codec="h264",
+            time_base=stream_params.time_base,
+            extradata=stream_params.extradata,
+        )
+        decoder = VideoPacketDecoder(params)
+        converter = ColorConverter()
+
+        frames = [
+            converter.convert(f) for packet in demuxer for f in decoder.decode(packet)
+        ]
+        frames += [converter.convert(f) for f in decoder.drain()]
+
+        expected = VideoDecoder(NASA_VIDEO.path)
+        assert len(frames) == len(expected)
+        for i, frame in enumerate(frames):
+            assert_frames_equal(frame.data, expected[i])
+            assert frame.pts_seconds == expected.get_frame_at(i).pts_seconds
+
+    def test_audio_packet_decoder_from_pickled_codec_parameters(self):
+        def decode(make_decoder):
+            demuxer = Demuxer(NASA_VIDEO.path, streams="audio")
+            decoder = make_decoder(demuxer.streams[0])
+            samples = [s for packet in demuxer for s in decoder.decode(packet)]
+            return samples + decoder.drain()
+
+        expected = decode(lambda stream: stream.make_decoder())
+        samples = decode(
+            lambda stream: AudioPacketDecoder(
+                pickle.loads(pickle.dumps(stream.codec_parameters))
+            )
+        )
+        assert len(samples) == len(expected) > 0
+        for s, e in zip(samples, expected):
+            torch.testing.assert_close(s.data, e.data, rtol=0, atol=0)
+            assert s.pts_seconds == e.pts_seconds
+
+    def test_codec_parameters_carry_the_container_format(self):
+        params = Demuxer(NASA_VIDEO.path).streams[0].codec_parameters
+
+        assert params._container_format == "mov,mp4,m4a,3gp,3g2,mj2"
+        unpickled = pickle.loads(pickle.dumps(params))
+        assert unpickled._container_format == params._container_format
+        # It's not part of the API.
+        assert "mov" not in repr(params)
+        assert params == VideoCodecParameters(
+            **{
+                f.name: getattr(params, f.name)
+                for f in dataclasses.fields(params)
+                if f.init
+            }
+        )
+
+    def test_packet_decoder_codec_parameters_type_errors(self):
+        video_params = Demuxer(NASA_VIDEO.path).streams[0].codec_parameters
+        audio_params = (
+            Demuxer(NASA_VIDEO.path, streams="audio").streams[0].codec_parameters
+        )
+        with pytest.raises(TypeError, match="must be a VideoCodecParameters"):
+            VideoPacketDecoder(audio_params)
+        with pytest.raises(TypeError, match="must be an AudioCodecParameters"):
+            AudioPacketDecoder(video_params)
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        (
+            ({"codec": "not_a_codec"}, "Unknown codec"),
+            ({"codec": "aac"}, "'aac' is not a video codec"),
+            ({"pixel_format": "not_a_pixel_format"}, "Unknown pixel_format"),
+            ({"color_space": "not_a_color_space"}, "Unknown color_space"),
+            ({"field_order": "not_a_field_order"}, "Unknown field_order"),
+            ({"width": 2**40}, "width is out of range"),
+            ({"codec_tag": -1}, "codec_tag is out of range"),
+            ({"coded_side_data": {"not_a_type": b"x"}}, "Unknown coded side data"),
+            ({"coded_side_data": {"Display Matrix": bytes(10)}}, "must be 36 bytes"),
+        ),
+    )
+    def test_video_packet_decoder_invalid_codec_parameters(self, kwargs, match):
+        params = VideoCodecParameters(
+            **{"codec": "h264", "time_base": Fraction(1, 30000), **kwargs}
+        )
+        with pytest.raises(RuntimeError, match=match):
+            VideoPacketDecoder(params)
+
     def test_adding_a_stream_after_demuxing_raises(self):
         # Demuxer follows its streams from construction, so this is only
         # reachable underneath it - but the demuxer is what enforces it, and a
