@@ -7,6 +7,7 @@
 import concurrent.futures
 import contextlib
 import copy
+import dataclasses
 import gc
 import io
 import itertools
@@ -18,6 +19,7 @@ import socket
 import subprocess
 import threading
 import zlib
+from fractions import Fraction
 from functools import partial
 from multiprocessing.reduction import ForkingPickler
 from typing import NamedTuple
@@ -30,6 +32,7 @@ from torchcodec import _core, ffmpeg_major_version, FrameBatch
 from torchcodec._core.ops import _blocks_demuxer_add_stream, _blocks_demuxer_scan
 from torchcodec._frame import Frame
 from torchcodec.decoders import (
+    AudioCodecParameters,
     AudioConverter,
     AudioDecoder,
     AudioPacketDecoder,
@@ -55,6 +58,7 @@ from torchcodec.decoders import (
     RawFrame,
     set_cuda_backend,
     set_nvdec_cache_capacity,
+    VideoCodecParameters,
     VideoDecoder,
     VideoPacketDecoder,
     VideoStream,
@@ -4185,6 +4189,151 @@ class TestLowLevel:
         list(Demuxer(demuxed))
 
         assert probed.bytes_read < demuxed.bytes_read
+
+    # ===== codec parameters =====
+
+    def test_video_codec_parameters(self):
+        params = Demuxer(NASA_VIDEO.path).streams[0].codec_parameters
+
+        has_framerate = ffmpeg_major_version > 6 or (
+            ffmpeg_major_version == 6 and get_ffmpeg_minor_version() >= 1
+        )
+        assert params == VideoCodecParameters(
+            codec="h264",
+            time_base=Fraction(1, 30000),
+            extradata=params.extradata,
+            codec_tag=0x31637661,  # "avc1"
+            profile=100,
+            level=21,
+            bit_rate=128783,
+            bits_per_coded_sample=24,
+            bits_per_raw_sample=8,
+            width=480,
+            height=270,
+            pixel_format="yuv420p",
+            sample_aspect_ratio=Fraction(1, 1),
+            framerate=Fraction(30000, 1001) if has_framerate else None,
+            r_frame_rate=Fraction(30000, 1001),
+            field_order=params.field_order,
+            color_range="tv",
+            color_primaries="bt709",
+            color_transfer_characteristic="bt709",
+            color_space="bt709",
+            chroma_location="left",
+            video_delay=2,
+        )
+        # FFmpeg 4 doesn't report it.
+        assert params.field_order in (None, "progressive")
+        # The avcC box, which starts with its version, 1.
+        assert len(params.extradata) == 48
+        assert params.extradata[0] == 1
+
+    def test_audio_codec_parameters(self):
+        params = Demuxer(NASA_VIDEO.path, streams="audio").streams[0].codec_parameters
+
+        assert params == AudioCodecParameters(
+            codec="aac",
+            time_base=Fraction(1, 16000),
+            extradata=params.extradata,
+            codec_tag=0x6134706D,  # "mp4a"
+            profile=1,  # AAC LC
+            bit_rate=128837,
+            bits_per_coded_sample=16,
+            sample_format="fltp",
+            sample_rate=16000,
+            channel_layout="stereo",
+            frame_size=1024,
+            initial_padding=params.initial_padding,
+        )
+        assert len(params.extradata) == 5
+        # The AAC encoder delay, signaled by the MP4 edit list. Only some FFmpeg
+        # versions report it as the initial padding.
+        assert params.initial_padding in (None, 1024)
+
+    def test_codec_parameters_rotation(self):
+        (video,) = Demuxer(NASA_VIDEO_ROTATED.path).streams
+        params = video.codec_parameters
+
+        assert params.rotation == video.metadata.rotation == 90.0
+        assert isinstance(params.rotation, float)
+        # With FFmpeg >= 6.1, the display matrix the rotation comes from is in
+        # the coded side data too.
+        if params.coded_side_data is not None:
+            assert len(params.coded_side_data["Display Matrix"]) == 36
+
+        assert Demuxer(NASA_VIDEO.path).streams[0].codec_parameters.rotation is None
+
+    def test_codec_parameters_are_picklable_frozen_values(self):
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        for params in (s.codec_parameters for s in demuxer.streams):
+            assert pickle.loads(pickle.dumps(params)) == params
+            with pytest.raises(dataclasses.FrozenInstanceError):
+                params.codec = "hevc"
+
+    def test_codec_parameters_constructor(self):
+        params = VideoCodecParameters(
+            codec="h264",
+            time_base=Fraction(1, 30000),
+            codec_tag=0x31637661,
+            sample_aspect_ratio=Fraction(4, 3),
+        )
+        assert params.width is None
+        assert repr(params) == (
+            "VideoCodecParameters(codec='h264', time_base=Fraction(1, 30000), "
+            "codec_tag=828601953, sample_aspect_ratio=Fraction(4, 3))"
+        )
+
+        assert repr(
+            AudioCodecParameters(
+                codec="opus",
+                time_base=Fraction(1, 48000),
+                extradata=b"OpusHead" + bytes(11),
+                coded_side_data={"Replay Gain": bytes(16)},
+            )
+        ) == (
+            "AudioCodecParameters(codec='opus', time_base=Fraction(1, 48000), "
+            "extradata=<19 bytes>, coded_side_data={'Replay Gain': <16 bytes>})"
+        )
+
+        assert VideoCodecParameters("h264", time_base=Fraction(1, 30000)) == (
+            VideoCodecParameters(codec="h264", time_base=Fraction(1, 30000))
+        )
+        with pytest.raises(TypeError, match="positional"):
+            VideoCodecParameters("h264", Fraction(1, 30000))
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        (
+            (
+                {"codec": "", "time_base": Fraction(1, 1)},
+                "codec must be a non-empty string",
+            ),
+            (
+                {"codec": None, "time_base": Fraction(1, 1)},
+                "codec must be a non-empty string",
+            ),
+            (
+                {"codec": "h264", "time_base": (1, 30000)},
+                "time_base must be a Fraction",
+            ),
+            ({"codec": "h264", "time_base": 0.5}, "time_base must be a Fraction"),
+            (
+                {"codec": "h264", "time_base": Fraction(-1, 1)},
+                "time_base must be positive",
+            ),
+            (
+                {
+                    "codec": "h264",
+                    "time_base": Fraction(1, 1),
+                    "r_frame_rate": (30000, 1001),
+                },
+                "r_frame_rate must be a Fraction",
+            ),
+        ),
+    )
+    def test_codec_parameters_constructor_errors(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            VideoCodecParameters(**kwargs)
 
     def test_adding_a_stream_after_demuxing_raises(self):
         # Demuxer follows its streams from construction, so this is only

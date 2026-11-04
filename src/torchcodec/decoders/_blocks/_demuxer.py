@@ -6,13 +6,15 @@
 
 from __future__ import annotations
 
+import ctypes
 import io
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
+from fractions import Fraction
 from functools import cached_property
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import torch
 from torch import Tensor
@@ -30,6 +32,7 @@ from torchcodec._core.ops import (
     _blocks_demuxer_add_stream,
     _blocks_demuxer_container_json_metadata,
     _blocks_demuxer_get_audio_video_stream_indices,
+    _blocks_demuxer_get_codec_parameters,
     _blocks_demuxer_next_packet,
     _blocks_demuxer_scan,
     _blocks_demuxer_seek,
@@ -38,6 +41,7 @@ from torchcodec._core.ops import (
 
 from .._decoder_utils import convert_device_to_str
 
+from ._codec_parameters import AudioCodecParameters, VideoCodecParameters
 from ._frame import Packet
 from ._helpers import _process_local
 from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
@@ -227,6 +231,41 @@ class _Stream:
             self.index,
         )
 
+    def _get_codec_parameters(
+        self, cls: type[VideoCodecParameters] | type[AudioCodecParameters]
+    ):
+        """Get the raw values from the C++ side, then massage them into the right
+        types for the dataclass constructor."""
+        outputs = _blocks_demuxer_get_codec_parameters(
+            self._demuxer._handle, self.index
+        )
+        names = [r.name for r in _blocks_demuxer_get_codec_parameters._schema.returns]
+        fields: dict[str, Any] = dict(zip(names, outputs))
+
+        # The binary fields come as contiguous uint8 CPU tensors, we want them
+        # to be bytes (the Python type).
+        # ctypes.string_at() avoids depending on numpy, and is much faster than
+        # going through tensor.tolist().
+        side_data_names = fields.pop("coded_side_data_names")
+        side_data_values = fields.pop("coded_side_data_values")
+        if side_data_names:
+            fields["coded_side_data"] = {
+                name: ctypes.string_at(value.data_ptr(), value.numel())
+                for name, value in zip(side_data_names, side_data_values)
+            }
+        extradata = fields["extradata"]
+        if extradata is not None:
+            fields["extradata"] = ctypes.string_at(
+                extradata.data_ptr(), extradata.numel()
+            )
+        # The rationals come as [num, den] lists.
+        kwargs: dict[str, Any] = {
+            name: Fraction(*value) if isinstance(value, list) else value
+            for name, value in fields.items()
+            if value is not None
+        }
+        return cls(**kwargs)
+
     def __repr__(self) -> str:
         return f"{type(self).__name__}(index={self.index})"
 
@@ -258,6 +297,12 @@ class VideoStream(_Stream):
         suffixes mark.
         """
         return cast(VideoStreamHeaderMetadata, self._read_metadata())
+
+    # TODO_DEMUXER_FREE: add docs. They should point to `metadata` for reading
+    # the stream's properties.
+    @cached_property
+    def codec_parameters(self) -> VideoCodecParameters:
+        return self._get_codec_parameters(VideoCodecParameters)
 
     def scan(self) -> FrameIndex:
         """Demux this stream from end to end, without decoding it (a
@@ -342,6 +387,12 @@ class AudioStream(_Stream):
         From the header only.
         """
         return cast(AudioStreamHeaderMetadata, self._read_metadata())
+
+    # TODO_DEMUXER_FREE: add docs. They should point to `metadata` for reading
+    # the stream's properties.
+    @cached_property
+    def codec_parameters(self) -> AudioCodecParameters:
+        return self._get_codec_parameters(AudioCodecParameters)
 
     def make_decoder(self) -> AudioPacketDecoder:
         """Build the :class:`AudioPacketDecoder` for this stream.

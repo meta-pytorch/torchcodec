@@ -915,6 +915,72 @@ std::optional<double> get_rotation_from_frame(const AVFrame& av_frame) {
       reinterpret_cast<const int32_t*>(side_data->data));
 }
 
+AVRational get_framerate([[maybe_unused]] const AVCodecParameters& codecpar) {
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(60, 11, 100)
+  return codecpar.framerate;
+#else
+  return {0, 1};
+#endif
+}
+
+std::vector<const AVPacketSideData*> get_coded_side_data(
+    [[maybe_unused]] const AVCodecParameters& codecpar) {
+  std::vector<const AVPacketSideData*> side_data;
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(60, 31, 100)
+  for (int i = 0; i < codecpar.nb_coded_side_data; ++i) {
+    side_data.push_back(&codecpar.coded_side_data[i]);
+  }
+#endif
+  return side_data;
+}
+
+std::optional<std::string> get_channel_layout_name(
+    const AVCodecParameters& codecpar) {
+#if FFMPEG_HAS_CH_LAYOUT
+  if (codecpar.ch_layout.nb_channels == 0) {
+    return std::nullopt;
+  }
+  std::vector<char> buffer(64);
+  // Returns the size the description needs, which may be more than we gave.
+  int size = av_channel_layout_describe(
+      &codecpar.ch_layout, buffer.data(), buffer.size());
+  if (size <= 0) {
+    return std::nullopt;
+  }
+  if (static_cast<size_t>(size) > buffer.size()) {
+    buffer.resize(size);
+    av_channel_layout_describe(
+        &codecpar.ch_layout, buffer.data(), buffer.size());
+  }
+  return std::string(buffer.data());
+#else
+  if (codecpar.channels == 0) {
+    return std::nullopt;
+  }
+  char buffer[256];
+  av_get_channel_layout_string(
+      buffer, sizeof(buffer), codecpar.channels, codecpar.channel_layout);
+  return std::string(buffer);
+#endif
+}
+
+const char* get_field_order_name(AVFieldOrder field_order) {
+  switch (field_order) {
+    case AV_FIELD_PROGRESSIVE:
+      return "progressive";
+    case AV_FIELD_TT:
+      return "tt";
+    case AV_FIELD_BB:
+      return "bb";
+    case AV_FIELD_TB:
+      return "tb";
+    case AV_FIELD_BT:
+      return "bt";
+    default:
+      return nullptr;
+  }
+}
+
 void set_display_matrix_on_frame(
     AVFrame& av_frame,
     const int32_t* display_matrix) {
