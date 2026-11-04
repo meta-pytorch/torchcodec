@@ -91,6 +91,7 @@ from .utils import (
     CODED64_DISPLAY52_VIDEO,
     CORRUPT_JPEG,
     cuda_devices,
+    demux_in_subprocess,
     DISCARD_FIRST_KEYFRAME_VIDEO,
     FRAME_EXCEEDS_SCREEN_GIF,
     get_ffmpeg_minor_version,
@@ -4806,6 +4807,35 @@ class TestLowLevel:
         frames = self.prefetch(self._decode(decoder, packets))
         return list(self._convert(converter, frames))
 
+    def _decode_with_demuxer_in_subprocess(self, path, device):
+        # [demux] in a spawned process || [decode + color-convert] in this one.
+        # Only the codec parameters and the packets cross over, pickled.
+        context = torch.multiprocessing.get_context("spawn")
+        # Bounded like prefetch()'s queue, which also caps the number of
+        # packets in flight, each holding a shared memory file descriptor.
+        packets_queue = context.Queue(maxsize=8)
+        done = context.Event()
+        process = context.Process(
+            target=demux_in_subprocess, args=(path, packets_queue, done)
+        )
+        process.start()
+
+        def receive():
+            while (item := packets_queue.get(timeout=120)) is not None:
+                if isinstance(item, Exception):
+                    raise item
+                yield item
+
+        try:
+            items = receive()
+            decoder = VideoPacketDecoder(next(items), device)
+            converter = ColorConverter(device=device)
+            return list(self._convert(converter, self._decode(decoder, items)))
+        finally:
+            done.set()
+            process.join(timeout=60)
+            process.kill()
+
     def _to_frame_batch(self, frames):
         return FrameBatch(
             data=torch.stack([f.data for f in frames]),
@@ -4897,6 +4927,24 @@ class TestLowLevel:
         ref = VideoDecoder(video.path, device=device).get_all_frames()
 
         assert got.data.device.type == device
+        assert got.data.shape == ref.data.shape
+        self._assert_matches_video_decoder(got.data, ref.data, video)
+        torch.testing.assert_close(got.pts_seconds, ref.pts_seconds, atol=0, rtol=0)
+        torch.testing.assert_close(
+            got.duration_seconds, ref.duration_seconds, atol=0, rtol=0
+        )
+
+    # Spawning a process is slow, hence fewer videos than
+    # test_matches_video_decoder. The rotated one checks that the display
+    # matrix crosses over in the codec parameters.
+    @pytest.mark.parametrize("video", (NASA_VIDEO, NASA_VIDEO_ROTATED))
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_matches_video_decoder_across_processes(self, video, device):
+        got = self._to_frame_batch(
+            self._decode_with_demuxer_in_subprocess(video.path, device)
+        )
+        ref = VideoDecoder(video.path, device=device).get_all_frames()
+
         assert got.data.shape == ref.data.shape
         self._assert_matches_video_decoder(got.data, ref.data, video)
         torch.testing.assert_close(got.pts_seconds, ref.pts_seconds, atol=0, rtol=0)
