@@ -4567,8 +4567,8 @@ class TestLowLevel:
     ):
         def rebuild(packet):
             data = packet.data
-            if constructor == "from_tensor":
-                data = torch.frombuffer(bytearray(data), dtype=torch.uint8)
+            if constructor == "from_bytes":
+                data = bytes(data.numpy())
             return getattr(Packet, constructor)(
                 data,
                 pts=packet.pts,
@@ -4614,7 +4614,8 @@ class TestLowLevel:
             side_data={"Skip Samples": bytes(10)},
             stream_index=2,
         )
-        assert packet.data == b"abc"
+        assert packet.data.dtype == torch.uint8
+        assert bytes(packet.data.numpy()) == b"abc"
         assert packet.pts == 10
         assert packet.dts == 5
         assert packet.duration == 3
@@ -4623,7 +4624,7 @@ class TestLowLevel:
         assert packet.stream_index == 2
 
         packet = Packet.from_bytes(b"")
-        assert packet.data == b""
+        assert packet.data.numel() == 0
         assert packet.pts is None
         assert packet.dts is None
         assert packet.duration == 0
@@ -4638,7 +4639,8 @@ class TestLowLevel:
         tensor = torch.frombuffer(data, dtype=torch.uint8)
         from_tensor = Packet.from_tensor(tensor)
         data[0] = ord("x")
-        assert from_bytes.data == from_memoryview.data == from_tensor.data == b"abc"
+        for packet in (from_bytes, from_memoryview, from_tensor):
+            assert bytes(packet.data.numpy()) == b"abc"
 
     @pytest.mark.parametrize(
         "make_packet, error, match",

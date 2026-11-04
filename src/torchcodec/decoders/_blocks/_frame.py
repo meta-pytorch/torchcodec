@@ -133,8 +133,8 @@ class Packet:
         return dict(zip(names, outputs))
 
     @property
-    def data(self) -> bytes:
-        return _tensor_to_bytes(_blocks_packet_get_data(self._handle))
+    def data(self) -> torch.Tensor:
+        return _blocks_packet_get_data(self._handle)
 
     @property
     def pts(self) -> int | None:
