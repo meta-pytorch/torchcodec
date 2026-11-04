@@ -36,7 +36,10 @@ struct CodecParameters {
   AVRational time_base = {};
   // libavformat's guess at the stream's frame rate.
   AVRational r_frame_rate = {};
-  // From FFmpeg 6.1, it's also in codecpar->coded_side_data.
+  // The single source of truth for the display matrix: read it from here, not
+  // from codecpar. It's filled from codecpar->coded_side_data from FFmpeg 6.1,
+  // and from the AVStream's side data before, when AVCodecParameters had no
+  // side data.
   std::optional<std::array<int32_t, 9>> display_matrix;
   // The format of the container the stream was demuxed from. Statically
   // allocated by FFmpeg.
