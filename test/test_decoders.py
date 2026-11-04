@@ -7101,6 +7101,32 @@ class TestLowLevel:
         ):
             pickle.loads(pickle.dumps(obj))
 
+    # ===== integer pts =====
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_raw_frame_pts_are_the_packets_pts(self, device):
+        demuxer, decoder, _ = self._make_stages(NASA_VIDEO.path, device)
+        time_base = demuxer.streams[0].codec_parameters.time_base
+        packets = list(demuxer)
+        frames = list(self._decode(decoder, iter(packets)))
+
+        assert [f.pts for f in frames] == sorted(p.pts for p in packets)
+        for frame in frames:
+            assert frame.pts_seconds == pytest.approx(float(frame.pts * time_base))
+
+    def test_raw_audio_samples_pts(self):
+        demuxer = Demuxer(NASA_AUDIO_MP3.path, streams="audio")
+        decoder = demuxer.streams[0].make_decoder()
+        time_base = demuxer.streams[0].codec_parameters.time_base
+        samples = [s for p in demuxer for s in decoder.decode(p)] + decoder.drain()
+
+        assert len(samples) > 0
+        pts = [s.pts for s in samples]
+        assert all(isinstance(p, int) for p in pts)
+        assert pts == sorted(pts)
+        for s in samples:
+            assert s.pts_seconds == pytest.approx(float(s.pts * time_base))
+
     # ===== missing pts =====
 
     @needs_ffmpeg_cli
@@ -7112,6 +7138,7 @@ class TestLowLevel:
         frames = list(self._decode(decoder, self._demux(demuxer)))
         assert len(frames) == 30
         for raw_frame in frames:
+            assert raw_frame.pts is None
             assert math.isnan(raw_frame.pts_seconds)
             assert math.isnan(converter.convert(raw_frame).pts_seconds)
 

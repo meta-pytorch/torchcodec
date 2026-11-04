@@ -220,6 +220,13 @@ class RawFrame:
         :ref:`sphx_glr_generated_examples_low_level_cuda_streams.py`.
     """
 
+    pts: int | None
+    """The :term:`pts` of this frame, in units of the stream's time base, like
+    the :attr:`Packet.pts` it comes from. ``None`` if the frame has no
+    timestamp (e.g. in raw H.264 streams).
+
+    Unlike :attr:`pts_seconds`, it is exact: use it to match a frame to the
+    timestamp of a packet."""
     pts_seconds: float
     """The :term:`pts` of this frame, in seconds. ``NaN`` if the frame has no
     timestamp (e.g. in raw H.264 streams)."""
@@ -237,12 +244,14 @@ class RawFrame:
     def __init__(
         self,
         handle: torch.Tensor,
+        pts: int | None,
         pts_seconds: float,
         duration_seconds: float,
         storage: torch.Tensor | None = None,
     ):
         self._handle = handle
         self.storage_cuda = storage
+        self.pts = pts
         self.pts_seconds = pts_seconds
         self.duration_seconds = duration_seconds
         self._metadata: _Metadata | None = None
@@ -415,6 +424,12 @@ class RawAudioSamples:
     :class:`AudioConverter` does."""
     sample_rate: int
     """The source's sample rate, in Hz."""
+    pts: int | None
+    """The :term:`pts` of the first sample, in units of the stream's time base,
+    like the :attr:`Packet.pts` it comes from. ``None`` if it is unknown.
+
+    Unlike :attr:`pts_seconds`, it is exact: use it to match samples to the
+    timestamp of a packet."""
     pts_seconds: float
     """The :term:`pts` of the first sample, in seconds. ``NaN`` if it is
     unknown."""
