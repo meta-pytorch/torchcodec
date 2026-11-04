@@ -101,6 +101,13 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   // their names.
   m.def(
       "_blocks_create_packet_decoder(str media_type, str codec, int[] time_base, *, Tensor? extradata=None, int? codec_tag=None, int? profile=None, int? level=None, int? bit_rate=None, int? bits_per_coded_sample=None, int? bits_per_raw_sample=None, str[]? coded_side_data_names=None, Tensor[]? coded_side_data_values=None, int? width=None, int? height=None, str? pixel_format=None, int[]? sample_aspect_ratio=None, int[]? framerate=None, int[]? r_frame_rate=None, str? field_order=None, str? color_range=None, str? color_primaries=None, str? color_transfer_characteristic=None, str? color_space=None, str? chroma_location=None, int? video_delay=None, str? sample_format=None, int? sample_rate=None, str? channel_layout=None, int? block_align=None, int? frame_size=None, int? initial_padding=None, int? trailing_padding=None, int? seek_preroll=None, str? container_format=None, int? num_threads=None, str device=\"cpu\") -> Tensor");
+  // Takes the arguments of Packet.from_tensor(), under their names.
+  m.def(
+      "_blocks_create_packet(Tensor data, *, int? pts=None, int? dts=None, int duration=0, int flags=0, str[]? side_data_names=None, Tensor[]? side_data_values=None) -> Tensor");
+  // The return names are the Packet properties, which Python matches them
+  // against.
+  m.def(
+      "_blocks_packet_get_fields(Tensor packet) -> (Tensor data, int? pts, int? dts, int duration, int flags, str[] side_data_names, Tensor[] side_data_values)");
   m.def(
       "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
@@ -1338,6 +1345,118 @@ torch::stable::Tensor _blocks_create_packet_decoder(
   return wrap_pointer_to_tensor<PacketDecoder>(std::move(decoder));
 }
 
+torch::stable::Tensor _blocks_create_packet(
+    const torch::stable::Tensor& data,
+    std::optional<int64_t> pts,
+    std::optional<int64_t> dts,
+    int64_t duration,
+    int64_t flags,
+    std::optional<std::vector<std::string>> side_data_names,
+    std::optional<std::vector<torch::stable::Tensor>> side_data_values) {
+  check_bytes("data", data);
+  int size = validate_int64_to_int(data.numel(), "data size");
+  int packet_flags = validate_int64_to_int(flags, "flags");
+  // It tells FFmpeg that the data can be trusted to hold pointers, which some
+  // decoders then follow.
+  STD_TORCH_CHECK(
+      (packet_flags & AV_PKT_FLAG_TRUSTED) == 0,
+      "flags must not contain AV_PKT_FLAG_TRUSTED.");
+
+  UniqueAVPacket packet(av_packet_alloc());
+  STD_TORCH_CHECK(packet != nullptr, "Failed to allocate the packet.");
+  // av_new_packet() also allocates the zeroed padding past the end of the
+  // data, which decoders read into.
+  int status = av_new_packet(packet.get(), size);
+  STD_TORCH_CHECK(
+      status == AVSUCCESS,
+      "Failed to allocate the packet data: ",
+      get_ffmpeg_error_string_from_error_code(status));
+  if (size > 0) {
+    std::memcpy(packet->data, data.const_data_ptr<uint8_t>(), size);
+  }
+  packet->pts = pts.value_or(AV_NOPTS_VALUE);
+  packet->dts = dts.value_or(AV_NOPTS_VALUE);
+  packet->duration = duration;
+  packet->flags = packet_flags;
+
+  if (side_data_names.has_value()) {
+    STD_TORCH_CHECK(
+        side_data_values.has_value() &&
+            side_data_values->size() == side_data_names->size(),
+        "side_data_names and side_data_values must have the same length.");
+    for (size_t i = 0; i < side_data_names->size(); ++i) {
+      const torch::stable::Tensor& value = (*side_data_values)[i];
+      check_bytes("side_data values", value);
+      int value_size =
+          validate_int64_to_int(value.numel(), "side_data value size");
+      uint8_t* destination = av_packet_new_side_data(
+          packet.get(),
+          get_packet_side_data_type_from_name((*side_data_names)[i]),
+          value_size);
+      STD_TORCH_CHECK(
+          destination != nullptr, "Failed to allocate the side data.");
+      if (value_size > 0) {
+        std::memcpy(destination, value.const_data_ptr<uint8_t>(), value_size);
+      }
+    }
+  }
+  return wrap_pointer_to_tensor(std::move(packet));
+}
+
+using OpsPacketFieldsOutput = std::tuple<
+    torch::stable::Tensor, // data
+    std::optional<int64_t>, // pts
+    std::optional<int64_t>, // dts
+    int64_t, // duration
+    int64_t, // flags
+    std::vector<std::string>, // side_data_names
+    std::vector<torch::stable::Tensor>>; // side_data_values
+
+OpsPacketFieldsOutput _blocks_packet_get_fields(torch::stable::Tensor& packet) {
+  const AVPacket* av_packet = unwrap_tensor_to_pointer<AVPacket>(packet);
+
+  OpsPacketFieldsOutput output;
+  auto& [data, pts, dts, duration, flags, side_data_names, side_data_values] =
+      output;
+  if (av_packet->size == 0) {
+    data = torch::stable::empty({int64_t(0)}, kStableUInt8);
+  } else {
+    // A view on the packet's data. As for the frame planes, the deleter
+    // captures a copy of the packet handle, which keeps the packet alive as
+    // long as the view is (see test_packet_data_outlives_packet).
+    torch::stable::Tensor handle_copy = packet;
+    int64_t sizes[] = {av_packet->size};
+    int64_t strides[] = {1};
+    data = torch::stable::from_blob(
+        av_packet->data,
+        {sizes, 1},
+        {strides, 1},
+        StableDevice(kStableCPU),
+        kStableUInt8,
+        [handle_copy](void*) {});
+  }
+  if (av_packet->pts != AV_NOPTS_VALUE) {
+    pts = av_packet->pts;
+  }
+  if (av_packet->dts != AV_NOPTS_VALUE) {
+    dts = av_packet->dts;
+  }
+  duration = av_packet->duration;
+  flags = av_packet->flags;
+  for (int i = 0; i < av_packet->side_data_elems; ++i) {
+    const AVPacketSideData& side_data = av_packet->side_data[i];
+    const char* name = av_packet_side_data_name(side_data.type);
+    // A type this FFmpeg can't name is a type it doesn't know what to do with
+    // either, so there's nothing a decoder would read from it.
+    if (name != nullptr) {
+      side_data_names.emplace_back(name);
+      side_data_values.push_back(
+          bytes_to_tensor(side_data.data, side_data.size));
+    }
+  }
+  return output;
+}
+
 int64_t _blocks_packet_decoder_send_packet(
     torch::stable::Tensor& decoder,
     torch::stable::Tensor& packet) {
@@ -2163,6 +2282,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "_blocks_demuxer_get_codec_parameters",
       TORCH_BOX(&_blocks_demuxer_get_codec_parameters));
+  m.impl("_blocks_create_packet", TORCH_BOX(&_blocks_create_packet));
+  m.impl("_blocks_packet_get_fields", TORCH_BOX(&_blocks_packet_get_fields));
   m.impl(
       "_blocks_packet_decoder_send_packet",
       TORCH_BOX(&_blocks_packet_decoder_send_packet));

@@ -4545,7 +4545,7 @@ class TestLowLevel:
             ({"field_order": "not_a_field_order"}, "Unknown field_order"),
             ({"width": 2**40}, "width=.* is out of range"),
             ({"codec_tag": -1}, "codec_tag=-1 is out of range"),
-            ({"coded_side_data": {"not_a_type": b"x"}}, "Unknown coded side data"),
+            ({"coded_side_data": {"not_a_type": b"x"}}, "Unknown side data type"),
             ({"coded_side_data": {"Display Matrix": bytes(10)}}, "must be 36 bytes"),
         ),
     )
@@ -4555,6 +4555,134 @@ class TestLowLevel:
         )
         with pytest.raises(RuntimeError, match=match):
             VideoPacketDecoder(params)
+
+    # ===== packets built from bytes =====
+
+    @pytest.mark.parametrize(
+        "asset, media_type", ((NASA_VIDEO, "video"), (NASA_AUDIO_MP3, "audio"))
+    )
+    @pytest.mark.parametrize("constructor", ("from_bytes", "from_tensor"))
+    def test_packets_rebuilt_from_their_data_decode_the_same(
+        self, asset, media_type, constructor
+    ):
+        def rebuild(packet):
+            data = packet.data
+            if constructor == "from_bytes":
+                data = bytes(data.numpy())
+            return getattr(Packet, constructor)(
+                data,
+                pts=packet.pts,
+                dts=packet.dts,
+                duration=packet.duration,
+                flags=packet.flags,
+                side_data=packet.side_data,
+                stream_index=packet.stream_index,
+            )
+
+        def decode(transform):
+            demuxer = Demuxer(asset.path, streams=media_type)
+            decoder = demuxer.streams[0].make_decoder()
+            frames = [f for p in demuxer for f in decoder.decode(transform(p))]
+            return frames + decoder.drain()
+
+        if media_type == "audio":
+            # The MP3 decoder needs this side data to drop the priming samples.
+            first_packet = next(Demuxer(asset.path, streams="audio"))
+            assert "Skip Samples" in first_packet.side_data
+
+        expected = decode(lambda packet: packet)
+        frames = decode(rebuild)
+        assert len(frames) == len(expected) > 0
+        for frame, expected_frame in zip(frames, expected):
+            if media_type == "video":
+                for plane, expected_plane in zip(frame.planes, expected_frame.planes):
+                    torch.testing.assert_close(plane, expected_plane, rtol=0, atol=0)
+            else:
+                torch.testing.assert_close(
+                    frame.data, expected_frame.data, rtol=0, atol=0
+                )
+            assert frame.pts_seconds == expected_frame.pts_seconds
+            assert frame.duration_seconds == expected_frame.duration_seconds
+
+    def test_packet_from_bytes_properties(self):
+        packet = Packet.from_bytes(
+            b"abc",
+            pts=10,
+            dts=5,
+            duration=3,
+            flags=1,
+            side_data={"Skip Samples": bytes(10)},
+            stream_index=2,
+        )
+        assert packet.data.dtype == torch.uint8
+        assert bytes(packet.data.numpy()) == b"abc"
+        assert packet.pts == 10
+        assert packet.dts == 5
+        assert packet.duration == 3
+        assert packet.flags == 1
+        assert packet.side_data == {"Skip Samples": bytes(10)}
+        assert packet.stream_index == 2
+
+        packet = Packet.from_bytes(b"")
+        assert packet.data.numel() == 0
+        assert packet.pts is None
+        assert packet.dts is None
+        assert packet.duration == 0
+        assert packet.flags == 0
+        assert packet.side_data == {}
+        assert packet.stream_index == 0
+
+    def test_packet_data_is_copied(self):
+        data = bytearray(b"abc")
+        from_bytes = Packet.from_bytes(data)
+        from_memoryview = Packet.from_bytes(memoryview(data))
+        tensor = torch.frombuffer(data, dtype=torch.uint8)
+        from_tensor = Packet.from_tensor(tensor)
+        data[0] = ord("x")
+        for packet in (from_bytes, from_memoryview, from_tensor):
+            assert bytes(packet.data.numpy()) == b"abc"
+
+    def test_packet_data_outlives_packet(self):
+        # grep for this test name to see associated comment in the code.
+        packet = next(Demuxer(NASA_VIDEO.path))
+        data = packet.data
+        saved = data.clone()
+
+        del packet
+        gc.collect()
+
+        torch.testing.assert_close(data, saved, rtol=0, atol=0)
+
+    @pytest.mark.parametrize(
+        "make_packet, error, match",
+        (
+            (lambda: Packet.from_bytes("abc"), TypeError, "must be bytes"),
+            (lambda: Packet.from_tensor(b"abc"), TypeError, "must be a tensor"),
+            (
+                lambda: Packet.from_tensor(torch.zeros(3)),
+                RuntimeError,
+                "must be a contiguous 1D uint8 CPU tensor",
+            ),
+            (
+                lambda: Packet.from_tensor(torch.zeros(6, dtype=torch.uint8)[::2]),
+                RuntimeError,
+                "must be a contiguous 1D uint8 CPU tensor",
+            ),
+            (
+                lambda: Packet.from_bytes(b"abc", flags=8),
+                RuntimeError,
+                "AV_PKT_FLAG_TRUSTED",
+            ),
+            (
+                lambda: Packet.from_bytes(b"abc", side_data={"not_a_type": b"x"}),
+                RuntimeError,
+                "Unknown side data type",
+            ),
+        ),
+    )
+    def test_packet_from_bytes_errors(self, make_packet, error, match):
+        with pytest.raises(error, match=match):
+            make_packet()
 
     def test_adding_a_stream_after_demuxing_raises(self):
         # Demuxer follows its streams from construction, so this is only
