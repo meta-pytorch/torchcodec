@@ -28,6 +28,7 @@ from torchcodec._core._metadata import (
 )
 from torchcodec._core.ops import (
     _blocks_demuxer_add_stream,
+    _blocks_demuxer_codec_parameters,
     _blocks_demuxer_container_json_metadata,
     _blocks_demuxer_get_audio_video_stream_indices,
     _blocks_demuxer_next_packet,
@@ -38,6 +39,7 @@ from torchcodec._core.ops import (
 
 from .._decoder_utils import convert_device_to_str
 
+from ._codec_parameters import AudioCodecParameters, VideoCodecParameters
 from ._frame import Packet
 from ._helpers import _process_local
 from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
@@ -227,6 +229,12 @@ class _Stream:
             self.index,
         )
 
+    def _read_codec_parameters(self, cls):
+        return cls._from_op_outputs(
+            [r.name for r in _blocks_demuxer_codec_parameters._schema.returns],
+            _blocks_demuxer_codec_parameters(self._demuxer._handle, self.index),
+        )
+
     def __repr__(self) -> str:
         return f"{type(self).__name__}(index={self.index})"
 
@@ -258,6 +266,12 @@ class VideoStream(_Stream):
         suffixes mark.
         """
         return cast(VideoStreamHeaderMetadata, self._read_metadata())
+
+    # TODO_DEMUXER_FREE: add docs. They should point to `metadata` for reading
+    # the stream's properties.
+    @cached_property
+    def codec_parameters(self) -> VideoCodecParameters:
+        return self._read_codec_parameters(VideoCodecParameters)
 
     def scan(self) -> FrameIndex:
         """Demux this stream from end to end, without decoding it (a
@@ -342,6 +356,12 @@ class AudioStream(_Stream):
         From the header only.
         """
         return cast(AudioStreamHeaderMetadata, self._read_metadata())
+
+    # TODO_DEMUXER_FREE: add docs. They should point to `metadata` for reading
+    # the stream's properties.
+    @cached_property
+    def codec_parameters(self) -> AudioCodecParameters:
+        return self._read_codec_parameters(AudioCodecParameters)
 
     def make_decoder(self) -> AudioPacketDecoder:
         """Build the :class:`AudioPacketDecoder` for this stream.

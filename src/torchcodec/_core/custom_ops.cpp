@@ -22,6 +22,7 @@ extern "C" {
 
 #include "AVIOContextHolder.h"
 #include "AudioConverter.h"
+#include "CodecParameters.h"
 #include "ColorConverter.h"
 #include "Demuxer.h"
 #include "Encoder.h"
@@ -92,6 +93,10 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_demuxer_seek(Tensor(a!) demuxer, float seconds, int? stream_index=None) -> ()");
   m.def(
       "_blocks_demuxer_scan(Tensor(a!) demuxer, int? stream_index=None) -> (Tensor, Tensor, Tensor, int, int)");
+  // The return names are the fields of VideoCodecParameters and
+  // AudioCodecParameters, which Python matches them against.
+  m.def(
+      "_blocks_demuxer_codec_parameters(Tensor demuxer, int stream_index) -> (str codec, int[] time_base, Tensor? extradata, int? codec_tag, int? profile, int? level, int? bit_rate, int? bits_per_coded_sample, int? bits_per_raw_sample, str[] coded_side_data_names, Tensor[] coded_side_data_values, int? width, int? height, str? pixel_format, int[]? sample_aspect_ratio, int[]? framerate, int[]? r_frame_rate, str? field_order, str? color_range, str? color_primaries, str? color_transfer_characteristic, str? color_space, str? chroma_location, int? video_delay, float? rotation, str? sample_format, int? sample_rate, str? channel_layout, int? block_align, int? frame_size, int? initial_padding, int? trailing_padding, int? seek_preroll)");
   m.def(
       "_blocks_create_packet_decoder(Tensor demuxer, *, int? stream_index=None, int? num_threads=None, str device=\"cpu\") -> Tensor");
   m.def(
@@ -941,6 +946,99 @@ OpsScanOutput _blocks_demuxer_scan(
       static_cast<int64_t>(index.time_base.den));
 }
 
+namespace {
+// [num, den], the schema's spelling of an AVRational.
+std::vector<int64_t> to_int_list(const AVRational& value) {
+  return {value.num, value.den};
+}
+
+std::optional<std::vector<int64_t>> to_int_list(
+    const std::optional<AVRational>& value) {
+  if (!value.has_value()) {
+    return std::nullopt;
+  }
+  return to_int_list(*value);
+}
+} // namespace
+
+using OpsCodecParametersOutput = std::tuple<
+    std::string, // codec
+    std::vector<int64_t>, // time_base
+    std::optional<torch::stable::Tensor>, // extradata
+    std::optional<int64_t>, // codec_tag
+    std::optional<int64_t>, // profile
+    std::optional<int64_t>, // level
+    std::optional<int64_t>, // bit_rate
+    std::optional<int64_t>, // bits_per_coded_sample
+    std::optional<int64_t>, // bits_per_raw_sample
+    std::vector<std::string>, // coded_side_data_names
+    std::vector<torch::stable::Tensor>, // coded_side_data_values
+    std::optional<int64_t>, // width
+    std::optional<int64_t>, // height
+    std::optional<std::string>, // pixel_format
+    std::optional<std::vector<int64_t>>, // sample_aspect_ratio
+    std::optional<std::vector<int64_t>>, // framerate
+    std::optional<std::vector<int64_t>>, // r_frame_rate
+    std::optional<std::string>, // field_order
+    std::optional<std::string>, // color_range
+    std::optional<std::string>, // color_primaries
+    std::optional<std::string>, // color_transfer_characteristic
+    std::optional<std::string>, // color_space
+    std::optional<std::string>, // chroma_location
+    std::optional<int64_t>, // video_delay
+    std::optional<double>, // rotation
+    std::optional<std::string>, // sample_format
+    std::optional<int64_t>, // sample_rate
+    std::optional<std::string>, // channel_layout
+    std::optional<int64_t>, // block_align
+    std::optional<int64_t>, // frame_size
+    std::optional<int64_t>, // initial_padding
+    std::optional<int64_t>, // trailing_padding
+    std::optional<int64_t>>; // seek_preroll
+
+OpsCodecParametersOutput _blocks_demuxer_codec_parameters(
+    torch::stable::Tensor& demuxer,
+    int64_t stream_index) {
+  Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
+  CodecParameters params = get_codec_parameters(
+      *demuxer_ptr->format_context()->streams[demuxer_ptr->resolve_stream_index(
+          static_cast<int>(stream_index))]);
+  return {
+      params.codec,
+      to_int_list(params.time_base),
+      params.extradata,
+      params.codec_tag,
+      params.profile,
+      params.level,
+      params.bit_rate,
+      params.bits_per_coded_sample,
+      params.bits_per_raw_sample,
+      params.coded_side_data_names,
+      params.coded_side_data_values,
+      params.width,
+      params.height,
+      params.pixel_format,
+      to_int_list(params.sample_aspect_ratio),
+      to_int_list(params.framerate),
+      to_int_list(params.r_frame_rate),
+      params.field_order,
+      params.color_range,
+      params.color_primaries,
+      params.color_transfer_characteristic,
+      params.color_space,
+      params.chroma_location,
+      params.video_delay,
+      params.rotation,
+      params.sample_format,
+      params.sample_rate,
+      params.channel_layout,
+      params.block_align,
+      params.frame_size,
+      params.initial_padding,
+      params.trailing_padding,
+      params.seek_preroll};
+}
+
 torch::stable::Tensor _blocks_create_packet_decoder(
     torch::stable::Tensor& demuxer,
     std::optional<int64_t> stream_index,
@@ -1779,6 +1877,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       "_blocks_demuxer_next_packet", TORCH_BOX(&_blocks_demuxer_next_packet));
   m.impl("_blocks_demuxer_seek", TORCH_BOX(&_blocks_demuxer_seek));
   m.impl("_blocks_demuxer_scan", TORCH_BOX(&_blocks_demuxer_scan));
+  m.impl(
+      "_blocks_demuxer_codec_parameters",
+      TORCH_BOX(&_blocks_demuxer_codec_parameters));
   m.impl(
       "_blocks_create_packet_decoder",
       TORCH_BOX(&_blocks_create_packet_decoder));

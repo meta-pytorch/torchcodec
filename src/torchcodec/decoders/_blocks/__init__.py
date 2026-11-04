@@ -13,6 +13,7 @@ from torchcodec._core._metadata import (
 )
 
 from ._audio_converter import AudioConverter
+from ._codec_parameters import AudioCodecParameters, VideoCodecParameters
 from ._color_converter import ColorConverter
 from ._demuxer import (
     AudioStream,
@@ -29,6 +30,8 @@ __all__ = [
     "get_container_metadata",
     "VideoStream",
     "AudioStream",
+    "VideoCodecParameters",
+    "AudioCodecParameters",
     "VideoPacketDecoder",
     "AudioPacketDecoder",
     "ColorConverter",
