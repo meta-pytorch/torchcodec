@@ -6,6 +6,7 @@
 
 #include "FFMPEGCommon.h"
 
+#include <cstdio>
 #include <cstring>
 
 #include "StableABICompat.h"
@@ -966,6 +967,70 @@ const char* get_field_order_name(AVFieldOrder field_order) {
     default:
       return nullptr;
   }
+}
+
+void set_framerate(
+    [[maybe_unused]] AVCodecParameters& codecpar,
+    [[maybe_unused]] const AVRational& framerate) {
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(60, 11, 100)
+  codecpar.framerate = framerate;
+#else
+  STD_TORCH_CHECK(false, "framerate requires FFmpeg 6.1 or above.");
+#endif
+}
+
+void set_channel_layout(AVCodecParameters& codecpar, const std::string& name) {
+#if FFMPEG_HAS_CH_LAYOUT
+  STD_TORCH_CHECK(
+      av_channel_layout_from_string(&codecpar.ch_layout, name.c_str()) == 0,
+      "Unknown channel_layout: ",
+      name);
+#else
+  uint64_t layout = av_get_channel_layout(name.c_str());
+  if (layout != 0) {
+    codecpar.channel_layout = layout;
+    codecpar.channels = av_get_channel_layout_nb_channels(layout);
+    return;
+  }
+  // What av_get_channel_layout_string() describes a layout-less channel count
+  // as, and av_get_channel_layout() doesn't parse back.
+  int num_channels = 0;
+  char trailing = '\0';
+  STD_TORCH_CHECK(
+      std::sscanf(name.c_str(), "%d channels%c", &num_channels, &trailing) ==
+              1 &&
+          num_channels > 0,
+      "Unknown channel_layout: ",
+      name);
+  codecpar.channel_layout = 0;
+  codecpar.channels = num_channels;
+#endif
+}
+
+AVFieldOrder get_field_order_from_name(const std::string& name) {
+  for (AVFieldOrder field_order :
+       {AV_FIELD_PROGRESSIVE,
+        AV_FIELD_TT,
+        AV_FIELD_BB,
+        AV_FIELD_TB,
+        AV_FIELD_BT}) {
+    if (name == get_field_order_name(field_order)) {
+      return field_order;
+    }
+  }
+  STD_TORCH_CHECK(false, "Unknown field_order: ", name);
+}
+
+AVPacketSideDataType get_packet_side_data_type_from_name(
+    const std::string& name) {
+  for (int type = 0; type < AV_PKT_DATA_NB; ++type) {
+    const char* candidate =
+        av_packet_side_data_name(static_cast<AVPacketSideDataType>(type));
+    if (candidate != nullptr && name == candidate) {
+      return static_cast<AVPacketSideDataType>(type);
+    }
+  }
+  STD_TORCH_CHECK(false, "Unknown coded side data type: ", name);
 }
 
 void set_display_matrix_on_frame(

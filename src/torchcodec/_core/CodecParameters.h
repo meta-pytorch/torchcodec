@@ -18,6 +18,9 @@ namespace facebook::torchcodec {
 // properties of the stream and of its container that aren't in
 // AVCodecParameters.
 struct CodecParameters {
+  // FFmpeg's default values, for a stream that wasn't demuxed by us.
+  CodecParameters();
+
   explicit CodecParameters(
       const AVStream& av_stream,
       const AVInputFormat* container_format);
@@ -31,6 +34,13 @@ struct CodecParameters {
   // on the AVStream: it's the only one of the AVStream's side data that we
   // keep.
   std::vector<AVPacketSideData> get_stream_side_data() const;
+
+  // The inverse of get_stream_side_data(): adds one entry of the stream's side
+  // data, copying `data`.
+  void add_stream_side_data(
+      AVPacketSideDataType type,
+      const uint8_t* data,
+      size_t size);
 
   UniqueAVCodecParameters codecpar;
   AVRational time_base = {};

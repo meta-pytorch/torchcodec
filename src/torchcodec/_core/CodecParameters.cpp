@@ -7,8 +7,13 @@
 #include "CodecParameters.h"
 
 #include <algorithm>
+#include <cstring>
 
 namespace facebook::torchcodec {
+
+CodecParameters::CodecParameters() : codecpar(avcodec_parameters_alloc()) {
+  STD_TORCH_CHECK(codecpar != nullptr, "Failed to allocate AVCodecParameters.");
+}
 
 CodecParameters::CodecParameters(
     const AVStream& av_stream,
@@ -58,6 +63,36 @@ std::vector<AVPacketSideData> CodecParameters::get_stream_side_data() const {
   }
 #endif
   return entries;
+}
+
+void CodecParameters::add_stream_side_data(
+    AVPacketSideDataType type,
+    const uint8_t* data,
+    size_t size) {
+  if (type == AV_PKT_DATA_DISPLAYMATRIX) {
+    STD_TORCH_CHECK(
+        size == sizeof(std::array<int32_t, 9>),
+        "The display matrix must be 36 bytes, got ",
+        size,
+        ".");
+    display_matrix.emplace();
+    std::memcpy(display_matrix->data(), data, size);
+  }
+#if FFMPEG_HAS_CODED_SIDE_DATA
+  AVPacketSideData* entry = av_packet_side_data_new(
+      &codecpar->coded_side_data, &codecpar->nb_coded_side_data, type, size, 0);
+  STD_TORCH_CHECK(entry != nullptr, "Failed to allocate coded side data.");
+  std::memcpy(entry->data, data, size);
+#else
+  // AVCodecParameters has no side data before FFmpeg 6.1, and the display
+  // matrix is the only one we keep, in display_matrix.
+  STD_TORCH_CHECK(
+      type == AV_PKT_DATA_DISPLAYMATRIX,
+      "Coded side data other than the display matrix requires FFmpeg 6.1 or "
+      "above, got ",
+      av_packet_side_data_name(type),
+      ".");
+#endif
 }
 
 } // namespace facebook::torchcodec

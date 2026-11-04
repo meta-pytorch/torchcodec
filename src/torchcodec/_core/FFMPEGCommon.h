@@ -465,6 +465,15 @@ std::optional<std::string> get_channel_layout_name(
 // nullptr when the field order is unknown. FFmpeg has no function for these.
 const char* get_field_order_name(AVFieldOrder field_order);
 
+// The inverses of the functions above, for building AVCodecParameters. They
+// raise on a name FFmpeg doesn't know, and on a value this FFmpeg version can't
+// hold.
+void set_framerate(AVCodecParameters& codecpar, const AVRational& framerate);
+void set_channel_layout(AVCodecParameters& codecpar, const std::string& name);
+AVFieldOrder get_field_order_from_name(const std::string& name);
+AVPacketSideDataType get_packet_side_data_type_from_name(
+    const std::string& name);
+
 // Makes `av_frame` carry `display_matrix` (or no display matrix at all, for
 // nullptr), replacing whatever it had.
 void set_display_matrix_on_frame(

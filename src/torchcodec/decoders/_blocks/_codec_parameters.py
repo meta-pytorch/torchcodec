@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import dataclass, KW_ONLY
+from dataclasses import dataclass, field, KW_ONLY
 from fractions import Fraction
 
 
@@ -38,6 +38,23 @@ class _CodecParameters:
     bits_per_coded_sample: int | None = None
     bits_per_raw_sample: int | None = None
     coded_side_data: dict[str, bytes] | None = None
+    # FFmpeg's name of the format of the container the stream was demuxed from,
+    # e.g. "mpeg", or None when the parameters don't come from a Demuxer.
+    # Knowing the container lets the decoder keep behavior that is more accurate
+    # than what it can do without it: resyncing after a seek in an MPEG program
+    # stream, and picking NVDEC's bitstream filter. Without the container, the
+    # first packets after a seek in an MPEG program stream raise instead of
+    # being skipped (see
+    # test_mpeg_program_stream_resync_needs_the_container_format), which we
+    # expect to be rare. For NVDEC, we expect no difference in practice once
+    # its filter is picked from the extradata when the container is unknown,
+    # but we keep the container to be safe. It survives pickling, but it's not
+    # part of the API.
+    # TODO_DEMUXER_FREE: pick NVDEC's filter from the extradata without a
+    # container. Until then, NVDEC raises without one.
+    _container_format_PRIVATE_DO_NOT_USE: str | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self):
         if not isinstance(self.codec, str) or not self.codec:
@@ -48,9 +65,9 @@ class _CodecParameters:
 
     def __repr__(self) -> str:
         fields = ", ".join(
-            f"{field.name}={_short_repr(getattr(self, field.name))}"
-            for field in dataclasses.fields(self)
-            if getattr(self, field.name) is not None
+            f"{f.name}={_short_repr(getattr(self, f.name))}"
+            for f in dataclasses.fields(self)
+            if f.repr and getattr(self, f.name) is not None
         )
         return f"{type(self).__name__}({fields})"
 
