@@ -4559,13 +4559,18 @@ class TestLowLevel:
     # ===== packets built from bytes =====
 
     @pytest.mark.parametrize(
-        "asset, media_type", ((NASA_VIDEO, "video"), (NASA_AUDIO_MP3, "audio"))
+        "asset, media_type, device",
+        (
+            (NASA_VIDEO, "video", "cpu"),
+            pytest.param(NASA_VIDEO, "video", "cuda", marks=pytest.mark.needs_cuda),
+            (NASA_AUDIO_MP3, "audio", "cpu"),
+        ),
     )
     @pytest.mark.parametrize(
         "constructor", ("from_bytes", "from_tensor", "pickle", "forking_pickler")
     )
     def test_packets_rebuilt_from_their_data_decode_the_same(
-        self, asset, media_type, constructor
+        self, asset, media_type, device, constructor
     ):
         def rebuild(packet):
             if constructor == "pickle":
@@ -4589,7 +4594,12 @@ class TestLowLevel:
 
         def decode(transform):
             demuxer = Demuxer(asset.path, streams=media_type)
-            decoder = demuxer.streams[0].make_decoder()
+            stream = demuxer.streams[0]
+            decoder = (
+                stream.make_decoder(device)
+                if media_type == "video"
+                else stream.make_decoder()
+            )
             frames = [f for p in demuxer for f in decoder.decode(transform(p))]
             return frames + decoder.drain()
 
@@ -4704,6 +4714,123 @@ class TestLowLevel:
     def test_packet_from_bytes_errors(self, make_packet, error, match):
         with pytest.raises(error, match=match):
             make_packet()
+
+    def test_demuxed_packets_properties(self):
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        video, audio = demuxer.streams
+        frame_index = video.scan()
+        packets = list(demuxer)
+        video_packets = sorted(
+            (p for p in packets if p.stream_index == video.index), key=lambda p: p.pts
+        )
+        audio_packets = [p for p in packets if p.stream_index == audio.index]
+
+        assert [p.pts for p in video_packets] == frame_index._pts.tolist()
+        AV_PKT_FLAG_KEY = 1
+        assert [bool(p.flags & AV_PKT_FLAG_KEY) for p in video_packets] == (
+            frame_index.is_key_frame.tolist()
+        )
+        assert all(p.duration > 0 for p in video_packets)
+        assert all(p.data.dtype == torch.uint8 and p.data.numel() > 0 for p in packets)
+        assert video_packets[0].side_data == {}
+        assert list(audio_packets[0].side_data) == ["Skip Samples"]
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_packets_from_bytes_only_need_pts(self, device):
+        # The NASA video has B-frames, so its packets' dts differ from their
+        # pts, but the decoder doesn't need them.
+        demuxer = Demuxer(NASA_VIDEO.path)
+        decoder = demuxer.streams[0].make_decoder(device)
+        packets = list(demuxer)
+        assert any(p.pts != p.dts for p in packets)
+
+        def decode(rebuild):
+            decoder.reset()
+            frames = [f for p in packets for f in decoder.decode(rebuild(p))]
+            return frames + decoder.drain()
+
+        expected = decode(lambda p: p)
+        frames = decode(lambda p: Packet.from_tensor(p.data, pts=p.pts))
+        assert len(frames) == len(expected)
+        for frame, expected_frame in zip(frames, expected):
+            assert frame.pts_seconds == expected_frame.pts_seconds
+            torch.testing.assert_close(
+                frame.planes[0], expected_frame.planes[0], rtol=0, atol=0
+            )
+
+        frames = decode(lambda p: Packet.from_tensor(p.data))
+        assert len(frames) == len(expected)
+        assert all(math.isnan(f.pts_seconds) for f in frames)
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_packets_from_bytes_keep_the_discard_flag(self, device):
+        # This video's first packets are before the start of its edit list: the
+        # demuxer flags them AV_PKT_FLAG_DISCARD, and the decoder decodes them
+        # without returning their frames. Packets from another MP4 parser need
+        # the flag to decode to the same frames as the Demuxer's.
+        AV_PKT_FLAG_DISCARD = 4
+        path = DISCARD_FIRST_KEYFRAME_VIDEO.path
+        demuxer = Demuxer(path)
+        stream = demuxer.streams[0]
+        packets = list(demuxer)
+        assert any(p.flags & AV_PKT_FLAG_DISCARD for p in packets)
+
+        def decode(flags_mask):
+            decoder = stream.make_decoder(device)
+            rebuilt = [
+                Packet.from_tensor(
+                    p.data,
+                    pts=p.pts,
+                    dts=p.dts,
+                    duration=p.duration,
+                    flags=p.flags & flags_mask,
+                )
+                for p in packets
+            ]
+            frames = [f for p in rebuilt for f in decoder.decode(p)]
+            return [f.pts_seconds for f in frames + decoder.drain()]
+
+        expected = [f.pts_seconds for f in self._decoded_frames(path, device)]
+        assert decode(flags_mask=~0) == expected
+        assert len(decode(flags_mask=~AV_PKT_FLAG_DISCARD)) > len(expected)
+
+    def test_decode_targets_with_a_reused_decoder(self):
+        # Packets come from storage, as in
+        # https://github.com/meta-pytorch/torchcodec/pull/1585: from the key
+        # frame preceding each target up to the target.
+        AV_PKT_FLAG_KEY = 1
+        demuxer = Demuxer(NASA_VIDEO.path)
+        decoder = demuxer.streams[0].make_decoder()
+        rows = [
+            (bytes(p.data.numpy()), p.pts, bool(p.flags & AV_PKT_FLAG_KEY))
+            for p in demuxer
+        ]
+        # In presentation order, like the decoded frames.
+        all_pts = sorted(pts for _, pts, _ in rows)
+        expected = list(self._decoded_frames(NASA_VIDEO.path, "cpu"))
+        assert len(all_pts) == len(expected)
+
+        def decode_target(target_pts, target_pts_seconds):
+            decoder.reset()
+            start = max(
+                i
+                for i, (_, pts, is_key) in enumerate(rows)
+                if is_key and pts <= target_pts
+            )
+            for data, pts, _ in rows[start:]:
+                for raw_frame in decoder.decode(Packet.from_bytes(data, pts=pts)):
+                    if raw_frame.pts_seconds == target_pts_seconds:
+                        return raw_frame
+            for raw_frame in decoder.drain():
+                if raw_frame.pts_seconds == target_pts_seconds:
+                    return raw_frame
+
+        for target in (0, 50, 3, 200, 199):
+            expected_frame = expected[target]
+            raw_frame = decode_target(all_pts[target], expected_frame.pts_seconds)
+            torch.testing.assert_close(
+                raw_frame.planes[0], expected_frame.planes[0], atol=0, rtol=0
+            )
 
     def test_adding_a_stream_after_demuxing_raises(self):
         # Demuxer follows its streams from construction, so this is only
