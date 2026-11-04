@@ -125,6 +125,20 @@ JpegEncoder(image).to_file("output.jpg")  # also .to_tensor() and .to_file_like(
    conda install "ffmpeg" -c conda-forge
    ```
 
+   On Windows, the official [FFmpeg download page](https://ffmpeg.org/download.html)
+   recommends the [builds by BtbN](https://github.com/BtbN/FFmpeg-Builds/releases).
+   This is also the easiest option on Windows ARM64, where conda-forge does not
+   provide FFmpeg yet:
+
+   - Download a `*-shared` zip for your architecture: `win64` (x64) or
+     `winarm64` (ARM64), e.g. `ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip`.
+     The non-shared (static) builds will not work with TorchCodec.
+   - Extract it and add its `bin` folder to your `PATH`. TorchCodec locates the
+     FFmpeg DLLs next to the `ffmpeg.exe` found on your `PATH`.
+   - Both `gpl` and `lgpl` variants work. The `gpl` builds additionally include
+     GPL-licensed encoders such as libx264 and libx265, while the `lgpl` builds
+     are sufficient for decoding.
+
    > **Note:** FFmpeg is an *optional* dependency. It is needed for video
    > and audio decoding and encoding (`VideoDecoder`, `AudioDecoder`,
    > `VideoEncoder`, `AudioEncoder`, etc.). The image decoders and encoders
