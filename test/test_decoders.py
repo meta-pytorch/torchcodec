@@ -4214,7 +4214,7 @@ class TestLowLevel:
             sample_aspect_ratio=Fraction(1, 1),
             framerate=Fraction(30000, 1001) if has_framerate else None,
             r_frame_rate=Fraction(30000, 1001),
-            field_order="progressive",
+            field_order=params.field_order,
             color_range="tv",
             color_primaries="bt709",
             color_transfer_characteristic="bt709",
@@ -4222,6 +4222,8 @@ class TestLowLevel:
             chroma_location="left",
             video_delay=2,
         )
+        # FFmpeg 4 doesn't report it.
+        assert params.field_order in (None, "progressive")
         # The avcC box, which starts with its version, 1.
         assert len(params.extradata) == 48
         assert params.extradata[0] == 1
