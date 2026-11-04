@@ -4642,6 +4642,17 @@ class TestLowLevel:
         for packet in (from_bytes, from_memoryview, from_tensor):
             assert bytes(packet.data.numpy()) == b"abc"
 
+    def test_packet_data_outlives_packet(self):
+        # grep for this test name to see associated comment in the code.
+        packet = next(Demuxer(NASA_VIDEO.path))
+        data = packet.data
+        saved = data.clone()
+
+        del packet
+        gc.collect()
+
+        torch.testing.assert_close(data, saved, rtol=0, atol=0)
+
     @pytest.mark.parametrize(
         "make_packet, error, match",
         (

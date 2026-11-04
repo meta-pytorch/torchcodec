@@ -124,7 +124,6 @@ _blocks_create_packet_decoder = (
 )
 _blocks_create_packet = torch.ops.torchcodec_ns._blocks_create_packet.default
 _blocks_packet_get_fields = torch.ops.torchcodec_ns._blocks_packet_get_fields.default
-_blocks_packet_get_data = torch.ops.torchcodec_ns._blocks_packet_get_data.default
 _blocks_packet_decoder_send_packet = (
     torch.ops.torchcodec_ns._blocks_packet_decoder_send_packet.default
 )

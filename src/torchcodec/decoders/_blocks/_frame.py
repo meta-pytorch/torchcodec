@@ -15,7 +15,6 @@ from torchcodec._core.ops import (
     _blocks_create_packet,
     _blocks_frame_metadata,
     _blocks_frame_planes,
-    _blocks_packet_get_data,
     _blocks_packet_get_fields,
 )
 
@@ -74,6 +73,8 @@ class Packet:
     # 3. flags can't contain AV_PKT_FLAG_TRUSTED.
     # 4. side_data is keyed by FFmpeg's names for the side data types, as
     #    coded_side_data is in the codec parameters.
+    # 5. data is a view on the packet's data: writing to it modifies the
+    #    packet, so .clone() it first.
     # Same for from_tensor(), and the properties below.
     @classmethod
     def from_bytes(
@@ -134,7 +135,7 @@ class Packet:
 
     @property
     def data(self) -> torch.Tensor:
-        return _blocks_packet_get_data(self._handle)
+        return self._get_fields()["data"]
 
     @property
     def pts(self) -> int | None:

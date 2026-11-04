@@ -105,11 +105,9 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "_blocks_create_packet(Tensor data, *, int? pts=None, int? dts=None, int duration=0, int flags=0, str[]? side_data_names=None, Tensor[]? side_data_values=None) -> Tensor");
   // The return names are the Packet properties, which Python matches them
-  // against. The data is in _blocks_packet_get_data(), so that reading the
-  // timestamps doesn't copy it.
+  // against.
   m.def(
-      "_blocks_packet_get_fields(Tensor packet) -> (int? pts, int? dts, int duration, int flags, str[] side_data_names, Tensor[] side_data_values)");
-  m.def("_blocks_packet_get_data(Tensor packet) -> Tensor");
+      "_blocks_packet_get_fields(Tensor packet) -> (Tensor data, int? pts, int? dts, int duration, int flags, str[] side_data_names, Tensor[] side_data_values)");
   m.def(
       "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
@@ -1406,6 +1404,7 @@ torch::stable::Tensor _blocks_create_packet(
 }
 
 using OpsPacketFieldsOutput = std::tuple<
+    torch::stable::Tensor, // data
     std::optional<int64_t>, // pts
     std::optional<int64_t>, // dts
     int64_t, // duration
@@ -1417,7 +1416,25 @@ OpsPacketFieldsOutput _blocks_packet_get_fields(torch::stable::Tensor& packet) {
   const AVPacket* av_packet = unwrap_tensor_to_pointer<AVPacket>(packet);
 
   OpsPacketFieldsOutput output;
-  auto& [pts, dts, duration, flags, side_data_names, side_data_values] = output;
+  auto& [data, pts, dts, duration, flags, side_data_names, side_data_values] =
+      output;
+  if (av_packet->size == 0) {
+    data = torch::stable::empty({int64_t(0)}, kStableUInt8);
+  } else {
+    // A view on the packet's data. As for the frame planes, the deleter
+    // captures a copy of the packet handle, which keeps the packet alive as
+    // long as the view is (see test_packet_data_outlives_packet).
+    torch::stable::Tensor handle_copy = packet;
+    int64_t sizes[] = {av_packet->size};
+    int64_t strides[] = {1};
+    data = torch::stable::from_blob(
+        av_packet->data,
+        {sizes, 1},
+        {strides, 1},
+        StableDevice(kStableCPU),
+        kStableUInt8,
+        [handle_copy](void*) {});
+  }
   if (av_packet->pts != AV_NOPTS_VALUE) {
     pts = av_packet->pts;
   }
@@ -1438,11 +1455,6 @@ OpsPacketFieldsOutput _blocks_packet_get_fields(torch::stable::Tensor& packet) {
     }
   }
   return output;
-}
-
-torch::stable::Tensor _blocks_packet_get_data(torch::stable::Tensor& packet) {
-  const AVPacket* av_packet = unwrap_tensor_to_pointer<AVPacket>(packet);
-  return bytes_to_tensor(av_packet->data, av_packet->size);
 }
 
 int64_t _blocks_packet_decoder_send_packet(
@@ -2272,7 +2284,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       TORCH_BOX(&_blocks_demuxer_get_codec_parameters));
   m.impl("_blocks_create_packet", TORCH_BOX(&_blocks_create_packet));
   m.impl("_blocks_packet_get_fields", TORCH_BOX(&_blocks_packet_get_fields));
-  m.impl("_blocks_packet_get_data", TORCH_BOX(&_blocks_packet_get_data));
   m.impl(
       "_blocks_packet_decoder_send_packet",
       TORCH_BOX(&_blocks_packet_decoder_send_packet));
