@@ -6,21 +6,35 @@
 
 #pragma once
 
+#include <array>
 #include <optional>
 
 #include "FFMPEGCommon.h"
 
 namespace facebook::torchcodec {
 
-// A stream's AVCodecParameters, plus the properties of the stream that aren't
-// in AVCodecParameters: its time base, r_frame_rate and rotation.
+// What a decoder is built from: a stream's AVCodecParameters, plus the
+// properties of the stream and of its container that aren't in
+// AVCodecParameters.
 struct CodecParameters {
   UniqueAVCodecParameters codecpar;
   AVRational time_base = {};
   // libavformat's guess at the stream's frame rate.
   AVRational r_frame_rate = {};
-  // From the stream's display matrix.
-  std::optional<double> rotation;
+  std::optional<std::array<int32_t, 9>> display_matrix;
+  // The format of the container the stream was demuxed from. Statically
+  // allocated by FFmpeg.
+  const AVInputFormat* container_format = nullptr;
 };
+
+// A copy of `av_stream`'s codec parameters. `container_format` is the format of
+// the container `av_stream` belongs to.
+CodecParameters get_codec_parameters(
+    const AVStream& av_stream,
+    const AVInputFormat* container_format);
+
+// Degrees counter-clockwise needed to make the frames upright, from the display
+// matrix.
+std::optional<double> get_rotation(const CodecParameters& codec_parameters);
 
 } // namespace facebook::torchcodec

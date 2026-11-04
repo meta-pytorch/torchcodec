@@ -432,6 +432,10 @@ std::optional<double> get_rotation_from_stream(const AVStream* av_stream);
 // Same, from a frame's own display matrix side data.
 std::optional<double> get_rotation_from_frame(const AVFrame& av_frame);
 
+// Same, from a display matrix. nullopt for a null or invalid matrix.
+std::optional<double> get_rotation_from_display_matrix(
+    const int32_t* display_matrix);
+
 // The stream's raw display matrix, or nullptr when it has none. Points into the
 // stream's side data, so it lives as long as the stream does.
 const int32_t* get_display_matrix_from_stream(const AVStream* av_stream);

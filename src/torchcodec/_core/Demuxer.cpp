@@ -237,22 +237,9 @@ torch::stable::Tensor Demuxer::get_audio_video_stream_indices() const {
 
 CodecParameters Demuxer::get_codec_parameters(
     std::optional<int> stream_index) const {
-  const AVStream* av_stream =
-      format_context_->streams[resolve_stream_index(stream_index)];
-  CodecParameters params;
-  params.codecpar.reset(avcodec_parameters_alloc());
-  STD_TORCH_CHECK(
-      params.codecpar != nullptr, "Failed to allocate AVCodecParameters.");
-  int status =
-      avcodec_parameters_copy(params.codecpar.get(), av_stream->codecpar);
-  STD_TORCH_CHECK(
-      status >= 0,
-      "Failed to copy the codec parameters: ",
-      get_ffmpeg_error_string_from_error_code(status));
-  params.time_base = av_stream->time_base;
-  params.r_frame_rate = av_stream->r_frame_rate;
-  params.rotation = get_rotation_from_stream(av_stream);
-  return params;
+  return torchcodec::get_codec_parameters(
+      *format_context_->streams[resolve_stream_index(stream_index)],
+      format_context_->iformat);
 }
 
 int Demuxer::resolve_stream_index(std::optional<int> stream_index) const {
