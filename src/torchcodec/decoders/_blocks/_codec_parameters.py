@@ -6,24 +6,14 @@
 
 from __future__ import annotations
 
-import ctypes
 import dataclasses
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Any
-
-from torch import Tensor
 
 
 def _check_fraction(name: str, value: object) -> None:
     if not isinstance(value, Fraction):
         raise ValueError(f"{name} must be a Fraction, got {value!r}.")
-
-
-def _to_bytes(tensor: Tensor) -> bytes:
-    # A contiguous uint8 CPU tensor that we created. This avoids depending on
-    # numpy, and is much faster than going through tensor.tolist().
-    return ctypes.string_at(tensor.data_ptr(), tensor.numel())
 
 
 def _short_repr(value: object) -> str:
@@ -62,28 +52,6 @@ class _CodecParameters:
             if getattr(self, field.name) is not None
         )
         return f"{type(self).__name__}({fields})"
-
-    @classmethod
-    def _from_op_outputs(cls, names: list[str], outputs: tuple):
-        # `names` are the return names of the op's schema, which are our field
-        # names, except for coded_side_data which comes as two lists.
-        fields: dict[str, Any] = dict(zip(names, outputs))
-        side_data_names = fields.pop("coded_side_data_names")
-        side_data_values = fields.pop("coded_side_data_values")
-        if side_data_names:
-            fields["coded_side_data"] = {
-                name: _to_bytes(value)
-                for name, value in zip(side_data_names, side_data_values)
-            }
-        if fields["extradata"] is not None:
-            fields["extradata"] = _to_bytes(fields["extradata"])
-        # The rationals come as [num, den] lists.
-        kwargs: dict[str, Any] = {
-            name: Fraction(*value) if isinstance(value, list) else value
-            for name, value in fields.items()
-            if value is not None
-        }
-        return cls(**kwargs)
 
 
 # TODO_DEMUXER_FREE: add docs. They should say that:

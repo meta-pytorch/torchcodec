@@ -96,7 +96,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   // The return names are the fields of VideoCodecParameters and
   // AudioCodecParameters, which Python matches them against.
   m.def(
-      "_blocks_demuxer_codec_parameters(Tensor demuxer, int stream_index) -> (str codec, int[] time_base, Tensor? extradata, int? codec_tag, int? profile, int? level, int? bit_rate, int? bits_per_coded_sample, int? bits_per_raw_sample, str[] coded_side_data_names, Tensor[] coded_side_data_values, int? width, int? height, str? pixel_format, int[]? sample_aspect_ratio, int[]? framerate, int[]? r_frame_rate, str? field_order, str? color_range, str? color_primaries, str? color_transfer_characteristic, str? color_space, str? chroma_location, int? video_delay, float? rotation, str? sample_format, int? sample_rate, str? channel_layout, int? block_align, int? frame_size, int? initial_padding, int? trailing_padding, int? seek_preroll)");
+      "_blocks_demuxer_get_codec_parameters(Tensor demuxer, int stream_index) -> (str codec, int[] time_base, Tensor? extradata, int? codec_tag, int? profile, int? level, int? bit_rate, int? bits_per_coded_sample, int? bits_per_raw_sample, str[] coded_side_data_names, Tensor[] coded_side_data_values, int? width, int? height, str? pixel_format, int[]? sample_aspect_ratio, int[]? framerate, int[]? r_frame_rate, str? field_order, str? color_range, str? color_primaries, str? color_transfer_characteristic, str? color_space, str? chroma_location, int? video_delay, float? rotation, str? sample_format, int? sample_rate, str? channel_layout, int? block_align, int? frame_size, int? initial_padding, int? trailing_padding, int? seek_preroll)");
   m.def(
       "_blocks_create_packet_decoder(Tensor demuxer, *, int? stream_index=None, int? num_threads=None, str device=\"cpu\") -> Tensor");
   m.def(
@@ -996,7 +996,7 @@ using OpsCodecParametersOutput = std::tuple<
     std::optional<int64_t>, // trailing_padding
     std::optional<int64_t>>; // seek_preroll
 
-OpsCodecParametersOutput _blocks_demuxer_codec_parameters(
+OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
     torch::stable::Tensor& demuxer,
     int64_t stream_index) {
   Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
@@ -1878,8 +1878,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("_blocks_demuxer_seek", TORCH_BOX(&_blocks_demuxer_seek));
   m.impl("_blocks_demuxer_scan", TORCH_BOX(&_blocks_demuxer_scan));
   m.impl(
-      "_blocks_demuxer_codec_parameters",
-      TORCH_BOX(&_blocks_demuxer_codec_parameters));
+      "_blocks_demuxer_get_codec_parameters",
+      TORCH_BOX(&_blocks_demuxer_get_codec_parameters));
   m.impl(
       "_blocks_create_packet_decoder",
       TORCH_BOX(&_blocks_create_packet_decoder));

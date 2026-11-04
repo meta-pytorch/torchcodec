@@ -40,7 +40,7 @@ FFMPEG_OP_NAMES = frozenset(
         "_blocks_demuxer_next_packet",
         "_blocks_demuxer_seek",
         "_blocks_demuxer_scan",
-        "_blocks_demuxer_codec_parameters",
+        "_blocks_demuxer_get_codec_parameters",
         "_blocks_create_packet_decoder",
         "_blocks_packet_decoder_send_packet",
         "_blocks_packet_decoder_send_eof",
