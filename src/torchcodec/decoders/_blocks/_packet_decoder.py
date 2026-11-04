@@ -167,8 +167,10 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
     """
 
     # TODO_DEMUXER_FREE: document the constructor. The docs should say that
-    # the NVDEC backend needs width, height and pixel_format, and silently falls
-    # back to decoding on the CPU without them.
+    # the NVDEC backend needs width, height and pixel_format, and may silently
+    # fall back to decoding on the CPU without them. It also needs
+    # r_frame_rate, or the frames' durations are 0. See
+    # test_nvdec_needs_dimensions_pixel_format_and_frame_rate.
     def __init__(
         self,
         codec_parameters: VideoCodecParameters,
