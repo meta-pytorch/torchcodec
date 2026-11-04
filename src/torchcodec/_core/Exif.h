@@ -56,6 +56,8 @@ direct,
 // - make input ptr const.
 // - make the exif values an enum
 
+#include <string_view>
+
 #include <torch/csrc/stable/ops.h>
 #include <torch/headeronly/util/Exception.h>
 
@@ -190,6 +192,23 @@ inline ExifOrientation fetch_exif_orientation(
     }
   }
   return exif_orientation;
+}
+
+// Not from OpenCV. Like Pillow's Exif.load(), skips any number of "Exif\0\0"
+// prefixes before the TIFF header.
+inline ExifOrientation fetch_exif_orientation_after_prefixes(
+    const unsigned char* data,
+    size_t size) {
+  constexpr std::string_view exif_header("Exif\0\0", 6);
+  std::string_view exif(reinterpret_cast<const char*>(data), size);
+  while (exif.starts_with(exif_header)) {
+    exif.remove_prefix(exif_header.size());
+  }
+  if (exif.empty()) {
+    return ExifOrientation::Unspecified;
+  }
+  return fetch_exif_orientation(
+      reinterpret_cast<const unsigned char*>(exif.data()), exif.size());
 }
 
 inline torch::stable::Tensor exif_orientation_transform(

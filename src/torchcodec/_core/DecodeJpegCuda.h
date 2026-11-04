@@ -74,9 +74,17 @@ class CUDAJpegDecoder {
   nvjpegJpegState_t nvjpeg_state_hw_;
   nvjpegJpegStream_t nvjpeg_stream_;
 
-  // SW path: state for nvjpegDecode(). Always created, even when the HW engine
-  // is available, because not all JPEGs are supported by the HW engine.
-  nvjpegJpegState_t nvjpeg_state_sw_;
+  // SW path, using the decoupled (host / transfer / device) API. Always
+  // created, even when the HW engine is available, because not all JPEGs are
+  // supported by the HW engine. Consecutive images alternate between the two
+  // pinned buffers and jpeg streams. See decode_software().
+  nvjpegJpegDecoder_t sw_decoder_;
+  nvjpegJpegState_t sw_decoder_state_;
+  nvjpegDecodeParams_t sw_decode_params_;
+  nvjpegBufferDevice_t sw_device_buffer_;
+  static constexpr int kNumSwPinnedBuffers = 2;
+  nvjpegBufferPinned_t sw_pinned_buffers_[kNumSwPinnedBuffers];
+  nvjpegJpegStream_t sw_jpeg_streams_[kNumSwPinnedBuffers];
 };
 
 #endif // TORCHCODEC_ENABLE_NVJPEG

@@ -7,6 +7,7 @@
 import ctypes
 import struct
 import warnings
+import zlib
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -21,6 +22,8 @@ from torchcodec._core.ops import (
     decode_png as _decode_png,
     decode_webp as _decode_webp,
     get_decode_heic as _get_decode_heic,
+    png_skip_idat_chunks_from_file as _png_skip_idat_chunks_from_file,
+    png_skip_idat_chunks_from_tensor as _png_skip_idat_chunks_from_tensor,
     probe_avif_from_file as _probe_avif_from_file,
     probe_avif_from_tensor as _probe_avif_from_tensor,
     probe_gif_from_file as _probe_gif_from_file,
@@ -696,6 +699,7 @@ class _ByteSource:
     # large file usually only reads its first few KB.
 
     def __init__(self, source):
+        self.source = source
         self._file = None
         if isinstance(source, (str, Path)):
             self._file = open(source, "rb")
@@ -790,6 +794,13 @@ def _exif_orientation(tiff: bytes) -> int | None:
     return None
 
 
+def _exif_orientation_after_prefixes(exif: bytes) -> int | None:
+    # Like Pillow's Exif.load(), skips any number of "Exif\0\0" prefixes.
+    while exif.startswith(b"Exif\x00\x00"):
+        exif = exif[6:]
+    return _exif_orientation(exif) if exif else None
+
+
 # Rotation of each EXIF orientation, when decomposed into an optional
 # left-to-right mirroring followed by a rotation.
 _ROTATION_FROM_EXIF_ORIENTATION = {
@@ -818,12 +829,12 @@ _JPEG_UNSUPPORTED_SOF = frozenset((0xC5, 0xC6, 0xC7, 0xC8, 0xCD, 0xCE, 0xCF))
 
 def _probe_jpeg(src: _ByteSource) -> ImageMetadata:
     # Walks the markers up to the first SOS, like jpeg_read_header(). The
-    # decoder takes the EXIF orientation from the first APP1 segment, whatever
-    # it contains.
+    # decoder takes the EXIF orientation from the first APP1 segment that starts
+    # with the "Exif\0\0" header.
     pos = 2  # skip SOI, already checked by the format sniffer
     sof = None
     orientation = None
-    seen_app1 = False
+    seen_exif = False
     while True:
         chunk = src.read(pos, 4)
         if len(chunk) < 2:
@@ -863,11 +874,11 @@ def _probe_jpeg(src: _ByteSource) -> ImageMetadata:
             sof = (precision, height, width, num_components)
         elif marker in _JPEG_UNSUPPORTED_SOF:
             raise RuntimeError(f"Unsupported JPEG process: SOF type 0x{marker:02x}.")
-        elif marker == 0xE1 and not seen_app1:
-            seen_app1 = True
+        elif marker == 0xE1 and not seen_exif:
             payload = src.read_exact(pos + 4, segment_length - 2)
-            if len(payload) > 6:
-                orientation = _exif_orientation(payload[6:])
+            if len(payload) > 6 and payload[:6] == b"Exif\x00\x00":
+                seen_exif = True
+                orientation = _exif_orientation_after_prefixes(payload)
         pos += 2 + segment_length
 
     if sof is None:
@@ -899,10 +910,50 @@ _PNG_VALID_BIT_DEPTHS = {
 }
 
 
+# libpng's default PNG_USER_CHUNK_MALLOC_MAX: it drops text chunks that
+# decompress to more than that.
+_PNG_MAX_TEXT_SIZE = 8_000_000
+
+
+def _png_decompress_text(data: bytes) -> bytes | None:
+    decompressor = zlib.decompressobj()
+    try:
+        text = decompressor.decompress(data, _PNG_MAX_TEXT_SIZE)
+    except zlib.error:
+        return None
+    if decompressor.unconsumed_tail or not decompressor.eof:
+        return None
+    return text
+
+
+def _png_text(chunk_type: bytes, payload: bytes) -> tuple[bytes, bytes] | None:
+    # Returns the keyword and (decompressed) text of a tEXt, zTXt or iTXt
+    # chunk, or None if the chunk is malformed.
+    keyword, sep, rest = payload.partition(b"\x00")
+    if not sep:
+        return None
+    if chunk_type == b"tEXt":
+        return keyword, rest
+    if chunk_type == b"zTXt":
+        # The only compression method is zlib (0).
+        text = _png_decompress_text(rest[1:]) if rest[:1] == b"\x00" else None
+    else:
+        # iTXt: compression flag and method, then the language tag, the
+        # translated keyword and the text.
+        fields = rest[2:].split(b"\x00", 2)
+        if len(rest) < 2 or len(fields) != 3:
+            return None
+        compression_flag, compression_method = rest[0], rest[1]
+        text = fields[2]
+        if compression_flag:
+            text = _png_decompress_text(text) if compression_method == 0 else None
+    return None if text is None else (keyword, text)
+
+
 def _probe_png(src: _ByteSource) -> ImageMetadata:
     # Reads IHDR and walks the chunks up to the first IDAT, which is what
-    # png_read_info() sees. In particular, an eXIf chunk after IDAT is ignored
-    # by the decoder.
+    # png_read_info() sees, and then the chunks after the image data, which is
+    # what png_read_end() sees: those only matter for the orientation.
     ihdr = src.read_exact(8, 8 + 13)
     length, chunk_type = struct.unpack_from(">I4s", ihdr)
     if chunk_type != b"IHDR" or length != 13:
@@ -919,15 +970,39 @@ def _probe_png(src: _ByteSource) -> ImageMetadata:
     num_palette = None
     has_trns = False
     exif = None
+    raw_profile = None
+    seen_idat = False
     while True:
-        length, chunk_type = struct.unpack(">I4s", src.read_exact(pos, 8))
-        if chunk_type == b"IDAT":
-            break
+        header = src.read(pos, 8)
+        if len(header) < 8:
+            if seen_idat:
+                break
+            raise RuntimeError("Image is truncated or corrupted.")
+        length, chunk_type = struct.unpack(">I4s", header)
         if chunk_type == b"IEND":
-            raise RuntimeError("PNG has no IDAT chunk.")
-        if chunk_type == b"PLTE":
+            if not seen_idat:
+                raise RuntimeError("PNG has no IDAT chunk.")
+            break
+        if chunk_type == b"IDAT" and not seen_idat:
+            seen_idat = True
+            if color_type == 3 and num_palette is None:
+                raise RuntimeError("PNG palette image has no PLTE chunk before IDAT.")
+            if exif is not None:
+                # The chunks after the image data can't change the orientation.
+                break
+            if src.read(pos + 12 + length + 4, 4) == b"IDAT":
+                # Walking over the (often thousands of) IDAT chunks is slow in
+                # Python.
+                if isinstance(src.source, (str, Path)):
+                    pos = _png_skip_idat_chunks_from_file(str(src.source), pos)
+                else:
+                    pos = _png_skip_idat_chunks_from_tensor(
+                        _source_to_tensor(src.source), pos
+                    )
+                continue
+        elif chunk_type == b"PLTE" and not seen_idat:
             num_palette = length // 3
-        elif chunk_type == b"tRNS" and not has_trns:
+        elif chunk_type == b"tRNS" and not seen_idat and not has_trns:
             # libpng ignores (with a warning) tRNS chunks that are invalid for
             # the color type.
             if color_type == 3:
@@ -937,14 +1012,36 @@ def _probe_png(src: _ByteSource) -> ImageMetadata:
             elif color_type == 2:
                 has_trns = length == 6
         elif chunk_type == b"eXIf" and exif is None and length >= 2:
-            payload = src.read_exact(pos + 8, length)
-            if payload[0] == payload[1] and payload[0] in b"MI":
+            payload = src.read(pos + 8, length)
+            if (
+                len(payload) == length
+                and payload[0] == payload[1]
+                and payload[0] in b"MI"
+            ):
                 exif = payload
+        elif chunk_type in (b"tEXt", b"zTXt", b"iTXt"):
+            payload = src.read(pos + 8, length)
+            text = _png_text(chunk_type, payload) if len(payload) == length else None
+            # Like Pillow, we keep the last chunk with this keyword.
+            if text is not None and text[0] == b"Raw profile type exif":
+                raw_profile = text[1]
         pos += 12 + length
-    if color_type == 3 and num_palette is None:
-        raise RuntimeError("PNG palette image has no PLTE chunk before IDAT.")
 
-    orientation = _exif_orientation(exif) if exif is not None else None
+    # Same logic as fetch_png_orientation() in DecodePng.cpp.
+    orientation = None
+    if exif is not None:
+        orientation = _exif_orientation(exif)
+    elif raw_profile is not None:
+        # Same parsing as Pillow, which decode_raw_profile_exif() in
+        # DecodePng.cpp mirrors. Pillow raises on invalid hex data, we ignore it.
+        try:
+            raw_profile_exif = bytes.fromhex(
+                b"".join(raw_profile.split(b"\n")[3:]).decode("ascii")
+            )
+        except ValueError:
+            pass
+        else:
+            orientation = _exif_orientation_after_prefixes(raw_profile_exif)
     if orientation is not None and 5 <= orientation <= 8:
         width, height = height, width
     if color_type == 3:
@@ -1040,10 +1137,7 @@ def _probe_webp(src: _ByteSource) -> ImageMetadata:
             pos += 8 + chunk_size + (chunk_size & 1)
 
         if exif is not None:
-            if exif[:6] == b"Exif\x00\x00":
-                exif = exif[6:]
-            if len(exif) > 0:
-                orientation = _exif_orientation(exif)
+            orientation = _exif_orientation_after_prefixes(exif)
 
         if is_animated:
             if num_anmf == 0:

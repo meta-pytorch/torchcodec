@@ -18,6 +18,7 @@ import queue
 import socket
 import subprocess
 import threading
+import zlib
 from fractions import Fraction
 from functools import partial
 from multiprocessing.reduction import ForkingPickler
@@ -26,7 +27,7 @@ from typing import NamedTuple
 import numpy
 import pytest
 import torch
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, PngImagePlugin
 from torchcodec import _core, ffmpeg_major_version, FrameBatch
 from torchcodec._core.ops import _blocks_demuxer_add_stream, _blocks_demuxer_scan
 from torchcodec._frame import Frame
@@ -104,6 +105,7 @@ from .utils import (
     GRADIENT_JPEG,
     GRADIENT_MIRRORED_HEIC,
     GRADIENT_PNG,
+    GRADIENT_PROGRESSIVE_JPEG,
     GRADIENT_ROTATED_HEIC,
     GRADIENT_WEBP,
     GRAYSCALE_16BIT_PNG,
@@ -6643,6 +6645,114 @@ def _heic_param(*values):
     return pytest.param(decode_heic, *values, marks=pytest.mark.needs_heic, id="heic")
 
 
+def _orientation_test_image():
+    # Smooth so that nvJPEG and libjpeg outputs are close, but not symmetric so
+    # that a wrong orientation is caught.
+    y, x = numpy.mgrid[0:40, 0:60]
+    return Image.fromarray(
+        numpy.stack([x * 4, y * 6, (x + 2 * y) * 1.5], axis=-1).astype(numpy.uint8)
+    )
+
+
+def _jpeg_with_xmp_before_exif():
+    # A JPEG with EXIF orientation 6, and an XMP APP1 segment before the EXIF
+    # APP1 segment.
+    img = _orientation_test_image()
+    exif = img.getexif()
+    exif[0x0112] = 6  # 0x0112 is the EXIF orientation tag
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=95, exif=exif.tobytes())
+    data = buf.getvalue()
+    xmp = b"http://ns.adobe.com/xap/1.0/\x00<x:xmpmeta/>"
+    xmp_segment = b"\xff\xe1" + (len(xmp) + 2).to_bytes(2, "big") + xmp
+    # Right after the SOI marker, so before Pillow's EXIF segment.
+    return data[:2] + xmp_segment + data[2:]
+
+
+def _image_with_repeated_exif_prefix(fmt):
+    # EXIF orientation 6, with EXIF data that starts with two "Exif\0\0"
+    # prefixes. Exif.tobytes() already adds one.
+    img = _orientation_test_image()
+    exif = img.getexif()
+    exif[0x0112] = 6  # 0x0112 is the EXIF orientation tag
+    if fmt == "JPEG":
+        exif_bytes = b"Exif\x00\x00" + exif.tobytes()
+        save_kwargs = {"quality": 95}
+    else:
+        # When saving WebP, Pillow strips one prefix.
+        exif_bytes = b"Exif\x00\x00" * 2 + exif.tobytes()
+        save_kwargs = {"lossless": True}
+    buf = io.BytesIO()
+    img.save(buf, fmt, exif=exif_bytes, **save_kwargs)
+    return buf.getvalue()
+
+
+def _exif_bytes(orientation=None):
+    exif = Image.Exif()
+    if orientation is None:
+        exif[0x010F] = "camera"  # Make tag, so that the EXIF data isn't empty.
+    else:
+        exif[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
+    return exif.tobytes()
+
+
+def _raw_profile_exif(orientation):
+    # The text of an ImageMagick "Raw profile type exif" chunk: the EXIF data
+    # in hex, split in lines of 72 characters.
+    exif_hex = _exif_bytes(orientation).hex()
+    lines = [exif_hex[i : i + 72] for i in range(0, len(exif_hex), 72)]
+    return f"\nexif\n{len(exif_hex) // 2:8d}\n" + "\n".join(lines) + "\n"
+
+
+def _png(exif=None, raw_profile=None, zip_raw_profile=False, after_idat=()):
+    # A PNG with an optional eXIf chunk, and an optional "Raw profile type exif"
+    # text chunk (zTXt if zip_raw_profile, tEXt otherwise). Chunks whose type is
+    # in after_idat are moved after the (single) IDAT chunk.
+    pnginfo = PngImagePlugin.PngInfo()
+    if raw_profile is not None:
+        pnginfo.add_text("Raw profile type exif", raw_profile, zip=zip_raw_profile)
+    buf = io.BytesIO()
+    _orientation_test_image().save(buf, "PNG", exif=exif, pnginfo=pnginfo)
+    data = buf.getvalue()
+
+    chunks, pos = [], 8
+    while pos < len(data):
+        length = int.from_bytes(data[pos : pos + 4], "big")
+        chunks.append(data[pos : pos + 12 + length])
+        pos += 12 + length
+    moved = [c for c in chunks if c[4:8] in after_idat]
+    chunks = [c for c in chunks if c[4:8] not in after_idat]
+    idat = next(i for i, c in enumerate(chunks) if c[4:8] == b"IDAT")
+    return data[:8] + b"".join(chunks[: idat + 1] + moved + chunks[idat + 1 :])
+
+
+# PNGs whose orientation isn't in an eXIf chunk before the image data.
+_PNG_ORIENTATION_CASES = (
+    pytest.param(lambda: _png(raw_profile=_raw_profile_exif(6)), id="raw_profile"),
+    pytest.param(
+        lambda: _png(raw_profile=_raw_profile_exif(3), zip_raw_profile=True),
+        id="compressed_raw_profile",
+    ),
+    pytest.param(
+        lambda: _png(exif=_exif_bytes(), raw_profile=_raw_profile_exif(6)),
+        id="exif_takes_precedence_over_raw_profile",
+    ),
+    pytest.param(
+        lambda: _png(exif=_exif_bytes(6), after_idat=(b"eXIf",)),
+        id="exif_after_idat",
+    ),
+    pytest.param(
+        # The IEND chunk is the last 12 bytes.
+        lambda: _png(exif=_exif_bytes(6), after_idat=(b"eXIf",))[:-12],
+        id="exif_after_idat_without_iend",
+    ),
+    pytest.param(
+        lambda: _png(raw_profile=_raw_profile_exif(8), after_idat=(b"tEXt",)),
+        id="raw_profile_after_idat",
+    ),
+)
+
+
 class TestImageDecoder:
 
     # ===== shared helpers =====
@@ -7074,6 +7184,69 @@ class TestImageDecoder:
             assert decoded.shape == reference.shape
             assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
+    @needs_jpeg
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_jpeg_xmp_before_exif(self, device):
+        # APP1 segments can hold XMP too: the orientation must come from the
+        # first EXIF one, not from the first APP1 one.
+        data = _jpeg_with_xmp_before_exif()
+        decoded = decode_jpeg(data, mode="RGB", device=device).cpu()
+        reference = self._pil_to_tensor(
+            ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+        )
+
+        assert decoded.shape == reference.shape == (3, 60, 40)
+        # nvJPEG's output is slightly different from libjpeg's.
+        torch.testing.assert_close(
+            decoded, reference, rtol=0, atol=2 if device == "cpu" else 5
+        )
+
+    @pytest.mark.parametrize(
+        "decode_fn, fmt, atol",
+        (
+            _jpeg_param("JPEG", 2),
+            # nvJPEG's output is slightly different from libjpeg's.
+            _jpeg_cuda_param("JPEG", 5),
+            _webp_param("WEBP", 0),
+        ),
+    )
+    def test_repeated_exif_prefix(self, decode_fn, fmt, atol):
+        # Like Pillow, we skip any number of "Exif\0\0" prefixes.
+        data = _image_with_repeated_exif_prefix(fmt)
+        decoded = decode_fn(data, mode="RGB").cpu()
+        reference = self._pil_to_tensor(
+            ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+        )
+
+        assert decoded.shape == reference.shape == (3, 60, 40)
+        torch.testing.assert_close(decoded, reference, rtol=0, atol=atol)
+
+    @needs_png
+    @pytest.mark.parametrize("make_png", _PNG_ORIENTATION_CASES)
+    def test_png_orientation_matches_pil(self, make_png):
+        # Pillow's exif_transpose() loads the whole file before looking for the
+        # orientation, so it also sees the chunks after the image data.
+        data = make_png()
+        decoded = decode_png(data, mode="RGB")
+        reference = self._pil_to_tensor(
+            ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+        )
+        torch.testing.assert_close(decoded, reference)
+
+    @needs_png
+    def test_png_garbage_after_idat(self):
+        # The chunks after the image data are only read for their metadata: a
+        # corrupted tail must not make the decoding fail.
+        data = _png(exif=_exif_bytes(6), after_idat=(b"eXIf",))
+        iend = data.rindex(b"IEND") - 4
+        data = data[:iend] + b"\x00\x00\x00\x10garbage" + b"\xff" * 32
+        decoded = decode_png(data, mode="RGB")
+        assert decoded.shape == (3, 60, 40)
+        metadata = get_image_metadata(data)
+        assert (metadata.width, metadata.height, metadata.rotation) == (40, 60, -90)
+
     @needs_heic
     @needs_png
     @pytest.mark.parametrize(
@@ -7280,7 +7453,9 @@ class TestImageDecoder:
 
     @needs_cuda
     @needs_jpeg
-    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG))
+    @pytest.mark.parametrize(
+        "asset", (GRADIENT_JPEG, GRAYSCALE_JPEG, GRADIENT_PROGRESSIVE_JPEG)
+    )
     @pytest.mark.parametrize(
         "mode", ("UNCHANGED", "RGB", "GRAY", "RGB_ALPHA", "GRAY_ALPHA")
     )
@@ -7317,6 +7492,45 @@ class TestImageDecoder:
 
     @needs_cuda
     @needs_jpeg
+    @pytest.mark.parametrize("mode", ("UNCHANGED", "GRAY", "RGB"))
+    def test_cuda_jpeg_batch_mixed_hw_and_sw(self, mode):
+        # On GPUs with a HW JPEG engine, the baseline JPEGs of this batch are
+        # decoded by the HW path and the progressive ones by the SW path, so this
+        # checks that both paths run in a single call and that each output lands
+        # at the index of its source. On other GPUs, everything takes the SW path.
+        assets = [
+            GRADIENT_JPEG,
+            GRADIENT_PROGRESSIVE_JPEG,
+            GRAYSCALE_JPEG,
+            GRADIENT_PROGRESSIVE_JPEG,
+            GRADIENT_JPEG,
+        ]
+        batch = decode_jpeg([a.path for a in assets], mode=mode, device="cuda")
+        assert len(batch) == len(assets)
+        for decoded, asset in zip(batch, assets):
+            assert decoded.shape[1:] == (asset.height, asset.width)
+            single = decode_jpeg(asset.path, mode=mode, device="cuda")
+            assert decoded.shape == single.shape
+            torch.testing.assert_close(decoded, single, atol=0, rtol=0)
+
+    @needs_cuda
+    @needs_jpeg
+    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRADIENT_PROGRESSIVE_JPEG))
+    def test_cuda_jpeg_batch_no_corruption(self, asset):
+        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1802
+        # On the nvJPEG SW path (progressive JPEGs, and all JPEGs on GPUs without
+        # a HW JPEG engine), decoding an image could overwrite nvJPEG host buffers
+        # that the previous image's queued GPU work had yet to read, corrupting
+        # all but the last image of the batch. The race is timing-dependent,
+        # hence the many iterations.
+        single = decode_jpeg(asset.path, mode="RGB", device="cuda")
+        for _ in range(50):
+            batch = decode_jpeg([asset.path] * 3, mode="RGB", device="cuda")
+            for decoded in batch:
+                torch.testing.assert_close(decoded, single, atol=0, rtol=0)
+
+    @needs_cuda
+    @needs_jpeg
     def test_cuda_jpeg_single_vs_list_return_type(self):
         single = decode_jpeg(GRADIENT_JPEG.path, mode="RGB", device="cuda")
         assert isinstance(single, torch.Tensor)
@@ -7328,7 +7542,7 @@ class TestImageDecoder:
     @needs_jpeg
     def test_cuda_jpeg_errors(self):
         # Corrupt input raises.
-        with pytest.raises(RuntimeError, match="nvjpegDecode failed:"):
+        with pytest.raises(RuntimeError, match="Failed to decode JPEG"):
             decode_jpeg(CORRUPT_JPEG.path, device="cuda")
 
         cuda_data = torch.frombuffer(
@@ -8277,26 +8491,95 @@ class TestGetImageMetadata:
         self._assert_matches_decode(metadata, path)
 
     @needs_jpeg
-    def test_jpeg_orientation_comes_from_first_app1(self):
-        # decode_jpeg only reads the orientation from the first APP1 segment,
-        # even when it's not EXIF data. This is a decoder bug, but the metadata
-        # must match what the decoder does: an XMP segment before the EXIF one
-        # hides the orientation.
-        # TODO_IMAGE: Fix this!
-        buf = io.BytesIO()
-        img = Image.fromarray(numpy.zeros((40, 60, 3), dtype=numpy.uint8))
-        exif = img.getexif()
-        exif[0x0112] = 6
-        img.save(buf, "JPEG", exif=exif.tobytes())
-        data = buf.getvalue()
-        xmp = b"http://ns.adobe.com/xap/1.0/\x00<x:xmpmeta/>"
-        xmp_segment = b"\xff\xe1" + (len(xmp) + 2).to_bytes(2, "big") + xmp
-        data = data[:2] + xmp_segment + data[2:]
+    def test_jpeg_xmp_before_exif(self):
+        data = _jpeg_with_xmp_before_exif()
+        metadata = get_image_metadata(data)
+        assert metadata.rotation == -90
+        assert (metadata.width, metadata.height) == (40, 60)
+        self._assert_matches_decode(metadata, data)
 
+    @pytest.mark.parametrize(
+        "fmt",
+        (
+            pytest.param("JPEG", marks=pytest.mark.needs_jpeg),
+            pytest.param("WEBP", marks=pytest.mark.needs_webp),
+        ),
+    )
+    def test_repeated_exif_prefix(self, fmt):
+        data = _image_with_repeated_exif_prefix(fmt)
+        metadata = get_image_metadata(data)
+        assert metadata.rotation == -90
+        assert (metadata.width, metadata.height) == (40, 60)
+        self._assert_matches_decode(metadata, data)
+
+    @needs_png
+    @pytest.mark.parametrize("make_png", _PNG_ORIENTATION_CASES)
+    def test_png_orientation_matches_pil(self, make_png):
+        data = make_png()
+        metadata = get_image_metadata(data)
+
+        img = Image.open(io.BytesIO(data))
+        transposed = ImageOps.exif_transpose(img)  # Loads the whole file.
+        orientation = img.getexif().get(0x0112)
+        expected_rotation = {1: 0, 2: 0, 3: 180, 4: 180, 5: 90, 6: -90, 7: -90, 8: 90}
+        assert metadata.rotation == expected_rotation.get(orientation)
+        assert (metadata.width, metadata.height) == transposed.size
+        self._assert_matches_decode(metadata, data)
+
+    @needs_png
+    @pytest.mark.parametrize(
+        "raw_profile",
+        (
+            "\nexif\n4\nnot hex\n",
+            "\nexif\n4\n4d4d0",  # odd number of hex digits
+            "\nexif\n",  # no hex data at all
+        ),
+    )
+    def test_png_invalid_raw_profile(self, raw_profile):
+        # Pillow raises on these, we just ignore them.
+        data = _png(raw_profile=raw_profile)
         metadata = get_image_metadata(data)
         assert metadata.rotation is None
-        assert (metadata.width, metadata.height) == (60, 40)
         self._assert_matches_decode(metadata, data)
+
+    @needs_png
+    @pytest.mark.parametrize("source_kind", ("path", "bytes", "tensor"))
+    @pytest.mark.parametrize("truncated", (False, True))
+    def test_png_exif_after_many_idat_chunks(self, tmp_path, source_kind, truncated):
+        # Runs of IDAT chunks are skipped by the png_skip_idat_chunks_* ops.
+        data = _png(exif=_exif_bytes(6), after_idat=(b"eXIf",))
+        # Split the image data into 1-byte IDAT chunks.
+        idat_start = data.index(b"IDAT") - 4
+        idat_end = (
+            idat_start + 12 + int.from_bytes(data[idat_start : idat_start + 4], "big")
+        )
+        idat_chunks = b"".join(
+            b"\x00\x00\x00\x01IDAT"
+            + bytes([b])
+            + zlib.crc32(b"IDAT" + bytes([b])).to_bytes(4, "big")
+            for b in data[idat_start + 8 : idat_end - 4]
+        )
+        data = data[:idat_start] + idat_chunks + data[idat_end:]
+        assert data.count(b"IDAT") > 50
+        if truncated:
+            # In the middle of the IDAT chunks, so there's no eXIf chunk left.
+            data = data[: data.index(b"IDAT") + 100]
+        if source_kind == "path":
+            source = tmp_path / "img.png"
+            source.write_bytes(data)
+        elif source_kind == "bytes":
+            source = data
+        else:
+            source = torch.frombuffer(bytearray(data), dtype=torch.uint8)
+
+        metadata = get_image_metadata(source)
+        if truncated:
+            assert (metadata.width, metadata.height) == (60, 40)
+            assert metadata.rotation is None
+        else:
+            assert (metadata.width, metadata.height) == (40, 60)
+            assert metadata.rotation == -90
+            self._assert_matches_decode(metadata, source)
 
     @needs_png
     @pytest.mark.parametrize(
