@@ -4370,25 +4370,41 @@ class TestLowLevel:
             assert frame.pts_seconds == expected_frame.pts_seconds
             assert frame.duration_seconds == expected_frame.duration_seconds
 
-    def test_video_packet_decoder_from_hand_built_codec_parameters(self):
-        # H.264 packets copied out of an MP4 only need the avcC box, i.e. the
-        # extradata, to be decoded on the CPU.
-        demuxer = Demuxer(NASA_VIDEO.path)
+    @pytest.mark.parametrize("device", _low_level_devices())
+    @pytest.mark.parametrize(
+        "video",
+        (
+            NASA_VIDEO,
+            TEST_SRC_2_720P_H265,
+            TEST_SRC_2_720P_MPEG4,
+            TEST_SRC_2_MPEG4_MP4,
+        ),
+    )
+    def test_video_packet_decoder_from_hand_built_codec_parameters(self, device, video):
+        # Without a Demuxer, the decoder doesn't know the container, which NVDEC
+        # otherwise uses to pick its bitstream filter. NVDEC needs width, height
+        # and pixel_format, or it silently decodes on the CPU, and it computes
+        # the frames' durations from r_frame_rate.
+        demuxer = Demuxer(video.path)
         stream_params = demuxer.streams[0].codec_parameters
         params = VideoCodecParameters(
-            codec="h264",
+            codec=stream_params.codec,
             time_base=stream_params.time_base,
             extradata=stream_params.extradata,
+            width=stream_params.width,
+            height=stream_params.height,
+            pixel_format=stream_params.pixel_format,
+            r_frame_rate=stream_params.r_frame_rate,
         )
-        decoder = VideoPacketDecoder(params)
-        converter = ColorConverter()
+        decoder = VideoPacketDecoder(params, device)
+        converter = ColorConverter(device=device)
 
         frames = [
             converter.convert(f) for packet in demuxer for f in decoder.decode(packet)
         ]
         frames += [converter.convert(f) for f in decoder.drain()]
 
-        expected = VideoDecoder(NASA_VIDEO.path)
+        expected = VideoDecoder(video.path, device=device)
         assert len(frames) == len(expected)
         for i, frame in enumerate(frames):
             expected_frame = expected.get_frame_at(i)

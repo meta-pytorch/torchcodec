@@ -46,12 +46,9 @@ class _CodecParameters:
     # first packets after a seek in an MPEG program stream raise instead of
     # being skipped (see
     # test_mpeg_program_stream_resync_needs_the_container_format), which we
-    # expect to be rare. For NVDEC, we expect no difference in practice once
-    # its filter is picked from the extradata when the container is unknown,
-    # but we keep the container to be safe. It survives pickling, but it's not
-    # part of the API.
-    # TODO_DEMUXER_FREE: pick NVDEC's filter from the extradata without a
-    # container. Until then, NVDEC raises without one.
+    # expect to be rare. For NVDEC, we expect no difference in practice, but we
+    # keep the container to be safe. It survives pickling, but it's not part of
+    # the API.
     _container_format_PRIVATE_DO_NOT_USE: str | None = field(
         default=None, init=False, repr=False, compare=False
     )

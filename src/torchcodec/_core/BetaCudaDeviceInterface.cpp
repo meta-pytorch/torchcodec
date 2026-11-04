@@ -648,51 +648,67 @@ void BetaCudaDeviceInterface::initialize_bsf(
   // This is only needed for some formats, like H264 or HEVC.
 
   STD_TORCH_CHECK(codec_par != nullptr, "codecPar cannot be null");
-  STD_TORCH_CHECK(
-      container_format != nullptr,
-      "Decoding on CUDA with the NVDEC backend needs codec parameters that come "
-      "from a Demuxer (stream.codec_parameters) for now. Decode on the CPU, or "
-      "use the FFmpeg CUDA backend.");
   std::string filter_name;
 
-  // Matching logic is taken from DALI
-  switch (codec_par->codec_id) {
-    case AV_CODEC_ID_H264: {
-      const std::string format_name =
-          container_format->long_name ? container_format->long_name : "";
-
-      if (format_name == "QuickTime / MOV" ||
-          format_name == "FLV (Flash Video)" ||
-          format_name == "Matroska / WebM" ||
-          format_name == "raw H.264 video") {
+  if (container_format == nullptr) {
+    // The parameters don't come from a Demuxer. We apply the filter the codec
+    // may need, and rely on it to pass through the packets that don't need
+    // it: the mp4toannexb filters do when the extradata is missing or already
+    // Annex B, and mpeg4_unpack_bframes does when B-frames aren't packed.
+    switch (codec_par->codec_id) {
+      case AV_CODEC_ID_H264:
         filter_name = "h264_mp4toannexb";
-      }
-      break;
-    }
-
-    case AV_CODEC_ID_HEVC: {
-      const std::string format_name =
-          container_format->long_name ? container_format->long_name : "";
-
-      if (format_name == "QuickTime / MOV" ||
-          format_name == "FLV (Flash Video)" ||
-          format_name == "Matroska / WebM" || format_name == "raw HEVC video") {
+        break;
+      case AV_CODEC_ID_HEVC:
         filter_name = "hevc_mp4toannexb";
-      }
-      break;
-    }
-    case AV_CODEC_ID_MPEG4: {
-      const std::string format_name =
-          container_format->name ? container_format->name : "";
-      if (format_name == "avi") {
+        break;
+      case AV_CODEC_ID_MPEG4:
         filter_name = "mpeg4_unpack_bframes";
-      }
-      break;
+        break;
+      default:
+        break;
     }
+  } else {
+    // Matching logic is taken from DALI
+    switch (codec_par->codec_id) {
+      case AV_CODEC_ID_H264: {
+        const std::string format_name =
+            container_format->long_name ? container_format->long_name : "";
 
-    default:
-      // No bitstream filter needed for other codecs
-      break;
+        if (format_name == "QuickTime / MOV" ||
+            format_name == "FLV (Flash Video)" ||
+            format_name == "Matroska / WebM" ||
+            format_name == "raw H.264 video") {
+          filter_name = "h264_mp4toannexb";
+        }
+        break;
+      }
+
+      case AV_CODEC_ID_HEVC: {
+        const std::string format_name =
+            container_format->long_name ? container_format->long_name : "";
+
+        if (format_name == "QuickTime / MOV" ||
+            format_name == "FLV (Flash Video)" ||
+            format_name == "Matroska / WebM" ||
+            format_name == "raw HEVC video") {
+          filter_name = "hevc_mp4toannexb";
+        }
+        break;
+      }
+      case AV_CODEC_ID_MPEG4: {
+        const std::string format_name =
+            container_format->name ? container_format->name : "";
+        if (format_name == "avi") {
+          filter_name = "mpeg4_unpack_bframes";
+        }
+        break;
+      }
+
+      default:
+        // No bitstream filter needed for other codecs
+        break;
+    }
   }
 
   if (filter_name.empty()) {
