@@ -165,19 +165,6 @@ class VideoDecoder:
             Alternative field names "pkt_pts" and "pkt_duration" are also supported.
             Read more about this parameter in:
             :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py`
-        format_whitelist (str, optional): Comma-separated list of the demuxers
-            the file may instantiate, as FFmpeg's ``format_whitelist`` option.
-            Only supported when ``source`` is a path.
-        codec_whitelist (str, optional): Comma-separated list of the decoders
-            the file may instantiate, as FFmpeg's ``codec_whitelist`` option.
-            This covers the probe decoders FFmpeg opens while reading stream
-            info as well as the stream's own decoder. Only supported when
-            ``source`` is a path.
-
-            .. note::
-                Pass both when decoding untrusted media: they are what keeps
-                the file's own bytes from choosing which demuxer and decoder
-                run in this process.
 
     Attributes:
         metadata (VideoStreamMetadata): Metadata of the video stream.
@@ -204,8 +191,6 @@ class VideoDecoder:
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
         ) = None,
-        format_whitelist: str | None = None,
-        codec_whitelist: str | None = None,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
         allowed_seek_modes = ("exact", "approximate")
@@ -271,8 +256,6 @@ class VideoDecoder:
             transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
             output_dtype=output_dtype,
-            format_whitelist=format_whitelist,
-            codec_whitelist=codec_whitelist,
         )
 
         assert self.metadata.begin_stream_seconds is not None  # mypy.

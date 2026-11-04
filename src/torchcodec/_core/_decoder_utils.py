@@ -46,22 +46,12 @@ def create_decoder(
     *,
     source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
     seek_mode: str,
-    format_whitelist: str | None = None,
-    codec_whitelist: str | None = None,
 ) -> Tensor:
-    # Only the file-path constructor takes the restrictions, so asking for them
-    # on another source kind has to fail rather than decode unrestricted.
-    if (format_whitelist is not None or codec_whitelist is not None) and not isinstance(
-        source, (str, Path)
-    ):
-        raise ValueError("Decode whitelists are only supported for file paths.")
     load_core_libraries()
     if isinstance(source, str):
-        return create_from_file(source, seek_mode, format_whitelist, codec_whitelist)
+        return create_from_file(source, seek_mode)
     elif isinstance(source, Path):
-        return create_from_file(
-            str(source), seek_mode, format_whitelist, codec_whitelist
-        )
+        return create_from_file(str(source), seek_mode)
     elif isinstance(source, io.RawIOBase) or isinstance(source, io.BufferedReader):
         return create_from_file_like(source, seek_mode)
     elif isinstance(source, bytes):
@@ -237,16 +227,9 @@ def create_video_decoder(
     transforms: Sequence[DecoderTransform | nn.Module] | None = None,
     custom_frame_mappings: tuple[Tensor, Tensor, Tensor] | None = None,
     output_dtype: str = "uint8",
-    format_whitelist: str | None = None,
-    codec_whitelist: str | None = None,
 ) -> tuple[Tensor, int, VideoStreamMetadata]:
 
-    decoder = create_decoder(
-        source=source,
-        seek_mode=seek_mode,
-        format_whitelist=format_whitelist,
-        codec_whitelist=codec_whitelist,
-    )
+    decoder = create_decoder(source=source, seek_mode=seek_mode)
 
     (
         metadata,
