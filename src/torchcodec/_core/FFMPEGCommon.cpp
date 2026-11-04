@@ -1030,7 +1030,7 @@ AVPacketSideDataType get_packet_side_data_type_from_name(
       return static_cast<AVPacketSideDataType>(type);
     }
   }
-  STD_TORCH_CHECK(false, "Unknown coded side data type: ", name);
+  STD_TORCH_CHECK(false, "Unknown side data type: ", name);
 }
 
 void set_display_matrix_on_frame(

@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import ctypes
 import io
 import json
 from collections.abc import Iterable
@@ -41,7 +40,7 @@ from torchcodec._core.ops import (
 
 from ._codec_parameters import AudioCodecParameters, VideoCodecParameters
 from ._frame import Packet
-from ._helpers import _process_local
+from ._helpers import _process_local, _tensor_to_bytes
 from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
 
 # TODO_API_BREAKDOWN FEAT PERF Do we want / need to support 'batch-like' APIs
@@ -243,20 +242,16 @@ class _Stream:
 
         # The binary fields come as contiguous uint8 CPU tensors, we want them
         # to be bytes (the Python type).
-        # ctypes.string_at() avoids depending on numpy, and is much faster than
-        # going through tensor.tolist().
         side_data_names = fields.pop("coded_side_data_names")
         side_data_values = fields.pop("coded_side_data_values")
         if side_data_names:
             fields["coded_side_data"] = {
-                name: ctypes.string_at(value.data_ptr(), value.numel())
+                name: _tensor_to_bytes(value)
                 for name, value in zip(side_data_names, side_data_values)
             }
         extradata = fields["extradata"]
         if extradata is not None:
-            fields["extradata"] = ctypes.string_at(
-                extradata.data_ptr(), extradata.numel()
-            )
+            fields["extradata"] = _tensor_to_bytes(extradata)
         # The rationals come as [num, den] lists.
         kwargs: dict[str, Any] = {
             name: Fraction(*value) if isinstance(value, list) else value

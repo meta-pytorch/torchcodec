@@ -11,9 +11,15 @@ from typing import NamedTuple
 
 import torch
 
-from torchcodec._core.ops import _blocks_frame_metadata, _blocks_frame_planes
+from torchcodec._core.ops import (
+    _blocks_create_packet,
+    _blocks_frame_metadata,
+    _blocks_frame_planes,
+    _blocks_packet_get_data,
+    _blocks_packet_get_fields,
+)
 
-from ._helpers import _process_local
+from ._helpers import _bytes_to_tensor, _process_local, _tensor_to_bytes
 
 
 class _Metadata(NamedTuple):
@@ -34,11 +40,12 @@ class _Metadata(NamedTuple):
     "is only decodable by a decoder built from its own stream."
 )
 class Packet:
-    """One compressed packet of one stream, as a :class:`Demuxer` produced it.
+    """One compressed packet of one stream.
 
-    You should not build one yourself: a ``Demuxer`` creates them, and a
-    :class:`VideoPacketDecoder` or an :class:`AudioPacketDecoder` consumes
-    them. The contents are opaque: a ``Packet`` is a handle to an FFmpeg packet.
+    A :class:`Demuxer` creates them, and a :class:`VideoPacketDecoder` or an
+    :class:`AudioPacketDecoder` consumes them. You can also build one from
+    compressed data that doesn't come from a ``Demuxer``, with
+    ``Packet.from_bytes()`` or ``Packet.from_tensor()``.
     """
 
     stream_index: int
@@ -59,6 +66,101 @@ class Packet:
         # it exists so a decoder can catch a missing reset(), not for callers to
         # reason about. See _BasePacketDecoder.decode().
         self._generation = generation
+
+    # TODO_DEMUXER_FREE: add docs. They should say that:
+    # 1. The arguments are the fields of FFmpeg's AVPacket, so the timestamps
+    #    are integers in the stream's time base, not seconds.
+    # 2. The data is copied.
+    # 3. flags can't contain AV_PKT_FLAG_TRUSTED.
+    # 4. side_data is keyed by FFmpeg's names for the side data types, as
+    #    coded_side_data is in the codec parameters.
+    # Same for from_tensor(), and the properties below.
+    @classmethod
+    def from_bytes(
+        cls,
+        data: bytes | bytearray | memoryview,
+        *,
+        pts: int | None = None,
+        dts: int | None = None,
+        duration: int = 0,
+        flags: int = 0,
+        side_data: dict[str, bytes] | None = None,
+        stream_index: int = 0,
+    ) -> Packet:
+        if not isinstance(data, (bytes, bytearray, memoryview)):
+            raise TypeError(
+                f"data must be bytes, bytearray or memoryview, got {type(data)}."
+            )
+        return cls.from_tensor(
+            _bytes_to_tensor(data),
+            pts=pts,
+            dts=dts,
+            duration=duration,
+            flags=flags,
+            side_data=side_data,
+            stream_index=stream_index,
+        )
+
+    @classmethod
+    def from_tensor(
+        cls,
+        data: torch.Tensor,
+        *,
+        pts: int | None = None,
+        dts: int | None = None,
+        duration: int = 0,
+        flags: int = 0,
+        side_data: dict[str, bytes] | None = None,
+        stream_index: int = 0,
+    ) -> Packet:
+        if not isinstance(data, torch.Tensor):
+            raise TypeError(f"data must be a tensor, got {type(data)}.")
+        side_data = side_data or {}
+        handle = _blocks_create_packet(
+            data,
+            pts=pts,
+            dts=dts,
+            duration=duration,
+            flags=flags,
+            side_data_names=list(side_data),
+            side_data_values=[_bytes_to_tensor(v) for v in side_data.values()],
+        )
+        return cls(handle, stream_index)
+
+    def _get_fields(self) -> dict:
+        outputs = _blocks_packet_get_fields(self._handle)
+        names = [r.name for r in _blocks_packet_get_fields._schema.returns]
+        return dict(zip(names, outputs))
+
+    @property
+    def data(self) -> bytes:
+        return _tensor_to_bytes(_blocks_packet_get_data(self._handle))
+
+    @property
+    def pts(self) -> int | None:
+        return self._get_fields()["pts"]
+
+    @property
+    def dts(self) -> int | None:
+        return self._get_fields()["dts"]
+
+    @property
+    def duration(self) -> int:
+        return self._get_fields()["duration"]
+
+    @property
+    def flags(self) -> int:
+        return self._get_fields()["flags"]
+
+    @property
+    def side_data(self) -> dict[str, bytes]:
+        fields = self._get_fields()
+        return {
+            name: _tensor_to_bytes(value)
+            for name, value in zip(
+                fields["side_data_names"], fields["side_data_values"]
+            )
+        }
 
 
 @_process_local(

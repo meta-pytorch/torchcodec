@@ -28,19 +28,12 @@ from ._codec_parameters import (
     VideoCodecParameters,
 )
 from ._frame import Packet, RawAudioSamples, RawFrame
-from ._helpers import _process_local
+from ._helpers import _bytes_to_tensor, _process_local
 
 
 # TODO_API_BREAKDOWN DOC P1 revisit every single comment across all low-level APIs
 
 _Decoded = TypeVar("_Decoded", RawFrame, RawAudioSamples)
-
-
-def _bytes_to_tensor(data: bytes) -> torch.Tensor:
-    # torch.frombuffer() rejects an empty buffer.
-    if not data:
-        return torch.empty(0, dtype=torch.uint8)
-    return torch.frombuffer(bytearray(data), dtype=torch.uint8)
 
 
 @_process_local(
