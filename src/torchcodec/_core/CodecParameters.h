@@ -17,8 +17,6 @@ namespace facebook::torchcodec {
 // properties of the stream and of its container that aren't in
 // AVCodecParameters.
 struct CodecParameters {
-  // A copy of `av_stream`'s codec parameters. `container_format` is the format
-  // of the container `av_stream` belongs to.
   explicit CodecParameters(
       const AVStream& av_stream,
       const AVInputFormat* container_format);

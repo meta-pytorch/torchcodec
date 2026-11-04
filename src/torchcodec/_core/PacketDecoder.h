@@ -28,7 +28,9 @@ SharedAVCodecContext create_and_open_codec_context(
     DeviceInterface* device_interface,
     std::optional<int> thread_count);
 
-// Same, for a demuxed stream.
+// Same, for a demuxed stream. SingleStreamDecoder uses this overload and
+// PacketDecoder the one above, so that they share the codec setup instead of
+// duplicating it.
 SharedAVCodecContext create_and_open_codec_context(
     AVStream* stream,
     const AVCodec* av_codec,
