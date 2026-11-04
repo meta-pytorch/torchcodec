@@ -234,15 +234,16 @@ class _Stream:
     def _get_codec_parameters(
         self, cls: type[VideoCodecParameters] | type[AudioCodecParameters]
     ):
-        # The op's return names are the fields of cls, except for
-        # coded_side_data which comes as two lists.
+        """Get the raw values from the C++ side, then massage them into the right
+        types for the dataclass constructor."""
         outputs = _blocks_demuxer_get_codec_parameters(
             self._demuxer._handle, self.index
         )
         names = [r.name for r in _blocks_demuxer_get_codec_parameters._schema.returns]
         fields: dict[str, Any] = dict(zip(names, outputs))
 
-        # The binary fields come as contiguous uint8 CPU tensors.
+        # The binary fields come as contiguous uint8 CPU tensors, we want them
+        # to be bytes (the Python type).
         # ctypes.string_at() avoids depending on numpy, and is much faster than
         # going through tensor.tolist().
         side_data_names = fields.pop("coded_side_data_names")

@@ -4289,8 +4289,11 @@ class TestLowLevel:
             "extradata=<19 bytes>, coded_side_data={'Replay Gain': <16 bytes>})"
         )
 
+        assert VideoCodecParameters("h264", time_base=Fraction(1, 30000)) == (
+            VideoCodecParameters(codec="h264", time_base=Fraction(1, 30000))
+        )
         with pytest.raises(TypeError, match="positional"):
-            VideoCodecParameters("h264", time_base=Fraction(1, 30000))
+            VideoCodecParameters("h264", Fraction(1, 30000))
 
     @pytest.mark.parametrize(
         "kwargs, match",

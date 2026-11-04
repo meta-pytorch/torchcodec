@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import dataclass
+from dataclasses import dataclass, KW_ONLY
 from fractions import Fraction
 
 
@@ -25,9 +25,10 @@ def _short_repr(value: object) -> str:
     return repr(value)
 
 
-@dataclass(frozen=True, repr=False, kw_only=True)
+@dataclass(frozen=True, repr=False)
 class _CodecParameters:
     codec: str
+    _: KW_ONLY
     time_base: Fraction
     extradata: bytes | None = None
     codec_tag: int | None = None
