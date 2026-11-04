@@ -7,14 +7,28 @@
 import os
 from pathlib import Path
 
+# Note: The seemingly redundant `x as x` aliases mark these as public re-exports.
+# Without them, type-checkers consider them private, and report errors when users
+# access e.g. `torchcodec.Frame` (mypy with `--strict`, pyright by default).
+# https://typing.python.org/en/latest/spec/distributing.html#import-conventions
+
 # Note: usort wants to put Frame and FrameBatch after decoders and samplers,
 # but that results in circular import.
-from ._frame import AudioSamples, Frame, FrameBatch  # usort:skip # noqa
-from . import decoders, encoders, samplers, transforms  # noqa
+from ._frame import (
+    AudioSamples as AudioSamples,
+    Frame as Frame,
+    FrameBatch as FrameBatch,
+)  # usort:skip
+from . import (
+    decoders as decoders,
+    encoders as encoders,
+    samplers as samplers,
+    transforms as transforms,
+)
 
 try:
     # Note that version.py is generated during install.
-    from .version import __version__  # noqa: F401
+    from .version import __version__ as __version__
 except Exception:
     pass
 
@@ -25,7 +39,10 @@ except Exception:
 cmake_prefix_path = Path(__file__).parent / "share" / "cmake"
 # Similarly, these are exposed for downstream builds that use torchcodec as a
 # dependency.
-from ._core import core_library_path, ffmpeg_major_version  # usort:skip
+from ._core import (
+    core_library_path as core_library_path,
+    ffmpeg_major_version as ffmpeg_major_version,
+)  # usort:skip
 
 
 # Leverage the Python plugin mechanism to load out-of-the-tree device extensions.
