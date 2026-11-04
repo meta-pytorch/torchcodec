@@ -237,7 +237,7 @@ torch::stable::Tensor Demuxer::get_audio_video_stream_indices() const {
 
 CodecParameters Demuxer::get_codec_parameters(
     std::optional<int> stream_index) const {
-  return torchcodec::get_codec_parameters(
+  return CodecParameters(
       *format_context_->streams[resolve_stream_index(stream_index)],
       format_context_->iformat);
 }

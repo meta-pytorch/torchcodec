@@ -72,7 +72,7 @@ class DeviceInterface {
       const VideoStreamOptions& video_stream_options) {
     STD_TORCH_CHECK(av_stream != nullptr, "avStream is null");
     initialize_video_decoding(
-        get_codec_parameters(*av_stream, av_format_ctx->iformat),
+        CodecParameters(*av_stream, av_format_ctx->iformat),
         video_stream_options);
   }
 

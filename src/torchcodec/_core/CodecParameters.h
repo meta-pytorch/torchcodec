@@ -17,6 +17,12 @@ namespace facebook::torchcodec {
 // properties of the stream and of its container that aren't in
 // AVCodecParameters.
 struct CodecParameters {
+  // A copy of `av_stream`'s codec parameters. `container_format` is the format
+  // of the container `av_stream` belongs to.
+  explicit CodecParameters(
+      const AVStream& av_stream,
+      const AVInputFormat* container_format);
+
   UniqueAVCodecParameters codecpar;
   AVRational time_base = {};
   // libavformat's guess at the stream's frame rate.
@@ -26,12 +32,6 @@ struct CodecParameters {
   // allocated by FFmpeg.
   const AVInputFormat* container_format = nullptr;
 };
-
-// A copy of `av_stream`'s codec parameters. `container_format` is the format of
-// the container `av_stream` belongs to.
-CodecParameters get_codec_parameters(
-    const AVStream& av_stream,
-    const AVInputFormat* container_format);
 
 // Degrees counter-clockwise needed to make the frames upright, from the display
 // matrix.
