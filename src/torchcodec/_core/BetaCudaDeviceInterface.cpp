@@ -500,7 +500,7 @@ void BetaCudaDeviceInterface::initialize_video_decoding(
     const VideoStreamOptions& video_stream_options) {
   CudaContextGuard context_guard(device_.index());
   decoding_initialized_ = true;
-  rotation_ = rotation_from_degrees(get_rotation(codec_parameters));
+  rotation_ = rotation_from_degrees(codec_parameters.get_rotation());
   output_dtype_ = video_stream_options.output_dtype;
 
   auto maybe_surface_format = nvcuvid_available_
