@@ -1102,20 +1102,6 @@ OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
 }
 
 namespace {
-// The schema's ints are int64, and FFmpeg's fields mostly int: a value that
-// doesn't fit is an error, not something to truncate.
-template <typename T>
-T checked_cast(const char* field, int64_t value) {
-  STD_TORCH_CHECK(
-      value >= std::numeric_limits<T>::min() &&
-          value <= std::numeric_limits<T>::max(),
-      field,
-      " is out of range: ",
-      value,
-      ".");
-  return static_cast<T>(value);
-}
-
 AVRational to_rational(const char* field, const std::vector<int64_t>& value) {
   STD_TORCH_CHECK(
       value.size() == 2,
@@ -1124,7 +1110,8 @@ AVRational to_rational(const char* field, const std::vector<int64_t>& value) {
       value.size(),
       " values.");
   return {
-      checked_cast<int>(field, value[0]), checked_cast<int>(field, value[1])};
+      validate_int64_to_int(value[0], field),
+      validate_int64_to_int(value[1], field)};
 }
 
 // FFmpeg's *_from_name() functions return a negative value for unknown names.
@@ -1202,7 +1189,7 @@ torch::stable::Tensor _blocks_create_packet_decoder(
 
   if (extradata.has_value()) {
     check_bytes("extradata", *extradata);
-    int size = checked_cast<int>("extradata size", extradata->numel());
+    int size = validate_int64_to_int(extradata->numel(), "extradata size");
     // Zeroed padding past the end, which FFmpeg's parsers read into.
     codecpar.extradata = static_cast<uint8_t*>(
         av_mallocz(static_cast<size_t>(size) + AV_INPUT_BUFFER_PADDING_SIZE));
@@ -1212,24 +1199,24 @@ torch::stable::Tensor _blocks_create_packet_decoder(
     codecpar.extradata_size = size;
   }
   if (codec_tag.has_value()) {
-    codecpar.codec_tag = checked_cast<uint32_t>("codec_tag", *codec_tag);
+    codecpar.codec_tag = validate_int64_to_uint32(*codec_tag, "codec_tag");
   }
   if (profile.has_value()) {
-    codecpar.profile = checked_cast<int>("profile", *profile);
+    codecpar.profile = validate_int64_to_int(*profile, "profile");
   }
   if (level.has_value()) {
-    codecpar.level = checked_cast<int>("level", *level);
+    codecpar.level = validate_int64_to_int(*level, "level");
   }
   if (bit_rate.has_value()) {
     codecpar.bit_rate = *bit_rate;
   }
   if (bits_per_coded_sample.has_value()) {
     codecpar.bits_per_coded_sample =
-        checked_cast<int>("bits_per_coded_sample", *bits_per_coded_sample);
+        validate_int64_to_int(*bits_per_coded_sample, "bits_per_coded_sample");
   }
   if (bits_per_raw_sample.has_value()) {
     codecpar.bits_per_raw_sample =
-        checked_cast<int>("bits_per_raw_sample", *bits_per_raw_sample);
+        validate_int64_to_int(*bits_per_raw_sample, "bits_per_raw_sample");
   }
   if (coded_side_data_names.has_value()) {
     STD_TORCH_CHECK(
@@ -1248,10 +1235,10 @@ torch::stable::Tensor _blocks_create_packet_decoder(
   }
 
   if (width.has_value()) {
-    codecpar.width = checked_cast<int>("width", *width);
+    codecpar.width = validate_int64_to_int(*width, "width");
   }
   if (height.has_value()) {
-    codecpar.height = checked_cast<int>("height", *height);
+    codecpar.height = validate_int64_to_int(*height, "height");
   }
   if (pixel_format.has_value()) {
     codecpar.format = checked_enum<AVPixelFormat>(
@@ -1301,7 +1288,7 @@ torch::stable::Tensor _blocks_create_packet_decoder(
         av_chroma_location_from_name(chroma_location->c_str()));
   }
   if (video_delay.has_value()) {
-    codecpar.video_delay = checked_cast<int>("video_delay", *video_delay);
+    codecpar.video_delay = validate_int64_to_int(*video_delay, "video_delay");
   }
 
   if (sample_format.has_value()) {
@@ -1311,27 +1298,28 @@ torch::stable::Tensor _blocks_create_packet_decoder(
         av_get_sample_fmt(sample_format->c_str()));
   }
   if (sample_rate.has_value()) {
-    codecpar.sample_rate = checked_cast<int>("sample_rate", *sample_rate);
+    codecpar.sample_rate = validate_int64_to_int(*sample_rate, "sample_rate");
   }
   if (channel_layout.has_value()) {
     set_channel_layout(codecpar, *channel_layout);
   }
   if (block_align.has_value()) {
-    codecpar.block_align = checked_cast<int>("block_align", *block_align);
+    codecpar.block_align = validate_int64_to_int(*block_align, "block_align");
   }
   if (frame_size.has_value()) {
-    codecpar.frame_size = checked_cast<int>("frame_size", *frame_size);
+    codecpar.frame_size = validate_int64_to_int(*frame_size, "frame_size");
   }
   if (initial_padding.has_value()) {
     codecpar.initial_padding =
-        checked_cast<int>("initial_padding", *initial_padding);
+        validate_int64_to_int(*initial_padding, "initial_padding");
   }
   if (trailing_padding.has_value()) {
     codecpar.trailing_padding =
-        checked_cast<int>("trailing_padding", *trailing_padding);
+        validate_int64_to_int(*trailing_padding, "trailing_padding");
   }
   if (seek_preroll.has_value()) {
-    codecpar.seek_preroll = checked_cast<int>("seek_preroll", *seek_preroll);
+    codecpar.seek_preroll =
+        validate_int64_to_int(*seek_preroll, "seek_preroll");
   }
 
   if (container_format.has_value()) {
@@ -1343,12 +1331,10 @@ torch::stable::Tensor _blocks_create_packet_decoder(
         ".");
   }
 
-  std::optional<int> thread_count;
-  if (num_threads.has_value()) {
-    thread_count = checked_cast<int>("num_threads", *num_threads);
-  }
   auto decoder = std::make_unique<PacketDecoder>(
-      params, StableDevice(device), thread_count);
+      params,
+      StableDevice(device),
+      validate_optional_int64_to_int(num_threads, "num_threads"));
   return wrap_pointer_to_tensor<PacketDecoder>(std::move(decoder));
 }
 
