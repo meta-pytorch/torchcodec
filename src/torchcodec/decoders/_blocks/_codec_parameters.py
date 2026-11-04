@@ -42,14 +42,17 @@ class _CodecParameters:
     # e.g. "mpeg", or None when the parameters don't come from a Demuxer.
     # Knowing the container lets the decoder keep behavior that is more accurate
     # than what it can do without it: resyncing after a seek in an MPEG program
-    # stream, and picking NVDEC's bitstream filter. The difference is expected
-    # to be rare and minor for MPEG program streams, and nonexistent in practice
-    # for NVDEC once its filter is picked from the extradata when the container
-    # is unknown, but we keep the container to be safe. It survives pickling,
-    # but it's not part of the API.
+    # stream, and picking NVDEC's bitstream filter. Without the container, the
+    # first packets after a seek in an MPEG program stream raise instead of
+    # being skipped (see
+    # test_mpeg_program_stream_resync_needs_the_container_format), which we
+    # expect to be rare. For NVDEC, we expect no difference in practice once
+    # its filter is picked from the extradata when the container is unknown,
+    # but we keep the container to be safe. It survives pickling, but it's not
+    # part of the API.
     # TODO_DEMUXER_FREE: pick NVDEC's filter from the extradata without a
     # container. Until then, NVDEC raises without one.
-    _container_format: str | None = field(
+    _container_format_PRIVATE_DO_NOT_USE: str | None = field(
         default=None, init=False, repr=False, compare=False
     )
 

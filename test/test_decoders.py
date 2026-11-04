@@ -4417,9 +4417,12 @@ class TestLowLevel:
     def test_codec_parameters_carry_the_container_format(self):
         params = Demuxer(NASA_VIDEO.path).streams[0].codec_parameters
 
-        assert params._container_format == "mov,mp4,m4a,3gp,3g2,mj2"
+        assert params._container_format_PRIVATE_DO_NOT_USE == "mov,mp4,m4a,3gp,3g2,mj2"
         unpickled = pickle.loads(pickle.dumps(params))
-        assert unpickled._container_format == params._container_format
+        assert (
+            unpickled._container_format_PRIVATE_DO_NOT_USE
+            == params._container_format_PRIVATE_DO_NOT_USE
+        )
         # It's not part of the API.
         assert "mov" not in repr(params)
         assert params == VideoCodecParameters(
@@ -4429,6 +4432,43 @@ class TestLowLevel:
                 if f.init
             }
         )
+
+    def test_mpeg_program_stream_resync_needs_the_container_format(self):
+        # This test documents the one behavior difference caused by the
+        # existence (or absence) of the
+        # VideoCodecParameters._container_format_PRIVATE_DO_NOT_USE field.
+        # It exists when the codec parameters come from a Demuxer, and is None
+        # otherwise (e.g. user-created).
+        #
+        # Seeking in an MPEG program stream lands mid-frame, so the first
+        # packets after the seek can't be decoded. When
+        # _container_format_PRIVATE_DO_NOT_USE is set, the the decoder can skips
+        # those packets until it properly resyncs based on that information.
+        # Without it, the decoder doesn't know what to do, and it raises on
+        # them, and it'd be up to the user to skip those packets themselves.
+        asset = SINE_STEREO_MP2_MPEG_PS
+
+        def decode_after_seek(params):
+            demuxer = Demuxer(asset.path, streams="audio")
+            decoder = AudioPacketDecoder(params)
+            demuxer.seek(2.0)
+            decoder.reset()
+            return [s for packet in demuxer for s in decoder.decode(packet)]
+
+        params = Demuxer(asset.path, streams="audio").streams[0].codec_parameters
+        assert params._container_format_PRIVATE_DO_NOT_USE == "mpeg"
+        assert len(decode_after_seek(params)) > 0
+
+        params_without_container = AudioCodecParameters(
+            **{
+                f.name: getattr(params, f.name)
+                for f in dataclasses.fields(params)
+                if f.init
+            }
+        )
+        assert params_without_container._container_format_PRIVATE_DO_NOT_USE is None
+        with pytest.raises(RuntimeError, match="Failed to send packet"):
+            decode_after_seek(params_without_container)
 
     def test_packet_decoder_codec_parameters_type_errors(self):
         video_params = Demuxer(NASA_VIDEO.path).streams[0].codec_parameters

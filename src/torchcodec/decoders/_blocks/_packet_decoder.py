@@ -79,8 +79,10 @@ class _BasePacketDecoder(Generic[_Decoded]):
                 ]
                 continue
             kwargs[f.name] = value
-        if codec_parameters._container_format is not None:
-            kwargs["container_format"] = codec_parameters._container_format
+        if codec_parameters._container_format_PRIVATE_DO_NOT_USE is not None:
+            kwargs["container_format"] = (
+                codec_parameters._container_format_PRIVATE_DO_NOT_USE
+            )
 
         self._handle = _blocks_create_packet_decoder(
             media_type,

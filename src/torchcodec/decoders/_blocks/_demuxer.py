@@ -264,7 +264,9 @@ class _Stream:
             if value is not None
         }
         params = cls(**kwargs)
-        object.__setattr__(params, "_container_format", container_format)
+        object.__setattr__(
+            params, "_container_format_PRIVATE_DO_NOT_USE", container_format
+        )
         return params
 
     def __repr__(self) -> str:
