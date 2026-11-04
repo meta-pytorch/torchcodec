@@ -31,7 +31,6 @@ decoder_core_sources = [
     "Frame.cpp",
     "DeviceInterface.cpp",
     "CpuDeviceInterface.cpp",
-    "CodecParameters.cpp",
     "Demuxer.cpp",
     "PacketDecoder.cpp",
     "AudioCommon.cpp",
