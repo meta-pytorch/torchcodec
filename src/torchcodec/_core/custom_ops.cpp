@@ -96,7 +96,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   // The return names are the fields of VideoCodecParameters and
   // AudioCodecParameters, which Python matches them against.
   m.def(
-      "_blocks_demuxer_get_codec_parameters(Tensor demuxer, int stream_index) -> (str codec, int[] time_base, Tensor? extradata, int? codec_tag, int? profile, int? level, int? bit_rate, int? bits_per_coded_sample, int? bits_per_raw_sample, str[] coded_side_data_names, Tensor[] coded_side_data_values, int? width, int? height, str? pixel_format, int[]? sample_aspect_ratio, int[]? framerate, int[]? r_frame_rate, str? field_order, str? color_range, str? color_primaries, str? color_transfer_characteristic, str? color_space, str? chroma_location, int? video_delay, float? rotation, str? sample_format, int? sample_rate, str? channel_layout, int? block_align, int? frame_size, int? initial_padding, int? trailing_padding, int? seek_preroll)");
+      "_blocks_demuxer_get_codec_parameters(Tensor demuxer, int stream_index) -> (str codec, int[] time_base, Tensor? extradata, int? codec_tag, int? profile, int? level, int? bit_rate, int? bits_per_coded_sample, int? bits_per_raw_sample, str[] coded_side_data_names, Tensor[] coded_side_data_values, int? width, int? height, str? pixel_format, int[]? sample_aspect_ratio, int[]? framerate, int[]? r_frame_rate, str? field_order, str? color_range, str? color_primaries, str? color_transfer_characteristic, str? color_space, str? chroma_location, int? video_delay, str? sample_format, int? sample_rate, str? channel_layout, int? block_align, int? frame_size, int? initial_padding, int? trailing_padding, int? seek_preroll)");
   m.def(
       "_blocks_create_packet_decoder(Tensor demuxer, *, int? stream_index=None, int? num_threads=None, str device=\"cpu\") -> Tensor");
   m.def(
@@ -1006,7 +1006,6 @@ using OpsCodecParametersOutput = std::tuple<
     std::optional<std::string>, // color_space
     std::optional<std::string>, // chroma_location
     std::optional<int64_t>, // video_delay
-    std::optional<double>, // rotation
     std::optional<std::string>, // sample_format
     std::optional<int64_t>, // sample_rate
     std::optional<std::string>, // channel_layout
@@ -1026,7 +1025,7 @@ OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
   const AVCodecParameters& codecpar = *params.codecpar;
 
   OpsCodecParametersOutput output;
-  auto& [codec, time_base, extradata, codec_tag, profile, level, bit_rate, bits_per_coded_sample, bits_per_raw_sample, coded_side_data_names, coded_side_data_values, width, height, pixel_format, sample_aspect_ratio, framerate, r_frame_rate, field_order, color_range, color_primaries, color_transfer_characteristic, color_space, chroma_location, video_delay, rotation, sample_format, sample_rate, channel_layout, block_align, frame_size, initial_padding, trailing_padding, seek_preroll] =
+  auto& [codec, time_base, extradata, codec_tag, profile, level, bit_rate, bits_per_coded_sample, bits_per_raw_sample, coded_side_data_names, coded_side_data_values, width, height, pixel_format, sample_aspect_ratio, framerate, r_frame_rate, field_order, color_range, color_primaries, color_transfer_characteristic, color_space, chroma_location, video_delay, sample_format, sample_rate, channel_layout, block_align, frame_size, initial_padding, trailing_padding, seek_preroll] =
       output;
 
   codec = avcodec_get_name(codecpar.codec_id);
@@ -1040,14 +1039,14 @@ OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
   bit_rate = unless_default(codecpar.bit_rate);
   bits_per_coded_sample = unless_default(codecpar.bits_per_coded_sample);
   bits_per_raw_sample = unless_default(codecpar.bits_per_raw_sample);
-  for (const AVPacketSideData* side_data : get_coded_side_data(codecpar)) {
-    const char* name = av_packet_side_data_name(side_data->type);
+  for (const AVPacketSideData& side_data : get_stream_side_data(params)) {
+    const char* name = av_packet_side_data_name(side_data.type);
     // A type this FFmpeg can't name is a type it doesn't know what to do with
     // either, so there's nothing a decoder would read from it.
     if (name != nullptr) {
       coded_side_data_names.emplace_back(name);
       coded_side_data_values.push_back(
-          bytes_to_tensor(side_data->data, side_data->size));
+          bytes_to_tensor(side_data.data, side_data.size));
     }
   }
 
@@ -1082,7 +1081,6 @@ OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
           to_optional_string(av_chroma_location_name(codecpar.chroma_location));
     }
     video_delay = unless_default(codecpar.video_delay);
-    rotation = get_rotation(params);
   } else if (codecpar.codec_type == AVMEDIA_TYPE_AUDIO) {
     sample_format = to_optional_string(
         av_get_sample_fmt_name(static_cast<AVSampleFormat>(codecpar.format)));

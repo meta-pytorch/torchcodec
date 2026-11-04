@@ -37,4 +37,24 @@ std::optional<double> get_rotation(const CodecParameters& codec_parameters) {
       codec_parameters.display_matrix->data());
 }
 
+std::vector<AVPacketSideData> get_stream_side_data(
+    const CodecParameters& codec_parameters) {
+  std::vector<AVPacketSideData> entries;
+  bool has_display_matrix = false;
+  for (const AVPacketSideData* side_data :
+       get_coded_side_data(*codec_parameters.codecpar)) {
+    entries.push_back(*side_data);
+    has_display_matrix |= side_data->type == AV_PKT_DATA_DISPLAYMATRIX;
+  }
+  if (codec_parameters.display_matrix.has_value() && !has_display_matrix) {
+    AVPacketSideData entry = {};
+    entry.data = reinterpret_cast<uint8_t*>(
+        const_cast<int32_t*>(codec_parameters.display_matrix->data()));
+    entry.size = sizeof(*codec_parameters.display_matrix);
+    entry.type = AV_PKT_DATA_DISPLAYMATRIX;
+    entries.push_back(entry);
+  }
+  return entries;
+}
+
 } // namespace facebook::torchcodec

@@ -16,6 +16,7 @@ import os
 import pickle
 import queue
 import socket
+import struct
 import subprocess
 import threading
 import zlib
@@ -4250,18 +4251,28 @@ class TestLowLevel:
         # versions report it as the initial padding.
         assert params.initial_padding in (None, 1024)
 
-    def test_codec_parameters_rotation(self):
+    def test_codec_parameters_display_matrix(self):
         (video,) = Demuxer(NASA_VIDEO_ROTATED.path).streams
-        params = video.codec_parameters
+        display_matrix = video.codec_parameters.coded_side_data["Display Matrix"]
 
-        assert params.rotation == video.metadata.rotation == 90.0
-        assert isinstance(params.rotation, float)
-        # With FFmpeg >= 6.1, the display matrix the rotation comes from is in
-        # the coded side data too.
-        if params.coded_side_data is not None:
-            assert len(params.coded_side_data["Display Matrix"]) == 36
+        # A 90 degree rotation, as FFmpeg stores it: 9 int32s, in 16.16 fixed
+        # point except for the last column, in 2.30.
+        assert video.metadata.rotation == 90
+        assert struct.unpack("9i", display_matrix) == (
+            0,
+            -65536,
+            0,
+            65536,
+            0,
+            0,
+            0,
+            0,
+            1 << 30,
+        )
 
-        assert Demuxer(NASA_VIDEO.path).streams[0].codec_parameters.rotation is None
+        assert (
+            Demuxer(NASA_VIDEO.path).streams[0].codec_parameters.coded_side_data is None
+        )
 
     def test_codec_parameters_are_picklable_frozen_values(self):
         demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))

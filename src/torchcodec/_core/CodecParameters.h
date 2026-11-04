@@ -8,6 +8,7 @@
 
 #include <array>
 #include <optional>
+#include <vector>
 
 #include "FFMPEGCommon.h"
 
@@ -34,5 +35,12 @@ struct CodecParameters {
 // Degrees counter-clockwise needed to make the frames upright, from the display
 // matrix.
 std::optional<double> get_rotation(const CodecParameters& codec_parameters);
+
+// The stream's side data, pointing into `codec_parameters`. That's
+// AVCodecParameters.coded_side_data, plus the display matrix when it isn't in
+// there: before FFmpeg 6.1, the display matrix was on the AVStream, and it's
+// the only one of the AVStream's side data that we keep.
+std::vector<AVPacketSideData> get_stream_side_data(
+    const CodecParameters& codec_parameters);
 
 } // namespace facebook::torchcodec

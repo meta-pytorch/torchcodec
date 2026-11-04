@@ -62,6 +62,11 @@ class _CodecParameters:
 # 2. The values a Demuxer reports are whatever FFmpeg reports, and can change
 #    between FFmpeg or TorchCodec versions.
 # 3. The constructor's field names and meanings are stable public API.
+# 4. The frames' rotation comes from the "Display Matrix" entry of
+#    coded_side_data, the raw 3x3 matrix as FFmpeg stores it: there is no
+#    separate rotation field. On FFmpeg < 6.1 it's the only coded_side_data
+#    entry there can be, since FFmpeg only moved the stream's side data into
+#    AVCodecParameters in 6.1.
 @dataclass(frozen=True, repr=False, kw_only=True)
 class VideoCodecParameters(_CodecParameters):
     width: int | None = None
@@ -77,7 +82,6 @@ class VideoCodecParameters(_CodecParameters):
     color_space: str | None = None
     chroma_location: str | None = None
     video_delay: int | None = None
-    rotation: float | None = None
 
     def __post_init__(self):
         super().__post_init__()
