@@ -4381,10 +4381,12 @@ class TestLowLevel:
         ),
     )
     def test_video_packet_decoder_from_hand_built_codec_parameters(self, device, video):
-        # Without a Demuxer, the decoder doesn't know the container, which NVDEC
-        # otherwise uses to pick its bitstream filter. NVDEC needs width, height
-        # and pixel_format, or it silently decodes on the CPU, and it computes
-        # the frames' durations from r_frame_rate.
+        # Hand-built parameters have no container, so NVDEC picks its bitstream
+        # filter from the codec alone, instead of from the container as it does
+        # with a Demuxer. This checks that it still picks a filter that works
+        # for these videos' formats. NVDEC needs width, height and
+        # pixel_format, or it silently decodes on the CPU, and it computes the
+        # frames' durations from r_frame_rate.
         demuxer = Demuxer(video.path)
         stream_params = demuxer.streams[0].codec_parameters
         params = VideoCodecParameters(
