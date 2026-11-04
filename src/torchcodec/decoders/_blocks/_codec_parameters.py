@@ -38,9 +38,17 @@ class _CodecParameters:
     bits_per_coded_sample: int | None = None
     bits_per_raw_sample: int | None = None
     coded_side_data: dict[str, bytes] | None = None
-    # FFmpeg's name of the container format the stream was demuxed from, e.g.
-    # "mpeg". Some decoding behavior depends on it, so it's carried along with
-    # the parameters, including through pickling, but it's not part of the API.
+    # FFmpeg's name of the format of the container the stream was demuxed from,
+    # e.g. "mpeg", or None when the parameters don't come from a Demuxer.
+    # Knowing the container lets the decoder keep behavior that is more accurate
+    # than what it can do without it: resyncing after a seek in an MPEG program
+    # stream, and picking NVDEC's bitstream filter. The difference is expected
+    # to be rare and minor for MPEG program streams, and nonexistent in practice
+    # for NVDEC once its filter is picked from the extradata when the container
+    # is unknown, but we keep the container to be safe. It survives pickling,
+    # but it's not part of the API.
+    # TODO_DEMUXER_FREE: pick NVDEC's filter from the extradata without a
+    # container. Until then, NVDEC raises without one.
     _container_format: str | None = field(
         default=None, init=False, repr=False, compare=False
     )

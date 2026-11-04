@@ -4364,7 +4364,11 @@ class TestLowLevel:
         expected = VideoDecoder(video.path, device=device)
         assert len(raw_frames) == len(expected)
         for i, raw_frame in enumerate(raw_frames):
-            assert_frames_equal(converter.convert(raw_frame).data, expected[i])
+            frame = converter.convert(raw_frame)
+            expected_frame = expected.get_frame_at(i)
+            torch.testing.assert_close(frame.data, expected_frame.data, rtol=0, atol=0)
+            assert frame.pts_seconds == expected_frame.pts_seconds
+            assert frame.duration_seconds == expected_frame.duration_seconds
 
     def test_video_packet_decoder_from_hand_built_codec_parameters(self):
         # H.264 packets copied out of an MP4 only need the avcC box, i.e. the
@@ -4387,8 +4391,10 @@ class TestLowLevel:
         expected = VideoDecoder(NASA_VIDEO.path)
         assert len(frames) == len(expected)
         for i, frame in enumerate(frames):
-            assert_frames_equal(frame.data, expected[i])
-            assert frame.pts_seconds == expected.get_frame_at(i).pts_seconds
+            expected_frame = expected.get_frame_at(i)
+            torch.testing.assert_close(frame.data, expected_frame.data, rtol=0, atol=0)
+            assert frame.pts_seconds == expected_frame.pts_seconds
+            assert frame.duration_seconds == expected_frame.duration_seconds
 
     def test_audio_packet_decoder_from_pickled_codec_parameters(self):
         def decode(make_decoder):
