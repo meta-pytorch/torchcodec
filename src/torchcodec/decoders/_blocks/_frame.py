@@ -34,10 +34,6 @@ class _Metadata(NamedTuple):
     rotation: float
 
 
-@_process_local(
-    "Build a Demuxer in each process instead, from the same source: a packet "
-    "is only decodable by a decoder built from its own stream."
-)
 class Packet:
     """One compressed packet of one stream.
 
@@ -75,6 +71,9 @@ class Packet:
     #    coded_side_data is in the codec parameters.
     # 5. data is a view on the packet's data: writing to it modifies the
     #    packet, so .clone() it first.
+    # 6. Packets can be pickled, e.g. to be decoded in another process. The
+    #    pickles are only guaranteed to be readable by the same version of
+    #    TorchCodec.
     # Same for from_tensor(), and the properties below.
     @classmethod
     def from_bytes(
@@ -133,6 +132,19 @@ class Packet:
         names = [r.name for r in _blocks_packet_get_fields._schema.returns]
         return dict(zip(names, outputs))
 
+    def __reduce__(self):
+        kwargs = {
+            "pts": self.pts,
+            "dts": self.dts,
+            "duration": self.duration,
+            "flags": self.flags,
+            "side_data": self.side_data,
+            "stream_index": self.stream_index,
+        }
+        # The generation is kept so that a decoder in another process still
+        # catches a missing reset() after a seek.
+        return (_unpickle_packet, (self.data, kwargs, self._generation))
+
     @property
     def data(self) -> torch.Tensor:
         return self._get_fields()["data"]
@@ -162,6 +174,12 @@ class Packet:
                 fields["side_data_names"], fields["side_data_values"]
             )
         }
+
+
+def _unpickle_packet(data: torch.Tensor, kwargs: dict, generation: int) -> Packet:
+    packet = Packet.from_tensor(data, **kwargs)
+    packet._generation = generation
+    return packet
 
 
 @_process_local(

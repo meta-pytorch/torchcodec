@@ -4561,11 +4561,19 @@ class TestLowLevel:
     @pytest.mark.parametrize(
         "asset, media_type", ((NASA_VIDEO, "video"), (NASA_AUDIO_MP3, "audio"))
     )
-    @pytest.mark.parametrize("constructor", ("from_bytes", "from_tensor"))
+    @pytest.mark.parametrize(
+        "constructor", ("from_bytes", "from_tensor", "pickle", "forking_pickler")
+    )
     def test_packets_rebuilt_from_their_data_decode_the_same(
         self, asset, media_type, constructor
     ):
         def rebuild(packet):
+            if constructor == "pickle":
+                return pickle.loads(pickle.dumps(packet))
+            if constructor == "forking_pickler":
+                # What a DataLoader worker or an mp.Queue uses: it moves the
+                # data tensor into shared memory.
+                return pickle.loads(ForkingPickler.dumps(packet))
             data = packet.data
             if constructor == "from_bytes":
                 data = bytes(data.numpy())
@@ -4641,6 +4649,19 @@ class TestLowLevel:
         data[0] = ord("x")
         for packet in (from_bytes, from_memoryview, from_tensor):
             assert bytes(packet.data.numpy()) == b"abc"
+
+    def test_pickled_packet_keeps_its_generation(self):
+        demuxer = Demuxer(NASA_VIDEO.path)
+        decoder = demuxer.streams[0].make_decoder()
+        decoder.decode(next(demuxer))
+        demuxer.seek(1.0)
+        packet = next(demuxer)
+        assert packet._generation != 0
+
+        unpickled = pickle.loads(pickle.dumps(packet))
+        assert unpickled._generation == packet._generation
+        with pytest.raises(RuntimeError, match="reset"):
+            decoder.decode(unpickled)
 
     def test_packet_data_outlives_packet(self):
         # grep for this test name to see associated comment in the code.
@@ -6914,7 +6935,6 @@ class TestLowLevel:
             audio.make_decoder(),
             ColorConverter(),
             AudioConverter(),
-            next(iter(demuxer)),
             next(self._decoded_frames(NASA_VIDEO.path, "cpu")),
         ]
 
