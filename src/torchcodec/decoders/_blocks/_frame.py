@@ -174,9 +174,21 @@ class Packet:
             "side_data": self.side_data,
             "stream_index": self.stream_index,
         }
+        # The data is pickled as bytes rather than as the data tensor. Under
+        # torch.multiprocessing (mp.Queue, DataLoader workers...), a tensor is
+        # copied into a shared memory file, which the receiver gets through a
+        # file descriptor. That has a fixed cost of a few hundred microseconds,
+        # which only pays off above a few MB, while a packet is usually a few
+        # KB: copying its bytes into the pickle is about 10x faster. And every
+        # tensor in flight holds a file descriptor, so sending a few thousand
+        # packets at once would hit the open files limit.
+        #
         # The generation is kept so that a decoder in another process still
         # catches a missing reset() after a seek.
-        return (_unpickle_packet, (self.data, kwargs, self._generation))
+        return (
+            _unpickle_packet,
+            (_tensor_to_bytes(self.data), kwargs, self._generation),
+        )
 
     @property
     def data(self) -> torch.Tensor:
@@ -224,8 +236,8 @@ class Packet:
         }
 
 
-def _unpickle_packet(data: torch.Tensor, kwargs: dict, generation: int) -> Packet:
-    packet = Packet.from_tensor(data, **kwargs)
+def _unpickle_packet(data: bytes, kwargs: dict, generation: int) -> Packet:
+    packet = Packet.from_bytes(data, **kwargs)
     packet._generation = generation
     return packet
 

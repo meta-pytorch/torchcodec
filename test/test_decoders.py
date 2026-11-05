@@ -92,6 +92,7 @@ from .utils import (
     CORRUPT_JPEG,
     cuda_devices,
     demux_in_subprocess,
+    demux_with_open_files_limit,
     DISCARD_FIRST_KEYFRAME_VIDEO,
     FRAME_EXCEEDS_SCREEN_GIF,
     get_ffmpeg_minor_version,
@@ -4680,6 +4681,26 @@ class TestLowLevel:
         data[0] = ord("x")
         for packet in (from_bytes, from_memoryview, from_tensor):
             assert bytes(packet.data.numpy()) == b"abc"
+
+    @pytest.mark.skipif(IS_WINDOWS, reason="No open files limit to lower")
+    def test_send_many_packets_across_processes(self):
+        # Under torch.multiprocessing, every tensor in flight holds a file
+        # descriptor. Packets are pickled as bytes, so sending more of them than
+        # the open files limit allows works.
+        max_open_files = 256
+        expected = list(Demuxer(NASA_VIDEO.path))
+        assert len(expected) > max_open_files
+
+        context = torch.multiprocessing.get_context("spawn")
+        with concurrent.futures.ProcessPoolExecutor(1, mp_context=context) as pool:
+            packets = pool.submit(
+                demux_with_open_files_limit, NASA_VIDEO.path, max_open_files
+            ).result()
+
+        assert len(packets) == len(expected)
+        for packet, expected_packet in zip(packets, expected):
+            assert torch.equal(packet.data, expected_packet.data)
+            assert packet.pts == expected_packet.pts
 
     def test_pickled_packet_keeps_its_generation(self):
         demuxer = Demuxer(NASA_VIDEO.path)
