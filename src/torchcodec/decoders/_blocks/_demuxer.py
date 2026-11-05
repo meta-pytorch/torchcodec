@@ -207,8 +207,12 @@ class FrameIndex:
             return float(self.pts_seconds[0])
         return float(self._key_frame_seconds[position])
 
+    @cached_property
+    def _has_timestamps(self) -> bool:
+        return not bool((self._pts == _NO_PTS).all())
+
     def _check_has_timestamps(self) -> None:
-        if bool((self._pts == _NO_PTS).all()):
+        if not self._has_timestamps:
             raise ValueError(
                 "This stream has no timestamps (e.g. it is a raw H.264 or HEVC "
                 "stream), so frames can't be looked up by time."
