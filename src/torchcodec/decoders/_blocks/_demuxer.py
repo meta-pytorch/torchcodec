@@ -89,8 +89,7 @@ class FrameIndex:
     on :attr:`VideoStream.metadata`.
     """
 
-    is_key_frame: Tensor
-    """Bool tensor of shape ``[N]``, whether each frame is a keyframe."""
+    _is_key_frame: Tensor
     _pts: Tensor
     _duration: Tensor
     _time_base_num: int
@@ -98,7 +97,13 @@ class FrameIndex:
 
     def __len__(self) -> int:
         """The number of frames in the stream."""
-        return self.is_key_frame.shape[0]
+        return self._is_key_frame.shape[0]
+
+    @property
+    def is_key_frame(self) -> Tensor:
+        """Bool tensor of shape ``[N]``, whether each frame is a keyframe."""
+        self._check_has_timestamps()
+        return self._is_key_frame
 
     @property
     def num_frames_from_content(self) -> int:
@@ -109,11 +114,10 @@ class FrameIndex:
     def pts_seconds(self) -> Tensor:
         """Float64 tensor of shape ``[N]``, the :term:`pts` of each frame.
 
-        ``NaN`` for the frames whose packet has no pts. Raw H.264 or HEVC
-        streams have none at all: their per-frame tensors are then in decoding
-        order, so :attr:`key_frame_indices` are the positions of the keyframes
-        among the stream's packets, which can differ from their positions among
-        the displayed frames.
+        ``NaN`` for the frames whose packet has no pts. Streams like raw H.264
+        or HEVC streams have none at all, so their frames can't be put in
+        presentation order: :attr:`is_key_frame`, :attr:`key_frame_indices`,
+        :meth:`index_at` and :meth:`key_frame_seconds_for` raise on them.
         """
         return self._to_seconds(self._pts).masked_fill(
             self._pts == _NO_PTS, float("nan")
@@ -215,7 +219,8 @@ class FrameIndex:
         if not self._has_timestamps:
             raise ValueError(
                 "This stream has no timestamps (e.g. it is a raw H.264 or HEVC "
-                "stream), so frames can't be looked up by time."
+                "stream), so its frames can't be put in presentation order, nor "
+                "looked up by time."
             )
 
     def _to_seconds(self, value: Tensor) -> Tensor:
@@ -353,7 +358,7 @@ class VideoStream(_Stream):
                 _blocks_demuxer_scan(self._demuxer._handle, self.index)
             )
             self._frame_index = FrameIndex(
-                is_key_frame=is_key_frame,
+                _is_key_frame=is_key_frame,
                 _pts=pts,
                 _duration=duration,
                 _time_base_num=time_base_num,

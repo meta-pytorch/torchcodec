@@ -6097,7 +6097,7 @@ class TestLowLevel:
     @staticmethod
     def _make_frame_index(pts, duration, time_base_den=1000):
         return FrameIndex(
-            is_key_frame=torch.zeros(len(pts), dtype=torch.bool),
+            _is_key_frame=torch.zeros(len(pts), dtype=torch.bool),
             _pts=torch.tensor(pts),
             _duration=torch.tensor(duration),
             _time_base_num=1,
@@ -6176,19 +6176,12 @@ class TestLowLevel:
 
         expected = list(self._decoded_frames(path, "cpu"))
         assert len(frame_index) == len(expected) == 30
-        # Usually, the index is sorted by pts, so these would be the keyframes'
-        # positions among the packets sorted by pts. Without timestamps, there's
-        # nothing to sort by: they're their positions in the order the packets
-        # are read.
-        AV_PKT_FLAG_KEY = 1
-        assert frame_index.key_frame_indices.tolist() == [
-            i
-            for i, packet in enumerate(Demuxer(path))
-            if packet.flags & AV_PKT_FLAG_KEY
-        ]
-        assert len(frame_index.key_frame_indices) == 3
         assert frame_index.pts_seconds.isnan().all()
         assert (frame_index.duration_seconds > 0).all()
+        with pytest.raises(ValueError, match="no timestamps"):
+            frame_index.is_key_frame
+        with pytest.raises(ValueError, match="no timestamps"):
+            frame_index.key_frame_indices
         with pytest.raises(ValueError, match="no timestamps"):
             frame_index.index_at(0.5)
         with pytest.raises(ValueError, match="no timestamps"):
