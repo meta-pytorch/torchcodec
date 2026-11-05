@@ -6176,8 +6176,10 @@ class TestLowLevel:
 
         expected = list(self._decoded_frames(path, "cpu"))
         assert len(frame_index) == len(expected) == 30
-        # In decoding order: for open GOPs, that's not where the keyframes are
-        # displayed.
+        # Usually, the index is sorted by pts, so these would be the keyframes'
+        # positions among the packets sorted by pts. Without timestamps, there's
+        # nothing to sort by: they're their positions in the order the packets
+        # are read.
         AV_PKT_FLAG_KEY = 1
         assert frame_index.key_frame_indices.tolist() == [
             i
