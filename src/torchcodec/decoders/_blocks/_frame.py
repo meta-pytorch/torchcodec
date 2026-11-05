@@ -34,11 +34,6 @@ class _Metadata(NamedTuple):
     rotation: float
 
 
-# TODO_DEMUXER_FREE: expose the stream's time base in stream.metadata
-# (VideoStreamHeaderMetadata / AudioStreamHeaderMetadata). For now, it's only in
-# the codec parameters, which the docs tell users not to read as metadata. Then
-# replace "(the codec parameters' ``time_base``)" in the docstring below with a
-# reference to it.
 class Packet:
     """One compressed packet of one stream.
 
@@ -91,7 +86,8 @@ class Packet:
             data (bytes, bytearray or memoryview): The compressed data of one
                 packet. It is copied.
             pts (int, optional): The :term:`pts`, in units of the stream's time
-                base. The decoded frames' :attr:`RawFrame.pts` come from it.
+                base (:attr:`StreamMetadata.time_base`). The decoded frames'
+                :attr:`RawFrame.pts` come from it.
                 ``None`` (default) if unknown.
             dts (int, optional): The decoding timestamp, in units of the
                 stream's time base. ``None`` (default) if unknown.
@@ -193,8 +189,8 @@ class Packet:
 
     @property
     def pts(self) -> int | None:
-        """The :term:`pts`, in units of the stream's time base. ``None`` if
-        unknown."""
+        """The :term:`pts`, in units of the stream's time base
+        (:attr:`StreamMetadata.time_base`). ``None`` if unknown."""
         return self._get_fields()["pts"]
 
     @property
@@ -273,8 +269,9 @@ class RawFrame:
     """
 
     pts: int | None
-    """The :term:`pts` of this frame, in units of the stream's time base, like
-    the :attr:`Packet.pts` it comes from. ``None`` if the frame has no
+    """The :term:`pts` of this frame, in units of the stream's time base
+    (:attr:`StreamMetadata.time_base`), like the :attr:`Packet.pts` it comes
+    from. ``None`` if the frame has no
     timestamp (e.g. in raw H.264 streams).
 
     Unlike :attr:`pts_seconds`, it is exact: use it to match a frame to the
@@ -477,8 +474,9 @@ class RawAudioSamples:
     sample_rate: int
     """The source's sample rate, in Hz."""
     pts: int | None
-    """The :term:`pts` of the first sample, in units of the stream's time base,
-    like the :attr:`Packet.pts` it comes from. ``None`` if it is unknown.
+    """The :term:`pts` of the first sample, in units of the stream's time base
+    (:attr:`StreamMetadata.time_base`), like the :attr:`Packet.pts` it comes
+    from. ``None`` if it is unknown.
 
     Unlike :attr:`pts_seconds`, it is exact: use it to match samples to the
     timestamp of a packet."""

@@ -198,6 +198,7 @@ def test_repr():
   begin_stream_seconds_from_header: 0
   bit_rate: 128783
   codec: h264
+  time_base: 1/30000
   stream_index: 3
   media_type: video
   width: 480
@@ -231,6 +232,7 @@ def test_repr():
   begin_stream_seconds_from_header: 0.138125
   bit_rate: 64000
   codec: mp3
+  time_base: 1/14112000
   stream_index: 0
   media_type: audio
   sample_rate: 8000
