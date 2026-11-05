@@ -131,6 +131,11 @@ class _BasePacketDecoder(Generic[_Decoded]):
 
 # TODO_DEMUXER_FREE: add a tutorial for decoding without a Demuxer, and link it
 # from here and from AudioPacketDecoder.
+# TODO_DEMUXER_FREE: across all docs, present the explicit construction,
+# VideoPacketDecoder(stream.codec_parameters), as the way to build a decoder,
+# and stream.make_decoder() as a shortcut for it. That's the docstrings of both
+# packet decoders and of VideoStream.make_decoder / AudioStream.make_decoder,
+# and the examples in examples/low_level/, which all use make_decoder().
 class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
     """Decodes the compressed :class:`Packet`\\ s of one video stream into
     :class:`RawFrame`\\ s.
