@@ -129,8 +129,6 @@ class _BasePacketDecoder(Generic[_Decoded]):
         self._generation = None
 
 
-# TODO_DEMUXER_FREE: add a tutorial for decoding without a Demuxer, and link it
-# from here and from AudioPacketDecoder.
 class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
     """Decodes the compressed :class:`Packet`\\ s of one video stream into
     :class:`RawFrame`\\ s.
@@ -152,8 +150,9 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
 
     The codec parameters can also be pickled, to decode in another process
     than the demuxer, or built by hand, to decode packets that don't come from
-    a :class:`Demuxer`. Frames come out on the device the decoder was built
-    for.
+    a :class:`Demuxer` (see
+    :ref:`sphx_glr_generated_examples_low_level_demuxer_free.py`). Frames come
+    out on the device the decoder was built for.
 
     It is stateful. It holds the codec's reference-frame buffer, so it expects
     the packets of its own stream, in the order the demuxer produced them.
@@ -275,7 +274,9 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
 
     The codec parameters can also be pickled, to decode in another process
     than the demuxer, or built by hand, to decode packets that don't come from
-    a :class:`Demuxer`. Audio is always decoded on the CPU.
+    a :class:`Demuxer` (see
+    :ref:`sphx_glr_generated_examples_low_level_demuxer_free.py`). Audio is
+    always decoded on the CPU.
 
     It is stateful. A lossy codec carries state from one frame to the next, so
     it expects the packets of its own stream, in the order the demuxer produced

@@ -25,9 +25,10 @@ never ends.
 For simple end-to-end decoding, :class:`~torchcodec.decoders.VideoDecoder` and
 :class:`~torchcodec.decoders.AudioDecoder` are often all you need: they
 handle demuxing, decoding and conversion for you, in a single call. But that
-means you don't control these stages: you can't run them on different threads,
-stop before the conversion, or decode several streams in a single pass. The
-low-level APIs expose those three stages separately, one chain per media type:
+means you don't control these stages: you can't run them on different threads
+or processes, stop before the conversion, or decode several streams in a single
+pass. The low-level APIs expose those three stages separately, one chain per
+media type:
 
 .. code-block::
 
@@ -42,6 +43,12 @@ This unlocks features that the high-level decoders don't offer:
 * **Performance gains via multi-threaded pipelines**: demux, decode and color-convert on separate
   threads. Each stage releases the GIL. (:ref:`tutorial
   <sphx_glr_generated_examples_low_level_pipelines.py>`).
+* **Multi-process pipelines**: packets and codec parameters can be pickled, so
+  the demuxing and the decoding can happen in different processes
+  (:ref:`tutorial <low_level_across_processes>`).
+* **Decoding without a Demuxer**: decode packets that come from elsewhere,
+  e.g. a database, the network, or your own container parser
+  (:ref:`tutorial <sphx_glr_generated_examples_low_level_demuxer_free.py>`).
 * **Access raw YUV data, for SDR and HDR sources**: read the decoder's own planes, with no
   conversion and no copy, at the source's own precision. 10-bit HDR comes out
   as ``uint16`` with every bit intact. You also get access to the raw audio samples.
