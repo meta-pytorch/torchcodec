@@ -140,9 +140,9 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
 
     If you have a :class:`Demuxer`, you can build a ``VideoPacketDecoder`` with
     :meth:`VideoStream.make_decoder`. You can also build one from
-    ``VideoCodecParameters``, e.g. in another process than the demuxer, or to
-    decode packets that don't come from a :class:`Demuxer`. Frames come out on
-    the device it was built for.
+    :class:`VideoCodecParameters`, e.g. in another process than the demuxer, or
+    to decode packets that don't come from a :class:`Demuxer`. Frames come out
+    on the device it was built for.
 
     Feed it one packet at a time, and drain it at the end::
 
@@ -252,8 +252,8 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
 
     If you have a :class:`Demuxer`, you can build an ``AudioPacketDecoder`` with
     :meth:`AudioStream.make_decoder`. You can also build one from
-    ``AudioCodecParameters``, e.g. in another process than the demuxer, or to
-    decode packets that don't come from a :class:`Demuxer`. Audio is always
+    :class:`AudioCodecParameters`, e.g. in another process than the demuxer, or
+    to decode packets that don't come from a :class:`Demuxer`. Audio is always
     decoded on the CPU.
 
     Feed it one packet at a time, and drain it at the end::
