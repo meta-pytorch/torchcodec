@@ -28,16 +28,36 @@ def _short_repr(value: object) -> str:
 @dataclass(frozen=True, repr=False)
 class _CodecParameters:
     codec: str
+    """FFmpeg's name of the codec, e.g. ``"h264"``, ``"hevc"`` or ``"aac"``.
+    ``ffmpeg -codecs`` lists them."""
     _: KW_ONLY
     time_base: Fraction
+    """The unit of the packets' timestamps, in seconds: a packet's ``pts`` of
+    ``n`` means ``n * time_base`` seconds."""
     extradata: bytes | None = None
+    """The codec's setup data that isn't in the packets, e.g. the ``avcC`` box
+    of H.264 in MP4. Not all codecs and streams need it."""
     codec_tag: int | None = None
+    """The container's identifier of the codec, e.g. a FourCC in AVI or MP4.
+    A few codecs read it to tell variants apart."""
     profile: int | None = None
+    """The codec's profile, as one of FFmpeg's ``AV_PROFILE_*`` values."""
     level: int | None = None
+    """The codec's level."""
     bit_rate: int | None = None
+    """The average bit rate, in bits per second."""
     bits_per_coded_sample: int | None = None
+    """The number of bits per sample in the compressed data, for the codecs
+    that need it (mostly uncompressed and PCM codecs)."""
     bits_per_raw_sample: int | None = None
+    """The number of bits per sample in the decoded data, when it's not implied
+    by the pixel or sample format, e.g. 10 for 10-bit video."""
     coded_side_data: dict[str, bytes] | None = None
+    """Extra data about the stream, keyed by FFmpeg's names for its types, e.g.
+    ``"Display Matrix"`` for video or ``"Replay Gain"`` for audio.
+
+    If a video stream has a display matrix, it is under ``"Display Matrix"``
+    on every FFmpeg version."""
     # FFmpeg's name of the format of the container the stream was demuxed from,
     # e.g. "mpeg", or None when the parameters don't come from a Demuxer.
     # Knowing the container lets the decoder keep behavior that is more accurate
@@ -69,33 +89,78 @@ class _CodecParameters:
         return f"{type(self).__name__}({fields})"
 
 
-# TODO_DEMUXER_FREE: add docs. They should say that:
-# 1. This mirrors FFmpeg's AVCodecParameters, and is meant to be passed to a
-#    decoder or stored, not read as metadata: stream properties are read from
-#    stream.metadata.
-# 2. The values a Demuxer reports are whatever FFmpeg reports, and can change
-#    between FFmpeg or TorchCodec versions.
-# 3. The constructor's field names and meanings are stable public API.
-# 4. The frames' rotation comes from the "Display Matrix" entry of
-#    coded_side_data, the raw 3x3 matrix as FFmpeg stores it: there is no
-#    separate rotation field. On FFmpeg < 6.1 it's the only coded_side_data
-#    entry there can be, since FFmpeg only moved the stream's side data into
-#    AVCodecParameters in 6.1.
 @dataclass(frozen=True, repr=False, kw_only=True)
 class VideoCodecParameters(_CodecParameters):
+    """What a :class:`VideoPacketDecoder` needs to know to decode the packets
+    of a video stream.
+
+    If you have a :class:`Demuxer`, :attr:`VideoStream.codec_parameters` gives
+    you the parameters of a stream. They can be pickled, e.g. to build the
+    decoder in another process. To decode packets that don't come from a
+    ``Demuxer``, build them yourself::
+
+        codec_parameters = VideoCodecParameters(
+            "h264", time_base=Fraction(1, 90_000), extradata=extradata
+        )
+        decoder = VideoPacketDecoder(codec_parameters)
+
+    The fields mirror those of FFmpeg's `AVCodecParameters
+    <https://ffmpeg.org/doxygen/trunk/structAVCodecParameters.html>`_, with the
+    same names and meanings. FFmpeg's names stand for its enums, e.g.
+    ``pixel_format="yuv420p"``.
+
+
+    .. note::
+
+        Which fields you need depends on the codec and device: printing the parameters a
+        ``Demuxer`` reports for a similar file shows what FFmpeg uses.
+
+        To decode on CUDA, set ``width``, ``height`` and ``pixel_format``:
+        depending on the codec, the frames may otherwise be silently decoded
+        on the CPU. Also set ``r_frame_rate``, or the frames' durations are 0.
+
+    .. note::
+
+        The parameters are meant to be passed to a decoder or stored, not read
+        as metadata: use :attr:`VideoStream.metadata` for that. The values a
+        ``Demuxer`` reports are FFmpeg's, and can change across FFmpeg and
+        TorchCodec versions. The fields' names and meanings are stable.
+    """
+
     width: int | None = None
+    """The width of the frames, in pixels."""
     height: int | None = None
+    """The height of the frames, in pixels."""
     pixel_format: str | None = None
+    """FFmpeg's name of the decoded frames' pixel format, e.g. ``"yuv420p"``.
+    ``ffmpeg -pix_fmts`` lists them."""
     sample_aspect_ratio: Fraction | None = None
+    """The width of a pixel divided by its height."""
     framerate: Fraction | None = None
+    """The frame rate, in frames per second, as the codec reports it. Setting
+    it requires FFmpeg 6.1 or above."""
     r_frame_rate: Fraction | None = None
+    """The frame rate, in frames per second, as the container reports it. Not
+    part of FFmpeg's ``AVCodecParameters``, but of its ``AVStream``."""
     field_order: str | None = None
+    """``"progressive"`` or, for interlaced video, which field comes first:
+    ``"tt"``, ``"bb"``, ``"tb"`` or ``"bt"``."""
     color_range: str | None = None
+    """FFmpeg's name of the color range, e.g. ``"tv"`` (limited) or ``"pc"``
+    (full)."""
     color_primaries: str | None = None
+    """FFmpeg's name of the color primaries, e.g. ``"bt709"``."""
     color_transfer_characteristic: str | None = None
+    """FFmpeg's name of the transfer characteristic, e.g. ``"bt709"`` or
+    ``"smpte2084"``."""
     color_space: str | None = None
+    """FFmpeg's name of the color space, i.e. the YUV matrix, e.g.
+    ``"bt709"``."""
     chroma_location: str | None = None
+    """FFmpeg's name of the chroma samples' location, e.g. ``"left"``."""
     video_delay: int | None = None
+    """The number of frames the decoder holds back before it outputs one,
+    because of B-frames."""
 
     def __post_init__(self):
         super().__post_init__()
@@ -105,15 +170,60 @@ class VideoCodecParameters(_CodecParameters):
                 _check_fraction(name, value)
 
 
-# TODO_DEMUXER_FREE: add docs, making the same points as for
-# VideoCodecParameters.
 @dataclass(frozen=True, repr=False, kw_only=True)
 class AudioCodecParameters(_CodecParameters):
+    """What an :class:`AudioPacketDecoder` needs to know to decode the packets
+    of an audio stream.
+
+    If you have a :class:`Demuxer`, :attr:`AudioStream.codec_parameters` gives
+    you the parameters of a stream. They can be pickled, e.g. to build the
+    decoder in another process. To decode packets that don't come from a
+    ``Demuxer``, build them yourself::
+
+        codec_parameters = AudioCodecParameters(
+            "aac",
+            time_base=Fraction(1, 48_000),
+            sample_rate=48_000,
+            channel_layout="stereo",
+            extradata=extradata,
+        )
+        decoder = AudioPacketDecoder(codec_parameters)
+
+    The fields mirror those of FFmpeg's `AVCodecParameters
+    <https://ffmpeg.org/doxygen/trunk/structAVCodecParameters.html>`_, with the
+    same names and meanings. FFmpeg's names stand for its enums, e.g.
+    ``sample_format="fltp"``.
+
+    Which fields you need depends on the codec: printing the parameters a
+    ``Demuxer`` reports for a similar file shows what FFmpeg uses.
+
+    .. note::
+
+        The parameters are meant to be passed to a decoder or stored, not read
+        as metadata: use :attr:`AudioStream.metadata` for that. The values a
+        ``Demuxer`` reports are FFmpeg's, and can change across FFmpeg and
+        TorchCodec versions. The fields' names and meanings are stable.
+    """
+
     sample_format: str | None = None
+    """FFmpeg's name of the decoded samples' format, e.g. ``"fltp"``.
+    ``ffmpeg -sample_fmts`` lists them."""
     sample_rate: int | None = None
+    """The sample rate, in Hz."""
     channel_layout: str | None = None
+    """FFmpeg's description of the channel layout, e.g. ``"stereo"`` or
+    ``"5.1"``. ``ffmpeg -layouts`` lists them."""
     block_align: int | None = None
+    """The number of bytes per coded audio frame, for the codecs that need it
+    (e.g. PCM and ADPCM codecs)."""
     frame_size: int | None = None
+    """The number of samples per channel in a frame, for the codecs whose
+    frames all have the same size."""
     initial_padding: int | None = None
+    """The number of samples the encoder added at the start of the audio,
+    which aren't part of the original audio."""
     trailing_padding: int | None = None
+    """The number of samples the encoder added at the end of the audio, which
+    aren't part of the original audio."""
     seek_preroll: int | None = None
+    """The number of samples to skip after a discontinuity, e.g. a seek."""

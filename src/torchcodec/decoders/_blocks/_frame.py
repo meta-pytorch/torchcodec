@@ -34,13 +34,21 @@ class _Metadata(NamedTuple):
     rotation: float
 
 
+# TODO_DEMUXER_FREE: expose the stream's time base in stream.metadata
+# (VideoStreamHeaderMetadata / AudioStreamHeaderMetadata). For now, it's only in
+# the codec parameters, which the docs tell users not to read as metadata. Then
+# replace "(the codec parameters' ``time_base``)" in the docstring below with a
+# reference to it.
 class Packet:
     """One compressed packet of one stream.
 
     A :class:`Demuxer` creates them, and a :class:`VideoPacketDecoder` or an
     :class:`AudioPacketDecoder` consumes them. You can also build one from
     compressed data that doesn't come from a ``Demuxer``, with
-    ``Packet.from_bytes()`` or ``Packet.from_tensor()``.
+    :meth:`from_bytes` or :meth:`from_tensor`.
+
+    Packets can be pickled, e.g. to be decoded in another process. The pickles
+    are only guaranteed to be readable by the same version of TorchCodec.
     """
 
     stream_index: int
@@ -62,19 +70,6 @@ class Packet:
         # reason about. See _BasePacketDecoder.decode().
         self._generation = generation
 
-    # TODO_DEMUXER_FREE: add docs. They should say that:
-    # 1. The arguments are the fields of FFmpeg's AVPacket, so the timestamps
-    #    are integers in the stream's time base, not seconds.
-    # 2. The data is copied.
-    # 3. flags can't contain AV_PKT_FLAG_TRUSTED.
-    # 4. side_data is keyed by FFmpeg's names for the side data types, as
-    #    coded_side_data is in the codec parameters.
-    # 5. data is a view on the packet's data: writing to it modifies the
-    #    packet, so .clone() it first.
-    # 6. Packets can be pickled, e.g. to be decoded in another process. The
-    #    pickles are only guaranteed to be readable by the same version of
-    #    TorchCodec.
-    # Same for from_tensor(), and the properties below.
     @classmethod
     def from_bytes(
         cls,
@@ -87,6 +82,31 @@ class Packet:
         side_data: dict[str, bytes] | None = None,
         stream_index: int = 0,
     ) -> Packet:
+        """Build a packet from compressed data, e.g. read from a database or
+        received from the network.
+
+        Only ``data`` is required: most codecs need nothing else to decode it.
+
+        Args:
+            data (bytes, bytearray or memoryview): The compressed data of one
+                packet. It is copied.
+            pts (int, optional): The :term:`pts`, in units of the stream's time
+                base. The decoded frames' :attr:`RawFrame.pts` come from it.
+                ``None`` (default) if unknown.
+            dts (int, optional): The decoding timestamp, in units of the
+                stream's time base. ``None`` (default) if unknown.
+            duration (int, optional): How long the packet lasts, in units of
+                the stream's time base. Default: 0, for unknown.
+            flags (int, optional): FFmpeg's ``AV_PKT_FLAG_*`` bits, e.g. 1
+                (``AV_PKT_FLAG_KEY``) for a keyframe. ``AV_PKT_FLAG_TRUSTED``
+                (8) isn't allowed. Default: 0.
+            side_data (dict, optional): Extra data about the packet, keyed by
+                FFmpeg's names for its types, e.g. ``"Skip Samples"``.
+            stream_index (int, optional): See :attr:`stream_index`. Default: 0.
+
+        Returns:
+            Packet: The packet.
+        """
         if not isinstance(data, (bytes, bytearray, memoryview)):
             raise TypeError(
                 f"data must be bytes, bytearray or memoryview, got {type(data)}."
@@ -113,6 +133,23 @@ class Packet:
         side_data: dict[str, bytes] | None = None,
         stream_index: int = 0,
     ) -> Packet:
+        """Build a packet from compressed data in a tensor.
+
+        Same as :meth:`from_bytes`, except for ``data``.
+
+        Args:
+            data (torch.Tensor): The compressed data of one packet, as a
+                contiguous 1D uint8 CPU tensor. It is copied.
+            pts (int, optional): See :meth:`from_bytes`.
+            dts (int, optional): See :meth:`from_bytes`.
+            duration (int, optional): See :meth:`from_bytes`.
+            flags (int, optional): See :meth:`from_bytes`.
+            side_data (dict, optional): See :meth:`from_bytes`.
+            stream_index (int, optional): See :meth:`from_bytes`.
+
+        Returns:
+            Packet: The packet.
+        """
         if not isinstance(data, torch.Tensor):
             raise TypeError(f"data must be a tensor, got {type(data)}.")
         side_data = side_data or {}
@@ -147,26 +184,41 @@ class Packet:
 
     @property
     def data(self) -> torch.Tensor:
+        """The compressed data, as a 1D uint8 CPU tensor.
+
+        It is a view on the packet's data: writing to it modifies the packet,
+        so ``.clone()`` it first.
+        """
         return self._get_fields()["data"]
 
     @property
     def pts(self) -> int | None:
+        """The :term:`pts`, in units of the stream's time base. ``None`` if
+        unknown."""
         return self._get_fields()["pts"]
 
     @property
     def dts(self) -> int | None:
+        """The decoding timestamp, in units of the stream's time base. ``None``
+        if unknown."""
         return self._get_fields()["dts"]
 
     @property
     def duration(self) -> int:
+        """How long the packet lasts, in units of the stream's time base. 0 if
+        unknown."""
         return self._get_fields()["duration"]
 
     @property
     def flags(self) -> int:
+        """FFmpeg's ``AV_PKT_FLAG_*`` bits, e.g. ``flags & 1`` is set for
+        keyframes."""
         return self._get_fields()["flags"]
 
     @property
     def side_data(self) -> dict[str, bytes]:
+        """Extra data about the packet, keyed by FFmpeg's names for its types,
+        e.g. ``"Skip Samples"``."""
         fields = self._get_fields()
         return {
             name: _tensor_to_bytes(value)
