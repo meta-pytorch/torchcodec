@@ -3188,6 +3188,42 @@ class TestAudioDecoder:
             samples.data, reference[:, start:stop], atol=0, rtol=0
         )
 
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize(
+        "start_seconds, stop_seconds",
+        (
+            (0.2558, 0.4),  # start just before a frame boundary
+            (0.1, 0.5122),  # stop just after a frame boundary
+        ),
+    )
+    def test_range_bounds_within_half_tick_of_frame_boundary(
+        self, tmp_path, start_seconds, stop_seconds
+    ):
+        # Matroska has a 1ms time base and these ALAC frames are 256ms long.
+        # start_seconds and stop_seconds are less than half a tick away from a
+        # frame boundary. Rounding them to the closest tick used to exclude the
+        # frame that contains them, returning fewer samples than requested.
+        path = tmp_path / "alac.mkv"
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-i", str(SINE_MONO_S16.path), "-c:a", "alac", str(path),
+            ],
+            check=True,
+        )  # fmt: skip
+        reference = AudioDecoder(SINE_MONO_S16.path).get_all_samples().data
+
+        samples = AudioDecoder(path).get_samples_played_in_range(
+            start_seconds, stop_seconds
+        )
+        sample_rate = SINE_MONO_S16.stream_infos[0].sample_rate
+        start = round(start_seconds * sample_rate)
+        stop = round(stop_seconds * sample_rate)
+        assert samples.pts_seconds == pytest.approx(start_seconds)
+        torch.testing.assert_close(
+            samples.data, reference[:, start:stop], atol=0, rtol=0
+        )
+
     def test_unseekable_format(self):
         decoder = AudioDecoder(UNSEEKABLE_SWF.path)
         samples = decoder.get_all_samples()
