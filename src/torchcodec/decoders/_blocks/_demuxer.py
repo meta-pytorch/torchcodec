@@ -48,6 +48,10 @@ from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
 # specific timestamps for sampling?
 
 
+# FFmpeg's AV_NOPTS_VALUE.
+_NO_PTS = -(2**63)
+
+
 @dataclass
 class FrameIndex:
     """What the packets of a video stream say about its frames, as returned by
@@ -85,8 +89,7 @@ class FrameIndex:
     on :attr:`VideoStream.metadata`.
     """
 
-    is_key_frame: Tensor
-    """Bool tensor of shape ``[N]``, whether each frame is a keyframe."""
+    _is_key_frame: Tensor
     _pts: Tensor
     _duration: Tensor
     _time_base_num: int
@@ -94,7 +97,13 @@ class FrameIndex:
 
     def __len__(self) -> int:
         """The number of frames in the stream."""
-        return self.is_key_frame.shape[0]
+        return self._is_key_frame.shape[0]
+
+    @property
+    def is_key_frame(self) -> Tensor:
+        """Bool tensor of shape ``[N]``, whether each frame is a keyframe."""
+        self._check_has_timestamps()
+        return self._is_key_frame
 
     @property
     def num_frames_from_content(self) -> int:
@@ -103,8 +112,16 @@ class FrameIndex:
 
     @cached_property
     def pts_seconds(self) -> Tensor:
-        """Float64 tensor of shape ``[N]``, the :term:`pts` of each frame."""
-        return self._to_seconds(self._pts)
+        """Float64 tensor of shape ``[N]``, the :term:`pts` of each frame.
+
+        ``NaN`` for the frames whose packet has no pts. Streams like raw H.264
+        or HEVC streams have none at all, so their frames can't be put in
+        presentation order: :attr:`is_key_frame`, :attr:`key_frame_indices`,
+        :meth:`index_at` and :meth:`key_frame_seconds_for` raise on them.
+        """
+        return self._to_seconds(self._pts).masked_fill(
+            self._pts == _NO_PTS, float("nan")
+        )
 
     @cached_property
     def duration_seconds(self) -> Tensor:
@@ -155,6 +172,7 @@ class FrameIndex:
             int or Tensor: The index of that frame. A tensor of timestamps
             gives an int64 tensor of indices of the same shape.
         """
+        self._check_has_timestamps()
         # First frame that hasn't finished playing by `seconds`, which is
         # get_frame_played_at()'s criterion (frame_start <= t < frame_end,
         # SingleStreamDecoder.cpp) expressed as a search rather than a scan of
@@ -178,6 +196,7 @@ class FrameIndex:
         Returns:
             float: The timestamp to seek to.
         """
+        self._check_has_timestamps()
         # Same search as get_key_frame_index_for_pts_using_scanned_index()
         # (SingleStreamDecoder.cpp): upper_bound minus one, i.e. the last
         # keyframe at or before the target, and -1 when there is none.
@@ -191,6 +210,18 @@ class FrameIndex:
             # exact mode does when that search returns -1.
             return float(self.pts_seconds[0])
         return float(self._key_frame_seconds[position])
+
+    @cached_property
+    def _has_timestamps(self) -> bool:
+        return not bool((self._pts == _NO_PTS).all())
+
+    def _check_has_timestamps(self) -> None:
+        if not self._has_timestamps:
+            raise ValueError(
+                "This stream has no timestamps (e.g. it is a raw H.264 or HEVC "
+                "stream), so its frames can't be put in presentation order, nor "
+                "looked up by time."
+            )
 
     def _to_seconds(self, value: Tensor) -> Tensor:
         # pts_to_seconds() (FFMPEGCommon.cpp), and it has to stay bit-for-bit
@@ -331,7 +362,7 @@ class VideoStream(_Stream):
                 _blocks_demuxer_scan(self._demuxer._handle, self.index)
             )
             self._frame_index = FrameIndex(
-                is_key_frame=is_key_frame,
+                _is_key_frame=is_key_frame,
                 _pts=pts,
                 _duration=duration,
                 _time_base_num=time_base_num,
@@ -551,6 +582,9 @@ class Demuxer:
         re-primes. This is especially true when resampling is involved (via an
         :class:`AudioConverter`). Pre-rolling a margin of audio before the
         target is up to you.
+
+        A stream without timestamps, like a raw H.264 or HEVC stream, can only
+        be rewound to its start, with ``seek(0)``.
 
         There is no ``seek_mode`` to choose from: seeking straight to
         ``seconds`` is what :class:`~torchcodec.decoders.VideoDecoder` calls
