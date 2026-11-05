@@ -345,22 +345,12 @@ class VideoStream(_Stream):
         *,
         num_ffmpeg_threads: int = 1,
     ) -> VideoPacketDecoder:
-        """Build the :class:`VideoPacketDecoder` for this stream.
+        """[DISCOURAGED]
 
-        Args:
-            device (str or torch.device, optional): The device to decode on (cpu or CUDA).
-                If ``None`` (default), the current default device is used (see
-                ``torch.set_default_device``).
-            num_ffmpeg_threads (int, optional): The number of threads to use for
-                CPU decoding. This has no effect when decoding on GPU. Use 1 for
-                single-threaded decoding, which may be best if you are decoding
-                multiple streams in parallel. Use a higher number for
-                multi-threaded decoding, which is best for a single stream.
-                Passing 0 lets FFmpeg decide on the number of threads.
-                Default: 1.
-
-        Returns:
-            VideoPacketDecoder: A decoder for this stream's packets.
+        Still available so that existing code keeps working. The recommended
+        way to build a :class:`VideoPacketDecoder` is to instantiate it
+        directly, from the stream's codec parameters:
+        ``VideoPacketDecoder(stream.codec_parameters, ...)``.
         """
         return VideoPacketDecoder(
             self.codec_parameters, device, num_ffmpeg_threads=num_ffmpeg_threads
@@ -399,10 +389,12 @@ class AudioStream(_Stream):
         return self._get_codec_parameters(AudioCodecParameters)
 
     def make_decoder(self) -> AudioPacketDecoder:
-        """Build the :class:`AudioPacketDecoder` for this stream.
+        """[DISCOURAGED]
 
-        Returns:
-            AudioPacketDecoder: A decoder for this stream's packets.
+        Still available so that existing code keeps working. The recommended
+        way to build an :class:`AudioPacketDecoder` is to instantiate it
+        directly, from the stream's codec parameters:
+        ``AudioPacketDecoder(stream.codec_parameters)``.
         """
         return AudioPacketDecoder(self.codec_parameters)
 
@@ -422,7 +414,11 @@ class Demuxer:
     stream each one belongs to::
 
         demuxer = Demuxer("video.mp4", streams=("video", "audio"))
-        decoders = {s.index: s.make_decoder(device="cuda") for s in demuxer.streams}
+        video, audio = demuxer.streams
+        decoders = {
+            video.index: VideoPacketDecoder(video.codec_parameters, device="cuda"),
+            audio.index: AudioPacketDecoder(audio.codec_parameters),
+        }
 
         for packet in demuxer:
             for output in decoders[packet.stream_index].decode(packet):

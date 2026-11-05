@@ -77,7 +77,7 @@ subprocess.run(
 import queue
 import threading
 
-from torchcodec.decoders import ColorConverter, Demuxer
+from torchcodec.decoders import ColorConverter, Demuxer, VideoPacketDecoder
 
 
 def demux(demuxer):
@@ -124,7 +124,9 @@ def prefetch(upstream, buffer_size=8):
 def sequential(device):
     # demux -> decode -> color-convert, all on the calling thread.
     demuxer = Demuxer(video_path)
-    packet_decoder = demuxer.streams[0].make_decoder(device=device)
+    packet_decoder = VideoPacketDecoder(
+        demuxer.streams[0].codec_parameters, device=device
+    )
     color_converter = ColorConverter(device=device)
     return color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
 
@@ -132,7 +134,9 @@ def sequential(device):
 def convert_on_own_thread(device):
     # [demux + decode] on one thread || [color-convert] on another.
     demuxer = Demuxer(video_path)
-    packet_decoder = demuxer.streams[0].make_decoder(device=device)
+    packet_decoder = VideoPacketDecoder(
+        demuxer.streams[0].codec_parameters, device=device
+    )
     color_converter = ColorConverter(device=device)
     raw_frames = prefetch(decode(packet_decoder, demux(demuxer)))
     return color_convert(color_converter, raw_frames)
@@ -141,7 +145,9 @@ def convert_on_own_thread(device):
 def demux_on_own_thread(device):
     # [demux] on one thread || [decode + color-convert] on another.
     demuxer = Demuxer(video_path)
-    packet_decoder = demuxer.streams[0].make_decoder(device=device)
+    packet_decoder = VideoPacketDecoder(
+        demuxer.streams[0].codec_parameters, device=device
+    )
     color_converter = ColorConverter(device=device)
     packets = prefetch(demux(demuxer))
     return color_convert(color_converter, decode(packet_decoder, packets))
@@ -150,7 +156,9 @@ def demux_on_own_thread(device):
 def one_thread_each(device):
     # [demux] || [decode] || [color-convert], a thread per stage.
     demuxer = Demuxer(video_path)
-    packet_decoder = demuxer.streams[0].make_decoder(device=device)
+    packet_decoder = VideoPacketDecoder(
+        demuxer.streams[0].codec_parameters, device=device
+    )
     color_converter = ColorConverter(device=device)
     packets = prefetch(demux(demuxer))
     raw_frames = prefetch(decode(packet_decoder, packets))

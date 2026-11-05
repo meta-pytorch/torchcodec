@@ -252,8 +252,8 @@ class RawFrame:
                 print(y.shape, u.shape, v.shape)
 
     Nothing here has been converted. The samples are in the codec's own pixel
-    format (typically YUV), on the device that was passed to
-    :meth:`VideoStream.make_decoder`, and
+    format (typically YUV), on the device of the :class:`VideoPacketDecoder`
+    that decoded them, and
     :attr:`width`, :attr:`height` and :attr:`planes` are all pre-rotation:
     :attr:`rotation` is what a :class:`ColorConverter` applies for you, and
     what you have to apply yourself if you convert :attr:`planes` on your own.
@@ -412,8 +412,8 @@ class RawFrame:
         and ``nv12`` both give three (``y, u, v = planes``), ``yuva420p`` four
         (``y, u, v, a = planes``) and ``gray`` one (``(y,) = planes``).
 
-        They are always on the device that was passed to
-        :meth:`VideoStream.make_decoder`, including when a CUDA decoder has to
+        They are always on the device of the :class:`VideoPacketDecoder` that
+        decoded them, including when a CUDA decoder has to
         fall back to decoding on the CPU: it uploads those frames before handing
         them out.
 

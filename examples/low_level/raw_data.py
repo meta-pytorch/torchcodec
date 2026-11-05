@@ -78,10 +78,17 @@ def decode_raw(demuxer, packet_decoder):
 # :class:`RawFrame` can hand out the decoder's own planes as tensor views, with
 # no copy and no conversion. It also carries everything you need to interpret
 # them.
-from torchcodec.decoders import ColorConverter, Demuxer
+from torchcodec.decoders import (
+    AudioPacketDecoder,
+    ColorConverter,
+    Demuxer,
+    VideoPacketDecoder,
+)
 
 demuxer = Demuxer(video_path)
-packet_decoder = demuxer.streams[0].make_decoder(device=device)
+packet_decoder = VideoPacketDecoder(
+    demuxer.streams[0].codec_parameters, device=device
+)
 raw_frame = next(decode_raw(demuxer, packet_decoder))
 
 Y, U, V = raw_frame.planes
@@ -197,7 +204,9 @@ subprocess.run(
 )
 
 hdr_demuxer = Demuxer(hdr_video_path)
-hdr_packet_decoder = hdr_demuxer.streams[0].make_decoder(device=device)
+hdr_packet_decoder = VideoPacketDecoder(
+    hdr_demuxer.streams[0].codec_parameters, device=device
+)
 hdr_raw = next(decode_raw(hdr_demuxer, hdr_packet_decoder))
 
 hdr_Y = hdr_raw.planes[0]
@@ -245,7 +254,7 @@ subprocess.run(
 )
 
 demuxer = Demuxer(audio_path, streams="audio")
-packet_decoder = demuxer.streams[0].make_decoder()
+packet_decoder = AudioPacketDecoder(demuxer.streams[0].codec_parameters)
 raw_samples = next(decode_raw(demuxer, packet_decoder))
 
 print(f"{raw_samples.data.dtype = }, {raw_samples.data.shape = }, "
