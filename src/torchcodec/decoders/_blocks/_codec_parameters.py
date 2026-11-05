@@ -109,8 +109,15 @@ class VideoCodecParameters(_CodecParameters):
     same names and meanings. FFmpeg's names stand for its enums, e.g.
     ``pixel_format="yuv420p"``.
 
-    Which fields you need depends on the codec: printing the parameters a
-    ``Demuxer`` reports for a similar file shows what FFmpeg uses.
+
+    .. note::
+
+        Which fields you need depends on the codec and device: printing the parameters a
+        ``Demuxer`` reports for a similar file shows what FFmpeg uses.
+
+        To decode on CUDA, set ``width``, ``height`` and ``pixel_format``:
+        depending on the codec, the frames may otherwise be silently decoded
+        on the CPU. Also set ``r_frame_rate``, or the frames' durations are 0.
 
     .. note::
 

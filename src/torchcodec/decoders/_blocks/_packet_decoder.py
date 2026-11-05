@@ -157,13 +157,24 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
 
     It is stateful. It holds the codec's reference-frame buffer, so it expects
     the packets of its own stream, in the order the demuxer produced them.
+
+    Args:
+        codec_parameters (VideoCodecParameters): The parameters of the stream
+            to decode, e.g. :attr:`VideoStream.codec_parameters`.
+        device (str or torch.device, optional): The device to decode on (cpu or
+            CUDA). If ``None`` (default), the current default device is used
+            (see ``torch.set_default_device``). With codec parameters you built
+            yourself, CUDA needs some fields to be set: see
+            :class:`VideoCodecParameters`.
+        num_ffmpeg_threads (int, optional): The number of threads to use for
+            CPU decoding. This has no effect when decoding on GPU. Use 1 for
+            single-threaded decoding, which may be best if you are decoding
+            multiple streams in parallel. Use a higher number for
+            multi-threaded decoding, which is best for a single stream.
+            Passing 0 lets FFmpeg decide on the number of threads.
+            Default: 1.
     """
 
-    # TODO_DEMUXER_FREE: document the constructor. The docs should say that
-    # the NVDEC backend needs width, height and pixel_format, and may silently
-    # fall back to decoding on the CPU without them. It also needs
-    # r_frame_rate, or the frames' durations are 0. See
-    # test_nvdec_needs_dimensions_pixel_format_and_frame_rate.
     def __init__(
         self,
         codec_parameters: VideoCodecParameters,
@@ -272,9 +283,12 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
     them. After a :meth:`Demuxer.seek`, :meth:`reset` is necessary but not
     sufficient: the first samples that come out are subtly wrong until the codec
     re-primes, so decode a margin before your target and throw it away.
+
+    Args:
+        codec_parameters (AudioCodecParameters): The parameters of the stream
+            to decode, e.g. :attr:`AudioStream.codec_parameters`.
     """
 
-    # TODO_DEMUXER_FREE: document the constructor.
     def __init__(self, codec_parameters: AudioCodecParameters):
         if not isinstance(codec_parameters, AudioCodecParameters):
             raise TypeError(
