@@ -113,9 +113,9 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
   m.def("_blocks_packet_decoder_reset(Tensor(a!) decoder) -> ()");
   m.def(
-      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, Tensor)");
+      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, int?, float, float, Tensor)");
   m.def(
-      "_blocks_audio_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, int, str)");
+      "_blocks_audio_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, int?, float, float, int, str)");
   m.def(
       "_blocks_create_color_converter(str device=\"cpu\", str output_dtype=\"uint8\") -> Tensor");
   m.def(
@@ -1474,15 +1474,24 @@ void _blocks_packet_decoder_reset(torch::stable::Tensor& decoder) {
   unwrap_tensor_to_pointer<PacketDecoder>(decoder)->reset();
 }
 
-// (frame_handle, status, pts_seconds, duration_seconds, storage).
+// (frame_handle, status, pts, pts_seconds, duration_seconds, storage). `pts`
+// is in the decoder's time base, and is None when the frame has no timestamp.
 using OpsReceiveFrameOutput = std::tuple<
     torch::stable::Tensor,
     int64_t,
+    std::optional<int64_t>,
     double,
     double,
     torch::stable::Tensor>;
 
 namespace {
+std::optional<int64_t> to_optional_pts(int64_t pts) {
+  if (pts == AV_NOPTS_VALUE) {
+    return std::nullopt;
+  }
+  return pts;
+}
+
 double pts_to_seconds_or_nan(int64_t pts, const AVRational& time_base) {
   return pts == INT64_MIN ? std::numeric_limits<double>::quiet_NaN()
                           : pts_to_seconds(pts, time_base);
@@ -1499,13 +1508,14 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
     return std::make_tuple(
         torch::stable::full({1}, 0, kStableInt64),
         static_cast<int64_t>(status),
+        std::nullopt,
         0.0,
         0.0,
         torch::stable::empty({int64_t(0)}, kStableUInt8));
   }
   AVRational time_base = decoder_ptr->time_base();
-  double pts_seconds =
-      pts_to_seconds_or_nan(get_pts_or_dts(*av_frame), time_base);
+  int64_t pts = get_pts_or_dts(*av_frame);
+  double pts_seconds = pts_to_seconds_or_nan(pts, time_base);
   double duration_seconds = pts_to_seconds(get_duration(*av_frame), time_base);
   torch::stable::Tensor storage =
       decoder_ptr->get_frame_storage(*av_frame).value_or(
@@ -1513,17 +1523,24 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
   return std::make_tuple(
       wrap_pointer_to_tensor(std::move(av_frame)),
       static_cast<int64_t>(0),
+      to_optional_pts(pts),
       pts_seconds,
       duration_seconds,
       storage);
 }
 
-// (samples, status, pts_seconds, duration_seconds, sample_rate,
+// (samples, status, pts, pts_seconds, duration_seconds, sample_rate,
 // sample_format). `samples` is [num_channels, num_samples] in the frame's own
 // sample type; there is no frame handle because, unlike a video frame, nothing
-// downstream needs the AVFrame itself.
-using OpsReceiveAudioFrameOutput = std::
-    tuple<torch::stable::Tensor, int64_t, double, double, int64_t, std::string>;
+// downstream needs the AVFrame itself. `pts` is as for video frames.
+using OpsReceiveAudioFrameOutput = std::tuple<
+    torch::stable::Tensor,
+    int64_t,
+    std::optional<int64_t>,
+    double,
+    double,
+    int64_t,
+    std::string>;
 
 OpsReceiveAudioFrameOutput _blocks_audio_packet_decoder_receive_frame(
     torch::stable::Tensor& decoder) {
@@ -1539,6 +1556,7 @@ OpsReceiveAudioFrameOutput _blocks_audio_packet_decoder_receive_frame(
     return std::make_tuple(
         torch::stable::empty({int64_t(0)}, kStableUInt8),
         static_cast<int64_t>(status),
+        std::nullopt,
         0.0,
         0.0,
         static_cast<int64_t>(0),
@@ -1546,12 +1564,14 @@ OpsReceiveAudioFrameOutput _blocks_audio_packet_decoder_receive_frame(
   }
 
   AVRational time_base = decoder_ptr->time_base();
+  int64_t pts = get_pts_or_dts(*av_frame);
   const char* sample_format_name =
       av_get_sample_fmt_name(static_cast<AVSampleFormat>(av_frame->format));
   return std::make_tuple(
       get_audio_samples(*av_frame),
       static_cast<int64_t>(0),
-      pts_to_seconds_or_nan(get_pts_or_dts(*av_frame), time_base),
+      to_optional_pts(pts),
+      pts_to_seconds_or_nan(pts, time_base),
       pts_to_seconds(get_duration(*av_frame), time_base),
       static_cast<int64_t>(av_frame->sample_rate),
       std::string(

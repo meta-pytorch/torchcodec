@@ -4753,14 +4753,14 @@ class TestLowLevel:
         frames = decode(lambda p: Packet.from_tensor(p.data, pts=p.pts))
         assert len(frames) == len(expected)
         for frame, expected_frame in zip(frames, expected):
-            assert frame.pts_seconds == expected_frame.pts_seconds
+            assert frame.pts == expected_frame.pts
             torch.testing.assert_close(
                 frame.planes[0], expected_frame.planes[0], rtol=0, atol=0
             )
 
         frames = decode(lambda p: Packet.from_tensor(p.data))
         assert len(frames) == len(expected)
-        assert all(math.isnan(f.pts_seconds) for f in frames)
+        assert all(f.pts is None for f in frames)
 
     @pytest.mark.parametrize("device", _low_level_devices())
     def test_packets_from_bytes_keep_the_discard_flag(self, device):
@@ -4788,9 +4788,9 @@ class TestLowLevel:
                 for p in packets
             ]
             frames = [f for p in rebuilt for f in decoder.decode(p)]
-            return [f.pts_seconds for f in frames + decoder.drain()]
+            return [f.pts for f in frames + decoder.drain()]
 
-        expected = [f.pts_seconds for f in self._decoded_frames(path, device)]
+        expected = [f.pts for f in self._decoded_frames(path, device)]
         assert decode(flags_mask=~0) == expected
         assert len(decode(flags_mask=~AV_PKT_FLAG_DISCARD)) > len(expected)
 
@@ -4805,12 +4805,11 @@ class TestLowLevel:
             (bytes(p.data.numpy()), p.pts, bool(p.flags & AV_PKT_FLAG_KEY))
             for p in demuxer
         ]
-        # In presentation order, like the decoded frames.
-        all_pts = sorted(pts for _, pts, _ in rows)
-        expected = list(self._decoded_frames(NASA_VIDEO.path, "cpu"))
-        assert len(all_pts) == len(expected)
+        expected = {
+            f.pts: f.planes[0] for f in self._decoded_frames(NASA_VIDEO.path, "cpu")
+        }
 
-        def decode_target(target_pts, target_pts_seconds):
+        def decode_target(target_pts):
             decoder.reset()
             start = max(
                 i
@@ -4819,17 +4818,17 @@ class TestLowLevel:
             )
             for data, pts, _ in rows[start:]:
                 for raw_frame in decoder.decode(Packet.from_bytes(data, pts=pts)):
-                    if raw_frame.pts_seconds == target_pts_seconds:
+                    if raw_frame.pts == target_pts:
                         return raw_frame
             for raw_frame in decoder.drain():
-                if raw_frame.pts_seconds == target_pts_seconds:
+                if raw_frame.pts == target_pts:
                     return raw_frame
 
-        for target in (0, 50, 3, 200, 199):
-            expected_frame = expected[target]
-            raw_frame = decode_target(all_pts[target], expected_frame.pts_seconds)
+        all_pts = sorted(expected)
+        for target_pts in [all_pts[i] for i in (0, 50, 3, 200, 199)]:
+            raw_frame = decode_target(target_pts)
             torch.testing.assert_close(
-                raw_frame.planes[0], expected_frame.planes[0], atol=0, rtol=0
+                raw_frame.planes[0], expected[target_pts], atol=0, rtol=0
             )
 
     def test_adding_a_stream_after_demuxing_raises(self):
@@ -7101,6 +7100,32 @@ class TestLowLevel:
         ):
             pickle.loads(pickle.dumps(obj))
 
+    # ===== integer pts =====
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_raw_frame_pts_are_the_packets_pts(self, device):
+        demuxer, decoder, _ = self._make_stages(NASA_VIDEO.path, device)
+        time_base = demuxer.streams[0].codec_parameters.time_base
+        packets = list(demuxer)
+        frames = list(self._decode(decoder, iter(packets)))
+
+        assert [f.pts for f in frames] == sorted(p.pts for p in packets)
+        for frame in frames:
+            assert frame.pts_seconds == pytest.approx(float(frame.pts * time_base))
+
+    def test_raw_audio_samples_pts(self):
+        demuxer = Demuxer(NASA_AUDIO_MP3.path, streams="audio")
+        decoder = demuxer.streams[0].make_decoder()
+        time_base = demuxer.streams[0].codec_parameters.time_base
+        samples = [s for p in demuxer for s in decoder.decode(p)] + decoder.drain()
+
+        assert len(samples) > 0
+        pts = [s.pts for s in samples]
+        assert all(isinstance(p, int) for p in pts)
+        assert pts == sorted(pts)
+        for s in samples:
+            assert s.pts_seconds == pytest.approx(float(s.pts * time_base))
+
     # ===== missing pts =====
 
     @needs_ffmpeg_cli
@@ -7112,6 +7137,7 @@ class TestLowLevel:
         frames = list(self._decode(decoder, self._demux(demuxer)))
         assert len(frames) == 30
         for raw_frame in frames:
+            assert raw_frame.pts is None
             assert math.isnan(raw_frame.pts_seconds)
             assert math.isnan(converter.convert(raw_frame).pts_seconds)
 
