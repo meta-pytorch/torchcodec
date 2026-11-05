@@ -150,11 +150,7 @@ class AudioDecoder:
         def offset_of(seconds: float) -> int:
             # This is morally equivalent to round((seconds - first_pts) *
             # sample_rate), but a given `seconds` must map to the same sample
-            # across calls, whatever the value of `first_pts`. So `seconds` and
-            # `first_pts` are converted into sample indices separately: when
-            # `seconds` falls in the middle of a sample, the floating-point
-            # error in `seconds - first_pts` would otherwise decide the rounding.
-            # Ties always round up, unlike round() which rounds them to even.
+            # across calls, whatever the value of `first_pts`.
             # The non-regression tests for this are
             # test_chunk_boundary_half_sample and
             # test_chunk_boundary_half_sample_after_frame_start

@@ -43,7 +43,10 @@ SingleStreamDecoder::SingleStreamDecoder(
   UniqueAVDictionary options;
   if (format_whitelist.has_value()) {
     int option_status = av_dict_set(
-        options.get_address(), "format_whitelist", format_whitelist->c_str(), 0);
+        options.get_address(),
+        "format_whitelist",
+        format_whitelist->c_str(),
+        0);
     STD_TORCH_CHECK(
         option_status >= 0,
         "Could not set format whitelist: ",

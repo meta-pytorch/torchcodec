@@ -33,7 +33,8 @@ SharedAVCodecContext create_and_open_codec_context(
   codec_context->pkt_timebase = stream->time_base;
 
   if (codec_whitelist != nullptr) {
-    ret = av_opt_set(codec_context.get(), "codec_whitelist", codec_whitelist, 0);
+    ret =
+        av_opt_set(codec_context.get(), "codec_whitelist", codec_whitelist, 0);
     STD_TORCH_CHECK(
         ret == AVSUCCESS,
         "Could not set codec whitelist: ",
