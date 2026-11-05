@@ -157,6 +157,8 @@ Decoding
 
     VideoPacketDecoder
     AudioPacketDecoder
+    VideoCodecParameters
+    AudioCodecParameters
 
 Conversion
 ^^^^^^^^^^

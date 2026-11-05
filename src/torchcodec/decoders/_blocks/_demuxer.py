@@ -10,9 +10,10 @@ import io
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
+from fractions import Fraction
 from functools import cached_property
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import torch
 from torch import Tensor
@@ -30,21 +31,25 @@ from torchcodec._core.ops import (
     _blocks_demuxer_add_stream,
     _blocks_demuxer_container_json_metadata,
     _blocks_demuxer_get_audio_video_stream_indices,
+    _blocks_demuxer_get_codec_parameters,
     _blocks_demuxer_next_packet,
     _blocks_demuxer_scan,
     _blocks_demuxer_seek,
     _blocks_demuxer_stream_json_metadata,
 )
 
-from .._decoder_utils import convert_device_to_str
-
+from ._codec_parameters import AudioCodecParameters, VideoCodecParameters
 from ._frame import Packet
-from ._helpers import _process_local
+from ._helpers import _process_local, _tensor_to_bytes
 from ._packet_decoder import AudioPacketDecoder, VideoPacketDecoder
 
 # TODO_API_BREAKDOWN FEAT PERF Do we want / need to support 'batch-like' APIs
 # were containers are pre-allocated for perf? Like if a user wants to decode
 # specific timestamps for sampling?
+
+
+# FFmpeg's AV_NOPTS_VALUE.
+_NO_PTS = -(2**63)
 
 
 @dataclass
@@ -84,8 +89,7 @@ class FrameIndex:
     on :attr:`VideoStream.metadata`.
     """
 
-    is_key_frame: Tensor
-    """Bool tensor of shape ``[N]``, whether each frame is a keyframe."""
+    _is_key_frame: Tensor
     _pts: Tensor
     _duration: Tensor
     _time_base_num: int
@@ -93,7 +97,13 @@ class FrameIndex:
 
     def __len__(self) -> int:
         """The number of frames in the stream."""
-        return self.is_key_frame.shape[0]
+        return self._is_key_frame.shape[0]
+
+    @property
+    def is_key_frame(self) -> Tensor:
+        """Bool tensor of shape ``[N]``, whether each frame is a keyframe."""
+        self._check_has_timestamps()
+        return self._is_key_frame
 
     @property
     def num_frames_from_content(self) -> int:
@@ -102,8 +112,16 @@ class FrameIndex:
 
     @cached_property
     def pts_seconds(self) -> Tensor:
-        """Float64 tensor of shape ``[N]``, the :term:`pts` of each frame."""
-        return self._to_seconds(self._pts)
+        """Float64 tensor of shape ``[N]``, the :term:`pts` of each frame.
+
+        ``NaN`` for the frames whose packet has no pts. Streams like raw H.264
+        or HEVC streams have none at all, so their frames can't be put in
+        presentation order: :attr:`is_key_frame`, :attr:`key_frame_indices`,
+        :meth:`index_at` and :meth:`key_frame_seconds_for` raise on them.
+        """
+        return self._to_seconds(self._pts).masked_fill(
+            self._pts == _NO_PTS, float("nan")
+        )
 
     @cached_property
     def duration_seconds(self) -> Tensor:
@@ -154,6 +172,7 @@ class FrameIndex:
             int or Tensor: The index of that frame. A tensor of timestamps
             gives an int64 tensor of indices of the same shape.
         """
+        self._check_has_timestamps()
         # First frame that hasn't finished playing by `seconds`, which is
         # get_frame_played_at()'s criterion (frame_start <= t < frame_end,
         # SingleStreamDecoder.cpp) expressed as a search rather than a scan of
@@ -177,6 +196,7 @@ class FrameIndex:
         Returns:
             float: The timestamp to seek to.
         """
+        self._check_has_timestamps()
         # Same search as get_key_frame_index_for_pts_using_scanned_index()
         # (SingleStreamDecoder.cpp): upper_bound minus one, i.e. the last
         # keyframe at or before the target, and -1 when there is none.
@@ -190,6 +210,18 @@ class FrameIndex:
             # exact mode does when that search returns -1.
             return float(self.pts_seconds[0])
         return float(self._key_frame_seconds[position])
+
+    @cached_property
+    def _has_timestamps(self) -> bool:
+        return not bool((self._pts == _NO_PTS).all())
+
+    def _check_has_timestamps(self) -> None:
+        if not self._has_timestamps:
+            raise ValueError(
+                "This stream has no timestamps (e.g. it is a raw H.264 or HEVC "
+                "stream), so its frames can't be put in presentation order, nor "
+                "looked up by time."
+            )
 
     def _to_seconds(self, value: Tensor) -> Tensor:
         # pts_to_seconds() (FFMPEGCommon.cpp), and it has to stay bit-for-bit
@@ -227,6 +259,42 @@ class _Stream:
             self.index,
         )
 
+    def _get_codec_parameters(
+        self, cls: type[VideoCodecParameters] | type[AudioCodecParameters]
+    ):
+        """Get the raw values from the C++ side, then massage them into the right
+        types for the dataclass constructor."""
+        outputs = _blocks_demuxer_get_codec_parameters(
+            self._demuxer._handle, self.index
+        )
+        names = [r.name for r in _blocks_demuxer_get_codec_parameters._schema.returns]
+        fields: dict[str, Any] = dict(zip(names, outputs))
+        container_format = fields.pop("container_format")
+
+        # The binary fields come as contiguous uint8 CPU tensors, we want them
+        # to be bytes (the Python type).
+        side_data_names = fields.pop("coded_side_data_names")
+        side_data_values = fields.pop("coded_side_data_values")
+        if side_data_names:
+            fields["coded_side_data"] = {
+                name: _tensor_to_bytes(value)
+                for name, value in zip(side_data_names, side_data_values)
+            }
+        extradata = fields["extradata"]
+        if extradata is not None:
+            fields["extradata"] = _tensor_to_bytes(extradata)
+        # The rationals come as [num, den] lists.
+        kwargs: dict[str, Any] = {
+            name: Fraction(*value) if isinstance(value, list) else value
+            for name, value in fields.items()
+            if value is not None
+        }
+        params = cls(**kwargs)
+        object.__setattr__(
+            params, "_container_format_PRIVATE_DO_NOT_USE", container_format
+        )
+        return params
+
     def __repr__(self) -> str:
         return f"{type(self).__name__}(index={self.index})"
 
@@ -259,6 +327,16 @@ class VideoStream(_Stream):
         """
         return cast(VideoStreamHeaderMetadata, self._read_metadata())
 
+    @cached_property
+    def codec_parameters(self) -> VideoCodecParameters:
+        """What a decoder needs to know to decode this stream's packets.
+
+        Pass them to a :class:`VideoPacketDecoder`, or pickle them to build the decoder in
+        another process. To read the stream's properties, use :attr:`metadata`
+        instead. See :class:`VideoCodecParameters`.
+        """
+        return self._get_codec_parameters(VideoCodecParameters)
+
     def scan(self) -> FrameIndex:
         """Demux this stream from end to end, without decoding it (a
         :term:`scan`), and return its :class:`FrameIndex`.
@@ -284,7 +362,7 @@ class VideoStream(_Stream):
                 _blocks_demuxer_scan(self._demuxer._handle, self.index)
             )
             self._frame_index = FrameIndex(
-                is_key_frame=is_key_frame,
+                _is_key_frame=is_key_frame,
                 _pts=pts,
                 _duration=duration,
                 _time_base_num=time_base_num,
@@ -298,27 +376,15 @@ class VideoStream(_Stream):
         *,
         num_ffmpeg_threads: int = 1,
     ) -> VideoPacketDecoder:
-        """Build the :class:`VideoPacketDecoder` for this stream.
+        """[DISCOURAGED]
 
-        Args:
-            device (str or torch.device, optional): The device to decode on (cpu or CUDA).
-                If ``None`` (default), the current default device is used (see
-                ``torch.set_default_device``).
-            num_ffmpeg_threads (int, optional): The number of threads to use for
-                CPU decoding. This has no effect when decoding on GPU. Use 1 for
-                single-threaded decoding, which may be best if you are decoding
-                multiple streams in parallel. Use a higher number for
-                multi-threaded decoding, which is best for a single stream.
-                Passing 0 lets FFmpeg decide on the number of threads.
-                Default: 1.
-
-        Returns:
-            VideoPacketDecoder: A decoder for this stream's packets.
+        Still available so that existing code keeps working. The recommended
+        way to build a :class:`VideoPacketDecoder` is to instantiate it
+        directly, from the stream's codec parameters:
+        ``VideoPacketDecoder(stream.codec_parameters, ...)``.
         """
-        if num_ffmpeg_threads is None:
-            raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
-        return VideoPacketDecoder._from_stream(
-            self, convert_device_to_str(device), num_ffmpeg_threads
+        return VideoPacketDecoder(
+            self.codec_parameters, device, num_ffmpeg_threads=num_ffmpeg_threads
         )
 
 
@@ -343,13 +409,25 @@ class AudioStream(_Stream):
         """
         return cast(AudioStreamHeaderMetadata, self._read_metadata())
 
-    def make_decoder(self) -> AudioPacketDecoder:
-        """Build the :class:`AudioPacketDecoder` for this stream.
+    @cached_property
+    def codec_parameters(self) -> AudioCodecParameters:
+        """What a decoder needs to know to decode this stream's packets.
 
-        Returns:
-            AudioPacketDecoder: A decoder for this stream's packets.
+        Pass them to a :class:`AudioPacketDecoder`, or pickle them to build the decoder in
+        another process. To read the stream's properties, use :attr:`metadata`
+        instead. See :class:`AudioCodecParameters`.
         """
-        return AudioPacketDecoder._from_stream(self, "cpu")
+        return self._get_codec_parameters(AudioCodecParameters)
+
+    def make_decoder(self) -> AudioPacketDecoder:
+        """[DISCOURAGED]
+
+        Still available so that existing code keeps working. The recommended
+        way to build an :class:`AudioPacketDecoder` is to instantiate it
+        directly, from the stream's codec parameters:
+        ``AudioPacketDecoder(stream.codec_parameters)``.
+        """
+        return AudioPacketDecoder(self.codec_parameters)
 
 
 @_process_local(
@@ -367,7 +445,11 @@ class Demuxer:
     stream each one belongs to::
 
         demuxer = Demuxer("video.mp4", streams=("video", "audio"))
-        decoders = {s.index: s.make_decoder(device="cuda") for s in demuxer.streams}
+        video, audio = demuxer.streams
+        decoders = {
+            video.index: VideoPacketDecoder(video.codec_parameters, device="cuda"),
+            audio.index: AudioPacketDecoder(audio.codec_parameters),
+        }
 
         for packet in demuxer:
             for output in decoders[packet.stream_index].decode(packet):
@@ -496,6 +578,9 @@ class Demuxer:
         re-primes. This is especially true when resampling is involved (via an
         :class:`AudioConverter`). Pre-rolling a margin of audio before the
         target is up to you.
+
+        A stream without timestamps, like a raw H.264 or HEVC stream, can only
+        be rewound to its start, with ``seek(0)``.
 
         There is no ``seek_mode`` to choose from: seeking straight to
         ``seconds`` is what :class:`~torchcodec.decoders.VideoDecoder` calls

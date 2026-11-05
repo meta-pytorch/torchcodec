@@ -14,6 +14,10 @@ namespace facebook::torchcodec {
 
 int validate_int64_to_int(int64_t value, const std::string& parameter_name);
 
+uint32_t validate_int64_to_uint32(
+    int64_t value,
+    const std::string& parameter_name);
+
 std::optional<int> validate_optional_int64_to_int(
     const std::optional<int64_t>& value,
     const std::string& parameter_name);

@@ -42,6 +42,11 @@ class StreamMetadata:
     """Bit rate of the stream, in seconds (float or None)."""
     codec: str | None
     """Codec (str or None)."""
+    time_base: Fraction | None
+    """The unit of the stream's timestamps, in seconds (Fraction or None): a
+    :term:`pts` of ``n`` means ``n * time_base`` seconds. That's the unit of
+    the integer timestamps of the low-level APIs, like :attr:`Packet.pts` and
+    :attr:`RawFrame.pts`."""
     stream_index: int
     """Index of the stream that this metadata refers to (int)."""
     media_type: str
@@ -251,12 +256,9 @@ class ContainerMetadata(DemuxerMetadata):
     entries apart."""
 
 
-def _get_optional_par_fraction(stream_dict):
+def _get_optional_fraction(stream_dict, name):
     try:
-        return Fraction(
-            stream_dict["sampleAspectRatioNum"],
-            stream_dict["sampleAspectRatioDen"],
-        )
+        return Fraction(stream_dict[f"{name}Num"], stream_dict[f"{name}Den"])
     except KeyError:
         return None
 
@@ -277,6 +279,7 @@ def _stream_metadata_from_dict(stream_dict: dict, stream_index: int) -> StreamMe
             "beginStreamSecondsFromHeader"
         ),
         codec=stream_dict.get("codec"),
+        time_base=_get_optional_fraction(stream_dict, "timeBase"),
         stream_index=stream_index,
         media_type=stream_dict["mediaType"],
     )
@@ -286,7 +289,7 @@ def _stream_metadata_from_dict(stream_dict: dict, stream_index: int) -> StreamMe
             height=stream_dict.get("height"),
             num_frames_from_header=stream_dict.get("numFramesFromHeader"),
             average_fps_from_header=stream_dict.get("averageFpsFromHeader"),
-            pixel_aspect_ratio=_get_optional_par_fraction(stream_dict),
+            pixel_aspect_ratio=_get_optional_fraction(stream_dict, "sampleAspectRatio"),
             rotation=stream_dict.get("rotation"),
             color_primaries=stream_dict.get("colorPrimaries"),
             color_space=stream_dict.get("colorSpace"),
@@ -325,6 +328,7 @@ def get_container_metadata(decoder: torch.Tensor) -> ContainerMetadata:
                 "beginStreamSecondsFromHeader"
             ),
             codec=stream_dict.get("codec"),
+            time_base=_get_optional_fraction(stream_dict, "timeBase"),
             stream_index=stream_index,
             media_type=stream_dict["mediaType"],
         )
@@ -351,7 +355,9 @@ def get_container_metadata(decoder: torch.Tensor) -> ContainerMetadata:
                     num_frames_from_header=stream_dict.get("numFramesFromHeader"),
                     num_frames_from_content=stream_dict.get("numFramesFromContent"),
                     average_fps_from_header=stream_dict.get("averageFpsFromHeader"),
-                    pixel_aspect_ratio=_get_optional_par_fraction(stream_dict),
+                    pixel_aspect_ratio=_get_optional_fraction(
+                        stream_dict, "sampleAspectRatio"
+                    ),
                     rotation=stream_dict.get("rotation"),
                     color_primaries=stream_dict.get("colorPrimaries"),
                     color_space=stream_dict.get("colorSpace"),

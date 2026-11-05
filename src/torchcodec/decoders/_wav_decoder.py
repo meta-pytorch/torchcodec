@@ -7,6 +7,7 @@
 
 import io
 import json
+from fractions import Fraction
 from pathlib import Path
 
 import torch
@@ -68,6 +69,8 @@ class WavDecoder:
             stream_index=metadata_dict["streamIndex"],
             media_type=metadata_dict["mediaType"],
             codec=metadata_dict["codec"],
+            # FFmpeg's WAV demuxer counts timestamps in samples.
+            time_base=Fraction(1, metadata_dict["sampleRate"]),
             bit_rate=metadata_dict["bitRate"],
             duration_seconds_from_header=metadata_dict["durationSecondsFromHeader"],
             begin_stream_seconds=metadata_dict["beginStreamSeconds"],

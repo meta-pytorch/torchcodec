@@ -116,9 +116,14 @@ _blocks_demuxer_next_packet = (
 )
 _blocks_demuxer_seek = torch.ops.torchcodec_ns._blocks_demuxer_seek.default
 _blocks_demuxer_scan = torch.ops.torchcodec_ns._blocks_demuxer_scan.default
+_blocks_demuxer_get_codec_parameters = (
+    torch.ops.torchcodec_ns._blocks_demuxer_get_codec_parameters.default
+)
 _blocks_create_packet_decoder = (
     torch.ops.torchcodec_ns._blocks_create_packet_decoder.default
 )
+_blocks_create_packet = torch.ops.torchcodec_ns._blocks_create_packet.default
+_blocks_packet_get_fields = torch.ops.torchcodec_ns._blocks_packet_get_fields.default
 _blocks_packet_decoder_send_packet = (
     torch.ops.torchcodec_ns._blocks_packet_decoder_send_packet.default
 )
@@ -308,12 +313,7 @@ def get_frames_by_pts(
 # Abstract impl for the operators. Needed by torch.compile.
 # ==============================
 @register_fake("torchcodec_ns::create_from_file")
-def create_from_file_abstract(
-    filename: str,
-    seek_mode: str | None = None,
-    format_whitelist: str | None = None,
-    codec_whitelist: str | None = None,
-) -> torch.Tensor:
+def create_from_file_abstract(filename: str, seek_mode: str | None) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
 

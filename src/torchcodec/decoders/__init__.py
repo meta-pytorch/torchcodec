@@ -7,6 +7,7 @@
 from .._core import AudioStreamMetadata, VideoStreamMetadata
 from ._audio_decoder import AudioDecoder  # noqa
 from ._blocks import (  # noqa
+    AudioCodecParameters,
     AudioConverter,
     AudioPacketDecoder,
     AudioStream,
@@ -21,6 +22,7 @@ from ._blocks import (  # noqa
     RawAudioSamples,
     RawFrame,
     StreamMetadata,
+    VideoCodecParameters,
     VideoPacketDecoder,
     VideoStream,
     VideoStreamHeaderMetadata,

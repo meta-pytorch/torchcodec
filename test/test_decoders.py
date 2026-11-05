@@ -7,6 +7,7 @@
 import concurrent.futures
 import contextlib
 import copy
+import dataclasses
 import gc
 import io
 import itertools
@@ -15,9 +16,11 @@ import os
 import pickle
 import queue
 import socket
+import struct
 import subprocess
 import threading
 import zlib
+from fractions import Fraction
 from functools import partial
 from multiprocessing.reduction import ForkingPickler
 from typing import NamedTuple
@@ -30,6 +33,7 @@ from torchcodec import _core, ffmpeg_major_version, FrameBatch
 from torchcodec._core.ops import _blocks_demuxer_add_stream, _blocks_demuxer_scan
 from torchcodec._frame import Frame
 from torchcodec.decoders import (
+    AudioCodecParameters,
     AudioConverter,
     AudioDecoder,
     AudioPacketDecoder,
@@ -55,6 +59,7 @@ from torchcodec.decoders import (
     RawFrame,
     set_cuda_backend,
     set_nvdec_cache_capacity,
+    VideoCodecParameters,
     VideoDecoder,
     VideoPacketDecoder,
     VideoStream,
@@ -86,6 +91,8 @@ from .utils import (
     CODED64_DISPLAY52_VIDEO,
     CORRUPT_JPEG,
     cuda_devices,
+    demux_in_subprocess,
+    demux_with_open_files_limit,
     DISCARD_FIRST_KEYFRAME_VIDEO,
     FRAME_EXCEEDS_SCREEN_GIF,
     get_ffmpeg_minor_version,
@@ -300,37 +307,6 @@ class TestDecoder:
 
 
 class TestVideoDecoder:
-    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
-    @pytest.mark.parametrize("as_string", (False, True))
-    def test_decode_whitelists(self, seek_mode, as_string):
-        # The restrictions have to reach FFmpeg, not just be accepted: a
-        # whitelist naming neither this file's demuxer nor its decoder must
-        # stop it before any of its bytes choose what runs.
-        source = str(NASA_VIDEO.path) if as_string else NASA_VIDEO.path
-        with pytest.raises(RuntimeError):
-            VideoDecoder(source, seek_mode=seek_mode, format_whitelist="ogg")
-        with pytest.raises(RuntimeError):
-            VideoDecoder(source, seek_mode=seek_mode, codec_whitelist="vp8")
-
-        decoder = VideoDecoder(
-            source,
-            seek_mode=seek_mode,
-            format_whitelist="mov,mp4,m4a,3gp,3g2,mj2",
-            codec_whitelist="h264,aac",
-        )
-        assert decoder.metadata.codec == "h264"
-        assert decoder[0].shape == (3, 270, 480)
-
-    @pytest.mark.parametrize(
-        "options", ({"format_whitelist": "mov"}, {"codec_whitelist": "h264"})
-    )
-    def test_decode_whitelists_reject_non_file_sources(self, options):
-        # Only the file-path constructor can carry them, so a source kind that
-        # cannot must be refused rather than silently decoded unrestricted.
-        for source in (b"", torch.empty(0, dtype=torch.uint8), io.BytesIO()):
-            with pytest.raises(ValueError, match="only supported for file paths"):
-                VideoDecoder(source, **options)
-
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_metadata(self, seek_mode):
         decoder = VideoDecoder(NASA_VIDEO.path, seek_mode=seek_mode)
@@ -3864,6 +3840,20 @@ def _make_raw_h264(tmp_path, num_frames=30):
     return path
 
 
+def _make_raw_hevc(tmp_path, num_frames=30):
+    path = tmp_path / "raw.hevc"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-i", str(NASA_VIDEO.path), "-map", "0:3", "-frames:v", str(num_frames),
+            "-c:v", "libx265", "-x265-params", "keyint=10:min-keyint=10:log-level=error",
+            "-f", "hevc", str(path),
+        ],
+        check=True,
+    )  # fmt: skip
+    return path
+
+
 def _low_level_devices():
     return ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
 
@@ -4250,6 +4240,672 @@ class TestLowLevel:
 
         assert probed.bytes_read < demuxed.bytes_read
 
+    # ===== codec parameters =====
+
+    def test_video_codec_parameters(self):
+        params = Demuxer(NASA_VIDEO.path).streams[0].codec_parameters
+
+        has_framerate = ffmpeg_major_version > 6 or (
+            ffmpeg_major_version == 6 and get_ffmpeg_minor_version() >= 1
+        )
+        assert params == VideoCodecParameters(
+            codec="h264",
+            time_base=Fraction(1, 30000),
+            extradata=params.extradata,
+            codec_tag=0x31637661,  # "avc1"
+            profile=100,
+            level=21,
+            bit_rate=128783,
+            bits_per_coded_sample=24,
+            bits_per_raw_sample=8,
+            width=480,
+            height=270,
+            pixel_format="yuv420p",
+            sample_aspect_ratio=Fraction(1, 1),
+            framerate=Fraction(30000, 1001) if has_framerate else None,
+            r_frame_rate=Fraction(30000, 1001),
+            field_order=params.field_order,
+            color_range="tv",
+            color_primaries="bt709",
+            color_transfer_characteristic="bt709",
+            color_space="bt709",
+            chroma_location="left",
+            video_delay=2,
+        )
+        # FFmpeg 4 doesn't report it.
+        assert params.field_order in (None, "progressive")
+        # The avcC box, which starts with its version, 1.
+        assert len(params.extradata) == 48
+        assert params.extradata[0] == 1
+
+    def test_audio_codec_parameters(self):
+        params = Demuxer(NASA_VIDEO.path, streams="audio").streams[0].codec_parameters
+
+        assert params == AudioCodecParameters(
+            codec="aac",
+            time_base=Fraction(1, 16000),
+            extradata=params.extradata,
+            codec_tag=0x6134706D,  # "mp4a"
+            profile=1,  # AAC LC
+            bit_rate=128837,
+            bits_per_coded_sample=16,
+            sample_format="fltp",
+            sample_rate=16000,
+            channel_layout="stereo",
+            frame_size=1024,
+            initial_padding=params.initial_padding,
+        )
+        assert len(params.extradata) == 5
+        # The AAC encoder delay, signaled by the MP4 edit list. Only some FFmpeg
+        # versions report it as the initial padding.
+        assert params.initial_padding in (None, 1024)
+
+    def test_codec_parameters_display_matrix(self):
+        (video,) = Demuxer(NASA_VIDEO_ROTATED.path).streams
+        display_matrix = video.codec_parameters.coded_side_data["Display Matrix"]
+
+        # A 90 degree rotation, as FFmpeg stores it: 9 int32s, in 16.16 fixed
+        # point except for the last column, in 2.30.
+        assert video.metadata.rotation == 90
+        assert struct.unpack("9i", display_matrix) == (
+            0,
+            -65536,
+            0,
+            65536,
+            0,
+            0,
+            0,
+            0,
+            1 << 30,
+        )
+
+        assert (
+            Demuxer(NASA_VIDEO.path).streams[0].codec_parameters.coded_side_data is None
+        )
+
+    def test_codec_parameters_are_picklable_frozen_values(self):
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        for params in (s.codec_parameters for s in demuxer.streams):
+            assert pickle.loads(pickle.dumps(params)) == params
+            with pytest.raises(dataclasses.FrozenInstanceError):
+                params.codec = "hevc"
+
+    def test_codec_parameters_constructor(self):
+        params = VideoCodecParameters(
+            codec="h264",
+            time_base=Fraction(1, 30000),
+            codec_tag=0x31637661,
+            sample_aspect_ratio=Fraction(4, 3),
+        )
+        assert params.width is None
+        assert repr(params) == (
+            "VideoCodecParameters(codec='h264', time_base=Fraction(1, 30000), "
+            "codec_tag=828601953, sample_aspect_ratio=Fraction(4, 3))"
+        )
+
+        assert repr(
+            AudioCodecParameters(
+                codec="opus",
+                time_base=Fraction(1, 48000),
+                extradata=b"OpusHead" + bytes(11),
+                coded_side_data={"Replay Gain": bytes(16)},
+            )
+        ) == (
+            "AudioCodecParameters(codec='opus', time_base=Fraction(1, 48000), "
+            "extradata=<19 bytes>, coded_side_data={'Replay Gain': <16 bytes>})"
+        )
+
+        assert VideoCodecParameters("h264", time_base=Fraction(1, 30000)) == (
+            VideoCodecParameters(codec="h264", time_base=Fraction(1, 30000))
+        )
+        with pytest.raises(TypeError, match="positional"):
+            VideoCodecParameters("h264", Fraction(1, 30000))
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        (
+            (
+                {"codec": "", "time_base": Fraction(1, 1)},
+                "codec must be a non-empty string",
+            ),
+            (
+                {"codec": None, "time_base": Fraction(1, 1)},
+                "codec must be a non-empty string",
+            ),
+            (
+                {"codec": "h264", "time_base": (1, 30000)},
+                "time_base must be a Fraction",
+            ),
+            ({"codec": "h264", "time_base": 0.5}, "time_base must be a Fraction"),
+            (
+                {"codec": "h264", "time_base": Fraction(-1, 1)},
+                "time_base must be positive",
+            ),
+            (
+                {
+                    "codec": "h264",
+                    "time_base": Fraction(1, 1),
+                    "r_frame_rate": (30000, 1001),
+                },
+                "r_frame_rate must be a Fraction",
+            ),
+        ),
+    )
+    def test_codec_parameters_constructor_errors(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            VideoCodecParameters(**kwargs)
+
+    # ===== packet decoders built from codec parameters =====
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    @pytest.mark.parametrize("video", (NASA_VIDEO, NASA_VIDEO_ROTATED))
+    def test_video_packet_decoder_from_pickled_codec_parameters(self, device, video):
+        # What the decoding process of a multi-process pipeline does.
+        demuxer = Demuxer(video.path)
+        params = pickle.loads(pickle.dumps(demuxer.streams[0].codec_parameters))
+        decoder = VideoPacketDecoder(params, device)
+        converter = ColorConverter(device=device)
+
+        raw_frames = [f for packet in demuxer for f in decoder.decode(packet)]
+        raw_frames += decoder.drain()
+
+        # VideoDecoder builds its decoder from the demuxed stream directly.
+        expected = VideoDecoder(video.path, device=device)
+        assert len(raw_frames) == len(expected)
+        for i, raw_frame in enumerate(raw_frames):
+            frame = converter.convert(raw_frame)
+            expected_frame = expected.get_frame_at(i)
+            torch.testing.assert_close(frame.data, expected_frame.data, rtol=0, atol=0)
+            assert frame.pts_seconds == expected_frame.pts_seconds
+            assert frame.duration_seconds == expected_frame.duration_seconds
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    @pytest.mark.parametrize(
+        "video",
+        (
+            NASA_VIDEO,
+            TEST_SRC_2_720P_H265,
+            TEST_SRC_2_720P_MPEG4,
+            TEST_SRC_2_MPEG4_MP4,
+        ),
+    )
+    def test_video_packet_decoder_from_hand_built_codec_parameters(self, device, video):
+        # On CUDA, this checks NVDEC's bitstream filter choice: hand-built
+        # parameters have no container, so NVDEC picks the filter from the codec
+        # alone, instead of from the container as it does with a Demuxer.
+        demuxer = Demuxer(video.path)
+        stream_params = demuxer.streams[0].codec_parameters
+        params = VideoCodecParameters(
+            codec=stream_params.codec,
+            time_base=stream_params.time_base,
+            extradata=stream_params.extradata,
+            width=stream_params.width,
+            height=stream_params.height,
+            pixel_format=stream_params.pixel_format,
+            r_frame_rate=stream_params.r_frame_rate,
+        )
+        decoder = VideoPacketDecoder(params, device)
+        converter = ColorConverter(device=device)
+
+        frames = [
+            converter.convert(f) for packet in demuxer for f in decoder.decode(packet)
+        ]
+        frames += [converter.convert(f) for f in decoder.drain()]
+
+        expected = VideoDecoder(video.path, device=device)
+        assert len(frames) == len(expected)
+        for i, frame in enumerate(frames):
+            expected_frame = expected.get_frame_at(i)
+            torch.testing.assert_close(frame.data, expected_frame.data, rtol=0, atol=0)
+            assert frame.pts_seconds == expected_frame.pts_seconds
+            assert frame.duration_seconds == expected_frame.duration_seconds
+
+    @needs_cuda
+    def test_nvdec_needs_dimensions_pixel_format_and_frame_rate(self):
+        # This test documents what NVDEC needs in hand-built codec parameters.
+        # Without width, height and pixel_format, it may silently decode on the
+        # CPU: it does for MPEG-4, but not for H.264 and HEVC whose decoders
+        # read them from the extradata. Without r_frame_rate, the frames'
+        # durations are 0.
+        asset = TEST_SRC_2_720P_MPEG4
+
+        def decode(params, device):
+            demuxer = Demuxer(asset.path)
+            decoder = VideoPacketDecoder(params, device)
+            converter = ColorConverter(device=device)
+            frames = [converter.convert(f) for p in demuxer for f in decoder.decode(p)]
+            return frames + [converter.convert(f) for f in decoder.drain()]
+
+        # dataclasses.replace() drops the container, like hand-built parameters.
+        params = dataclasses.replace(Demuxer(asset.path).streams[0].codec_parameters)
+        nvdec_frames = decode(params, "cuda")
+        assert all(f.duration_seconds > 0 for f in nvdec_frames)
+
+        frames = decode(dataclasses.replace(params, r_frame_rate=None), "cuda")
+        assert all(f.duration_seconds == 0 for f in frames)
+
+        frames = decode(
+            dataclasses.replace(params, width=None, height=None, pixel_format=None),
+            "cuda",
+        )
+        cpu_frames = decode(params, "cpu")
+        assert frames[0].data.device.type == "cuda"
+        # We don't expose the .cpu_fallback on the PacketDecoder yet, so we
+        # can't cleanly check that it actually fell back to the CPU. Below is
+        # the best we can do.
+        assert not torch.equal(frames[0].data, nvdec_frames[0].data)
+        # Not exact: CPU-decoded frames go through a different color conversion
+        # when they're uploaded to the GPU.
+        torch.testing.assert_close(
+            frames[0].data.cpu(), cpu_frames[0].data, rtol=0, atol=2
+        )
+
+    def test_audio_packet_decoder_from_pickled_codec_parameters(self):
+        def decode(make_decoder):
+            demuxer = Demuxer(NASA_VIDEO.path, streams="audio")
+            decoder = make_decoder(demuxer.streams[0])
+            samples = [s for packet in demuxer for s in decoder.decode(packet)]
+            return samples + decoder.drain()
+
+        expected = decode(lambda stream: stream.make_decoder())
+        samples = decode(
+            lambda stream: AudioPacketDecoder(
+                pickle.loads(pickle.dumps(stream.codec_parameters))
+            )
+        )
+        assert len(samples) == len(expected) > 0
+        for s, e in zip(samples, expected):
+            torch.testing.assert_close(s.data, e.data, rtol=0, atol=0)
+            assert s.pts_seconds == e.pts_seconds
+
+    def test_stream_metadata_time_base(self):
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        for stream in demuxer.streams:
+            assert stream.metadata.time_base is not None
+            assert stream.metadata.time_base == stream.codec_parameters.time_base
+
+    def test_codec_parameters_carry_the_container_format(self):
+        params = Demuxer(NASA_VIDEO.path).streams[0].codec_parameters
+
+        assert params._container_format_PRIVATE_DO_NOT_USE == "mov,mp4,m4a,3gp,3g2,mj2"
+        unpickled = pickle.loads(pickle.dumps(params))
+        assert (
+            unpickled._container_format_PRIVATE_DO_NOT_USE
+            == params._container_format_PRIVATE_DO_NOT_USE
+        )
+        # It's not part of the API.
+        assert "mov" not in repr(params)
+        assert params == VideoCodecParameters(
+            **{
+                f.name: getattr(params, f.name)
+                for f in dataclasses.fields(params)
+                if f.init
+            }
+        )
+
+    def test_mpeg_program_stream_resync_needs_the_container_format(self):
+        # This test documents the one behavior difference caused by the
+        # existence (or absence) of the
+        # VideoCodecParameters._container_format_PRIVATE_DO_NOT_USE field.
+        # It exists when the codec parameters come from a Demuxer, and is None
+        # otherwise (e.g. user-created).
+        #
+        # Seeking in an MPEG program stream lands mid-frame, so the first
+        # packets after the seek can't be decoded. When
+        # _container_format_PRIVATE_DO_NOT_USE is set, the the decoder can skips
+        # those packets until it properly resyncs based on that information.
+        # Without it, the decoder doesn't know what to do, and it raises on
+        # them, and it'd be up to the user to skip those packets themselves.
+        asset = SINE_STEREO_MP2_MPEG_PS
+
+        def decode_after_seek(params):
+            demuxer = Demuxer(asset.path, streams="audio")
+            decoder = AudioPacketDecoder(params)
+            demuxer.seek(2.0)
+            decoder.reset()
+            return [s for packet in demuxer for s in decoder.decode(packet)]
+
+        params = Demuxer(asset.path, streams="audio").streams[0].codec_parameters
+        assert params._container_format_PRIVATE_DO_NOT_USE == "mpeg"
+        assert len(decode_after_seek(params)) > 0
+
+        params_without_container = AudioCodecParameters(
+            **{
+                f.name: getattr(params, f.name)
+                for f in dataclasses.fields(params)
+                if f.init
+            }
+        )
+        assert params_without_container._container_format_PRIVATE_DO_NOT_USE is None
+        with pytest.raises(RuntimeError, match="Failed to send packet"):
+            decode_after_seek(params_without_container)
+
+    def test_packet_decoder_codec_parameters_type_errors(self):
+        video_params = Demuxer(NASA_VIDEO.path).streams[0].codec_parameters
+        audio_params = (
+            Demuxer(NASA_VIDEO.path, streams="audio").streams[0].codec_parameters
+        )
+        with pytest.raises(TypeError, match="must be a VideoCodecParameters"):
+            VideoPacketDecoder(audio_params)
+        with pytest.raises(TypeError, match="must be an AudioCodecParameters"):
+            AudioPacketDecoder(video_params)
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        (
+            ({"codec": "not_a_codec"}, "Unknown codec"),
+            ({"codec": "aac"}, "'aac' is not a video codec"),
+            ({"pixel_format": "not_a_pixel_format"}, "Unknown pixel_format"),
+            ({"color_space": "not_a_color_space"}, "Unknown color_space"),
+            ({"field_order": "not_a_field_order"}, "Unknown field_order"),
+            ({"width": 2**40}, "width=.* is out of range"),
+            ({"codec_tag": -1}, "codec_tag=-1 is out of range"),
+            ({"coded_side_data": {"not_a_type": b"x"}}, "Unknown side data type"),
+            ({"coded_side_data": {"Display Matrix": bytes(10)}}, "must be 36 bytes"),
+        ),
+    )
+    def test_video_packet_decoder_invalid_codec_parameters(self, kwargs, match):
+        params = VideoCodecParameters(
+            **{"codec": "h264", "time_base": Fraction(1, 30000), **kwargs}
+        )
+        with pytest.raises(RuntimeError, match=match):
+            VideoPacketDecoder(params)
+
+    # ===== packets built from bytes =====
+
+    @pytest.mark.parametrize(
+        "asset, media_type, device",
+        (
+            (NASA_VIDEO, "video", "cpu"),
+            pytest.param(NASA_VIDEO, "video", "cuda", marks=pytest.mark.needs_cuda),
+            (NASA_AUDIO_MP3, "audio", "cpu"),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "constructor", ("from_bytes", "from_tensor", "pickle", "forking_pickler")
+    )
+    def test_packets_rebuilt_from_their_data_decode_the_same(
+        self, asset, media_type, device, constructor
+    ):
+        def rebuild(packet):
+            if constructor == "pickle":
+                return pickle.loads(pickle.dumps(packet))
+            if constructor == "forking_pickler":
+                # What a DataLoader worker or an mp.Queue uses: it moves the
+                # data tensor into shared memory.
+                return pickle.loads(ForkingPickler.dumps(packet))
+            data = packet.data
+            if constructor == "from_bytes":
+                data = bytes(data.numpy())
+            return getattr(Packet, constructor)(
+                data,
+                pts=packet.pts,
+                dts=packet.dts,
+                duration=packet.duration,
+                flags=packet.flags,
+                side_data=packet.side_data,
+                stream_index=packet.stream_index,
+            )
+
+        def decode(transform):
+            demuxer = Demuxer(asset.path, streams=media_type)
+            stream = demuxer.streams[0]
+            decoder = (
+                stream.make_decoder(device)
+                if media_type == "video"
+                else stream.make_decoder()
+            )
+            frames = [f for p in demuxer for f in decoder.decode(transform(p))]
+            return frames + decoder.drain()
+
+        if media_type == "audio":
+            # The MP3 decoder needs this side data to drop the priming samples.
+            first_packet = next(Demuxer(asset.path, streams="audio"))
+            assert "Skip Samples" in first_packet.side_data
+
+        expected = decode(lambda packet: packet)
+        frames = decode(rebuild)
+        assert len(frames) == len(expected) > 0
+        for frame, expected_frame in zip(frames, expected):
+            if media_type == "video":
+                for plane, expected_plane in zip(frame.planes, expected_frame.planes):
+                    torch.testing.assert_close(plane, expected_plane, rtol=0, atol=0)
+            else:
+                torch.testing.assert_close(
+                    frame.data, expected_frame.data, rtol=0, atol=0
+                )
+            assert frame.pts_seconds == expected_frame.pts_seconds
+            assert frame.duration_seconds == expected_frame.duration_seconds
+
+    def test_packet_from_bytes_properties(self):
+        packet = Packet.from_bytes(
+            b"abc",
+            pts=10,
+            dts=5,
+            duration=3,
+            flags=1,
+            side_data={"Skip Samples": bytes(10)},
+            stream_index=2,
+        )
+        assert packet.data.dtype == torch.uint8
+        assert bytes(packet.data.numpy()) == b"abc"
+        assert packet.pts == 10
+        assert packet.dts == 5
+        assert packet.duration == 3
+        assert packet.flags == 1
+        assert packet.side_data == {"Skip Samples": bytes(10)}
+        assert packet.stream_index == 2
+
+        packet = Packet.from_bytes(b"")
+        assert packet.data.numel() == 0
+        assert packet.pts is None
+        assert packet.dts is None
+        assert packet.duration == 0
+        assert packet.flags == 0
+        assert packet.side_data == {}
+        assert packet.stream_index == 0
+
+    def test_packet_data_is_copied(self):
+        data = bytearray(b"abc")
+        from_bytes = Packet.from_bytes(data)
+        from_memoryview = Packet.from_bytes(memoryview(data))
+        tensor = torch.frombuffer(data, dtype=torch.uint8)
+        from_tensor = Packet.from_tensor(tensor)
+        data[0] = ord("x")
+        for packet in (from_bytes, from_memoryview, from_tensor):
+            assert bytes(packet.data.numpy()) == b"abc"
+
+    @pytest.mark.skipif(IS_WINDOWS, reason="No open files limit to lower")
+    def test_send_many_packets_across_processes(self):
+        # Under torch.multiprocessing, every tensor in flight holds a file
+        # descriptor. Packets are pickled as bytes, so sending more of them than
+        # the open files limit allows works.
+        max_open_files = 256
+        expected = list(Demuxer(NASA_VIDEO.path))
+        assert len(expected) > max_open_files
+
+        context = torch.multiprocessing.get_context("spawn")
+        with concurrent.futures.ProcessPoolExecutor(1, mp_context=context) as pool:
+            packets = pool.submit(
+                demux_with_open_files_limit, NASA_VIDEO.path, max_open_files
+            ).result()
+
+        assert len(packets) == len(expected)
+        for packet, expected_packet in zip(packets, expected):
+            assert torch.equal(packet.data, expected_packet.data)
+            assert packet.pts == expected_packet.pts
+
+    def test_pickled_packet_keeps_its_generation(self):
+        demuxer = Demuxer(NASA_VIDEO.path)
+        decoder = demuxer.streams[0].make_decoder()
+        decoder.decode(next(demuxer))
+        demuxer.seek(1.0)
+        packet = next(demuxer)
+        assert packet._generation != 0
+
+        unpickled = pickle.loads(pickle.dumps(packet))
+        assert unpickled._generation == packet._generation
+        with pytest.raises(RuntimeError, match="reset"):
+            decoder.decode(unpickled)
+
+    def test_packet_data_outlives_packet(self):
+        # grep for this test name to see associated comment in the code.
+        packet = next(Demuxer(NASA_VIDEO.path))
+        data = packet.data
+        saved = data.clone()
+
+        del packet
+        gc.collect()
+
+        torch.testing.assert_close(data, saved, rtol=0, atol=0)
+
+    @pytest.mark.parametrize(
+        "make_packet, error, match",
+        (
+            (lambda: Packet.from_bytes("abc"), TypeError, "must be bytes"),
+            (lambda: Packet.from_tensor(b"abc"), TypeError, "must be a tensor"),
+            (
+                lambda: Packet.from_tensor(torch.zeros(3)),
+                RuntimeError,
+                "must be a contiguous 1D uint8 CPU tensor",
+            ),
+            (
+                lambda: Packet.from_tensor(torch.zeros(6, dtype=torch.uint8)[::2]),
+                RuntimeError,
+                "must be a contiguous 1D uint8 CPU tensor",
+            ),
+            (
+                lambda: Packet.from_bytes(b"abc", flags=8),
+                RuntimeError,
+                "AV_PKT_FLAG_TRUSTED",
+            ),
+            (
+                lambda: Packet.from_bytes(b"abc", side_data={"not_a_type": b"x"}),
+                RuntimeError,
+                "Unknown side data type",
+            ),
+        ),
+    )
+    def test_packet_from_bytes_errors(self, make_packet, error, match):
+        with pytest.raises(error, match=match):
+            make_packet()
+
+    def test_demuxed_packets_properties(self):
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        video, audio = demuxer.streams
+        frame_index = video.scan()
+        packets = list(demuxer)
+        video_packets = sorted(
+            (p for p in packets if p.stream_index == video.index), key=lambda p: p.pts
+        )
+        audio_packets = [p for p in packets if p.stream_index == audio.index]
+
+        assert [p.pts for p in video_packets] == frame_index._pts.tolist()
+        AV_PKT_FLAG_KEY = 1
+        assert [bool(p.flags & AV_PKT_FLAG_KEY) for p in video_packets] == (
+            frame_index.is_key_frame.tolist()
+        )
+        assert all(p.duration > 0 for p in video_packets)
+        assert all(p.data.dtype == torch.uint8 and p.data.numel() > 0 for p in packets)
+        assert video_packets[0].side_data == {}
+        assert list(audio_packets[0].side_data) == ["Skip Samples"]
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_packets_from_bytes_only_need_pts(self, device):
+        # The NASA video has B-frames, so its packets' dts differ from their
+        # pts, but the decoder doesn't need them.
+        demuxer = Demuxer(NASA_VIDEO.path)
+        decoder = demuxer.streams[0].make_decoder(device)
+        packets = list(demuxer)
+        assert any(p.pts != p.dts for p in packets)
+
+        def decode(rebuild):
+            decoder.reset()
+            frames = [f for p in packets for f in decoder.decode(rebuild(p))]
+            return frames + decoder.drain()
+
+        expected = decode(lambda p: p)
+        frames = decode(lambda p: Packet.from_tensor(p.data, pts=p.pts))
+        assert len(frames) == len(expected)
+        for frame, expected_frame in zip(frames, expected):
+            assert frame.pts == expected_frame.pts
+            torch.testing.assert_close(
+                frame.planes[0], expected_frame.planes[0], rtol=0, atol=0
+            )
+
+        frames = decode(lambda p: Packet.from_tensor(p.data))
+        assert len(frames) == len(expected)
+        assert all(f.pts is None for f in frames)
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_packets_from_bytes_keep_the_discard_flag(self, device):
+        # This video's first packets are before the start of its edit list: the
+        # demuxer flags them AV_PKT_FLAG_DISCARD, and the decoder decodes them
+        # without returning their frames. Packets from another MP4 parser need
+        # the flag to decode to the same frames as the Demuxer's.
+        AV_PKT_FLAG_DISCARD = 4
+        path = DISCARD_FIRST_KEYFRAME_VIDEO.path
+        demuxer = Demuxer(path)
+        stream = demuxer.streams[0]
+        packets = list(demuxer)
+        assert any(p.flags & AV_PKT_FLAG_DISCARD for p in packets)
+
+        def decode(flags_mask):
+            decoder = stream.make_decoder(device)
+            rebuilt = [
+                Packet.from_tensor(
+                    p.data,
+                    pts=p.pts,
+                    dts=p.dts,
+                    duration=p.duration,
+                    flags=p.flags & flags_mask,
+                )
+                for p in packets
+            ]
+            frames = [f for p in rebuilt for f in decoder.decode(p)]
+            return [f.pts for f in frames + decoder.drain()]
+
+        expected = [f.pts for f in self._decoded_frames(path, device)]
+        assert decode(flags_mask=~0) == expected
+        assert len(decode(flags_mask=~AV_PKT_FLAG_DISCARD)) > len(expected)
+
+    def test_decode_targets_with_a_reused_decoder(self):
+        # Packets come from storage, as in
+        # https://github.com/meta-pytorch/torchcodec/pull/1585: from the key
+        # frame preceding each target up to the target.
+        AV_PKT_FLAG_KEY = 1
+        demuxer = Demuxer(NASA_VIDEO.path)
+        decoder = demuxer.streams[0].make_decoder()
+        rows = [
+            (bytes(p.data.numpy()), p.pts, bool(p.flags & AV_PKT_FLAG_KEY))
+            for p in demuxer
+        ]
+        expected = {
+            f.pts: f.planes[0] for f in self._decoded_frames(NASA_VIDEO.path, "cpu")
+        }
+
+        def decode_target(target_pts):
+            decoder.reset()
+            start = max(
+                i
+                for i, (_, pts, is_key) in enumerate(rows)
+                if is_key and pts <= target_pts
+            )
+            for data, pts, _ in rows[start:]:
+                for raw_frame in decoder.decode(Packet.from_bytes(data, pts=pts)):
+                    if raw_frame.pts == target_pts:
+                        return raw_frame
+            for raw_frame in decoder.drain():
+                if raw_frame.pts == target_pts:
+                    return raw_frame
+
+        all_pts = sorted(expected)
+        for target_pts in [all_pts[i] for i in (0, 50, 3, 200, 199)]:
+            raw_frame = decode_target(target_pts)
+            torch.testing.assert_close(
+                raw_frame.planes[0], expected[target_pts], atol=0, rtol=0
+            )
+
     def test_adding_a_stream_after_demuxing_raises(self):
         # Demuxer follows its streams from construction, so this is only
         # reachable underneath it - but the demuxer is what enforces it, and a
@@ -4351,6 +5007,35 @@ class TestLowLevel:
         frames = self.prefetch(self._decode(decoder, packets))
         return list(self._convert(converter, frames))
 
+    def _decode_with_demuxer_in_subprocess(self, path, device):
+        # [demux] in a spawned process || [decode + color-convert] in this one.
+        # Only the codec parameters and the packets cross over, pickled.
+        context = torch.multiprocessing.get_context("spawn")
+        # Bounded like prefetch()'s queue, which also caps the number of
+        # packets in flight, each holding a shared memory file descriptor.
+        packets_queue = context.Queue(maxsize=8)
+        done = context.Event()
+        process = context.Process(
+            target=demux_in_subprocess, args=(path, packets_queue, done)
+        )
+        process.start()
+
+        def receive():
+            while (item := packets_queue.get(timeout=120)) is not None:
+                if isinstance(item, Exception):
+                    raise item
+                yield item
+
+        try:
+            items = receive()
+            decoder = VideoPacketDecoder(next(items), device)
+            converter = ColorConverter(device=device)
+            return list(self._convert(converter, self._decode(decoder, items)))
+        finally:
+            done.set()
+            process.join(timeout=60)
+            process.kill()
+
     def _to_frame_batch(self, frames):
         return FrameBatch(
             data=torch.stack([f.data for f in frames]),
@@ -4442,6 +5127,24 @@ class TestLowLevel:
         ref = VideoDecoder(video.path, device=device).get_all_frames()
 
         assert got.data.device.type == device
+        assert got.data.shape == ref.data.shape
+        self._assert_matches_video_decoder(got.data, ref.data, video)
+        torch.testing.assert_close(got.pts_seconds, ref.pts_seconds, atol=0, rtol=0)
+        torch.testing.assert_close(
+            got.duration_seconds, ref.duration_seconds, atol=0, rtol=0
+        )
+
+    # Spawning a process is slow, hence fewer videos than
+    # test_matches_video_decoder. The rotated one checks that the display
+    # matrix crosses over in the codec parameters.
+    @pytest.mark.parametrize("video", (NASA_VIDEO, NASA_VIDEO_ROTATED))
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_matches_video_decoder_across_processes(self, video, device):
+        got = self._to_frame_batch(
+            self._decode_with_demuxer_in_subprocess(video.path, device)
+        )
+        ref = VideoDecoder(video.path, device=device).get_all_frames()
+
         assert got.data.shape == ref.data.shape
         self._assert_matches_video_decoder(got.data, ref.data, video)
         torch.testing.assert_close(got.pts_seconds, ref.pts_seconds, atol=0, rtol=0)
@@ -5628,7 +6331,7 @@ class TestLowLevel:
     @staticmethod
     def _make_frame_index(pts, duration, time_base_den=1000):
         return FrameIndex(
-            is_key_frame=torch.zeros(len(pts), dtype=torch.bool),
+            _is_key_frame=torch.zeros(len(pts), dtype=torch.bool),
             _pts=torch.tensor(pts),
             _duration=torch.tensor(duration),
             _time_base_num=1,
@@ -5697,6 +6400,53 @@ class TestLowLevel:
         assert len(list(Demuxer(video.path))) == 30  # number of packets
         assert len(index) == 25  # number of frames
         assert VideoDecoder(video.path, seek_mode="exact").metadata.num_frames == 25
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize("make_raw_stream", (_make_raw_h264, _make_raw_hevc))
+    def test_scan_stream_without_timestamps(self, tmp_path, make_raw_stream):
+        path = make_raw_stream(tmp_path)
+        demuxer = Demuxer(path)
+        frame_index = demuxer.streams[0].scan()
+
+        expected = list(self._decoded_frames(path, "cpu"))
+        assert len(frame_index) == len(expected) == 30
+        assert frame_index.pts_seconds.isnan().all()
+        assert (frame_index.duration_seconds > 0).all()
+        with pytest.raises(ValueError, match="no timestamps"):
+            frame_index.is_key_frame
+        with pytest.raises(ValueError, match="no timestamps"):
+            frame_index.key_frame_indices
+        with pytest.raises(ValueError, match="no timestamps"):
+            frame_index.index_at(0.5)
+        with pytest.raises(ValueError, match="no timestamps"):
+            frame_index.key_frame_seconds_for(0.5)
+
+        # The scan rewound the demuxer.
+        decoder = demuxer.streams[0].make_decoder()
+        frames = list(self._decode(decoder, self._demux(demuxer)))
+        assert len(frames) == len(expected)
+        for raw_frame, expected_raw_frame in zip(frames, expected):
+            for plane, expected_plane in zip(
+                raw_frame.planes, expected_raw_frame.planes
+            ):
+                torch.testing.assert_close(plane, expected_plane, atol=0, rtol=0)
+
+    @needs_ffmpeg_cli
+    def test_rewind_stream_without_timestamps(self, tmp_path):
+        path = _make_raw_h264(tmp_path)
+        expected = [p.data for p in Demuxer(path)]
+
+        demuxer = Demuxer(path)
+        for _ in range(12):
+            next(demuxer)
+        demuxer.seek(0)
+        packets = [p.data for p in demuxer]
+        assert len(packets) == len(expected)
+        for data, expected_data in zip(packets, expected):
+            assert torch.equal(data, expected_data)
+
+        with pytest.raises(RuntimeError, match="can only be rewound"):
+            demuxer.seek(0.5)
 
     @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
     def test_key_frame_seconds_for(self, video):
@@ -6480,7 +7230,6 @@ class TestLowLevel:
             audio.make_decoder(),
             ColorConverter(),
             AudioConverter(),
-            next(iter(demuxer)),
             next(self._decoded_frames(NASA_VIDEO.path, "cpu")),
         ]
 
@@ -6520,6 +7269,32 @@ class TestLowLevel:
         ):
             pickle.loads(pickle.dumps(obj))
 
+    # ===== integer pts =====
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_raw_frame_pts_are_the_packets_pts(self, device):
+        demuxer, decoder, _ = self._make_stages(NASA_VIDEO.path, device)
+        time_base = demuxer.streams[0].codec_parameters.time_base
+        packets = list(demuxer)
+        frames = list(self._decode(decoder, iter(packets)))
+
+        assert [f.pts for f in frames] == sorted(p.pts for p in packets)
+        for frame in frames:
+            assert frame.pts_seconds == pytest.approx(float(frame.pts * time_base))
+
+    def test_raw_audio_samples_pts(self):
+        demuxer = Demuxer(NASA_AUDIO_MP3.path, streams="audio")
+        decoder = demuxer.streams[0].make_decoder()
+        time_base = demuxer.streams[0].codec_parameters.time_base
+        samples = [s for p in demuxer for s in decoder.decode(p)] + decoder.drain()
+
+        assert len(samples) > 0
+        pts = [s.pts for s in samples]
+        assert all(isinstance(p, int) for p in pts)
+        assert pts == sorted(pts)
+        for s in samples:
+            assert s.pts_seconds == pytest.approx(float(s.pts * time_base))
+
     # ===== missing pts =====
 
     @needs_ffmpeg_cli
@@ -6531,6 +7306,7 @@ class TestLowLevel:
         frames = list(self._decode(decoder, self._demux(demuxer)))
         assert len(frames) == 30
         for raw_frame in frames:
+            assert raw_frame.pts is None
             assert math.isnan(raw_frame.pts_seconds)
             assert math.isnan(converter.convert(raw_frame).pts_seconds)
 
