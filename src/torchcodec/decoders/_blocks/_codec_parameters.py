@@ -57,10 +57,7 @@ class _CodecParameters:
     ``"Display Matrix"`` for video or ``"Replay Gain"`` for audio.
 
     If a video stream has a display matrix, it is under ``"Display Matrix"``
-    on every FFmpeg version. FFmpeg only moved the stream's side data into
-    ``AVCodecParameters`` in 6.1: before that, the display matrix comes from
-    the stream's own side data (``AVStream.side_data``), and it is the only
-    entry supported, so audio streams have none."""
+    on every FFmpeg version."""
     # FFmpeg's name of the format of the container the stream was demuxed from,
     # e.g. "mpeg", or None when the parameters don't come from a Demuxer.
     # Knowing the container lets the decoder keep behavior that is more accurate
@@ -110,21 +107,17 @@ class VideoCodecParameters(_CodecParameters):
     The fields mirror those of FFmpeg's `AVCodecParameters
     <https://ffmpeg.org/doxygen/trunk/structAVCodecParameters.html>`_, with the
     same names and meanings. FFmpeg's names stand for its enums, e.g.
-    ``pixel_format="yuv420p"``. A field left to ``None`` keeps FFmpeg's
-    default. ``codec`` is the only positional argument.
+    ``pixel_format="yuv420p"``.
 
     Which fields you need depends on the codec: printing the parameters a
-    ``Demuxer`` reports for a similar file shows what FFmpeg uses. **A missing
-    field doesn't always raise**: depending on the codec, it can give you wrong
-    frames instead.
+    ``Demuxer`` reports for a similar file shows what FFmpeg uses.
 
-    The parameters are meant to be passed to a decoder or stored, not read as
-    metadata: use :attr:`VideoStream.metadata` for that. The values a
-    ``Demuxer`` reports are FFmpeg's, and can change across FFmpeg and
-    TorchCodec versions. The fields' names and meanings are stable.
+    .. note::
 
-    The frames' rotation comes from the ``"Display Matrix"`` entry of
-    :attr:`coded_side_data`: the 3x3 matrix, as FFmpeg stores it.
+        The parameters are meant to be passed to a decoder or stored, not read
+        as metadata: use :attr:`VideoStream.metadata` for that. The values a
+        ``Demuxer`` reports are FFmpeg's, and can change across FFmpeg and
+        TorchCodec versions. The fields' names and meanings are stable.
     """
 
     width: int | None = None
@@ -192,18 +185,17 @@ class AudioCodecParameters(_CodecParameters):
     The fields mirror those of FFmpeg's `AVCodecParameters
     <https://ffmpeg.org/doxygen/trunk/structAVCodecParameters.html>`_, with the
     same names and meanings. FFmpeg's names stand for its enums, e.g.
-    ``sample_format="fltp"``. A field left to ``None`` keeps FFmpeg's default.
-    ``codec`` is the only positional argument.
+    ``sample_format="fltp"``.
 
     Which fields you need depends on the codec: printing the parameters a
-    ``Demuxer`` reports for a similar file shows what FFmpeg uses. **A missing
-    field doesn't always raise**: depending on the codec, it can give you wrong
-    samples instead.
+    ``Demuxer`` reports for a similar file shows what FFmpeg uses.
 
-    The parameters are meant to be passed to a decoder or stored, not read as
-    metadata: use :attr:`AudioStream.metadata` for that. The values a
-    ``Demuxer`` reports are FFmpeg's, and can change across FFmpeg and
-    TorchCodec versions. The fields' names and meanings are stable.
+    .. note::
+
+        The parameters are meant to be passed to a decoder or stored, not read
+        as metadata: use :attr:`AudioStream.metadata` for that. The values a
+        ``Demuxer`` reports are FFmpeg's, and can change across FFmpeg and
+        TorchCodec versions. The fields' names and meanings are stable.
     """
 
     sample_format: str | None = None
