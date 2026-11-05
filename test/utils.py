@@ -236,6 +236,16 @@ def assert_tensor_close_on_at_least(
         )
 
 
+def demux_with_open_files_limit(path, max_open_files):
+    # The target of a spawned process, so it has to live in an importable
+    # module. The limit only applies to that process.
+    import resource
+
+    _, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    resource.setrlimit(resource.RLIMIT_NOFILE, (max_open_files, hard))
+    return list(Demuxer(path))
+
+
 def demux_in_subprocess(path, packets_queue, done):
     # The target of a spawned process, so it has to live in an importable
     # module. It sends the codec parameters of the video stream, then its
