@@ -20,6 +20,7 @@ from torchcodec.decoders import (
     decode_jpeg,
     decode_png,
     decode_webp,
+    Demuxer,
     set_cuda_backend,
     VideoDecoder,
 )
@@ -233,6 +234,26 @@ def assert_tensor_close_on_at_least(
             f"Expected at least {percentage}% of values to be within atol={atol}, "
             f"but only {valid_percentage}% were."
         )
+
+
+def demux_in_subprocess(path, packets_queue, done):
+    # The target of a spawned process, so it has to live in an importable
+    # module. It sends the codec parameters of the video stream, then its
+    # packets, then None, or the exception it raised.
+    #
+    # The packets' data is sent as shared memory file descriptors, which the
+    # parent fetches from this process when it reads them: this process must
+    # stay alive until the parent has read everything, and signals `done`.
+    try:
+        demuxer = Demuxer(path)
+        packets_queue.put(demuxer.streams[0].codec_parameters)
+        for packet in demuxer:
+            packets_queue.put(packet)
+        packets_queue.put(None)
+    except Exception as e:
+        packets_queue.put(e)
+    finally:
+        done.wait(timeout=120)
 
 
 # We embed filtergraph expressions in filenames, but they contain characters that
