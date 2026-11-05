@@ -296,10 +296,14 @@ class VideoStream(_Stream):
         """
         return cast(VideoStreamHeaderMetadata, self._read_metadata())
 
-    # TODO_DEMUXER_FREE: add docs. They should point to `metadata` for reading
-    # the stream's properties.
     @cached_property
     def codec_parameters(self) -> VideoCodecParameters:
+        """What a decoder needs to know to decode this stream's packets.
+
+        Pass them to a :class:`VideoPacketDecoder`, or pickle them to build the decoder in
+        another process. To read the stream's properties, use :attr:`metadata`
+        instead. See :class:`VideoCodecParameters`.
+        """
         return self._get_codec_parameters(VideoCodecParameters)
 
     def scan(self) -> FrameIndex:
@@ -384,10 +388,14 @@ class AudioStream(_Stream):
         """
         return cast(AudioStreamHeaderMetadata, self._read_metadata())
 
-    # TODO_DEMUXER_FREE: add docs. They should point to `metadata` for reading
-    # the stream's properties.
     @cached_property
     def codec_parameters(self) -> AudioCodecParameters:
+        """What a decoder needs to know to decode this stream's packets.
+
+        Pass them to a :class:`AudioPacketDecoder`, or pickle them to build the decoder in
+        another process. To read the stream's properties, use :attr:`metadata`
+        instead. See :class:`AudioCodecParameters`.
+        """
         return self._get_codec_parameters(AudioCodecParameters)
 
     def make_decoder(self) -> AudioPacketDecoder:
