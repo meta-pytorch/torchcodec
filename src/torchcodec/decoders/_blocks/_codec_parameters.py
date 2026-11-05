@@ -54,8 +54,13 @@ class _CodecParameters:
     by the pixel or sample format, e.g. 10 for 10-bit video."""
     coded_side_data: dict[str, bytes] | None = None
     """Extra data about the stream, keyed by FFmpeg's names for its types, e.g.
-    ``"Display Matrix"``. On FFmpeg < 6.1, ``"Display Matrix"`` is the only
-    one supported."""
+    ``"Display Matrix"``.
+
+    If the stream has a display matrix, it is under ``"Display Matrix"`` on
+    every FFmpeg version. FFmpeg only moved the stream's side data into
+    ``AVCodecParameters`` in 6.1: before that, the display matrix comes from
+    the stream's own side data (``AVStream.side_data``), and it is the only
+    entry supported."""
     # FFmpeg's name of the format of the container the stream was demuxed from,
     # e.g. "mpeg", or None when the parameters don't come from a Demuxer.
     # Knowing the container lets the decoder keep behavior that is more accurate
