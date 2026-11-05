@@ -145,15 +145,22 @@ class AudioDecoder:
         # TODO: metadata's sample_rate should probably not be Optional
         assert sample_rate is not None  # mypy.
 
+        stream_start = self.metadata.begin_stream_seconds_from_header or 0.0
+
         def offset_of(seconds: float) -> int:
             # This is morally equivalent to round((seconds - first_pts) *
-            # sample_rate), but round() is not stable across calls for a fixed
-            # value of `seconds` because it rounds to the nearest even interger,
-            # so where it rounds is dependent on the value of `first_pts`.
-            # This formulation forces ties to always round up.
-            # The non-regression test for this is
-            # test_chunk_boundary_half_sample
-            return math.floor((seconds - first_pts) * sample_rate + 0.5)
+            # sample_rate), but a given `seconds` must map to the same sample
+            # across calls, whatever the value of `first_pts`. So `seconds` and
+            # `first_pts` are converted into sample indices separately: when
+            # `seconds` falls in the middle of a sample, the floating-point
+            # error in `seconds - first_pts` would otherwise decide the rounding.
+            # Ties always round up, unlike round() which rounds them to even.
+            # The non-regression tests for this are
+            # test_chunk_boundary_half_sample and
+            # test_chunk_boundary_half_sample_after_frame_start
+            seconds_index = math.floor((seconds - stream_start) * sample_rate + 0.5)
+            first_pts_index = math.floor((first_pts - stream_start) * sample_rate + 0.5)
+            return seconds_index - first_pts_index
 
         if first_pts < start_seconds:
             offset_beginning = offset_of(start_seconds)

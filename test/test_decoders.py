@@ -3624,6 +3624,39 @@ class TestAudioDecoder:
 
         torch.testing.assert_close(torch.cat(chunks, dim=1), full.data, atol=0, rtol=0)
 
+    @needs_ffmpeg_cli
+    def test_chunk_boundary_half_sample_after_frame_start(self, tmp_path):
+        # Same as test_chunk_boundary_half_sample, but each boundary is half a
+        # sample after the start of a FLAC frame, so the second chunk starts
+        # decoding at that frame. The two chunks used to disagree on which one
+        # returns the boundary sample, depending on floating-point errors in
+        # `boundary - first_pts`.
+        frame_size = 1000
+        path = tmp_path / "sine.flac"
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-i", str(SINE_MONO_S32.path), "-c:a", "flac",
+                "-frame_size", str(frame_size), str(path),
+            ],
+            check=True,
+        )  # fmt: skip
+        sample_rate = SINE_MONO_S32.sample_rate
+        full = AudioDecoder(path).get_all_samples()
+        num_samples = full.data.shape[1]
+        end_seconds = full.pts_seconds + num_samples / sample_rate
+
+        for frame_start in range(frame_size, num_samples, frame_size):
+            boundary = (frame_start + 0.5) / sample_rate
+            decoder = AudioDecoder(path)
+            chunks = [
+                decoder.get_samples_played_in_range(full.pts_seconds, boundary).data,
+                decoder.get_samples_played_in_range(boundary, end_seconds).data,
+            ]
+            torch.testing.assert_close(
+                torch.cat(chunks, dim=1), full.data, atol=0, rtol=0
+            )
+
     def test_decode_s16_ffmpeg4(self):
         # Non-regression test for https://github.com/pytorch/torchcodec/issues/843
         # Ensures that decoding s16 on FFmpeg4 handles
