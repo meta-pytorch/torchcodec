@@ -131,11 +131,6 @@ class _BasePacketDecoder(Generic[_Decoded]):
 
 # TODO_DEMUXER_FREE: add a tutorial for decoding without a Demuxer, and link it
 # from here and from AudioPacketDecoder.
-# TODO_DEMUXER_FREE: across all docs, present the explicit construction,
-# VideoPacketDecoder(stream.codec_parameters), as the way to build a decoder,
-# and stream.make_decoder() as a shortcut for it. That's the docstrings of both
-# packet decoders and of VideoStream.make_decoder / AudioStream.make_decoder,
-# and the examples in examples/low_level/, which all use make_decoder().
 class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
     """Decodes the compressed :class:`Packet`\\ s of one video stream into
     :class:`RawFrame`\\ s.
@@ -143,22 +138,22 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
     This is a low-level API: for straightforward decoding, use
     :class:`~torchcodec.decoders.VideoDecoder` instead.
 
-    If you have a :class:`Demuxer`, you can build a ``VideoPacketDecoder`` with
-    :meth:`VideoStream.make_decoder`. You can also build one from
-    :class:`VideoCodecParameters`, e.g. in another process than the demuxer, or
-    to decode packets that don't come from a :class:`Demuxer`. Frames come out
-    on the device it was built for.
-
-    Feed it one packet at a time, and drain it at the end::
+    Build it from the :class:`VideoCodecParameters` of the stream to decode,
+    then feed it one packet at a time, and drain it at the end::
 
         demuxer = Demuxer("video.mp4")
-        decoder = demuxer.streams[0].make_decoder()
+        decoder = VideoPacketDecoder(demuxer.streams[0].codec_parameters)
 
         for packet in demuxer:
             for raw_frame in decoder.decode(packet):
                 ...
         for raw_frame in decoder.drain():
             ...
+
+    The codec parameters can also be pickled, to decode in another process
+    than the demuxer, or built by hand, to decode packets that don't come from
+    a :class:`Demuxer`. Frames come out on the device the decoder was built
+    for.
 
     It is stateful. It holds the codec's reference-frame buffer, so it expects
     the packets of its own stream, in the order the demuxer produced them.
@@ -266,22 +261,21 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
     This is a low-level API: for straightforward decoding, use
     :class:`~torchcodec.decoders.AudioDecoder` instead.
 
-    If you have a :class:`Demuxer`, you can build an ``AudioPacketDecoder`` with
-    :meth:`AudioStream.make_decoder`. You can also build one from
-    :class:`AudioCodecParameters`, e.g. in another process than the demuxer, or
-    to decode packets that don't come from a :class:`Demuxer`. Audio is always
-    decoded on the CPU.
-
-    Feed it one packet at a time, and drain it at the end::
+    Build it from the :class:`AudioCodecParameters` of the stream to decode,
+    then feed it one packet at a time, and drain it at the end::
 
         demuxer = Demuxer("audio.mp3", streams="audio")
-        decoder = demuxer.streams[0].make_decoder()
+        decoder = AudioPacketDecoder(demuxer.streams[0].codec_parameters)
 
         for packet in demuxer:
             for raw_samples in decoder.decode(packet):
                 ...
         for raw_samples in decoder.drain():
             ...
+
+    The codec parameters can also be pickled, to decode in another process
+    than the demuxer, or built by hand, to decode packets that don't come from
+    a :class:`Demuxer`. Audio is always decoded on the CPU.
 
     It is stateful. A lossy codec carries state from one frame to the next, so
     it expects the packets of its own stream, in the order the demuxer produced
