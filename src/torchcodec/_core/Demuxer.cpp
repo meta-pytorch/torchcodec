@@ -282,19 +282,22 @@ void Demuxer::seek(double seconds, std::optional<int> stream_index) {
       desired_pts,
       desired_pts,
       0);
-  bool has_timestamps = !(format_context_->iformat->flags & AVFMT_NOTIMESTAMPS);
-  if (status < 0 && !has_timestamps && seconds == 0) {
-    // Containers without timestamps, like raw H.264 or HEVC streams, can't
-    // seek to a timestamp, but they can still be rewound to their start.
+  bool can_seek_bytes = !(format_context_->iformat->flags & AVFMT_NO_BYTE_SEEK);
+  if (status < 0 && can_seek_bytes && seconds == 0) {
+    // Streams without timestamps, like raw H.264 or HEVC streams, can't seek
+    // to a timestamp, but they can still be rewound to their start. We can't
+    // rely on AVFMT_NOTIMESTAMPS to recognize them: FFmpeg only sets it on its
+    // raw demuxers from 6.1.
     status = avformat_seek_file(
         format_context_.get(), -1, 0, 0, 0, AVSEEK_FLAG_BYTE);
   }
   STD_TORCH_CHECK(
       status >= 0,
       get_seek_error_message(format_context_.get(), desired_pts, status),
-      has_timestamps ? ""
-                     : " This stream has no timestamps, so it can only be "
-                       "rewound to its start, by seeking to 0.");
+      can_seek_bytes ? " If this stream has no timestamps (e.g. a raw H.264 "
+                       "or HEVC stream), it can only be rewound to its start, "
+                       "by seeking to 0."
+                     : "");
 }
 
 void Demuxer::scan_all_video_streams() {
