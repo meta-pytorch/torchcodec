@@ -4470,6 +4470,12 @@ class TestLowLevel:
             torch.testing.assert_close(s.data, e.data, rtol=0, atol=0)
             assert s.pts_seconds == e.pts_seconds
 
+    def test_stream_metadata_time_base(self):
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        for stream in demuxer.streams:
+            assert stream.metadata.time_base is not None
+            assert stream.metadata.time_base == stream.codec_parameters.time_base
+
     def test_codec_parameters_carry_the_container_format(self):
         params = Demuxer(NASA_VIDEO.path).streams[0].codec_parameters
 

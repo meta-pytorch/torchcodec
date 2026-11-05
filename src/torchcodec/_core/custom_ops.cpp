@@ -1792,6 +1792,10 @@ void write_header_based_metadata(
   if (stream_metadata.codec_name.has_value()) {
     map["codec"] = quote_value(stream_metadata.codec_name.value());
   }
+  if (stream_metadata.time_base.has_value()) {
+    map["timeBaseNum"] = std::to_string(stream_metadata.time_base->num);
+    map["timeBaseDen"] = std::to_string(stream_metadata.time_base->den);
+  }
   if (stream_metadata.post_rotation_width.has_value()) {
     map["width"] = std::to_string(*stream_metadata.post_rotation_width);
   }
