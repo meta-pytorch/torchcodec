@@ -214,16 +214,22 @@ def repair_macos(wheels):
             [
                 "bash",
                 "-c",
-                # DYLD_LIBRARY_PATH must be set inline on the command ($0=search,
-                # $1=wheel): macOS SIP strips it from inherited env on CI (see
-                # cibuildwheel #816).
+                # DYLD_FALLBACK_LIBRARY_PATH must be set inline on the command
+                # ($0=search, $1=wheel): macOS SIP strips DYLD_* vars from
+                # inherited env on CI (see cibuildwheel #816).
+                #
+                # Not DYLD_LIBRARY_PATH: dyld applies that one by leaf name to
+                # every lib loaded by the delocate process itself, so conda's
+                # libiconv.2.dylib would shadow the system one and crash dyld
+                # (missing _iconv). The fallback path is only consulted for libs
+                # not found at their install name. delocate searches both vars.
                 #
                 # --no-sanitize-rpaths: delocate otherwise deletes every absolute
                 # LC_RPATH from each lib. They'd lose the
                 # /opt/homebrew/opt/ffmpeg/lib rpath that lets a user's Homebrew
                 # FFmpeg be found at runtime (see the INSTALL_RPATH logic in
                 # _core/CMakeLists.txt).
-                f'DYLD_LIBRARY_PATH="$0" delocate-wheel -v --no-sanitize-rpaths '
+                f'DYLD_FALLBACK_LIBRARY_PATH="$0" delocate-wheel -v --no-sanitize-rpaths '
                 f'--ignore-missing-dependencies {excludes} -w "{REPAIRED_DIR}" "$1"',
                 search,
                 str(wheel),
