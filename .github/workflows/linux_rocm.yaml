@@ -37,11 +37,14 @@ jobs:
       with-xpu: disable
       with-cuda: disable
       with-rocm: enable
-      build-python-only: "disable"
+      # Single oldest Python from test-infra's channel list (auto-bumps);
+      # avoids a local "pick first python" filter for build and GPU tests.
+      build-python-only: "enable"
 
   filter-matrix:
     # Keep ROCm >= 10.1 and drop older versions from the matrix, since
-    # rocJPEG support is only available from 10.1 onwards.
+    # rocJPEG support is only available from 10.1 onwards. Python limiting
+    # is handled by generate-matrix (build-python-only).
     needs: generate-matrix
     runs-on: ubuntu-latest
     outputs:
@@ -56,19 +59,15 @@ jobs:
           echo "::group::Filtered build matrix"
           echo "$build_matrix" | jq .
           echo "::endgroup::"
-          # Build may cover several Python versions; the GPU test job only
-          # needs one. Take the first unique python_version, then one entry
-          # per ROCm version so install-and-test stays in sync with the wheel.
-          # Emit hyphenated keys (python-version / rocm-version) to match the
-          # rest of torchcodec's workflows.
-          test_matrix=$(echo "$build_matrix" | jq -c '
-            (.include | map(.python_version) | unique | .[0]) as $py
-            | {include: [
-                .include[]
-                | select(.python_version == $py)
-                | {"python-version": .python_version, "rocm-version": .gpu_arch_version}
-              ] | unique_by(."rocm-version")}
-          ')
+          # Remap to hyphenated keys (python-version / rocm-version) to match
+          # the rest of torchcodec's workflows. One entry per ROCm version;
+          # build-python-only already left a single Python in the matrix.
+          test_matrix=$(echo "$build_matrix" | jq -c '{
+            include: [
+              .include[]
+              | {"python-version": .python_version, "rocm-version": .gpu_arch_version}
+            ] | unique_by(."rocm-version")
+          }')
           echo "test-matrix=$test_matrix" >> "$GITHUB_OUTPUT"
           echo "::group::Filtered test matrix"
           echo "$test_matrix" | jq .
