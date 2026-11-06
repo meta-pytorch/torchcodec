@@ -81,7 +81,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "_blocks_create_demuxer_from_file_like(int file_like_context) -> Tensor");
   m.def(
-      "_blocks_demuxer_add_stream(Tensor(a!) demuxer, int? stream_index=None, str? media_type=None) -> (int, str)");
+      "_blocks_demuxer_add_stream(Tensor(a!) demuxer, int? stream_index=None, str? media_type=None) -> (int, bool)");
   m.def(
       "_blocks_demuxer_get_audio_video_stream_indices(Tensor demuxer) -> Tensor");
   m.def("_blocks_demuxer_container_json_metadata(Tensor demuxer) -> Tensor");
@@ -96,7 +96,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   // The return names are the fields of VideoCodecParameters and
   // AudioCodecParameters, which Python matches them against.
   m.def(
-      "_blocks_demuxer_get_codec_parameters(Tensor demuxer, int stream_index) -> (str codec, int[] time_base, Tensor? extradata, int? codec_tag, int? profile, int? level, int? bit_rate, int? bits_per_coded_sample, int? bits_per_raw_sample, str[] coded_side_data_names, Tensor[] coded_side_data_values, int? width, int? height, str? pixel_format, int[]? sample_aspect_ratio, int[]? framerate, int[]? r_frame_rate, str? field_order, str? color_range, str? color_primaries, str? color_transfer_characteristic, str? color_space, str? chroma_location, int? video_delay, str? sample_format, int? sample_rate, str? channel_layout, int? block_align, int? frame_size, int? initial_padding, int? trailing_padding, int? seek_preroll, str? container_format)");
+      "_blocks_demuxer_get_codec_parameters(Tensor demuxer, int stream_index) -> (Tensor codec, int[] time_base, Tensor? extradata, int? codec_tag, int? profile, int? level, int? bit_rate, int? bits_per_coded_sample, int? bits_per_raw_sample, Tensor[] coded_side_data_names, Tensor[] coded_side_data_values, int? width, int? height, Tensor? pixel_format, int[]? sample_aspect_ratio, int[]? framerate, int[]? r_frame_rate, Tensor? field_order, Tensor? color_range, Tensor? color_primaries, Tensor? color_transfer_characteristic, Tensor? color_space, Tensor? chroma_location, int? video_delay, Tensor? sample_format, int? sample_rate, Tensor? channel_layout, int? block_align, int? frame_size, int? initial_padding, int? trailing_padding, int? seek_preroll, Tensor? container_format)");
   // Takes the fields of VideoCodecParameters and AudioCodecParameters, under
   // their names.
   m.def(
@@ -363,15 +363,26 @@ std::string map_to_json(
 }
 
 // Before torch 2.14, every str returned from a stable ABI op is leaked
-// (pytorch/pytorch#190493). The JSON metadata is fetched for each decoder, so
-// it's returned as UTF-8 bytes in a uint8 tensor instead.
+// (pytorch/pytorch#190493). Ops that return text more than once per process
+// return it as UTF-8 bytes in a uint8 tensor instead.
+torch::stable::Tensor string_to_tensor(std::string_view str) {
+  torch::stable::Tensor tensor =
+      torch::stable::empty({static_cast<int64_t>(str.size())}, kStableUInt8);
+  std::memcpy(tensor.mutable_data_ptr<uint8_t>(), str.data(), str.size());
+  return tensor;
+}
+
+std::optional<torch::stable::Tensor> optional_string_to_tensor(
+    const std::optional<std::string>& str) {
+  if (!str.has_value()) {
+    return std::nullopt;
+  }
+  return string_to_tensor(*str);
+}
+
 torch::stable::Tensor map_to_json_tensor(
     const std::map<std::string, std::string>& metadata_map) {
-  std::string json = map_to_json(metadata_map);
-  torch::stable::Tensor tensor =
-      torch::stable::empty({static_cast<int64_t>(json.size())}, kStableUInt8);
-  std::memcpy(tensor.mutable_data_ptr<uint8_t>(), json.data(), json.size());
-  return tensor;
+  return string_to_tensor(map_to_json(metadata_map));
 }
 
 SeekMode seek_mode_from_string(std::string_view seek_mode) {
@@ -905,10 +916,10 @@ torch::stable::Tensor _blocks_demuxer_get_audio_video_stream_indices(
       ->get_audio_video_stream_indices();
 }
 
-// (stream index, media type) of the stream that is now being followed. The
+// (stream index, is video) of the stream that is now being followed. The
 // media type comes back so the caller doesn't have to ask for it separately
 // when it identified the stream by index.
-std::tuple<int64_t, std::string> _blocks_demuxer_add_stream(
+std::tuple<int64_t, bool> _blocks_demuxer_add_stream(
     torch::stable::Tensor& demuxer,
     std::optional<int64_t> stream_index,
     std::optional<std::string> media_type) {
@@ -917,9 +928,7 @@ std::tuple<int64_t, std::string> _blocks_demuxer_add_stream(
       media_type.has_value()
           ? std::optional<AVMediaType>(parse_media_type(*media_type))
           : std::nullopt);
-  return {
-      static_cast<int64_t>(index),
-      type == AVMEDIA_TYPE_VIDEO ? "video" : "audio"};
+  return {static_cast<int64_t>(index), type == AVMEDIA_TYPE_VIDEO};
 }
 
 // (packet_handle, is_eof, stream_index). On EOF the packet_handle is a dummy
@@ -1004,7 +1013,7 @@ torch::stable::Tensor bytes_to_tensor(const uint8_t* data, size_t size) {
 } // namespace
 
 using OpsCodecParametersOutput = std::tuple<
-    std::string, // codec
+    torch::stable::Tensor, // codec
     std::vector<int64_t>, // time_base
     std::optional<torch::stable::Tensor>, // extradata
     std::optional<int64_t>, // codec_tag
@@ -1013,32 +1022,33 @@ using OpsCodecParametersOutput = std::tuple<
     std::optional<int64_t>, // bit_rate
     std::optional<int64_t>, // bits_per_coded_sample
     std::optional<int64_t>, // bits_per_raw_sample
-    std::vector<std::string>, // coded_side_data_names
+    std::vector<torch::stable::Tensor>, // coded_side_data_names
     std::vector<torch::stable::Tensor>, // coded_side_data_values
     std::optional<int64_t>, // width
     std::optional<int64_t>, // height
-    std::optional<std::string>, // pixel_format
+    std::optional<torch::stable::Tensor>, // pixel_format
     std::optional<std::vector<int64_t>>, // sample_aspect_ratio
     std::optional<std::vector<int64_t>>, // framerate
     std::optional<std::vector<int64_t>>, // r_frame_rate
-    std::optional<std::string>, // field_order
-    std::optional<std::string>, // color_range
-    std::optional<std::string>, // color_primaries
-    std::optional<std::string>, // color_transfer_characteristic
-    std::optional<std::string>, // color_space
-    std::optional<std::string>, // chroma_location
+    std::optional<torch::stable::Tensor>, // field_order
+    std::optional<torch::stable::Tensor>, // color_range
+    std::optional<torch::stable::Tensor>, // color_primaries
+    std::optional<torch::stable::Tensor>, // color_transfer_characteristic
+    std::optional<torch::stable::Tensor>, // color_space
+    std::optional<torch::stable::Tensor>, // chroma_location
     std::optional<int64_t>, // video_delay
-    std::optional<std::string>, // sample_format
+    std::optional<torch::stable::Tensor>, // sample_format
     std::optional<int64_t>, // sample_rate
-    std::optional<std::string>, // channel_layout
+    std::optional<torch::stable::Tensor>, // channel_layout
     std::optional<int64_t>, // block_align
     std::optional<int64_t>, // frame_size
     std::optional<int64_t>, // initial_padding
     std::optional<int64_t>, // trailing_padding
     std::optional<int64_t>, // seek_preroll
-    std::optional<std::string>>; // container_format
+    std::optional<torch::stable::Tensor>>; // container_format
 
-// Enums are returned as FFmpeg's names for them.
+// Enums are returned as FFmpeg's names for them. All text goes through
+// string_to_tensor(), as this runs for every stream a decoder is made for.
 OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
     torch::stable::Tensor& demuxer,
     int64_t stream_index) {
@@ -1051,7 +1061,7 @@ OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
   auto& [codec, time_base, extradata, codec_tag, profile, level, bit_rate, bits_per_coded_sample, bits_per_raw_sample, coded_side_data_names, coded_side_data_values, width, height, pixel_format, sample_aspect_ratio, framerate, r_frame_rate, field_order, color_range, color_primaries, color_transfer_characteristic, color_space, chroma_location, video_delay, sample_format, sample_rate, channel_layout, block_align, frame_size, initial_padding, trailing_padding, seek_preroll, container_format] =
       output;
 
-  codec = avcodec_get_name(codecpar.codec_id);
+  codec = string_to_tensor(avcodec_get_name(codecpar.codec_id));
   time_base = {params.time_base.num, params.time_base.den};
   if (codecpar.extradata_size > 0) {
     extradata = bytes_to_tensor(codecpar.extradata, codecpar.extradata_size);
@@ -1067,7 +1077,7 @@ OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
     // A type this FFmpeg can't name is a type it doesn't know what to do with
     // either, so there's nothing a decoder would read from it.
     if (name != nullptr) {
-      coded_side_data_names.emplace_back(name);
+      coded_side_data_names.push_back(string_to_tensor(name));
       coded_side_data_values.push_back(
           bytes_to_tensor(side_data.data, side_data.size));
     }
@@ -1076,39 +1086,40 @@ OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
   if (codecpar.codec_type == AVMEDIA_TYPE_VIDEO) {
     width = unless_default(codecpar.width);
     height = unless_default(codecpar.height);
-    pixel_format = to_optional_string(
-        av_get_pix_fmt_name(static_cast<AVPixelFormat>(codecpar.format)));
+    pixel_format = optional_string_to_tensor(to_optional_string(
+        av_get_pix_fmt_name(static_cast<AVPixelFormat>(codecpar.format))));
     sample_aspect_ratio = unless_unset(codecpar.sample_aspect_ratio);
     framerate = unless_unset(get_framerate(codecpar));
     r_frame_rate = unless_unset(params.r_frame_rate);
-    field_order =
-        to_optional_string(get_field_order_name(codecpar.field_order));
+    field_order = optional_string_to_tensor(
+        to_optional_string(get_field_order_name(codecpar.field_order)));
     if (codecpar.color_range != AVCOL_RANGE_UNSPECIFIED) {
-      color_range =
-          to_optional_string(av_color_range_name(codecpar.color_range));
+      color_range = optional_string_to_tensor(
+          to_optional_string(av_color_range_name(codecpar.color_range)));
     }
     if (codecpar.color_primaries != AVCOL_PRI_UNSPECIFIED) {
-      color_primaries =
-          to_optional_string(av_color_primaries_name(codecpar.color_primaries));
+      color_primaries = optional_string_to_tensor(to_optional_string(
+          av_color_primaries_name(codecpar.color_primaries)));
     }
     if (codecpar.color_trc != AVCOL_TRC_UNSPECIFIED) {
-      color_transfer_characteristic =
-          to_optional_string(av_color_transfer_name(codecpar.color_trc));
+      color_transfer_characteristic = optional_string_to_tensor(
+          to_optional_string(av_color_transfer_name(codecpar.color_trc)));
     }
     if (codecpar.color_space != AVCOL_SPC_UNSPECIFIED) {
-      color_space =
-          to_optional_string(av_color_space_name(codecpar.color_space));
+      color_space = optional_string_to_tensor(
+          to_optional_string(av_color_space_name(codecpar.color_space)));
     }
     if (codecpar.chroma_location != AVCHROMA_LOC_UNSPECIFIED) {
-      chroma_location =
-          to_optional_string(av_chroma_location_name(codecpar.chroma_location));
+      chroma_location = optional_string_to_tensor(to_optional_string(
+          av_chroma_location_name(codecpar.chroma_location)));
     }
     video_delay = unless_default(codecpar.video_delay);
   } else if (codecpar.codec_type == AVMEDIA_TYPE_AUDIO) {
-    sample_format = to_optional_string(
-        av_get_sample_fmt_name(static_cast<AVSampleFormat>(codecpar.format)));
+    sample_format = optional_string_to_tensor(to_optional_string(
+        av_get_sample_fmt_name(static_cast<AVSampleFormat>(codecpar.format))));
     sample_rate = unless_default(codecpar.sample_rate);
-    channel_layout = get_channel_layout_name(codecpar);
+    channel_layout =
+        optional_string_to_tensor(get_channel_layout_name(codecpar));
     block_align = unless_default(codecpar.block_align);
     frame_size = unless_default(codecpar.frame_size);
     initial_padding = unless_default(codecpar.initial_padding);
@@ -1116,7 +1127,7 @@ OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
     seek_preroll = unless_default(codecpar.seek_preroll);
   }
   if (params.container_format != nullptr) {
-    container_format = params.container_format->name;
+    container_format = string_to_tensor(params.container_format->name);
   }
   return output;
 }
