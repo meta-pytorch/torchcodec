@@ -7,6 +7,14 @@ Metadata of an encoded image, as returned by [`get_image_metadata()`](torchcodec
 Every attribute describes the tensor that [`decode_image()`](torchcodec.decoders.decode_image.html#torchcodec.decoders.decode_image) (or the
 matching format-specific decoder) returns for this image.
 
+Examples using `ImageMetadata`:
+
+![](../_images/sphx_glr_image_decoding_thumb.png)
+
+[Decoding images](../generated_examples/decoding/image_decoding.html)
+
+Decoding images
+
 bit_depth*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
 Number of bits per channel in the encoded image. When greater than 8,

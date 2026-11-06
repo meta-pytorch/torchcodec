@@ -49,6 +49,11 @@ Build your own decoding pipeline
 [Low-level APIs and CUDA streams synchronization](../generated_examples/low_level/cuda_streams.html)
 
 Low-level APIs and CUDA streams synchronization
+![](../_images/sphx_glr_demuxer_free_thumb.jpg)
+
+[Decoding packets that don't come from a Demuxer](../generated_examples/low_level/demuxer_free.html)
+
+Decoding packets that don't come from a Demuxer
 ![](../_images/sphx_glr_pipelines_thumb.jpg)
 
 [Multi-threaded decoding pipelines](../generated_examples/low_level/pipelines.html)

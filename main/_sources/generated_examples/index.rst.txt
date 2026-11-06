@@ -320,6 +320,23 @@ Decoding: low-level APIs (beta)
 
 .. only:: html
 
+  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_demuxer_free_thumb.jpg
+    :alt:
+
+  :doc:`/generated_examples/low_level/demuxer_free`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Decoding packets that don't come from a Demuxer</div>
+    </div>
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !">
+
+.. only:: html
+
   .. image:: /generated_examples/low_level/images/thumb/sphx_glr_cuda_streams_thumb.jpg
     :alt:
 

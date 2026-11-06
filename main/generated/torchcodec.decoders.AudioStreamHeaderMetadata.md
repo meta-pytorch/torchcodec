@@ -1,6 +1,6 @@
 # AudioStreamHeaderMetadata
 
-*class*torchcodec.decoders.AudioStreamHeaderMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, *media_type: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_channels: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *sample_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*)[[source]](../_modules/torchcodec/_core/_metadata.html#AudioStreamHeaderMetadata)
+*class*torchcodec.decoders.AudioStreamHeaderMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *time_base: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, *media_type: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_channels: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *sample_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*)[[source]](../_modules/torchcodec/_core/_metadata.html#AudioStreamHeaderMetadata)
 
 Metadata of a single audio stream, as reported by the container header.
 
@@ -50,3 +50,14 @@ The original sample rate.
 stream_index*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
 Index of the stream that this metadata refers to (int).
+
+time_base*: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+a
+[pts](../glossary.html#term-pts) of `n` means `n * time_base` seconds. That's the unit of
+the integer timestamps of the low-level APIs, like [`Packet.pts`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet.pts) and
+[`RawFrame.pts`](torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame.pts).
+
+Type:
+
+The unit of the stream's timestamps, in seconds (Fraction or None)

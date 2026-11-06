@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>ImageMetadata &#8212; TorchCodec 0.18.0.dev20261103+cu130 Documentation</title>
+    <title>ImageMetadata &#8212; TorchCodec 0.18.0.dev20261106+cu132 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=40d66efd"></script>
+    <script src="../_static/documentation_options.js?v=8207bb78"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -1050,6 +1050,8 @@ document.write(`
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.get_container_metadata.html">get_container_metadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoPacketDecoder.html">VideoPacketDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioPacketDecoder.html">AudioPacketDecoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoCodecParameters.html">VideoCodecParameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioCodecParameters.html">AudioCodecParameters</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.ColorConverter.html">ColorConverter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioConverter.html">AudioConverter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.Packet.html">Packet</a></li>
@@ -1206,7 +1208,11 @@ document.write(`
 <dd><p>Metadata of an encoded image, as returned by <a class="reference internal" href="torchcodec.decoders.get_image_metadata.html#torchcodec.decoders.get_image_metadata" title="torchcodec.decoders.get_image_metadata"><code class="xref py py-func docutils literal notranslate"><span class="pre">get_image_metadata()</span></code></a>.</p>
 <p>Every attribute describes the tensor that <a class="reference internal" href="torchcodec.decoders.decode_image.html#torchcodec.decoders.decode_image" title="torchcodec.decoders.decode_image"><code class="xref py py-func docutils literal notranslate"><span class="pre">decode_image()</span></code></a> (or the
 matching format-specific decoder) returns for this image.</p>
-<dl class="py attribute">
+<p>Examples using <code class="docutils literal notranslate"><span class="pre">ImageMetadata</span></code>:</p>
+<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode an image into a PyTorch tensor using decode_image. It supports JPEG, PNG, WebP, GIF, AVIF and HEIC, and automatically detects the format for you. You can also call any of the format-specific decoders directly, as they expose more fine-grained options (like CUDA decoding with decode_jpeg).:"><img alt="" src="../_images/sphx_glr_image_decoding_thumb.png" />
+<p><a class="reference internal" href="../generated_examples/decoding/image_decoding.html"><span class="doc">Decoding images</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Decoding images</div>
+</div></div><dl class="py attribute">
 <dt class="sig sig-object py" id="torchcodec.decoders.ImageMetadata.bit_depth">
 <span class="sig-name descname"><span class="pre">bit_depth</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><span class="pre">int</span></a></em><a class="headerlink" href="#torchcodec.decoders.ImageMetadata.bit_depth" title="Link to this definition">#</a></dt>
 <dd><p>Number of bits per channel in the encoded image. When greater than 8,
@@ -1628,7 +1634,7 @@ which always apply the orientation metadata.</p>
        "headline": "ImageMetadata",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders.ImageMetadata.html",
-       "articleBody": "ImageMetadata# class torchcodec.decoders.ImageMetadata(format: str, width: int, height: int, num_channels: int, bit_depth: int, num_frames: int, rotation: float | None)[source]# Metadata of an encoded image, as returned by get_image_metadata(). Every attribute describes the tensor that decode_image() (or the matching format-specific decoder) returns for this image. bit_depth: int# Number of bits per channel in the encoded image. When greater than 8, decoding with output_dtype=\"auto\" returns a torch.uint16 tensor. format: str# The image format, e.g. \"jpeg\". height: int# Height of the decoded image, post-rotation. This is the height of the tensor returned by decode_image() or the format-specific decoders, which always apply the orientation metadata. num_channels: int# Number of channels of the image. This is the number of channels of the decoded image when decoding with mode=\"UNCHANGED\". num_frames: int# 1 for still images, and the size of the leading N dimension of the decoded tensor for animated or multi-image files. Type: Number of frames (or images) in the file rotation: float | None# one of 0, 90, -90 or 180) from the orientation metadata, or None if the image has no orientation metadata. The decoders always apply it, so the returned images are in the correct orientation. The orientation metadata can also specify a mirroring, which the decoders apply too but isn\u2019t reported here, since it doesn\u2019t change the image dimensions. Type: Rotation angle in degrees (counter-clockwise width: int# Width of the decoded image, post-rotation. This is the width of the tensor returned by decode_image() or the format-specific decoders, which always apply the orientation metadata.",
+       "articleBody": "ImageMetadata# class torchcodec.decoders.ImageMetadata(format: str, width: int, height: int, num_channels: int, bit_depth: int, num_frames: int, rotation: float | None)[source]# Metadata of an encoded image, as returned by get_image_metadata(). Every attribute describes the tensor that decode_image() (or the matching format-specific decoder) returns for this image. Examples using ImageMetadata: Decoding images Decoding images bit_depth: int# Number of bits per channel in the encoded image. When greater than 8, decoding with output_dtype=\"auto\" returns a torch.uint16 tensor. format: str# The image format, e.g. \"jpeg\". height: int# Height of the decoded image, post-rotation. This is the height of the tensor returned by decode_image() or the format-specific decoders, which always apply the orientation metadata. num_channels: int# Number of channels of the image. This is the number of channels of the decoded image when decoding with mode=\"UNCHANGED\". num_frames: int# 1 for still images, and the size of the leading N dimension of the decoded tensor for animated or multi-image files. Type: Number of frames (or images) in the file rotation: float | None# one of 0, 90, -90 or 180) from the orientation metadata, or None if the image has no orientation metadata. The decoders always apply it, so the returned images are in the correct orientation. The orientation metadata can also specify a mirroring, which the decoders apply too but isn\u2019t reported here, since it doesn\u2019t change the image dimensions. Type: Rotation angle in degrees (counter-clockwise width: int# Width of the decoded image, post-rotation. This is the width of the tensor returned by decode_image() or the format-specific decoders, which always apply the orientation metadata.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

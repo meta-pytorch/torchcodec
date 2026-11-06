@@ -80,6 +80,32 @@ The decoded image is a [`torch.Tensor`](https://docs.pytorch.org/docs/stable/ten
 the number of channels, H the height and W the width. By default images are
 decoded as RGB (3 channels) with `torch.uint8` values.
 
+## Getting image metadata
+
+[`get_image_metadata()`](../../generated/torchcodec.decoders.get_image_metadata.html#torchcodec.decoders.get_image_metadata) returns the metadata of an
+image without decoding it: only the headers are parsed, so it's much faster
+than decoding. It accepts the same sources as
+[`decode_image()`](../../generated/torchcodec.decoders.decode_image.html#torchcodec.decoders.decode_image).
+
+```
+from torchcodec.decoders import get_image_metadata
+
+metadata = get_image_metadata(raw_image_bytes)
+print(metadata)
+```
+
+```
+ImageMetadata(format='jpeg', width=234, height=222, num_channels=3, bit_depth=8, num_frames=1, rotation=None)
+```
+
+All the fields describe what the decoders return. `width` and `height` are
+the dimensions of the decoded image, i.e. after the orientation metadata is
+applied. `num_channels` is the number of channels you get with
+`mode="UNCHANGED"`, `num_frames` is the size of the `N` dimension for
+animated images, and a `bit_depth` above 8 means that
+`output_dtype="auto"` returns a `torch.uint16` tensor. See
+[`ImageMetadata`](../../generated/torchcodec.decoders.ImageMetadata.html#torchcodec.decoders.ImageMetadata) for details.
+
 ## Choosing the color mode
 
 The `mode` parameter controls the number and meaning of the output channels.
@@ -123,7 +149,8 @@ extra precision when you pass `torch.uint16` or `"auto"`.
 
 GIF, WebP and AVIF can hold a *sequence* of frames (an animation). In that
 case [`decode_gif()`](../../generated/torchcodec.decoders.decode_gif.html#torchcodec.decoders.decode_gif),
-`decode_avif()`, and
+[`decode_webp()`](../../generated/torchcodec.decoders.decode_webp.html#torchcodec.decoders.decode_webp),
+[`decode_avif()`](../../generated/torchcodec.decoders.decode_avif.html#torchcodec.decoders.decode_avif), and
 [`decode_heic()`](../../generated/torchcodec.decoders.decode_heic.html#torchcodec.decoders.decode_heic) return an `(N, C, H, W)` tensor,
 with one frame per animation frame, instead of the `(C, H, W)` you get for a
 still image.
@@ -145,7 +172,7 @@ image = decode_jpeg(raw_image_bytes, device="cuda")
 images = decode_jpeg([img_0, img_1, img_2], device="cuda")
 ```
 
-**Total running time of the script:** (0 minutes 0.174 seconds)
+**Total running time of the script:** (0 minutes 0.124 seconds)
 
 [`Download Jupyter notebook: image_decoding.ipynb`](../../_downloads/f5cba4a26e1c617bc387e9f05406c8f2/image_decoding.ipynb)
 

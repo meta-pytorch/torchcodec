@@ -31,7 +31,7 @@ from pathlib import Path
 
 import torch
 
-from torchcodec.decoders import ColorConverter, Demuxer
+from torchcodec.decoders import ColorConverter, Demuxer, VideoPacketDecoder
 
 video_path = Path(tempfile.mkdtemp()) / "video.mp4"
 subprocess.run(
@@ -49,7 +49,9 @@ convert_stream = torch.cuda.Stream()
 
 def make_stages():
  demuxer = Demuxer(video_path)
- packet_decoder = demuxer.streams[0].make_decoder(device="cuda")
+ packet_decoder = VideoPacketDecoder(
+ demuxer.streams[0].codec_parameters, device="cuda"
+ )
  return demuxer, packet_decoder, ColorConverter(device="cuda")
 ```
 
@@ -200,7 +202,7 @@ print(f"Option 2: {len(frames)} frames, {frames[0].data.shape = }")
 Option 2: 60 frames, frames[0].data.shape = torch.Size([3, 720, 1280])
 ```
 
-**Total running time of the script:** (0 minutes 0.446 seconds)
+**Total running time of the script:** (0 minutes 0.451 seconds)
 
 [`Download Jupyter notebook: cuda_streams.ipynb`](../../_downloads/7aeb5a6bda96251b470424d6612d4f8b/cuda_streams.ipynb)
 

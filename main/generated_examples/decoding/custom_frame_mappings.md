@@ -103,10 +103,10 @@ for frame in sample_data["frames"][:3]:
 
 ```
 Running ffprobe:
-ffprobe -i /tmp/tmp_nju2q32/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmp3l4nkbgb/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Running ffprobe:
-ffprobe -i /tmp/tmp_nju2q32/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmp3l4nkbgb/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Sample of fields in custom frame mappings:
 frame['key_frame'] = 1, frame['pts'] = 0, frame['duration'] = 1
@@ -158,15 +158,15 @@ for video_path, json_path in ((short_video_path, short_json_path), (long_video_p
 ```
 Running benchmarks on short_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 6.13ms +- 0.04
+med = 6.12ms +- 0.04
 Creating a VideoDecoder object with seek_mode='exact':
 med = 6.42ms +- 0.02
 
 Running benchmarks on long_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 25.35ms +- 0.10
+med = 25.32ms +- 0.08
 Creating a VideoDecoder object with seek_mode='exact':
-med = 43.37ms +- 0.66
+med = 43.68ms +- 0.59
 ```
 
 ## Performance: Frame decoding with custom frame mappings
@@ -198,15 +198,15 @@ for video_path, json_path in ((short_video_path, short_json_path), (long_video_p
 ```
 Running benchmarks on short_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 18.22ms +- 0.05
+med = 18.21ms +- 0.03
 Decoding frames with seek_mode='exact':
-med = 18.50ms +- 0.07
+med = 18.50ms +- 0.04
 
 Running benchmarks on long_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 37.51ms +- 0.08
+med = 37.30ms +- 0.09
 Decoding frames with seek_mode='exact':
-med = 55.86ms +- 0.48
+med = 55.44ms +- 0.44
 ```
 
 ## Accuracy: Metadata and frame retrieval
@@ -240,6 +240,7 @@ VideoStreamMetadata:
  begin_stream_seconds_from_header: 0
  bit_rate: 505790
  codec: h264
+ time_base: 1/25
  stream_index: 0
  media_type: video
  width: 640
@@ -267,6 +268,7 @@ VideoStreamMetadata:
  begin_stream_seconds_from_header: 0
  bit_rate: 505790
  codec: h264
+ time_base: 1/25
  stream_index: 0
  media_type: video
  width: 640
@@ -307,7 +309,7 @@ accuracy benefits.
 same videos are decoded repeatedly, and some preprocessing work can be done.
 - For exact frame seeking without preprocessing, use "exact" mode.
 
-**Total running time of the script:** (0 minutes 23.534 seconds)
+**Total running time of the script:** (0 minutes 23.489 seconds)
 
 [`Download Jupyter notebook: custom_frame_mappings.ipynb`](../../_downloads/515bb6477ed8fb530cccbe1b67ef6f0c/custom_frame_mappings.ipynb)
 

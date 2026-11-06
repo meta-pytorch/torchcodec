@@ -119,6 +119,7 @@ transforms to reduce the dimensions.
       begin_stream_seconds_from_header: 0
       bit_rate: 24879454
       codec: h264
+      time_base: 1/25
       stream_index: 0
       media_type: video
       width: 3840
@@ -495,8 +496,8 @@ sequentially:
 
  .. code-block:: none
 
-    decoder transforms:    times_med = 1946.55ms +- 13.11
-    torchvision transform: times_med = 4056.87ms +- 140.03
+    decoder transforms:    times_med = 1931.44ms +- 8.23
+    torchvision transform: times_med = 4057.39ms +- 21.07
 
 
 
@@ -524,8 +525,8 @@ even be faster!
 
  .. code-block:: none
 
-    decoder transforms:    times_med = 10658.58ms +- 8.53
-    torchvision transform: times_med = 12442.95ms +- 24.34
+    decoder transforms:    times_med = 10723.01ms +- 12.56
+    torchvision transform: times_med = 12450.31ms +- 15.13
 
 
 
@@ -558,7 +559,7 @@ In brief, our performance guidance is:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (2 minutes 20.560 seconds)
+   **Total running time of the script:** (2 minutes 20.240 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_transforms.py:

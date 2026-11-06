@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>VideoStream &#8212; TorchCodec 0.18.0.dev20261103+cu130 Documentation</title>
+    <title>VideoStream &#8212; TorchCodec 0.18.0.dev20261106+cu132 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=40d66efd"></script>
+    <script src="../_static/documentation_options.js?v=8207bb78"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -1050,6 +1050,8 @@ document.write(`
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.get_container_metadata.html">get_container_metadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoPacketDecoder.html">VideoPacketDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioPacketDecoder.html">AudioPacketDecoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoCodecParameters.html">VideoCodecParameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioCodecParameters.html">AudioCodecParameters</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.ColorConverter.html">ColorConverter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioConverter.html">AudioConverter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.Packet.html">Packet</a></li>
@@ -1216,32 +1218,23 @@ can be compared against.</p>
 <div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !"><img alt="" src="../_images/sphx_glr_basics_thumb.jpg" />
 <p><a class="reference internal" href="../generated_examples/low_level/basics.html"><span class="doc">Build your own decoding pipeline</span></a></p>
   <div class="sphx-glr-thumbnail-title">Build your own decoding pipeline</div>
-</div></div><dl class="py method">
+</div></div><dl class="py property">
+<dt class="sig sig-object py" id="torchcodec.decoders.VideoStream.codec_parameters">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">codec_parameters</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters" title="torchcodec.decoders._blocks._codec_parameters.VideoCodecParameters"><span class="pre">VideoCodecParameters</span></a></em><a class="headerlink" href="#torchcodec.decoders.VideoStream.codec_parameters" title="Link to this definition">#</a></dt>
+<dd><p>What a decoder needs to know to decode this stream’s packets.</p>
+<p>Pass them to a <a class="reference internal" href="torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder" title="torchcodec.decoders.VideoPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoPacketDecoder</span></code></a>, or pickle them to build the decoder in
+another process. To read the stream’s properties, use <a class="reference internal" href="#torchcodec.decoders.VideoStream.metadata" title="torchcodec.decoders.VideoStream.metadata"><code class="xref py py-attr docutils literal notranslate"><span class="pre">metadata</span></code></a>
+instead. See <a class="reference internal" href="torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters" title="torchcodec.decoders.VideoCodecParameters"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoCodecParameters</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="torchcodec.decoders.VideoStream.make_decoder">
 <span class="sig-name descname"><span class="pre">make_decoder</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device" title="(in PyTorch v2.15)"><span class="pre">device</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/builtins/constants.html#None" title="(in Python v3.15)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_ffmpeg_threads</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder" title="torchcodec.decoders._blocks._packet_decoder.VideoPacketDecoder"><span class="pre">VideoPacketDecoder</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_demuxer.html#VideoStream.make_decoder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders.VideoStream.make_decoder" title="Link to this definition">#</a></dt>
-<dd><p>Build the <a class="reference internal" href="torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder" title="torchcodec.decoders.VideoPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoPacketDecoder</span></code></a> for this stream.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>device</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/stdtypes.html#str" title="(in Python v3.15)"><em>str</em></a><em> or </em><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device" title="(in PyTorch v2.15)"><em>torch.device</em></a><em>, </em><em>optional</em>) – The device to decode on (cpu or CUDA).
-If <code class="docutils literal notranslate"><span class="pre">None</span></code> (default), the current default device is used (see
-<code class="docutils literal notranslate"><span class="pre">torch.set_default_device</span></code>).</p></li>
-<li><p><strong>num_ffmpeg_threads</strong> (<a class="reference external" href="https://docs.python.org/3/builtins/functions.html#int" title="(in Python v3.15)"><em>int</em></a><em>, </em><em>optional</em>) – The number of threads to use for
-CPU decoding. This has no effect when decoding on GPU. Use 1 for
-single-threaded decoding, which may be best if you are decoding
-multiple streams in parallel. Use a higher number for
-multi-threaded decoding, which is best for a single stream.
-Passing 0 lets FFmpeg decide on the number of threads.
-Default: 1.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A decoder for this stream’s packets.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder" title="torchcodec.decoders.VideoPacketDecoder">VideoPacketDecoder</a></p>
-</dd>
-</dl>
+<dd><p>[DISCOURAGED]</p>
+<p>Still available so that existing code keeps working. The recommended
+way to build a <a class="reference internal" href="torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder" title="torchcodec.decoders.VideoPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoPacketDecoder</span></code></a> is to instantiate it
+directly, from the stream’s codec parameters:
+<code class="docutils literal notranslate"><span class="pre">VideoPacketDecoder(stream.codec_parameters,</span> <span class="pre">...)</span></code>.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -1402,6 +1395,7 @@ the demuxer.</p>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders.VideoStream"><code class="docutils literal notranslate"><span class="pre">VideoStream</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders.VideoStream.codec_parameters"><code class="docutils literal notranslate"><span class="pre">VideoStream.codec_parameters</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders.VideoStream.make_decoder"><code class="docutils literal notranslate"><span class="pre">VideoStream.make_decoder()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders.VideoStream.metadata"><code class="docutils literal notranslate"><span class="pre">VideoStream.metadata</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders.VideoStream.scan"><code class="docutils literal notranslate"><span class="pre">VideoStream.scan()</span></code></a></li>
@@ -1632,7 +1626,7 @@ the demuxer.</p>
        "headline": "VideoStream",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders.VideoStream.html",
-       "articleBody": "VideoStream# class torchcodec.decoders.VideoStream(demuxer: Demuxer, index: int)[source]# A video stream followed by a Demuxer. You should not build one yourself: a Demuxer creates one for you. Variables: index (int) \u2013 The stream\u2019s index within the container, absolute across all media types. This is what a Packet\u2019s stream_index can be compared against. Examples using VideoStream: Build your own decoding pipeline Build your own decoding pipeline make_decoder(device: str | device | None = None, *, num_ffmpeg_threads: int = 1) \u2192 VideoPacketDecoder[source]# Build the VideoPacketDecoder for this stream. Parameters: device (str or torch.device, optional) \u2013 The device to decode on (cpu or CUDA). If None (default), the current default device is used (see torch.set_default_device). num_ffmpeg_threads (int, optional) \u2013 The number of threads to use for CPU decoding. This has no effect when decoding on GPU. Use 1 for single-threaded decoding, which may be best if you are decoding multiple streams in parallel. Use a higher number for multi-threaded decoding, which is best for a single stream. Passing 0 lets FFmpeg decide on the number of threads. Default: 1. Returns: A decoder for this stream\u2019s packets. Return type: VideoPacketDecoder property metadata: VideoStreamHeaderMetadata# What the container header says about this video stream. From the header only. This stream\u2019s exact frame count, timestamps and keyframe positions aren\u2019t in there - those come from scan(), and that is the distinction the _from_header and _from_content suffixes mark. scan() \u2192 FrameIndex[source]# Demux this stream from end to end, without decoding it (a scan), and return its FrameIndex. This is the only way to know a stream\u2019s exact frame count, timestamps and keyframe positions: the container header can be wrong about all three. You can call this on multiple video streams from the same demuxer. The first call scans the entire video once, and subsequent calls on other streams are free. Important If called, then this must be called before any packets are read from the demuxer. Returns: the frame index for this stream, describing its keyframes and frame positions. Return type: FrameIndex",
+       "articleBody": "VideoStream# class torchcodec.decoders.VideoStream(demuxer: Demuxer, index: int)[source]# A video stream followed by a Demuxer. You should not build one yourself: a Demuxer creates one for you. Variables: index (int) \u2013 The stream\u2019s index within the container, absolute across all media types. This is what a Packet\u2019s stream_index can be compared against. Examples using VideoStream: Build your own decoding pipeline Build your own decoding pipeline property codec_parameters: VideoCodecParameters# What a decoder needs to know to decode this stream\u2019s packets. Pass them to a VideoPacketDecoder, or pickle them to build the decoder in another process. To read the stream\u2019s properties, use metadata instead. See VideoCodecParameters. make_decoder(device: str | device | None = None, *, num_ffmpeg_threads: int = 1) \u2192 VideoPacketDecoder[source]# [DISCOURAGED] Still available so that existing code keeps working. The recommended way to build a VideoPacketDecoder is to instantiate it directly, from the stream\u2019s codec parameters: VideoPacketDecoder(stream.codec_parameters, ...). property metadata: VideoStreamHeaderMetadata# What the container header says about this video stream. From the header only. This stream\u2019s exact frame count, timestamps and keyframe positions aren\u2019t in there - those come from scan(), and that is the distinction the _from_header and _from_content suffixes mark. scan() \u2192 FrameIndex[source]# Demux this stream from end to end, without decoding it (a scan), and return its FrameIndex. This is the only way to know a stream\u2019s exact frame count, timestamps and keyframe positions: the container header can be wrong about all three. You can call this on multiple video streams from the same demuxer. The first call scans the entire video once, and subsequent calls on other streams are free. Important If called, then this must be called before any packets are read from the demuxer. Returns: the frame index for this stream, describing its keyframes and frame positions. Return type: FrameIndex",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

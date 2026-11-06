@@ -1,6 +1,6 @@
 # RawFrame
 
-*class*torchcodec.decoders.RawFrame(*handle: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *pts_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *storage: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*)[[source]](../_modules/torchcodec/decoders/_blocks/_frame.html#RawFrame)
+*class*torchcodec.decoders.RawFrame(*handle: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *pts: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *pts_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *storage: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*)[[source]](../_modules/torchcodec/decoders/_blocks/_frame.html#RawFrame)
 
 One decoded video frame, exactly as the decoder produced it.
 
@@ -19,8 +19,8 @@ for packet in demuxer:
 ```
 
 Nothing here has been converted. The samples are in the codec's own pixel
-format (typically YUV), on the device that was passed to
-[`VideoStream.make_decoder()`](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.make_decoder), and
+format (typically YUV), on the device of the [`VideoPacketDecoder`](torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder)
+that decoded them, and
 `width`, `height` and `planes` are all pre-rotation:
 `rotation` is what a [`ColorConverter`](torchcodec.decoders.ColorConverter.html#torchcodec.decoders.ColorConverter) applies for you, and
 what you have to apply yourself if you convert `planes` on your own.
@@ -117,8 +117,8 @@ of `pixel_format`, in the order that format describes, of dtype
 and `nv12` both give three (`y, u, v = planes`), `yuva420p` four
 (`y, u, v, a = planes`) and `gray` one (`(y,) = planes`).
 
-They are always on the device that was passed to
-[`VideoStream.make_decoder()`](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.make_decoder), including when a CUDA decoder has to
+They are always on the device of the [`VideoPacketDecoder`](torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder) that
+decoded them, including when a CUDA decoder has to
 fall back to decoding on the CPU: it uploads those frames before handing
 them out.
 
@@ -143,6 +143,16 @@ Raises:
  copy - sub-byte-packed, palettised and float ones - and for
  frames stored bottom-up. Check `pixel_format` first if you are
  decoding something exotic.
+
+pts*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+The [pts](../glossary.html#term-pts) of this frame, in units of the stream's time base
+([`StreamMetadata.time_base`](torchcodec.decoders.StreamMetadata.html#torchcodec.decoders.StreamMetadata.time_base)), like the [`Packet.pts`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet.pts) it comes
+from. `None` if the frame has no
+timestamp (e.g. in raw H.264 streams).
+
+Unlike `pts_seconds`, it is exact: use it to match a frame to the
+timestamp of a packet.
 
 pts_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 

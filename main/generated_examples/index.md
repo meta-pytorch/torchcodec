@@ -80,6 +80,11 @@ Multi-threaded decoding pipelines
 [Raw frames and raw audio samples](low_level/raw_data.html)
 
 Raw frames and raw audio samples
+![](../_images/sphx_glr_demuxer_free_thumb.jpg)
+
+[Decoding packets that don't come from a Demuxer](low_level/demuxer_free.html)
+
+Decoding packets that don't come from a Demuxer
 ![](../_images/sphx_glr_cuda_streams_thumb.jpg)
 
 [Low-level APIs and CUDA streams synchronization](low_level/cuda_streams.html)

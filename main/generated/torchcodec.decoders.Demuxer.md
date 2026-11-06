@@ -13,7 +13,11 @@ stream each one belongs to:
 
 ```
 demuxer = Demuxer("video.mp4", streams=("video", "audio"))
-decoders = {s.index: s.make_decoder(device="cuda") for s in demuxer.streams}
+video, audio = demuxer.streams
+decoders = {
+ video.index: VideoPacketDecoder(video.codec_parameters, device="cuda"),
+ audio.index: AudioPacketDecoder(audio.codec_parameters),
+}
 
 for packet in demuxer:
  for output in decoders[packet.stream_index].decode(packet):
@@ -61,6 +65,11 @@ Build your own decoding pipeline
 [Low-level APIs and CUDA streams synchronization](../generated_examples/low_level/cuda_streams.html)
 
 Low-level APIs and CUDA streams synchronization
+![](../_images/sphx_glr_demuxer_free_thumb.jpg)
+
+[Decoding packets that don't come from a Demuxer](../generated_examples/low_level/demuxer_free.html)
+
+Decoding packets that don't come from a Demuxer
 ![](../_images/sphx_glr_pipelines_thumb.jpg)
 
 [Multi-threaded decoding pipelines](../generated_examples/low_level/pipelines.html)
@@ -99,6 +108,9 @@ frames after a seek are typically slightly wrong until the codec
 re-primes. This is especially true when resampling is involved (via an
 [`AudioConverter`](torchcodec.decoders.AudioConverter.html#torchcodec.decoders.AudioConverter)). Pre-rolling a margin of audio before the
 target is up to you.
+
+A stream without timestamps, like a raw H.264 or HEVC stream, can only
+be rewound to its start, with `seek(0)`.
 
 There is no `seek_mode` to choose from: seeking straight to
 `seconds` is what [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) calls

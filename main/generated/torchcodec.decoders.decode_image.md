@@ -15,6 +15,9 @@ JPEG decoding, `num_threads` for AVIF), use the dedicated decoders
 directly: [`decode_jpeg()`](torchcodec.decoders.decode_jpeg.html#torchcodec.decoders.decode_jpeg), [`decode_png()`](torchcodec.decoders.decode_png.html#torchcodec.decoders.decode_png), [`decode_webp()`](torchcodec.decoders.decode_webp.html#torchcodec.decoders.decode_webp),
 [`decode_gif()`](torchcodec.decoders.decode_gif.html#torchcodec.decoders.decode_gif), [`decode_avif()`](torchcodec.decoders.decode_avif.html#torchcodec.decoders.decode_avif), [`decode_heic()`](torchcodec.decoders.decode_heic.html#torchcodec.decoders.decode_heic).
 
+To get the dimensions, number of frames, etc. of an image without decoding
+it, use [`get_image_metadata()`](torchcodec.decoders.get_image_metadata.html#torchcodec.decoders.get_image_metadata).
+
 Example
 
 ```

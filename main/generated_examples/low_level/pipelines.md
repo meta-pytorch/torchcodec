@@ -10,11 +10,10 @@ own: running demuxing, decoding and color-conversion concurrently on several
 threads, choosing where to split them. Each of these steps individually release
 the GIL.
 
-Important
+Note
 
-These objects can cross threads, but not processes, so multi-processing
-is currently not supported. But it *can* be: if that's something you need,
-please open an issue.
+The demuxing and the decoding can also happen in different processes: see
+the last section.
 
 Note
 
@@ -53,7 +52,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp7nm1da_4/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp281ym07i/video.mp4'], returncode=0)
 ```
 
 ## One stage, one generator
@@ -70,7 +69,7 @@ concurrently, and since the stages release the GIL, that's real parallelism.
 import queue
 import threading
 
-from torchcodec.decoders import ColorConverter, Demuxer
+from torchcodec.decoders import ColorConverter, Demuxer, VideoPacketDecoder
 
 def demux(demuxer):
  yield from demuxer
@@ -113,14 +112,18 @@ boundary is moving one `prefetch()` call.
 def sequential(device):
  # demux -> decode -> color-convert, all on the calling thread.
  demuxer = Demuxer(video_path)
- packet_decoder = demuxer.streams[0].make_decoder(device=device)
+ packet_decoder = VideoPacketDecoder(
+ demuxer.streams[0].codec_parameters, device=device
+ )
  color_converter = ColorConverter(device=device)
  return color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
 
 def convert_on_own_thread(device):
  # [demux + decode] on one thread || [color-convert] on another.
  demuxer = Demuxer(video_path)
- packet_decoder = demuxer.streams[0].make_decoder(device=device)
+ packet_decoder = VideoPacketDecoder(
+ demuxer.streams[0].codec_parameters, device=device
+ )
  color_converter = ColorConverter(device=device)
  raw_frames = prefetch(decode(packet_decoder, demux(demuxer)))
  return color_convert(color_converter, raw_frames)
@@ -128,7 +131,9 @@ def convert_on_own_thread(device):
 def demux_on_own_thread(device):
  # [demux] on one thread || [decode + color-convert] on another.
  demuxer = Demuxer(video_path)
- packet_decoder = demuxer.streams[0].make_decoder(device=device)
+ packet_decoder = VideoPacketDecoder(
+ demuxer.streams[0].codec_parameters, device=device
+ )
  color_converter = ColorConverter(device=device)
  packets = prefetch(demux(demuxer))
  return color_convert(color_converter, decode(packet_decoder, packets))
@@ -136,7 +141,9 @@ def demux_on_own_thread(device):
 def one_thread_each(device):
  # [demux] || [decode] || [color-convert], a thread per stage.
  demuxer = Demuxer(video_path)
- packet_decoder = demuxer.streams[0].make_decoder(device=device)
+ packet_decoder = VideoPacketDecoder(
+ demuxer.streams[0].codec_parameters, device=device
+ )
  color_converter = ColorConverter(device=device)
  packets = prefetch(demux(demuxer))
  raw_frames = prefetch(decode(packet_decoder, packets))
@@ -218,7 +225,49 @@ expected: they do the same work on one thread.
 two most expensive steps: decoding and color-conversion. Note: actual speedup
 will depend on the capabilities of the machine building these docs!
 
-**Total running time of the script:** (0 minutes 26.343 seconds)
+## Across processes
+
+The [`Packet`](../../generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet) objects and the [`VideoCodecParameters`](../../generated/torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters) of a stream
+can be pickled, so the demuxing and the decoding can happen in different
+processes.
+
+Demuxing is cheap, so moving it to its own process rarely makes a pipeline
+faster on its own. It helps when the demuxing has to happen elsewhere than the
+decoding. Here, a background process demuxes a video and streams its packets
+to the main process, which decodes them on the GPU. The codec parameters are
+sent once, before the packets:
+
+```
+import torch.multiprocessing as mp
+from torchcodec.decoders import Demuxer, VideoPacketDecoder
+
+def demux(path, queue): # Must be importable by the child process.
+ demuxer = Demuxer(path)
+ queue.put(demuxer.streams[0].codec_parameters)
+ for packet in demuxer:
+ queue.put(packet)
+ queue.put(None)
+
+context = mp.get_context("spawn")
+queue = context.Queue(maxsize=64)
+process = context.Process(target=demux, args=(video_path, queue))
+process.start()
+
+packet_decoder = VideoPacketDecoder(queue.get(), device="cuda")
+while (packet := queue.get()) is not None:
+ for raw_frame in packet_decoder.decode(packet):
+ ...
+for raw_frame in packet_decoder.drain():
+ ...
+process.join()
+```
+
+Sending packets to another process isn't free: it takes from tens to
+hundreds of microseconds per packet, depending on its size. An API that
+pickles a group of packets at once, and decodes it at once, could reduce that
+cost. If it would help your use-case, please [open an issue](https://github.com/meta-pytorch/torchcodec/issues)!
+
+**Total running time of the script:** (0 minutes 26.411 seconds)
 
 [`Download Jupyter notebook: pipelines.ipynb`](../../_downloads/b6cf9084a4d02eed0052adaf54947e49/pipelines.ipynb)
 

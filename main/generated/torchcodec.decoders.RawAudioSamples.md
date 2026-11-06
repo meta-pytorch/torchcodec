@@ -1,6 +1,6 @@
 # RawAudioSamples
 
-*class*torchcodec.decoders.RawAudioSamples(*data: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int)*, *pts_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *_generation: [int](https://docs.python.org/3/builtins/functions.html#int) = 0*)[[source]](../_modules/torchcodec/decoders/_blocks/_frame.html#RawAudioSamples)
+*class*torchcodec.decoders.RawAudioSamples(*data: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int)*, *pts: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *pts_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *_generation: [int](https://docs.python.org/3/builtins/functions.html#int) = 0*)[[source]](../_modules/torchcodec/decoders/_blocks/_frame.html#RawAudioSamples)
 
 One decoded audio frame's samples, exactly as the decoder produced them.
 
@@ -47,6 +47,15 @@ The number of channels, i.e. `data.shape[0]`.
 *property*num_samples*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
 The number of samples per channel, i.e. `data.shape[1]`.
+
+pts*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+The [pts](../glossary.html#term-pts) of the first sample, in units of the stream's time base
+([`StreamMetadata.time_base`](torchcodec.decoders.StreamMetadata.html#torchcodec.decoders.StreamMetadata.time_base)), like the [`Packet.pts`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet.pts) it comes
+from. `None` if it is unknown.
+
+Unlike `pts_seconds`, it is exact: use it to match samples to the
+timestamp of a packet.
 
 pts_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 

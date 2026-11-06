@@ -1,6 +1,6 @@
 # FrameIndex
 
-*class*torchcodec.decoders.FrameIndex(*is_key_frame: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *_pts: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *_duration: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *_time_base_num: [int](https://docs.python.org/3/builtins/functions.html#int)*, *_time_base_den: [int](https://docs.python.org/3/builtins/functions.html#int)*)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#FrameIndex)
+*class*torchcodec.decoders.FrameIndex(*_is_key_frame: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *_pts: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *_duration: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *_time_base_num: [int](https://docs.python.org/3/builtins/functions.html#int)*, *_time_base_den: [int](https://docs.python.org/3/builtins/functions.html#int)*)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#FrameIndex)
 
 What the packets of a video stream say about its frames, as returned by
 a [scan](../glossary.html#term-scan) ([`VideoStream.scan()`](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.scan)).
@@ -89,7 +89,7 @@ Return type:
 
 [int](https://docs.python.org/3/builtins/functions.html#int) or Tensor
 
-is_key_frame*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
+*property*is_key_frame*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
 
 Bool tensor of shape `[N]`, whether each frame is a keyframe.
 
@@ -120,3 +120,8 @@ The number of frames in the stream.
 *property*pts_seconds*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
 
 Float64 tensor of shape `[N]`, the [pts](../glossary.html#term-pts) of each frame.
+
+`NaN` for the frames whose packet has no pts. Streams like raw H.264
+or HEVC streams have none at all, so their frames can't be put in
+presentation order: `is_key_frame`, `key_frame_indices`,
+`index_at()` and `key_frame_seconds_for()` raise on them.

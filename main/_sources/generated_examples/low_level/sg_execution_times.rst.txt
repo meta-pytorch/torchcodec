@@ -6,7 +6,7 @@
 
 Computation times
 =================
-**00:29.542** total execution time for 4 files **from generated_examples/low_level**:
+**00:29.929** total execution time for 5 files **from generated_examples/low_level**:
 
 .. container::
 
@@ -33,14 +33,17 @@ Computation times
      - Time
      - Mem (MB)
    * - :ref:`sphx_glr_generated_examples_low_level_pipelines.py` (``pipelines.py``)
-     - 00:26.343
+     - 00:26.411
      - 0.0
    * - :ref:`sphx_glr_generated_examples_low_level_basics.py` (``basics.py``)
-     - 00:01.530
+     - 00:01.549
      - 0.0
    * - :ref:`sphx_glr_generated_examples_low_level_raw_data.py` (``raw_data.py``)
-     - 00:01.222
+     - 00:01.227
      - 0.0
    * - :ref:`sphx_glr_generated_examples_low_level_cuda_streams.py` (``cuda_streams.py``)
-     - 00:00.446
+     - 00:00.451
+     - 0.0
+   * - :ref:`sphx_glr_generated_examples_low_level_demuxer_free.py` (``demuxer_free.py``)
+     - 00:00.291
      - 0.0

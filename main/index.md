@@ -104,7 +104,8 @@ endless sources
 
 Multi-threaded pipelines
 
-How to overlap the stages on several threads, and where to split them
+How to overlap the stages on several threads, and how to demux and
+decode in different processes
 
 [generated_examples/low_level/pipelines.html](generated_examples/low_level/pipelines.html)
 
@@ -113,6 +114,13 @@ Raw frames and samples
 How to read the decoder's own YUV planes and audio samples
 
 [generated_examples/low_level/raw_data.html](generated_examples/low_level/raw_data.html)
+
+Decoding without a Demuxer
+
+How to decode packets that come from a database, the network, or your
+own container parser
+
+[generated_examples/low_level/demuxer_free.html](generated_examples/low_level/demuxer_free.html)
 
 ## Encoding
 

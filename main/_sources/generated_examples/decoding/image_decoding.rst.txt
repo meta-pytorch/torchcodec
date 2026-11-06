@@ -130,7 +130,49 @@ The decoded image is a :class:`torch.Tensor` of shape ``(C, H, W)`` where C is
 the number of channels, H the height and W the width. By default images are
 decoded as RGB (3 channels) with ``torch.uint8`` values.
 
-.. GENERATED FROM PYTHON SOURCE LINES 91-96
+.. GENERATED FROM PYTHON SOURCE LINES 91-98
+
+Getting image metadata
+----------------------
+
+:func:`~torchcodec.decoders.get_image_metadata` returns the metadata of an
+image without decoding it: only the headers are parsed, so it's much faster
+than decoding. It accepts the same sources as
+:func:`~torchcodec.decoders.decode_image`.
+
+.. GENERATED FROM PYTHON SOURCE LINES 98-103
+
+.. code-block:: Python
+
+    from torchcodec.decoders import get_image_metadata
+
+    metadata = get_image_metadata(raw_image_bytes)
+    print(metadata)
+
+
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ .. code-block:: none
+
+    ImageMetadata(format='jpeg', width=234, height=222, num_channels=3, bit_depth=8, num_frames=1, rotation=None)
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 104-111
+
+All the fields describe what the decoders return. ``width`` and ``height`` are
+the dimensions of the decoded image, i.e. after the orientation metadata is
+applied. ``num_channels`` is the number of channels you get with
+``mode="UNCHANGED"``, ``num_frames`` is the size of the ``N`` dimension for
+animated images, and a ``bit_depth`` above 8 means that
+``output_dtype="auto"`` returns a ``torch.uint16`` tensor. See
+:class:`~torchcodec.decoders.ImageMetadata` for details.
+
+.. GENERATED FROM PYTHON SOURCE LINES 113-118
 
 Choosing the color mode
 -----------------------
@@ -138,7 +180,7 @@ Choosing the color mode
 The ``mode`` parameter controls the number and meaning of the output channels.
 It can be ``"RGB"`` (the default), ``"GRAY"``, ``"RGB_ALPHA"``, and a few more.
 
-.. GENERATED FROM PYTHON SOURCE LINES 96-101
+.. GENERATED FROM PYTHON SOURCE LINES 118-123
 
 .. code-block:: Python
 
@@ -165,7 +207,7 @@ It can be ``"RGB"`` (the default), ``"GRAY"``, ``"RGB_ALPHA"``, and a few more.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 102-107
+.. GENERATED FROM PYTHON SOURCE LINES 124-129
 
 Controlling the output dtype
 ----------------------------
@@ -173,7 +215,7 @@ Controlling the output dtype
 The ``output_dtype`` parameter controls the dtype of the returned tensor. It
 can be ``torch.uint8`` (the default), ``torch.uint16``, or ``"auto"``.
 
-.. GENERATED FROM PYTHON SOURCE LINES 107-113
+.. GENERATED FROM PYTHON SOURCE LINES 129-135
 
 .. code-block:: Python
 
@@ -197,27 +239,27 @@ can be ``torch.uint8`` (the default), ``torch.uint16``, or ``"auto"``.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 114-118
+.. GENERATED FROM PYTHON SOURCE LINES 136-140
 
 For 8-bit formats like JPEG, WebP and GIF, ``torch.uint16`` simply scales the
 8-bit values up to the full 16-bit range (0-255 -> 0-65535). Formats that can
 carry more than 8 bits per channel (PNG, AVIF, HEIC) actually **preserve** that
 extra precision when you pass ``torch.uint16`` or ``"auto"``.
 
-.. GENERATED FROM PYTHON SOURCE LINES 120-130
+.. GENERATED FROM PYTHON SOURCE LINES 142-152
 
 Decoding animated images
 ------------------------
 
 GIF, WebP and AVIF can hold a *sequence* of frames (an animation). In that
 case :func:`~torchcodec.decoders.decode_gif`,
-:func:`~torchcodec.decoders.decode_webp,
+:func:`~torchcodec.decoders.decode_webp`,
 :func:`~torchcodec.decoders.decode_avif`, and
 :func:`~torchcodec.decoders.decode_heic` return an ``(N, C, H, W)`` tensor,
 with one frame per animation frame, instead of the ``(C, H, W)`` you get for a
 still image.
 
-.. GENERATED FROM PYTHON SOURCE LINES 132-149
+.. GENERATED FROM PYTHON SOURCE LINES 154-171
 
 Decoding JPEGs on GPU
 ---------------------
@@ -240,7 +282,7 @@ in one nvJPEG call, which is much faster than decoding images one at a time.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 0.174 seconds)
+   **Total running time of the script:** (0 minutes 0.124 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_image_decoding.py:

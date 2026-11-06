@@ -89,6 +89,8 @@ For tutorials, see:
 | [`VideoPacketDecoder`](generated/torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder) | Decodes the compressed [`Packet`](generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet)s of one video stream into [`RawFrame`](generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame)s. |
 | --- | --- |
 | [`AudioPacketDecoder`](generated/torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder) | Decodes the compressed [`Packet`](generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet)s of one audio stream into [`RawAudioSamples`](generated/torchcodec.decoders.RawAudioSamples.html#torchcodec.decoders.RawAudioSamples). |
+| [`VideoCodecParameters`](generated/torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters) | What a [`VideoPacketDecoder`](generated/torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder) needs to know to decode the packets of a video stream. |
+| [`AudioCodecParameters`](generated/torchcodec.decoders.AudioCodecParameters.html#torchcodec.decoders.AudioCodecParameters) | What an [`AudioPacketDecoder`](generated/torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder) needs to know to decode the packets of an audio stream. |
 
 ### Conversion
 
@@ -98,7 +100,7 @@ For tutorials, see:
 
 ### Data types
 
-| [`Packet`](generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet) | One compressed packet of one stream, as a [`Demuxer`](generated/torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer) produced it. |
+| [`Packet`](generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet) | One compressed packet of one stream. |
 | --- | --- |
 | [`RawFrame`](generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame) | One decoded video frame, exactly as the decoder produced it. |
 

@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>AudioStream &#8212; TorchCodec 0.18.0.dev20261103+cu130 Documentation</title>
+    <title>AudioStream &#8212; TorchCodec 0.18.0.dev20261106+cu132 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=40d66efd"></script>
+    <script src="../_static/documentation_options.js?v=8207bb78"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -1050,6 +1050,8 @@ document.write(`
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.get_container_metadata.html">get_container_metadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoPacketDecoder.html">VideoPacketDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioPacketDecoder.html">AudioPacketDecoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoCodecParameters.html">VideoCodecParameters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioCodecParameters.html">AudioCodecParameters</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.ColorConverter.html">ColorConverter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioConverter.html">AudioConverter</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.Packet.html">Packet</a></li>
@@ -1216,18 +1218,23 @@ can be compared against.</p>
 <div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !"><img alt="" src="../_images/sphx_glr_basics_thumb.jpg" />
 <p><a class="reference internal" href="../generated_examples/low_level/basics.html"><span class="doc">Build your own decoding pipeline</span></a></p>
   <div class="sphx-glr-thumbnail-title">Build your own decoding pipeline</div>
-</div></div><dl class="py method">
+</div></div><dl class="py property">
+<dt class="sig sig-object py" id="torchcodec.decoders.AudioStream.codec_parameters">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">codec_parameters</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="torchcodec.decoders.AudioCodecParameters.html#torchcodec.decoders.AudioCodecParameters" title="torchcodec.decoders._blocks._codec_parameters.AudioCodecParameters"><span class="pre">AudioCodecParameters</span></a></em><a class="headerlink" href="#torchcodec.decoders.AudioStream.codec_parameters" title="Link to this definition">#</a></dt>
+<dd><p>What a decoder needs to know to decode this stream’s packets.</p>
+<p>Pass them to a <a class="reference internal" href="torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder" title="torchcodec.decoders.AudioPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioPacketDecoder</span></code></a>, or pickle them to build the decoder in
+another process. To read the stream’s properties, use <a class="reference internal" href="#torchcodec.decoders.AudioStream.metadata" title="torchcodec.decoders.AudioStream.metadata"><code class="xref py py-attr docutils literal notranslate"><span class="pre">metadata</span></code></a>
+instead. See <a class="reference internal" href="torchcodec.decoders.AudioCodecParameters.html#torchcodec.decoders.AudioCodecParameters" title="torchcodec.decoders.AudioCodecParameters"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioCodecParameters</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="torchcodec.decoders.AudioStream.make_decoder">
 <span class="sig-name descname"><span class="pre">make_decoder</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder" title="torchcodec.decoders._blocks._packet_decoder.AudioPacketDecoder"><span class="pre">AudioPacketDecoder</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_blocks/_demuxer.html#AudioStream.make_decoder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders.AudioStream.make_decoder" title="Link to this definition">#</a></dt>
-<dd><p>Build the <a class="reference internal" href="torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder" title="torchcodec.decoders.AudioPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioPacketDecoder</span></code></a> for this stream.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Returns<span class="colon">:</span></dt>
-<dd class="field-odd"><p>A decoder for this stream’s packets.</p>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder" title="torchcodec.decoders.AudioPacketDecoder">AudioPacketDecoder</a></p>
-</dd>
-</dl>
+<dd><p>[DISCOURAGED]</p>
+<p>Still available so that existing code keeps working. The recommended
+way to build an <a class="reference internal" href="torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder" title="torchcodec.decoders.AudioPacketDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioPacketDecoder</span></code></a> is to instantiate it
+directly, from the stream’s codec parameters:
+<code class="docutils literal notranslate"><span class="pre">AudioPacketDecoder(stream.codec_parameters)</span></code>.</p>
 </dd></dl>
 
 <dl class="py property">
@@ -1359,6 +1366,7 @@ can be compared against.</p>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders.AudioStream"><code class="docutils literal notranslate"><span class="pre">AudioStream</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders.AudioStream.codec_parameters"><code class="docutils literal notranslate"><span class="pre">AudioStream.codec_parameters</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders.AudioStream.make_decoder"><code class="docutils literal notranslate"><span class="pre">AudioStream.make_decoder()</span></code></a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders.AudioStream.metadata"><code class="docutils literal notranslate"><span class="pre">AudioStream.metadata</span></code></a></li>
 </ul>
@@ -1588,7 +1596,7 @@ can be compared against.</p>
        "headline": "AudioStream",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders.AudioStream.html",
-       "articleBody": "AudioStream# class torchcodec.decoders.AudioStream(demuxer: Demuxer, index: int)[source]# An audio stream followed by a Demuxer. You should not build one yourself: a Demuxer creates one for you. Variables: index (int) \u2013 The stream\u2019s index within the container, absolute across all media types. This is what a Packet\u2019s stream_index can be compared against. Examples using AudioStream: Build your own decoding pipeline Build your own decoding pipeline make_decoder() \u2192 AudioPacketDecoder[source]# Build the AudioPacketDecoder for this stream. Returns: A decoder for this stream\u2019s packets. Return type: AudioPacketDecoder property metadata: AudioStreamHeaderMetadata# What the container header says about this audio stream. From the header only.",
+       "articleBody": "AudioStream# class torchcodec.decoders.AudioStream(demuxer: Demuxer, index: int)[source]# An audio stream followed by a Demuxer. You should not build one yourself: a Demuxer creates one for you. Variables: index (int) \u2013 The stream\u2019s index within the container, absolute across all media types. This is what a Packet\u2019s stream_index can be compared against. Examples using AudioStream: Build your own decoding pipeline Build your own decoding pipeline property codec_parameters: AudioCodecParameters# What a decoder needs to know to decode this stream\u2019s packets. Pass them to a AudioPacketDecoder, or pickle them to build the decoder in another process. To read the stream\u2019s properties, use metadata instead. See AudioCodecParameters. make_decoder() \u2192 AudioPacketDecoder[source]# [DISCOURAGED] Still available so that existing code keeps working. The recommended way to build an AudioPacketDecoder is to instantiate it directly, from the stream\u2019s codec parameters: AudioPacketDecoder(stream.codec_parameters). property metadata: AudioStreamHeaderMetadata# What the container header says about this audio stream. From the header only.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

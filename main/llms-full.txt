@@ -106,6 +106,8 @@ For tutorials, see:
 | [`VideoPacketDecoder`](generated/torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder) | Decodes the compressed [`Packet`](generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet)s of one video stream into [`RawFrame`](generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame)s. |
 | --- | --- |
 | [`AudioPacketDecoder`](generated/torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder) | Decodes the compressed [`Packet`](generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet)s of one audio stream into [`RawAudioSamples`](generated/torchcodec.decoders.RawAudioSamples.html#torchcodec.decoders.RawAudioSamples). |
+| [`VideoCodecParameters`](generated/torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters) | What a [`VideoPacketDecoder`](generated/torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder) needs to know to decode the packets of a video stream. |
+| [`AudioCodecParameters`](generated/torchcodec.decoders.AudioCodecParameters.html#torchcodec.decoders.AudioCodecParameters) | What an [`AudioPacketDecoder`](generated/torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder) needs to know to decode the packets of an audio stream. |
 
 ### Conversion
 
@@ -115,7 +117,7 @@ For tutorials, see:
 
 ### Data types
 
-| [`Packet`](generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet) | One compressed packet of one stream, as a [`Demuxer`](generated/torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer) produced it. |
+| [`Packet`](generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet) | One compressed packet of one stream. |
 | --- | --- |
 | [`RawFrame`](generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame) | One decoded video frame, exactly as the decoder produced it. |
 
@@ -311,6 +313,145 @@ The duration of the frame, in seconds (`torch.Tensor` of floats).
 pts_seconds*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
 
 The [pts](../glossary.html#term-pts) of the frame, in seconds (`torch.Tensor` of floats).
+
+---
+
+# AudioCodecParameters
+
+*class*torchcodec.decoders.AudioCodecParameters(*codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, ***, *time_base: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction)*, *extradata: [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *codec_tag: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *profile: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *level: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *bit_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *bits_per_coded_sample: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *bits_per_raw_sample: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *coded_side_data: [dict](https://docs.python.org/3/builtins/stdtypes.html#dict)[[str](https://docs.python.org/3/builtins/stdtypes.html#str), [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes)] | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *sample_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *channel_layout: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *block_align: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *frame_size: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *initial_padding: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *trailing_padding: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *seek_preroll: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*)[[source]](../_modules/torchcodec/decoders/_blocks/_codec_parameters.html#AudioCodecParameters)
+
+What an [`AudioPacketDecoder`](torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder) needs to know to decode the packets
+of an audio stream.
+
+If you have a [`Demuxer`](torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer), [`AudioStream.codec_parameters`](torchcodec.decoders.AudioStream.html#torchcodec.decoders.AudioStream.codec_parameters) gives
+you the parameters of a stream. They can be pickled, e.g. to build the
+decoder in another process. To decode packets that don't come from a
+`Demuxer`, build them yourself:
+
+```
+codec_parameters = AudioCodecParameters(
+ "aac",
+ time_base=Fraction(1, 48_000),
+ sample_rate=48_000,
+ channel_layout="stereo",
+ extradata=extradata,
+)
+decoder = AudioPacketDecoder(codec_parameters)
+```
+
+The fields mirror those of FFmpeg's [AVCodecParameters](https://ffmpeg.org/doxygen/trunk/structAVCodecParameters.html), with the
+same names and meanings. FFmpeg's names stand for its enums, e.g.
+`sample_format="fltp"`.
+
+Which fields you need depends on the codec: printing the parameters a
+`Demuxer` reports for a similar file shows what FFmpeg uses.
+
+Note
+
+The parameters are meant to be passed to a decoder or stored, not read
+as metadata: use [`AudioStream.metadata`](torchcodec.decoders.AudioStream.html#torchcodec.decoders.AudioStream.metadata) for that. The values a
+`Demuxer` reports are FFmpeg's, and can change across FFmpeg and
+TorchCodec versions. The fields' names and meanings are stable.
+
+Examples using `AudioCodecParameters`:
+
+![](../_images/sphx_glr_basics_thumb.jpg)
+
+[Build your own decoding pipeline](../generated_examples/low_level/basics.html)
+
+Build your own decoding pipeline
+
+bit_rate*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The average bit rate, in bits per second.
+
+bits_per_coded_sample*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The number of bits per sample in the compressed data, for the codecs
+that need it (mostly uncompressed and PCM codecs).
+
+bits_per_raw_sample*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The number of bits per sample in the decoded data, when it's not implied
+by the pixel or sample format, e.g. 10 for 10-bit video.
+
+block_align*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The number of bytes per coded audio frame, for the codecs that need it
+(e.g. PCM and ADPCM codecs).
+
+channel_layout*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+FFmpeg's description of the channel layout, e.g. `"stereo"` or
+`"5.1"`. `ffmpeg -layouts` lists them.
+
+codec*: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*
+
+FFmpeg's name of the codec, e.g. `"h264"`, `"hevc"` or `"aac"`.
+`ffmpeg -codecs` lists them.
+
+codec_tag*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The container's identifier of the codec, e.g. a FourCC in AVI or MP4.
+A few codecs read it to tell variants apart.
+
+coded_side_data*: [dict](https://docs.python.org/3/builtins/stdtypes.html#dict)[[str](https://docs.python.org/3/builtins/stdtypes.html#str), [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes)] | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+Extra data about the stream, keyed by FFmpeg's names for its types, e.g.
+`"Display Matrix"` for video or `"Replay Gain"` for audio.
+
+If a video stream has a display matrix, it is under `"Display Matrix"`
+on every FFmpeg version.
+
+extradata*: [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The codec's setup data that isn't in the packets, e.g. the `avcC` box
+of H.264 in MP4. Not all codecs and streams need it.
+
+frame_size*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The number of samples per channel in a frame, for the codecs whose
+frames all have the same size.
+
+initial_padding*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The number of samples the encoder added at the start of the audio,
+which aren't part of the original audio.
+
+level*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The codec's level.
+
+profile*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The codec's profile, as one of FFmpeg's `AV_PROFILE_*` values.
+
+sample_format*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+FFmpeg's name of the decoded samples' format, e.g. `"fltp"`.
+`ffmpeg -sample_fmts` lists them.
+
+sample_rate*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The sample rate, in Hz.
+
+seek_preroll*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The number of samples to skip after a discontinuity, e.g. a seek.
+
+time_base*: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction)*
+
+a packet's `pts` of
+`n` means `n * time_base` seconds.
+
+Type:
+
+The unit of the packets' timestamps, in seconds
+
+trailing_padding*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The number of samples the encoder added at the end of the audio, which
+aren't part of the original audio.
 
 ---
 
@@ -539,7 +680,7 @@ Return type:
 
 # AudioPacketDecoder
 
-*class*torchcodec.decoders.AudioPacketDecoder(**args*, ***kwargs*)[[source]](../_modules/torchcodec/decoders/_blocks/_packet_decoder.html#AudioPacketDecoder)
+*class*torchcodec.decoders.AudioPacketDecoder(*codec_parameters: [AudioCodecParameters](torchcodec.decoders.AudioCodecParameters.html#torchcodec.decoders.AudioCodecParameters)*)[[source]](../_modules/torchcodec/decoders/_blocks/_packet_decoder.html#AudioPacketDecoder)
 
 Decodes the compressed [`Packet`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet)s of one audio stream into
 [`RawAudioSamples`](torchcodec.decoders.RawAudioSamples.html#torchcodec.decoders.RawAudioSamples).
@@ -547,14 +688,12 @@ Decodes the compressed [`Packet`](torchcodec.decoders.Packet.html#torchcodec.dec
 This is a low-level API: for straightforward decoding, use
 [`AudioDecoder`](torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) instead.
 
-You should not build one yourself: [`AudioStream.make_decoder()`](torchcodec.decoders.AudioStream.html#torchcodec.decoders.AudioStream.make_decoder) is what
-creates it. Audio is always decoded on the CPU.
-
-Feed it one packet at a time, and drain it at the end:
+Build it from the [`AudioCodecParameters`](torchcodec.decoders.AudioCodecParameters.html#torchcodec.decoders.AudioCodecParameters) of the stream to decode,
+then feed it one packet at a time, and drain it at the end:
 
 ```
 demuxer = Demuxer("audio.mp3", streams="audio")
-decoder = demuxer.streams[0].make_decoder()
+decoder = AudioPacketDecoder(demuxer.streams[0].codec_parameters)
 
 for packet in demuxer:
  for raw_samples in decoder.decode(packet):
@@ -563,14 +702,30 @@ for raw_samples in decoder.drain():
  ...
 ```
 
+The codec parameters can also be pickled, to decode in another process
+than the demuxer, or built by hand, to decode packets that don't come from
+a [`Demuxer`](torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer) (see
+[Decoding packets that don't come from a Demuxer](../generated_examples/low_level/demuxer_free.html#sphx-glr-generated-examples-low-level-demuxer-free-py)). Audio is
+always decoded on the CPU.
+
 It is stateful. A lossy codec carries state from one frame to the next, so
 it expects the packets of its own stream, in the order the demuxer produced
 them. After a [`Demuxer.seek()`](torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer.seek), `reset()` is necessary but not
 sufficient: the first samples that come out are subtly wrong until the codec
 re-primes, so decode a margin before your target and throw it away.
 
+Parameters:
+
+**codec_parameters** ([*AudioCodecParameters*](torchcodec.decoders.AudioCodecParameters.html#torchcodec.decoders.AudioCodecParameters)) - The parameters of the stream
+to decode, e.g. [`AudioStream.codec_parameters`](torchcodec.decoders.AudioStream.html#torchcodec.decoders.AudioStream.codec_parameters).
+
 Examples using `AudioPacketDecoder`:
 
+![](../_images/sphx_glr_basics_thumb.jpg)
+
+[Build your own decoding pipeline](../generated_examples/low_level/basics.html)
+
+Build your own decoding pipeline
 ![](../_images/sphx_glr_raw_data_thumb.jpg)
 
 [Raw frames and raw audio samples](../generated_examples/low_level/raw_data.html)
@@ -644,17 +799,22 @@ Examples using `AudioStream`:
 
 Build your own decoding pipeline
 
+*property*codec_parameters*: [AudioCodecParameters](torchcodec.decoders.AudioCodecParameters.html#torchcodec.decoders.AudioCodecParameters)*
+
+What a decoder needs to know to decode this stream's packets.
+
+Pass them to a [`AudioPacketDecoder`](torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder), or pickle them to build the decoder in
+another process. To read the stream's properties, use `metadata`
+instead. See [`AudioCodecParameters`](torchcodec.decoders.AudioCodecParameters.html#torchcodec.decoders.AudioCodecParameters).
+
 make_decoder() → [AudioPacketDecoder](torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#AudioStream.make_decoder)
 
-Build the [`AudioPacketDecoder`](torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder) for this stream.
+[DISCOURAGED]
 
-Returns:
-
-A decoder for this stream's packets.
-
-Return type:
-
-[AudioPacketDecoder](torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder)
+Still available so that existing code keeps working. The recommended
+way to build an [`AudioPacketDecoder`](torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder) is to instantiate it
+directly, from the stream's codec parameters:
+`AudioPacketDecoder(stream.codec_parameters)`.
 
 *property*metadata*: [AudioStreamHeaderMetadata](torchcodec.decoders.AudioStreamHeaderMetadata.html#torchcodec.decoders.AudioStreamHeaderMetadata)*
 
@@ -666,7 +826,7 @@ From the header only.
 
 # AudioStreamHeaderMetadata
 
-*class*torchcodec.decoders.AudioStreamHeaderMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, *media_type: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_channels: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *sample_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*)[[source]](../_modules/torchcodec/_core/_metadata.html#AudioStreamHeaderMetadata)
+*class*torchcodec.decoders.AudioStreamHeaderMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *time_base: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, *media_type: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_channels: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *sample_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*)[[source]](../_modules/torchcodec/_core/_metadata.html#AudioStreamHeaderMetadata)
 
 Metadata of a single audio stream, as reported by the container header.
 
@@ -717,11 +877,22 @@ stream_index*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
 Index of the stream that this metadata refers to (int).
 
+time_base*: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+a
+[pts](../glossary.html#term-pts) of `n` means `n * time_base` seconds. That's the unit of
+the integer timestamps of the low-level APIs, like [`Packet.pts`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet.pts) and
+[`RawFrame.pts`](torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame.pts).
+
+Type:
+
+The unit of the stream's timestamps, in seconds (Fraction or None)
+
 ---
 
 # AudioStreamMetadata
 
-*class*torchcodec.decoders.AudioStreamMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, *media_type: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_channels: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *sample_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*)[[source]](../_modules/torchcodec/_core/_metadata.html#AudioStreamMetadata)
+*class*torchcodec.decoders.AudioStreamMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *time_base: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, *media_type: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_channels: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *sample_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*)[[source]](../_modules/torchcodec/_core/_metadata.html#AudioStreamMetadata)
 
 Metadata of a single audio stream.
 
@@ -793,6 +964,17 @@ stream_index*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
 Index of the stream that this metadata refers to (int).
 
+time_base*: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+a
+[pts](../glossary.html#term-pts) of `n` means `n * time_base` seconds. That's the unit of
+the integer timestamps of the low-level APIs, like [`Packet.pts`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet.pts) and
+[`RawFrame.pts`](torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame.pts).
+
+Type:
+
+The unit of the stream's timestamps, in seconds (Fraction or None)
+
 ---
 
 # ColorConverter
@@ -846,6 +1028,11 @@ Build your own decoding pipeline
 [Low-level APIs and CUDA streams synchronization](../generated_examples/low_level/cuda_streams.html)
 
 Low-level APIs and CUDA streams synchronization
+![](../_images/sphx_glr_demuxer_free_thumb.jpg)
+
+[Decoding packets that don't come from a Demuxer](../generated_examples/low_level/demuxer_free.html)
+
+Decoding packets that don't come from a Demuxer
 ![](../_images/sphx_glr_pipelines_thumb.jpg)
 
 [Multi-threaded decoding pipelines](../generated_examples/low_level/pipelines.html)
@@ -970,7 +1157,11 @@ stream each one belongs to:
 
 ```
 demuxer = Demuxer("video.mp4", streams=("video", "audio"))
-decoders = {s.index: s.make_decoder(device="cuda") for s in demuxer.streams}
+video, audio = demuxer.streams
+decoders = {
+ video.index: VideoPacketDecoder(video.codec_parameters, device="cuda"),
+ audio.index: AudioPacketDecoder(audio.codec_parameters),
+}
 
 for packet in demuxer:
  for output in decoders[packet.stream_index].decode(packet):
@@ -1018,6 +1209,11 @@ Build your own decoding pipeline
 [Low-level APIs and CUDA streams synchronization](../generated_examples/low_level/cuda_streams.html)
 
 Low-level APIs and CUDA streams synchronization
+![](../_images/sphx_glr_demuxer_free_thumb.jpg)
+
+[Decoding packets that don't come from a Demuxer](../generated_examples/low_level/demuxer_free.html)
+
+Decoding packets that don't come from a Demuxer
 ![](../_images/sphx_glr_pipelines_thumb.jpg)
 
 [Multi-threaded decoding pipelines](../generated_examples/low_level/pipelines.html)
@@ -1056,6 +1252,9 @@ frames after a seek are typically slightly wrong until the codec
 re-primes. This is especially true when resampling is involved (via an
 [`AudioConverter`](torchcodec.decoders.AudioConverter.html#torchcodec.decoders.AudioConverter)). Pre-rolling a margin of audio before the
 target is up to you.
+
+A stream without timestamps, like a raw H.264 or HEVC stream, can only
+be rewound to its start, with `seek(0)`.
 
 There is no `seek_mode` to choose from: seeking straight to
 `seconds` is what [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) calls
@@ -1121,7 +1320,7 @@ or None).
 
 # FrameIndex
 
-*class*torchcodec.decoders.FrameIndex(*is_key_frame: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *_pts: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *_duration: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *_time_base_num: [int](https://docs.python.org/3/builtins/functions.html#int)*, *_time_base_den: [int](https://docs.python.org/3/builtins/functions.html#int)*)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#FrameIndex)
+*class*torchcodec.decoders.FrameIndex(*_is_key_frame: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *_pts: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *_duration: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *_time_base_num: [int](https://docs.python.org/3/builtins/functions.html#int)*, *_time_base_den: [int](https://docs.python.org/3/builtins/functions.html#int)*)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#FrameIndex)
 
 What the packets of a video stream say about its frames, as returned by
 a [scan](../glossary.html#term-scan) ([`VideoStream.scan()`](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.scan)).
@@ -1210,7 +1409,7 @@ Return type:
 
 [int](https://docs.python.org/3/builtins/functions.html#int) or Tensor
 
-is_key_frame*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
+*property*is_key_frame*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
 
 Bool tensor of shape `[N]`, whether each frame is a keyframe.
 
@@ -1242,6 +1441,11 @@ The number of frames in the stream.
 
 Float64 tensor of shape `[N]`, the [pts](../glossary.html#term-pts) of each frame.
 
+`NaN` for the frames whose packet has no pts. Streams like raw H.264
+or HEVC streams have none at all, so their frames can't be put in
+presentation order: `is_key_frame`, `key_frame_indices`,
+`index_at()` and `key_frame_seconds_for()` raise on them.
+
 ---
 
 # ImageMetadata
@@ -1252,6 +1456,14 @@ Metadata of an encoded image, as returned by [`get_image_metadata()`](torchcodec
 
 Every attribute describes the tensor that [`decode_image()`](torchcodec.decoders.decode_image.html#torchcodec.decoders.decode_image) (or the
 matching format-specific decoder) returns for this image.
+
+Examples using `ImageMetadata`:
+
+![](../_images/sphx_glr_image_decoding_thumb.png)
+
+[Decoding images](../generated_examples/decoding/image_decoding.html)
+
+Decoding images
 
 bit_depth*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
@@ -1332,11 +1544,15 @@ UNCHANGED*= 0*
 
 *class*torchcodec.decoders.Packet(*handle: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, ***, *generation: [int](https://docs.python.org/3/builtins/functions.html#int) = 0*)[[source]](../_modules/torchcodec/decoders/_blocks/_frame.html#Packet)
 
-One compressed packet of one stream, as a [`Demuxer`](torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer) produced it.
+One compressed packet of one stream.
 
-You should not build one yourself: a `Demuxer` creates them, and a
-[`VideoPacketDecoder`](torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder) or an [`AudioPacketDecoder`](torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder) consumes
-them. The contents are opaque: a `Packet` is a handle to an FFmpeg packet.
+A [`Demuxer`](torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer) creates them, and a [`VideoPacketDecoder`](torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder) or an
+[`AudioPacketDecoder`](torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder) consumes them. You can also build one from
+compressed data that doesn't come from a `Demuxer`, with
+`from_bytes()` or `from_tensor()`.
+
+Packets can be pickled, e.g. to be decoded in another process. The pickles
+are only guaranteed to be readable by the same version of TorchCodec.
 
 Examples using `Packet`:
 
@@ -1345,6 +1561,102 @@ Examples using `Packet`:
 [Build your own decoding pipeline](../generated_examples/low_level/basics.html)
 
 Build your own decoding pipeline
+![](../_images/sphx_glr_demuxer_free_thumb.jpg)
+
+[Decoding packets that don't come from a Demuxer](../generated_examples/low_level/demuxer_free.html)
+
+Decoding packets that don't come from a Demuxer
+
+*property*data*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
+
+The compressed data, as a 1D uint8 CPU tensor.
+
+It is a view on the packet's data: writing to it modifies the packet,
+so `.clone()` it first.
+
+*property*dts*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+The decoding timestamp, in units of the stream's time base. `None`
+if unknown.
+
+*property*duration*: [int](https://docs.python.org/3/builtins/functions.html#int)*
+
+How long the packet lasts, in units of the stream's time base. 0 if
+unknown.
+
+*property*flags*: [int](https://docs.python.org/3/builtins/functions.html#int)*
+
+FFmpeg's `AV_PKT_FLAG_*` bits, e.g. `flags & 1` is set for
+keyframes.
+
+*classmethod*from_bytes(*data: [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [bytearray](https://docs.python.org/3/builtins/stdtypes.html#bytearray) | [memoryview](https://docs.python.org/3/builtins/stdtypes.html#memoryview)*, ***, *pts: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *dts: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *duration: [int](https://docs.python.org/3/builtins/functions.html#int) = 0*, *flags: [int](https://docs.python.org/3/builtins/functions.html#int) = 0*, *side_data: [dict](https://docs.python.org/3/builtins/stdtypes.html#dict)[[str](https://docs.python.org/3/builtins/stdtypes.html#str), [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes)] | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int) = 0*) → Packet[[source]](../_modules/torchcodec/decoders/_blocks/_frame.html#Packet.from_bytes)
+
+Build a packet from compressed data, e.g. read from a database or
+received from the network.
+
+Only `data` is required: most codecs need nothing else to decode it.
+
+Parameters:
+
+- **data** ([*bytes*](https://docs.python.org/3/builtins/stdtypes.html#bytes)*,*[*bytearray*](https://docs.python.org/3/builtins/stdtypes.html#bytearray)*or*[*memoryview*](https://docs.python.org/3/builtins/stdtypes.html#memoryview)) - The compressed data of one
+packet. It is copied.
+- **pts** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The [pts](../glossary.html#term-pts), in units of the stream's time
+base ([`StreamMetadata.time_base`](torchcodec.decoders.StreamMetadata.html#torchcodec.decoders.StreamMetadata.time_base)). The decoded frames'
+[`RawFrame.pts`](torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame.pts) come from it.
+`None` (default) if unknown.
+- **dts** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The decoding timestamp, in units of the
+stream's time base. `None` (default) if unknown.
+- **duration** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - How long the packet lasts, in units of
+the stream's time base. Default: 0, for unknown.
+- **flags** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - FFmpeg's `AV_PKT_FLAG_*` bits, e.g. 1
+(`AV_PKT_FLAG_KEY`) for a keyframe. `AV_PKT_FLAG_TRUSTED`
+(8) isn't allowed. Default: 0.
+- **side_data** ([*dict*](https://docs.python.org/3/builtins/stdtypes.html#dict)*,**optional*) - Extra data about the packet, keyed by
+FFmpeg's names for its types, e.g. `"Skip Samples"`.
+- **stream_index** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - See `stream_index`. Default: 0.
+
+Returns:
+
+The packet.
+
+Return type:
+
+Packet
+
+*classmethod*from_tensor(*data: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *pts: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *dts: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *duration: [int](https://docs.python.org/3/builtins/functions.html#int) = 0*, *flags: [int](https://docs.python.org/3/builtins/functions.html#int) = 0*, *side_data: [dict](https://docs.python.org/3/builtins/stdtypes.html#dict)[[str](https://docs.python.org/3/builtins/stdtypes.html#str), [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes)] | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int) = 0*) → Packet[[source]](../_modules/torchcodec/decoders/_blocks/_frame.html#Packet.from_tensor)
+
+Build a packet from compressed data in a tensor.
+
+Same as `from_bytes()`, except for `data`.
+
+Parameters:
+
+- **data** ([*torch.Tensor*](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)) - The compressed data of one packet, as a
+contiguous 1D uint8 CPU tensor. It is copied.
+- **pts** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - See `from_bytes()`.
+- **dts** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - See `from_bytes()`.
+- **duration** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - See `from_bytes()`.
+- **flags** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - See `from_bytes()`.
+- **side_data** ([*dict*](https://docs.python.org/3/builtins/stdtypes.html#dict)*,**optional*) - See `from_bytes()`.
+- **stream_index** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - See `from_bytes()`.
+
+Returns:
+
+The packet.
+
+Return type:
+
+Packet
+
+*property*pts*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+The [pts](../glossary.html#term-pts), in units of the stream's time base
+([`StreamMetadata.time_base`](torchcodec.decoders.StreamMetadata.html#torchcodec.decoders.StreamMetadata.time_base)). `None` if unknown.
+
+*property*side_data*: [dict](https://docs.python.org/3/builtins/stdtypes.html#dict)[[str](https://docs.python.org/3/builtins/stdtypes.html#str), [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes)]*
+
+Extra data about the packet, keyed by FFmpeg's names for its types,
+e.g. `"Skip Samples"`.
 
 stream_index*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
@@ -1356,7 +1668,7 @@ routes each packet to the right decoder.
 
 # RawAudioSamples
 
-*class*torchcodec.decoders.RawAudioSamples(*data: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int)*, *pts_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *_generation: [int](https://docs.python.org/3/builtins/functions.html#int) = 0*)[[source]](../_modules/torchcodec/decoders/_blocks/_frame.html#RawAudioSamples)
+*class*torchcodec.decoders.RawAudioSamples(*data: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *sample_rate: [int](https://docs.python.org/3/builtins/functions.html#int)*, *pts: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *pts_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *_generation: [int](https://docs.python.org/3/builtins/functions.html#int) = 0*)[[source]](../_modules/torchcodec/decoders/_blocks/_frame.html#RawAudioSamples)
 
 One decoded audio frame's samples, exactly as the decoder produced them.
 
@@ -1404,6 +1716,15 @@ The number of channels, i.e. `data.shape[0]`.
 
 The number of samples per channel, i.e. `data.shape[1]`.
 
+pts*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+The [pts](../glossary.html#term-pts) of the first sample, in units of the stream's time base
+([`StreamMetadata.time_base`](torchcodec.decoders.StreamMetadata.html#torchcodec.decoders.StreamMetadata.time_base)), like the [`Packet.pts`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet.pts) it comes
+from. `None` if it is unknown.
+
+Unlike `pts_seconds`, it is exact: use it to match samples to the
+timestamp of a packet.
+
 pts_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
 The [pts](../glossary.html#term-pts) of the first sample, in seconds. `NaN` if it is
@@ -1417,7 +1738,7 @@ The source's sample rate, in Hz.
 
 # RawFrame
 
-*class*torchcodec.decoders.RawFrame(*handle: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *pts_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *storage: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*)[[source]](../_modules/torchcodec/decoders/_blocks/_frame.html#RawFrame)
+*class*torchcodec.decoders.RawFrame(*handle: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *pts: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *pts_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float)*, *storage: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*)[[source]](../_modules/torchcodec/decoders/_blocks/_frame.html#RawFrame)
 
 One decoded video frame, exactly as the decoder produced it.
 
@@ -1436,8 +1757,8 @@ for packet in demuxer:
 ```
 
 Nothing here has been converted. The samples are in the codec's own pixel
-format (typically YUV), on the device that was passed to
-[`VideoStream.make_decoder()`](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.make_decoder), and
+format (typically YUV), on the device of the [`VideoPacketDecoder`](torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder)
+that decoded them, and
 `width`, `height` and `planes` are all pre-rotation:
 `rotation` is what a [`ColorConverter`](torchcodec.decoders.ColorConverter.html#torchcodec.decoders.ColorConverter) applies for you, and
 what you have to apply yourself if you convert `planes` on your own.
@@ -1534,8 +1855,8 @@ of `pixel_format`, in the order that format describes, of dtype
 and `nv12` both give three (`y, u, v = planes`), `yuva420p` four
 (`y, u, v, a = planes`) and `gray` one (`(y,) = planes`).
 
-They are always on the device that was passed to
-[`VideoStream.make_decoder()`](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.make_decoder), including when a CUDA decoder has to
+They are always on the device of the [`VideoPacketDecoder`](torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder) that
+decoded them, including when a CUDA decoder has to
 fall back to decoding on the CPU: it uploads those frames before handing
 them out.
 
@@ -1560,6 +1881,16 @@ Raises:
  copy - sub-byte-packed, palettised and float ones - and for
  frames stored bottom-up. Check `pixel_format` first if you are
  decoding something exotic.
+
+pts*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+The [pts](../glossary.html#term-pts) of this frame, in units of the stream's time base
+([`StreamMetadata.time_base`](torchcodec.decoders.StreamMetadata.html#torchcodec.decoders.StreamMetadata.time_base)), like the [`Packet.pts`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet.pts) it comes
+from. `None` if the frame has no
+timestamp (e.g. in raw H.264 streams).
+
+Unlike `pts_seconds`, it is exact: use it to match a frame to the
+timestamp of a packet.
 
 pts_seconds*: [float](https://docs.python.org/3/builtins/functions.html#float)*
 
@@ -1591,7 +1922,7 @@ The width of the decoded samples, before rotation.
 
 # StreamMetadata
 
-*class*torchcodec.decoders.StreamMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, *media_type: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*)[[source]](../_modules/torchcodec/_core/_metadata.html#StreamMetadata)
+*class*torchcodec.decoders.StreamMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *time_base: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, *media_type: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*)[[source]](../_modules/torchcodec/_core/_metadata.html#StreamMetadata)
 
 Metadata of a single stream, as reported by the container header.
 
@@ -1625,6 +1956,185 @@ Type of media the stream carries (str). One of `"video"`, `"audio"`,
 stream_index*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
 Index of the stream that this metadata refers to (int).
+
+time_base*: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+a
+[pts](../glossary.html#term-pts) of `n` means `n * time_base` seconds. That's the unit of
+the integer timestamps of the low-level APIs, like [`Packet.pts`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet.pts) and
+[`RawFrame.pts`](torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame.pts).
+
+Type:
+
+The unit of the stream's timestamps, in seconds (Fraction or None)
+
+---
+
+# VideoCodecParameters
+
+*class*torchcodec.decoders.VideoCodecParameters(*codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, ***, *time_base: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction)*, *extradata: [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *codec_tag: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *profile: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *level: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *bit_rate: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *bits_per_coded_sample: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *bits_per_raw_sample: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *coded_side_data: [dict](https://docs.python.org/3/builtins/stdtypes.html#dict)[[str](https://docs.python.org/3/builtins/stdtypes.html#str), [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes)] | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *width: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *height: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *pixel_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *sample_aspect_ratio: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *framerate: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *r_frame_rate: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *field_order: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *color_range: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *color_primaries: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *color_transfer_characteristic: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *color_space: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *chroma_location: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, *video_delay: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*)[[source]](../_modules/torchcodec/decoders/_blocks/_codec_parameters.html#VideoCodecParameters)
+
+What a [`VideoPacketDecoder`](torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder) needs to know to decode the packets
+of a video stream.
+
+If you have a [`Demuxer`](torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer), [`VideoStream.codec_parameters`](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.codec_parameters) gives
+you the parameters of a stream. They can be pickled, e.g. to build the
+decoder in another process. To decode packets that don't come from a
+`Demuxer`, build them yourself:
+
+```
+codec_parameters = VideoCodecParameters(
+ "h264", time_base=Fraction(1, 90_000), extradata=extradata
+)
+decoder = VideoPacketDecoder(codec_parameters)
+```
+
+The fields mirror those of FFmpeg's [AVCodecParameters](https://ffmpeg.org/doxygen/trunk/structAVCodecParameters.html), with the
+same names and meanings. FFmpeg's names stand for its enums, e.g.
+`pixel_format="yuv420p"`.
+
+Note
+
+Which fields you need depends on the codec and device: printing the parameters a
+`Demuxer` reports for a similar file shows what FFmpeg uses.
+
+To decode on CUDA, set `width`, `height` and `pixel_format`:
+depending on the codec, the frames may otherwise be silently decoded
+on the CPU. Also set `r_frame_rate`, or the frames' durations are 0.
+
+Note
+
+The parameters are meant to be passed to a decoder or stored, not read
+as metadata: use [`VideoStream.metadata`](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.metadata) for that. The values a
+`Demuxer` reports are FFmpeg's, and can change across FFmpeg and
+TorchCodec versions. The fields' names and meanings are stable.
+
+Examples using `VideoCodecParameters`:
+
+![](../_images/sphx_glr_basics_thumb.jpg)
+
+[Build your own decoding pipeline](../generated_examples/low_level/basics.html)
+
+Build your own decoding pipeline
+![](../_images/sphx_glr_demuxer_free_thumb.jpg)
+
+[Decoding packets that don't come from a Demuxer](../generated_examples/low_level/demuxer_free.html)
+
+Decoding packets that don't come from a Demuxer
+
+bit_rate*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The average bit rate, in bits per second.
+
+bits_per_coded_sample*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The number of bits per sample in the compressed data, for the codecs
+that need it (mostly uncompressed and PCM codecs).
+
+bits_per_raw_sample*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The number of bits per sample in the decoded data, when it's not implied
+by the pixel or sample format, e.g. 10 for 10-bit video.
+
+chroma_location*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+FFmpeg's name of the chroma samples' location, e.g. `"left"`.
+
+codec*: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*
+
+FFmpeg's name of the codec, e.g. `"h264"`, `"hevc"` or `"aac"`.
+`ffmpeg -codecs` lists them.
+
+codec_tag*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The container's identifier of the codec, e.g. a FourCC in AVI or MP4.
+A few codecs read it to tell variants apart.
+
+coded_side_data*: [dict](https://docs.python.org/3/builtins/stdtypes.html#dict)[[str](https://docs.python.org/3/builtins/stdtypes.html#str), [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes)] | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+Extra data about the stream, keyed by FFmpeg's names for its types, e.g.
+`"Display Matrix"` for video or `"Replay Gain"` for audio.
+
+If a video stream has a display matrix, it is under `"Display Matrix"`
+on every FFmpeg version.
+
+color_primaries*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+FFmpeg's name of the color primaries, e.g. `"bt709"`.
+
+color_range*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+FFmpeg's name of the color range, e.g. `"tv"` (limited) or `"pc"`
+(full).
+
+color_space*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+FFmpeg's name of the color space, i.e. the YUV matrix, e.g.
+`"bt709"`.
+
+color_transfer_characteristic*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+FFmpeg's name of the transfer characteristic, e.g. `"bt709"` or
+`"smpte2084"`.
+
+extradata*: [bytes](https://docs.python.org/3/builtins/stdtypes.html#bytes) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The codec's setup data that isn't in the packets, e.g. the `avcC` box
+of H.264 in MP4. Not all codecs and streams need it.
+
+field_order*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+`"progressive"` or, for interlaced video, which field comes first:
+`"tt"`, `"bb"`, `"tb"` or `"bt"`.
+
+framerate*: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The frame rate, in frames per second, as the codec reports it. Setting
+it requires FFmpeg 6.1 or above.
+
+height*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The height of the frames, in pixels.
+
+level*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The codec's level.
+
+pixel_format*: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+FFmpeg's name of the decoded frames' pixel format, e.g. `"yuv420p"`.
+`ffmpeg -pix_fmts` lists them.
+
+profile*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The codec's profile, as one of FFmpeg's `AV_PROFILE_*` values.
+
+r_frame_rate*: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The frame rate, in frames per second, as the container reports it. Not
+part of FFmpeg's `AVCodecParameters`, but of its `AVStream`.
+
+sample_aspect_ratio*: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The width of a pixel divided by its height.
+
+time_base*: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction)*
+
+a packet's `pts` of
+`n` means `n * time_base` seconds.
+
+Type:
+
+The unit of the packets' timestamps, in seconds
+
+video_delay*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The number of frames the decoder holds back before it outputs one,
+because of B-frames.
+
+width*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)**= None*
+
+The width of the frames, in pixels.
 
 ---
 
@@ -1992,7 +2502,7 @@ Return type:
 
 # VideoPacketDecoder
 
-*class*torchcodec.decoders.VideoPacketDecoder(**args*, ***kwargs*)[[source]](../_modules/torchcodec/decoders/_blocks/_packet_decoder.html#VideoPacketDecoder)
+*class*torchcodec.decoders.VideoPacketDecoder(*codec_parameters: [VideoCodecParameters](torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters)*, *device: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, ***, *num_ffmpeg_threads: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*)[[source]](../_modules/torchcodec/decoders/_blocks/_packet_decoder.html#VideoPacketDecoder)
 
 Decodes the compressed [`Packet`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet)s of one video stream into
 [`RawFrame`](torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame)s.
@@ -2000,14 +2510,12 @@ Decodes the compressed [`Packet`](torchcodec.decoders.Packet.html#torchcodec.dec
 This is a low-level API: for straightforward decoding, use
 [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) instead.
 
-You should not build one yourself: [`VideoStream.make_decoder()`](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.make_decoder) is what
-creates it. Frames come out on the device given there.
-
-Feed it one packet at a time, and drain it at the end:
+Build it from the [`VideoCodecParameters`](torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters) of the stream to decode,
+then feed it one packet at a time, and drain it at the end:
 
 ```
 demuxer = Demuxer("video.mp4")
-decoder = demuxer.streams[0].make_decoder()
+decoder = VideoPacketDecoder(demuxer.streams[0].codec_parameters)
 
 for packet in demuxer:
  for raw_frame in decoder.decode(packet):
@@ -2016,8 +2524,31 @@ for raw_frame in decoder.drain():
  ...
 ```
 
+The codec parameters can also be pickled, to decode in another process
+than the demuxer, or built by hand, to decode packets that don't come from
+a [`Demuxer`](torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer) (see
+[Decoding packets that don't come from a Demuxer](../generated_examples/low_level/demuxer_free.html#sphx-glr-generated-examples-low-level-demuxer-free-py)). Frames come
+out on the device the decoder was built for.
+
 It is stateful. It holds the codec's reference-frame buffer, so it expects
 the packets of its own stream, in the order the demuxer produced them.
+
+Parameters:
+
+- **codec_parameters** ([*VideoCodecParameters*](torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters)) - The parameters of the stream
+to decode, e.g. [`VideoStream.codec_parameters`](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.codec_parameters).
+- **device** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*torch.device*](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device)*,**optional*) - The device to decode on (cpu or
+CUDA). If `None` (default), the current default device is used
+(see `torch.set_default_device`). With codec parameters you built
+yourself, CUDA needs some fields to be set: see
+[`VideoCodecParameters`](torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters).
+- **num_ffmpeg_threads** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of threads to use for
+CPU decoding. This has no effect when decoding on GPU. Use 1 for
+single-threaded decoding, which may be best if you are decoding
+multiple streams in parallel. Use a higher number for
+multi-threaded decoding, which is best for a single stream.
+Passing 0 lets FFmpeg decide on the number of threads.
+Default: 1.
 
 Examples using `VideoPacketDecoder`:
 
@@ -2031,6 +2562,16 @@ Build your own decoding pipeline
 [Low-level APIs and CUDA streams synchronization](../generated_examples/low_level/cuda_streams.html)
 
 Low-level APIs and CUDA streams synchronization
+![](../_images/sphx_glr_demuxer_free_thumb.jpg)
+
+[Decoding packets that don't come from a Demuxer](../generated_examples/low_level/demuxer_free.html)
+
+Decoding packets that don't come from a Demuxer
+![](../_images/sphx_glr_pipelines_thumb.jpg)
+
+[Multi-threaded decoding pipelines](../generated_examples/low_level/pipelines.html)
+
+Multi-threaded decoding pipelines
 ![](../_images/sphx_glr_raw_data_thumb.jpg)
 
 [Raw frames and raw audio samples](../generated_examples/low_level/raw_data.html)
@@ -2104,30 +2645,22 @@ Examples using `VideoStream`:
 
 Build your own decoding pipeline
 
+*property*codec_parameters*: [VideoCodecParameters](torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters)*
+
+What a decoder needs to know to decode this stream's packets.
+
+Pass them to a [`VideoPacketDecoder`](torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder), or pickle them to build the decoder in
+another process. To read the stream's properties, use `metadata`
+instead. See [`VideoCodecParameters`](torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters).
+
 make_decoder(*device: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, ***, *num_ffmpeg_threads: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*) → [VideoPacketDecoder](torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder)[[source]](../_modules/torchcodec/decoders/_blocks/_demuxer.html#VideoStream.make_decoder)
 
-Build the [`VideoPacketDecoder`](torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder) for this stream.
+[DISCOURAGED]
 
-Parameters:
-
-- **device** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*torch.device*](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device)*,**optional*) - The device to decode on (cpu or CUDA).
-If `None` (default), the current default device is used (see
-`torch.set_default_device`).
-- **num_ffmpeg_threads** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of threads to use for
-CPU decoding. This has no effect when decoding on GPU. Use 1 for
-single-threaded decoding, which may be best if you are decoding
-multiple streams in parallel. Use a higher number for
-multi-threaded decoding, which is best for a single stream.
-Passing 0 lets FFmpeg decide on the number of threads.
-Default: 1.
-
-Returns:
-
-A decoder for this stream's packets.
-
-Return type:
-
-[VideoPacketDecoder](torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder)
+Still available so that existing code keeps working. The recommended
+way to build a [`VideoPacketDecoder`](torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder) is to instantiate it
+directly, from the stream's codec parameters:
+`VideoPacketDecoder(stream.codec_parameters, ...)`.
 
 *property*metadata*: [VideoStreamHeaderMetadata](torchcodec.decoders.VideoStreamHeaderMetadata.html#torchcodec.decoders.VideoStreamHeaderMetadata)*
 
@@ -2168,7 +2701,7 @@ Return type:
 
 # VideoStreamHeaderMetadata
 
-*class*torchcodec.decoders.VideoStreamHeaderMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, *media_type: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, *width: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *height: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_frames_from_header: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *average_fps_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *pixel_aspect_ratio: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *rotation: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_primaries: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_space: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_transfer_characteristic: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *pixel_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*)[[source]](../_modules/torchcodec/_core/_metadata.html#VideoStreamHeaderMetadata)
+*class*torchcodec.decoders.VideoStreamHeaderMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *time_base: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, *media_type: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, *width: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *height: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_frames_from_header: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *average_fps_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *pixel_aspect_ratio: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *rotation: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_primaries: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_space: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_transfer_characteristic: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *pixel_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*)[[source]](../_modules/torchcodec/_core/_metadata.html#VideoStreamHeaderMetadata)
 
 Metadata of a single video stream, as reported by the container header.
 
@@ -2265,6 +2798,17 @@ stream_index*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
 Index of the stream that this metadata refers to (int).
 
+time_base*: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+a
+[pts](../glossary.html#term-pts) of `n` means `n * time_base` seconds. That's the unit of
+the integer timestamps of the low-level APIs, like [`Packet.pts`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet.pts) and
+[`RawFrame.pts`](torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame.pts).
+
+Type:
+
+The unit of the stream's timestamps, in seconds (Fraction or None)
+
 width*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
 Width of the frames (int or None).
@@ -2273,7 +2817,7 @@ Width of the frames (int or None).
 
 # VideoStreamMetadata
 
-*class*torchcodec.decoders.VideoStreamMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, *media_type: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, *width: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *height: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_frames_from_header: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *average_fps_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *pixel_aspect_ratio: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *rotation: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_primaries: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_space: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_transfer_characteristic: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *pixel_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_content: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *end_stream_seconds_from_content: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_frames_from_content: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *end_stream_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_frames: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *average_fps: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*)[[source]](../_modules/torchcodec/_core/_metadata.html#VideoStreamMetadata)
+*class*torchcodec.decoders.VideoStreamMetadata(*duration_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *bit_rate: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *codec: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *time_base: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *stream_index: [int](https://docs.python.org/3/builtins/functions.html#int)*, *media_type: [str](https://docs.python.org/3/builtins/stdtypes.html#str)*, *width: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *height: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_frames_from_header: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *average_fps_from_header: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *pixel_aspect_ratio: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *rotation: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_primaries: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_space: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *color_transfer_characteristic: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *pixel_format: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds_from_content: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *end_stream_seconds_from_content: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_frames_from_content: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *duration_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *begin_stream_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *end_stream_seconds: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *num_frames: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*, *average_fps: [float](https://docs.python.org/3/builtins/functions.html#float) | [None](https://docs.python.org/3/builtins/constants.html#None)*)[[source]](../_modules/torchcodec/_core/_metadata.html#VideoStreamMetadata)
 
 Metadata of a single video stream.
 
@@ -2436,6 +2980,17 @@ compared to the raw encoded dimensions in the container.
 stream_index*: [int](https://docs.python.org/3/builtins/functions.html#int)*
 
 Index of the stream that this metadata refers to (int).
+
+time_base*: [Fraction](https://docs.python.org/3/library/fractions.html#fractions.Fraction) | [None](https://docs.python.org/3/builtins/constants.html#None)*
+
+a
+[pts](../glossary.html#term-pts) of `n` means `n * time_base` seconds. That's the unit of
+the integer timestamps of the low-level APIs, like [`Packet.pts`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet.pts) and
+[`RawFrame.pts`](torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame.pts).
+
+Type:
+
+The unit of the stream's timestamps, in seconds (Fraction or None)
 
 width*: [int](https://docs.python.org/3/builtins/functions.html#int) | [None](https://docs.python.org/3/builtins/constants.html#None)*
 
@@ -2756,6 +3311,9 @@ JPEG decoding, `num_threads` for AVIF), use the dedicated decoders
 directly: [`decode_jpeg()`](torchcodec.decoders.decode_jpeg.html#torchcodec.decoders.decode_jpeg), [`decode_png()`](torchcodec.decoders.decode_png.html#torchcodec.decoders.decode_png), [`decode_webp()`](torchcodec.decoders.decode_webp.html#torchcodec.decoders.decode_webp),
 [`decode_gif()`](torchcodec.decoders.decode_gif.html#torchcodec.decoders.decode_gif), [`decode_avif()`](torchcodec.decoders.decode_avif.html#torchcodec.decoders.decode_avif), [`decode_heic()`](torchcodec.decoders.decode_heic.html#torchcodec.decoders.decode_heic).
 
+To get the dimensions, number of frames, etc. of an image without decoding
+it, use [`get_image_metadata()`](torchcodec.decoders.get_image_metadata.html#torchcodec.decoders.get_image_metadata).
+
 Example
 
 ```
@@ -3047,6 +3605,14 @@ The image metadata.
 Return type:
 
 [ImageMetadata](torchcodec.decoders.ImageMetadata.html#torchcodec.decoders.ImageMetadata)
+
+Examples using `get_image_metadata`:
+
+![](../_images/sphx_glr_image_decoding_thumb.png)
+
+[Decoding images](../generated_examples/decoding/image_decoding.html)
+
+Decoding images
 
 ---
 
@@ -4313,14 +4879,14 @@ bench(VideoDecoder, source=long_video_path, seek_mode="approximate")
 
 ```
 Creating a VideoDecoder object with seek_mode='exact' on a short video:
-med = 6.44ms +- 0.02
+med = 6.45ms +- 0.02
 Creating a VideoDecoder object with seek_mode='approximate' on a short video:
-med = 5.70ms +- 0.02
+med = 5.72ms +- 0.02
 
 Creating a VideoDecoder object with seek_mode='exact' on a long video:
-med = 79.71ms +- 1.20
+med = 80.19ms +- 1.16
 Creating a VideoDecoder object with seek_mode='approximate' on a long video:
-med = 8.27ms +- 0.02
+med = 8.27ms +- 0.03
 ```
 
 ## Performance: frame decoding and clip sampling
@@ -4354,9 +4920,9 @@ bench(sample_clips, seek_mode="approximate")
 
 ```
 Sampling clips with seek_mode='exact':
-med = 209.13ms +- 35.02
+med = 206.35ms +- 28.44
 Sampling clips with seek_mode='approximate':
-med = 141.00ms +- 26.30
+med = 140.53ms +- 33.84
 ```
 
 ## Accuracy: Metadata and frame retrieval
@@ -4394,6 +4960,7 @@ VideoStreamMetadata:
  begin_stream_seconds_from_header: 0
  bit_rate: 505790
  codec: h264
+ time_base: 1/25
  stream_index: 0
  media_type: video
  width: 640
@@ -4421,6 +4988,7 @@ VideoStreamMetadata:
  begin_stream_seconds_from_header: 0
  bit_rate: 505790
  codec: h264
+ time_base: 1/25
  stream_index: 0
  media_type: video
  width: 640
@@ -4472,7 +5040,7 @@ is usually the case when doing clip sampling, consider using "approximate".
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (0 minutes 25.240 seconds)
+**Total running time of the script:** (0 minutes 25.028 seconds)
 
 [`Download Jupyter notebook: approximate_mode.ipynb`](../../_downloads/4bf13eb02a73a239a7e7af99b5c000a9/approximate_mode.ipynb)
 
@@ -4539,6 +5107,7 @@ AudioStreamMetadata:
  begin_stream_seconds_from_header: 0.02505668934240363
  bit_rate: 108039
  codec: mp3
+ time_base: 1/14112000
  stream_index: 0
  media_type: audio
  sample_rate: 44100
@@ -4641,7 +5210,7 @@ as [`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchc
 [TorchCodec Performance Tips and Best Practices](performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py) for more
 details.
 
-**Total running time of the script:** (0 minutes 0.906 seconds)
+**Total running time of the script:** (0 minutes 0.921 seconds)
 
 [`Download Jupyter notebook: audio_decoding.ipynb`](../../_downloads/f6b4925719fd3f116259f89a204c6888/audio_decoding.ipynb)
 
@@ -4685,9 +5254,9 @@ print(f"{torch.cuda.get_device_properties(0)=}")
 ```
 
 ```
-torch.__version__='2.16.0.dev20261102+cu130'
+torch.__version__='2.16.0.dev20261105+cu132'
 torch.cuda.is_available()=True
-torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=87934e45-8689-f2aa-6d07-19d36d80b793, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)
+torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=7d6dd170-3e71-ddc2-273c-b253bb50c193, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)
 ```
 
 ## Downloading the video
@@ -4710,7 +5279,7 @@ urllib.request.urlretrieve(
 ```
 
 ```
-('video.mp4', <http.client.HTTPMessage object at 0x7fec453e9590>)
+('video.mp4', <http.client.HTTPMessage object at 0x7fce5c3dced0>)
 ```
 
 ## CUDA Decoding using VideoDecoder
@@ -4820,7 +5389,7 @@ mean_abs_diff=tensor(0.6004, device='cuda:0')
 max_abs_diff=tensor(2., device='cuda:0')
 ```
 
-**Total running time of the script:** (0 minutes 4.727 seconds)
+**Total running time of the script:** (0 minutes 4.789 seconds)
 
 [`Download Jupyter notebook: basic_cuda_example.ipynb`](../../_downloads/0d9d7e92cb34559510d86a36f73e1e53/basic_cuda_example.ipynb)
 
@@ -4899,6 +5468,7 @@ VideoStreamMetadata:
  begin_stream_seconds_from_header: 0
  bit_rate: 505790
  codec: h264
+ time_base: 1/25
  stream_index: 0
  media_type: video
  width: 640
@@ -5082,7 +5652,7 @@ plot(other_frames.data, "Other frames")
 - ![Frame played at 2 seconds](../../_images/sphx_glr_basic_example_005.png)
 - ![Other frames](../../_images/sphx_glr_basic_example_006.png)
 
-**Total running time of the script:** (0 minutes 2.145 seconds)
+**Total running time of the script:** (0 minutes 2.132 seconds)
 
 [`Download Jupyter notebook: basic_example.ipynb`](../../_downloads/c8852e7e664672bdb64c6ba771a9bd30/basic_example.ipynb)
 
@@ -5199,10 +5769,10 @@ for frame in sample_data["frames"][:3]:
 
 ```
 Running ffprobe:
-ffprobe -i /tmp/tmp_nju2q32/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmp3l4nkbgb/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Running ffprobe:
-ffprobe -i /tmp/tmp_nju2q32/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmp3l4nkbgb/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Sample of fields in custom frame mappings:
 frame['key_frame'] = 1, frame['pts'] = 0, frame['duration'] = 1
@@ -5254,15 +5824,15 @@ for video_path, json_path in ((short_video_path, short_json_path), (long_video_p
 ```
 Running benchmarks on short_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 6.13ms +- 0.04
+med = 6.12ms +- 0.04
 Creating a VideoDecoder object with seek_mode='exact':
 med = 6.42ms +- 0.02
 
 Running benchmarks on long_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 25.35ms +- 0.10
+med = 25.32ms +- 0.08
 Creating a VideoDecoder object with seek_mode='exact':
-med = 43.37ms +- 0.66
+med = 43.68ms +- 0.59
 ```
 
 ## Performance: Frame decoding with custom frame mappings
@@ -5294,15 +5864,15 @@ for video_path, json_path in ((short_video_path, short_json_path), (long_video_p
 ```
 Running benchmarks on short_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 18.22ms +- 0.05
+med = 18.21ms +- 0.03
 Decoding frames with seek_mode='exact':
-med = 18.50ms +- 0.07
+med = 18.50ms +- 0.04
 
 Running benchmarks on long_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 37.51ms +- 0.08
+med = 37.30ms +- 0.09
 Decoding frames with seek_mode='exact':
-med = 55.86ms +- 0.48
+med = 55.44ms +- 0.44
 ```
 
 ## Accuracy: Metadata and frame retrieval
@@ -5336,6 +5906,7 @@ VideoStreamMetadata:
  begin_stream_seconds_from_header: 0
  bit_rate: 505790
  codec: h264
+ time_base: 1/25
  stream_index: 0
  media_type: video
  width: 640
@@ -5363,6 +5934,7 @@ VideoStreamMetadata:
  begin_stream_seconds_from_header: 0
  bit_rate: 505790
  codec: h264
+ time_base: 1/25
  stream_index: 0
  media_type: video
  width: 640
@@ -5403,7 +5975,7 @@ accuracy benefits.
 same videos are decoded repeatedly, and some preprocessing work can be done.
 - For exact frame seeking without preprocessing, use "exact" mode.
 
-**Total running time of the script:** (0 minutes 23.534 seconds)
+**Total running time of the script:** (0 minutes 23.489 seconds)
 
 [`Download Jupyter notebook: custom_frame_mappings.ipynb`](../../_downloads/515bb6477ed8fb530cccbe1b67ef6f0c/custom_frame_mappings.ipynb)
 
@@ -5488,6 +6060,7 @@ VideoStreamMetadata:
  begin_stream_seconds_from_header: 0
  bit_rate: 9958354
  codec: h264
+ time_base: 1/30000
  stream_index: 0
  media_type: video
  width: 1920
@@ -5568,13 +6141,13 @@ bench(direct_url_to_ffmpeg)
 
 ```
 Decode from existing download:
-med = 193.93ms +- 0.51
+med = 195.89ms +- 1.40
 
 Download before decode:
-med = 1064.45ms +- 75.46
+med = 996.24ms +- 71.16
 
 Direct url to FFmpeg:
-med = 247.35ms +- 13.32
+med = 236.64ms +- 6.37
 ```
 
 Decoding the already downloaded video is clearly the fastest. Having to
@@ -5609,7 +6182,7 @@ bench(stream_while_decode)
 
 ```
 Stream while decode:
-med = 211.12ms +- 1.52
+med = 211.30ms +- 1.68
 ```
 
 Streaming the data through a file-like object is much faster than
@@ -5735,10 +6308,10 @@ bench(decode_from_existing_open_file_object)
 
 ```
 Decode from existing file path:
-med = 193.33ms +- 0.37
+med = 194.21ms +- 0.71
 
 Decode from existing open file object:
-med = 193.51ms +- 0.30
+med = 194.28ms +- 0.17
 ```
 
 Thankfully, the answer is both means of decoding from a local file take about
@@ -5754,7 +6327,7 @@ import shutil
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (0 minutes 27.209 seconds)
+**Total running time of the script:** (0 minutes 26.335 seconds)
 
 [`Download Jupyter notebook: file_like.ipynb`](../../_downloads/f0caa5fce0f20da68647d009fb8dd8d0/file_like.ipynb)
 
@@ -5829,7 +6402,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc2=duration=2:size=320x180:rate=30', '-c:v', 'libx265', '-pix_fmt', 'yuv420p10le', '-x265-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited', '-preset', 'fast', '-crf', '23', '/tmp/tmpy1qp1rvx/hdr_video.mp4'], returncode=0, stdout=b'', stderr=b"ffmpeg version 7.1.1 Copyright (c) 2000-2025 the FFmpeg developers\n built with gcc 14.3.0 (conda-forge gcc 14.3.0-5)\n configuration: --prefix=/__w/_temp/conda_environment_41677834050 --cc=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-cc --cxx=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-c++ --nm=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-nm --ar=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-ar --disable-doc --enable-openssl --enable-demuxer=dash --enable-hardcoded-tables --enable-libfreetype --enable-libharfbuzz --enable-libfontconfig --enable-libopenh264 --enable-libdav1d --disable-gnutls --enable-libvpx --enable-libass --enable-pthreads --enable-alsa --enable-libpulse --enable-vaapi --enable-libvpl --enable-libopenvino --enable-gpl --enable-libx264 --enable-libx265 --enable-libmp3lame --enable-libaom --enable-libsvtav1 --enable-libxml2 --enable-pic --enable-shared --disable-static --enable-version3 --enable-zlib --enable-libvorbis --enable-libopus --enable-librsvg --enable-ffplay --pkg-config=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/pkg-config\n libavutil 59. 39.100 / 59. 39.100\n libavcodec 61. 19.101 / 61. 19.101\n libavformat 61. 7.100 / 61. 7.100\n libavdevice 61. 3.100 / 61. 3.100\n libavfilter 10. 4.100 / 10. 4.100\n libswscale 8. 3.100 / 8. 3.100\n libswresample 5. 3.100 / 5. 3.100\n libpostproc 58. 3.100 / 58. 3.100\nInput #0, lavfi, from 'testsrc2=duration=2:size=320x180:rate=30':\n Duration: N/A, start: 0.000000, bitrate: N/A\n Stream #0:0: Video: wrapped_avframe, yuv420p, 320x180 [SAR 1:1 DAR 16:9], 30 fps, 30 tbr, 30 tbn\nStream mapping:\n Stream #0:0 -> #0:0 (wrapped_avframe (native) -> hevc (libx265))\nPress [q] to stop, [?] for help\nx265 [info]: HEVC encoder version 3.5+1-f0c1022b6\nx265 [info]: build info [Linux][GCC 15.3.0][64 bit] 10bit\nx265 [info]: using cpu capabilities: MMX2 SSE2Fast LZCNT SSSE3 SSE4.2 AVX FMA3 BMI2 AVX2\nx265 [info]: Main 10 profile, Level-2 (Main tier)\nx265 [info]: Thread pool created using 16 threads\nx265 [info]: Slices : 1\nx265 [info]: frame threads / pool features : 4 / wpp(3 rows)\nx265 [warning]: Source height < 720p; disabling lookahead-slices\nx265 [info]: Coding QT: max CU size, min CU size : 64 / 8\nx265 [info]: Residual QT: max TU size, max depth : 32 / 1 inter / 1 intra\nx265 [info]: ME / range / subpel / merge : hex / 57 / 2 / 2\nx265 [info]: Keyframe min / max / scenecut / bias : 25 / 250 / 40 / 5.00 \nx265 [info]: Lookahead / bframes / badapt : 15 / 4 / 0\nx265 [info]: b-pyramid / weightp / weightb : 1 / 1 / 0\nx265 [info]: References / ref-limit cu / depth : 3 / on / on\nx265 [info]: AQ: mode / str / qg-size / cu-tree : 2 / 1.0 / 32 / 1\nx265 [info]: Rate Control / qCompress : CRF-23.0 / 0.60\nx265 [info]: tools: rd=2 psy-rd=2.00 rskip mode=1 signhide tmvp fast-intra\nx265 [info]: tools: strong-intra-smoothing deblock sao\nOutput #0, mp4, to '/tmp/tmpy1qp1rvx/hdr_video.mp4':\n Metadata:\n encoder : Lavf61.7.100\n Stream #0:0: Video: hevc (hev1 / 0x31766568), yuv420p10le(tv, progressive), 320x180 [SAR 1:1 DAR 16:9], q=2-31, 30 fps, 15360 tbn\n Metadata:\n encoder : Lavc61.19.101 libx265\n Side data:\n cpb: bitrate max/min/avg: 0/0/0 buffer size: 0 vbv_delay: N/A\n[out#0/mp4 @ 0x5574881e0980] video:67KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:2KiB muxing overhead: 5.737264%\nframe= 60 fps=0.0 q=30.9 Lsize= 71KiB time=00:00:01.93 bitrate= 300.9kbits/s speed=8.14x \nx265 [info]: frame I: 1, Avg QP:21.56 kb/s: 966.00 \nx265 [info]: frame P: 12, Avg QP:24.23 kb/s: 550.02 \nx265 [info]: frame B: 47, Avg QP:30.60 kb/s: 188.91 \nx265 [info]: Weighted P-Frames: Y:0.0% UV:0.0%\nx265 [info]: consecutive B-frames: 7.7% 0.0% 0.0% 7.7% 84.6% \n\nencoded 60 frames in 0.22s (273.68 fps), 274.08 kb/s, Avg QP:29.17\n")
+CompletedProcess(args=['ffmpeg', '-y', '-f', 'lavfi', '-i', 'testsrc2=duration=2:size=320x180:rate=30', '-c:v', 'libx265', '-pix_fmt', 'yuv420p10le', '-x265-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited', '-preset', 'fast', '-crf', '23', '/tmp/tmpp2ck9wrt/hdr_video.mp4'], returncode=0, stdout=b'', stderr=b"ffmpeg version 7.1.1 Copyright (c) 2000-2025 the FFmpeg developers\n built with gcc 14.3.0 (conda-forge gcc 14.3.0-5)\n configuration: --prefix=/__w/_temp/conda_environment_42199483325 --cc=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-cc --cxx=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-c++ --nm=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-nm --ar=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/x86_64-conda-linux-gnu-ar --disable-doc --enable-openssl --enable-demuxer=dash --enable-hardcoded-tables --enable-libfreetype --enable-libharfbuzz --enable-libfontconfig --enable-libopenh264 --enable-libdav1d --disable-gnutls --enable-libvpx --enable-libass --enable-pthreads --enable-alsa --enable-libpulse --enable-vaapi --enable-libvpl --enable-libopenvino --enable-gpl --enable-libx264 --enable-libx265 --enable-libmp3lame --enable-libaom --enable-libsvtav1 --enable-libxml2 --enable-pic --enable-shared --disable-static --enable-version3 --enable-zlib --enable-libvorbis --enable-libopus --enable-librsvg --enable-ffplay --pkg-config=/home/conda/feedstock_root/build_artifacts/ffmpeg_1758923917305/_build_env/bin/pkg-config\n libavutil 59. 39.100 / 59. 39.100\n libavcodec 61. 19.101 / 61. 19.101\n libavformat 61. 7.100 / 61. 7.100\n libavdevice 61. 3.100 / 61. 3.100\n libavfilter 10. 4.100 / 10. 4.100\n libswscale 8. 3.100 / 8. 3.100\n libswresample 5. 3.100 / 5. 3.100\n libpostproc 58. 3.100 / 58. 3.100\nInput #0, lavfi, from 'testsrc2=duration=2:size=320x180:rate=30':\n Duration: N/A, start: 0.000000, bitrate: N/A\n Stream #0:0: Video: wrapped_avframe, yuv420p, 320x180 [SAR 1:1 DAR 16:9], 30 fps, 30 tbr, 30 tbn\nStream mapping:\n Stream #0:0 -> #0:0 (wrapped_avframe (native) -> hevc (libx265))\nPress [q] to stop, [?] for help\nx265 [info]: HEVC encoder version 3.5+1-f0c1022b6\nx265 [info]: build info [Linux][GCC 15.3.0][64 bit] 10bit\nx265 [info]: using cpu capabilities: MMX2 SSE2Fast LZCNT SSSE3 SSE4.2 AVX FMA3 BMI2 AVX2\nx265 [info]: Main 10 profile, Level-2 (Main tier)\nx265 [info]: Thread pool created using 16 threads\nx265 [info]: Slices : 1\nx265 [info]: frame threads / pool features : 4 / wpp(3 rows)\nx265 [warning]: Source height < 720p; disabling lookahead-slices\nx265 [info]: Coding QT: max CU size, min CU size : 64 / 8\nx265 [info]: Residual QT: max TU size, max depth : 32 / 1 inter / 1 intra\nx265 [info]: ME / range / subpel / merge : hex / 57 / 2 / 2\nx265 [info]: Keyframe min / max / scenecut / bias : 25 / 250 / 40 / 5.00 \nx265 [info]: Lookahead / bframes / badapt : 15 / 4 / 0\nx265 [info]: b-pyramid / weightp / weightb : 1 / 1 / 0\nx265 [info]: References / ref-limit cu / depth : 3 / on / on\nx265 [info]: AQ: mode / str / qg-size / cu-tree : 2 / 1.0 / 32 / 1\nx265 [info]: Rate Control / qCompress : CRF-23.0 / 0.60\nx265 [info]: tools: rd=2 psy-rd=2.00 rskip mode=1 signhide tmvp fast-intra\nx265 [info]: tools: strong-intra-smoothing deblock sao\nOutput #0, mp4, to '/tmp/tmpp2ck9wrt/hdr_video.mp4':\n Metadata:\n encoder : Lavf61.7.100\n Stream #0:0: Video: hevc (hev1 / 0x31766568), yuv420p10le(tv, progressive), 320x180 [SAR 1:1 DAR 16:9], q=2-31, 30 fps, 15360 tbn\n Metadata:\n encoder : Lavc61.19.101 libx265\n Side data:\n cpb: bitrate max/min/avg: 0/0/0 buffer size: 0 vbv_delay: N/A\n[out#0/mp4 @ 0x55f75010f980] video:67KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:2KiB muxing overhead: 5.737264%\nframe= 60 fps=0.0 q=30.9 Lsize= 71KiB time=00:00:01.93 bitrate= 300.9kbits/s speed=8.24x \nx265 [info]: frame I: 1, Avg QP:21.56 kb/s: 966.00 \nx265 [info]: frame P: 12, Avg QP:24.23 kb/s: 550.02 \nx265 [info]: frame B: 47, Avg QP:30.60 kb/s: 188.91 \nx265 [info]: Weighted P-Frames: Y:0.0% UV:0.0%\nx265 [info]: consecutive B-frames: 7.7% 0.0% 0.0% 7.7% 84.6% \n\nencoded 60 frames in 0.22s (277.22 fps), 274.08 kb/s, Avg QP:29.17\n")
 ```
 
 ## Default behavior: `uint8` output
@@ -5975,7 +6548,7 @@ import shutil
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (0 minutes 0.435 seconds)
+**Total running time of the script:** (0 minutes 0.434 seconds)
 
 [`Download Jupyter notebook: hdr_decoding.ipynb`](../../_downloads/01dc406b3f53981468974c53f6e40c46/hdr_decoding.ipynb)
 
@@ -6069,6 +6642,32 @@ The decoded image is a [`torch.Tensor`](https://docs.pytorch.org/docs/stable/ten
 the number of channels, H the height and W the width. By default images are
 decoded as RGB (3 channels) with `torch.uint8` values.
 
+## Getting image metadata
+
+[`get_image_metadata()`](../../generated/torchcodec.decoders.get_image_metadata.html#torchcodec.decoders.get_image_metadata) returns the metadata of an
+image without decoding it: only the headers are parsed, so it's much faster
+than decoding. It accepts the same sources as
+[`decode_image()`](../../generated/torchcodec.decoders.decode_image.html#torchcodec.decoders.decode_image).
+
+```
+from torchcodec.decoders import get_image_metadata
+
+metadata = get_image_metadata(raw_image_bytes)
+print(metadata)
+```
+
+```
+ImageMetadata(format='jpeg', width=234, height=222, num_channels=3, bit_depth=8, num_frames=1, rotation=None)
+```
+
+All the fields describe what the decoders return. `width` and `height` are
+the dimensions of the decoded image, i.e. after the orientation metadata is
+applied. `num_channels` is the number of channels you get with
+`mode="UNCHANGED"`, `num_frames` is the size of the `N` dimension for
+animated images, and a `bit_depth` above 8 means that
+`output_dtype="auto"` returns a `torch.uint16` tensor. See
+[`ImageMetadata`](../../generated/torchcodec.decoders.ImageMetadata.html#torchcodec.decoders.ImageMetadata) for details.
+
 ## Choosing the color mode
 
 The `mode` parameter controls the number and meaning of the output channels.
@@ -6112,7 +6711,8 @@ extra precision when you pass `torch.uint16` or `"auto"`.
 
 GIF, WebP and AVIF can hold a *sequence* of frames (an animation). In that
 case [`decode_gif()`](../../generated/torchcodec.decoders.decode_gif.html#torchcodec.decoders.decode_gif),
-`decode_avif()`, and
+[`decode_webp()`](../../generated/torchcodec.decoders.decode_webp.html#torchcodec.decoders.decode_webp),
+[`decode_avif()`](../../generated/torchcodec.decoders.decode_avif.html#torchcodec.decoders.decode_avif), and
 [`decode_heic()`](../../generated/torchcodec.decoders.decode_heic.html#torchcodec.decoders.decode_heic) return an `(N, C, H, W)` tensor,
 with one frame per animation frame, instead of the `(C, H, W)` you get for a
 still image.
@@ -6134,7 +6734,7 @@ image = decode_jpeg(raw_image_bytes, device="cuda")
 images = decode_jpeg([img_0, img_1, img_2], device="cuda")
 ```
 
-**Total running time of the script:** (0 minutes 0.174 seconds)
+**Total running time of the script:** (0 minutes 0.124 seconds)
 
 [`Download Jupyter notebook: image_decoding.ipynb`](../../_downloads/f5cba4a26e1c617bc387e9f05406c8f2/image_decoding.ipynb)
 
@@ -6372,7 +6972,7 @@ sequential_time = report_stats(times, unit="s")
 ```
 
 ```
-median = 10.70s ± 0.06
+median = 10.67s ± 0.06
 ```
 
 ## Method 2: FFmpeg-based parallelism
@@ -6400,8 +7000,8 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} FFmpeg th
 ```
 
 ```
-median = 3.67s ± 0.06
-Speedup compared to sequential: 2.92x with 16 FFmpeg threads.
+median = 3.68s ± 0.06
+Speedup compared to sequential: 2.90x with 16 FFmpeg threads.
 ```
 
 ## Method 3: multiprocessing
@@ -6431,7 +7031,7 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} processes
 ```
 
 ```
-median = 4.33s ± 0.07
+median = 4.32s ± 0.07
 Speedup compared to sequential: 2.47x with 16 processes.
 ```
 
@@ -6463,8 +7063,8 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} threads."
 ```
 
 ```
-median = 1.45s ± 0.06
-Speedup compared to sequential: 7.40x with 16 threads.
+median = 1.43s ± 0.05
+Speedup compared to sequential: 7.46x with 16 threads.
 ```
 
 ## Validation and correctness check
@@ -6487,7 +7087,7 @@ import shutil
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (1 minutes 25.385 seconds)
+**Total running time of the script:** (1 minutes 25.252 seconds)
 
 [`Download Jupyter notebook: parallel_decoding.ipynb`](../../_downloads/1cff79ade5aa64baf192aceab5e06959/parallel_decoding.ipynb)
 
@@ -7055,7 +7655,7 @@ default value ensures that clips start early enough before the end. This means
 that by default, the policy parameter rarely comes into action, and most users
 probably don't need to worry too much about it.
 
-**Total running time of the script:** (0 minutes 0.532 seconds)
+**Total running time of the script:** (0 minutes 0.420 seconds)
 
 [`Download Jupyter notebook: sampling.ipynb`](../../_downloads/98c8aa10d85bcd2ddc4f4456ad29dcbe/sampling.ipynb)
 
@@ -7069,21 +7669,21 @@ probably don't need to worry too much about it.
 
 # Computation times
 
-**05:10.847** total execution time for 12 files **from generated_examples/decoding**:
+**05:09.166** total execution time for 12 files **from generated_examples/decoding**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Decoder Transforms: Applying transforms during decoding](transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`transforms.py`) | 02:20.560 | 0.0 |
-| [Parallel video decoding: multi-processing and multi-threading](parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`parallel_decoding.py`) | 01:25.385 | 0.0 |
-| [Streaming data through file-like support](file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`file_like.py`) | 00:27.209 | 0.0 |
-| [Exact vs Approximate seek mode: Performance and accuracy comparison](approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`approximate_mode.py`) | 00:25.240 | 0.0 |
-| [Decoding with custom frame mappings](custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`custom_frame_mappings.py`) | 00:23.534 | 0.0 |
-| [Accelerated video decoding on GPUs with CUDA and NVDEC](basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`basic_cuda_example.py`) | 00:04.727 | 0.0 |
-| [Decoding a video with VideoDecoder](basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`basic_example.py`) | 00:02.145 | 0.0 |
-| [Decoding audio streams with AudioDecoder](audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`audio_decoding.py`) | 00:00.906 | 0.0 |
-| [How to sample video clips](sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`sampling.py`) | 00:00.532 | 0.0 |
-| [Decoding HDR videos](hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py) (`hdr_decoding.py`) | 00:00.435 | 0.0 |
-| [Decoding images](image_decoding.html#sphx-glr-generated-examples-decoding-image-decoding-py) (`image_decoding.py`) | 00:00.174 | 0.0 |
+| [Decoder Transforms: Applying transforms during decoding](transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`transforms.py`) | 02:20.240 | 0.0 |
+| [Parallel video decoding: multi-processing and multi-threading](parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`parallel_decoding.py`) | 01:25.252 | 0.0 |
+| [Streaming data through file-like support](file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`file_like.py`) | 00:26.335 | 0.0 |
+| [Exact vs Approximate seek mode: Performance and accuracy comparison](approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`approximate_mode.py`) | 00:25.028 | 0.0 |
+| [Decoding with custom frame mappings](custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`custom_frame_mappings.py`) | 00:23.489 | 0.0 |
+| [Accelerated video decoding on GPUs with CUDA and NVDEC](basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`basic_cuda_example.py`) | 00:04.789 | 0.0 |
+| [Decoding a video with VideoDecoder](basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`basic_example.py`) | 00:02.132 | 0.0 |
+| [Decoding audio streams with AudioDecoder](audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`audio_decoding.py`) | 00:00.921 | 0.0 |
+| [Decoding HDR videos](hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py) (`hdr_decoding.py`) | 00:00.434 | 0.0 |
+| [How to sample video clips](sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`sampling.py`) | 00:00.420 | 0.0 |
+| [Decoding images](image_decoding.html#sphx-glr-generated-examples-decoding-image-decoding-py) (`image_decoding.py`) | 00:00.124 | 0.0 |
 | [TorchCodec Performance Tips and Best Practices](performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py) (`performance_tips.py`) | 00:00.000 | 0.0 |
 
 ---
@@ -7161,6 +7761,7 @@ Penguin video metadata: VideoStreamMetadata:
  begin_stream_seconds_from_header: 0
  bit_rate: 24879454
  codec: h264
+ time_base: 1/25
  stream_index: 0
  media_type: video
  width: 3840
@@ -7425,8 +8026,8 @@ print(f"torchvision transform: {bench(sample_torchvision_transforms, num_threads
 ```
 
 ```
-decoder transforms: times_med = 1946.55ms +- 13.11
-torchvision transform: times_med = 4056.87ms +- 140.03
+decoder transforms: times_med = 1931.44ms +- 8.23
+torchvision transform: times_med = 4057.39ms +- 21.07
 ```
 
 The reason is that FFmpeg is applying the decoder transforms in parallel.
@@ -7440,8 +8041,8 @@ print(f"torchvision transform: {bench(sample_torchvision_transforms, num_threads
 ```
 
 ```
-decoder transforms: times_med = 10658.58ms +- 8.53
-torchvision transform: times_med = 12442.95ms +- 24.34
+decoder transforms: times_med = 10723.01ms +- 12.56
+torchvision transform: times_med = 12450.31ms +- 15.13
 ```
 
 In brief, our performance guidance is:
@@ -7458,7 +8059,7 @@ In brief, our performance guidance is:
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (2 minutes 20.560 seconds)
+**Total running time of the script:** (2 minutes 20.240 seconds)
 
 [`Download Jupyter notebook: transforms.ipynb`](../../_downloads/f189e474be55fc74900ac94fda37f6f0/transforms.ipynb)
 
@@ -7762,7 +8363,7 @@ PNG encoding is CPU-only.
 Check the docstrings of the encoding methods to learn about the different
 encoding options.
 
-**Total running time of the script:** (0 minutes 0.214 seconds)
+**Total running time of the script:** (0 minutes 0.167 seconds)
 
 [`Download Jupyter notebook: image_encoding.ipynb`](../../_downloads/071d0183e16c5e6ef85b625a2f126867/image_encoding.ipynb)
 
@@ -7870,7 +8471,7 @@ print(f"Output size: {Path(output_path).stat().st_size} bytes")
 ```
 
 ```
-Encoded video + audio to /tmp/tmpuylnwhlz.mp4
+Encoded video + audio to /tmp/tmpodjzmyrv.mp4
 Output size: 2526674 bytes
 ```
 
@@ -7933,7 +8534,7 @@ print(f"Output size: {Path(chunk_output).stat().st_size} bytes")
 ```
 
 ```
-Incrementally encoded to /tmp/tmp_kf9wsz7.mp4
+Incrementally encoded to /tmp/tmpd4yjdyki.mp4
 Output size: 2527045 bytes
 ```
 
@@ -8009,7 +8610,7 @@ bytes_tensor = torch.frombuffer(encoded_bytes, dtype=torch.uint8)
 Encoded to BytesIO, size: 2526674 bytes
 ```
 
-**Total running time of the script:** (0 minutes 5.630 seconds)
+**Total running time of the script:** (0 minutes 6.326 seconds)
 
 [`Download Jupyter notebook: multi_stream_encoding.ipynb`](../../_downloads/ccd7596cf7d161af13c32c87cfc7f878/multi_stream_encoding.ipynb)
 
@@ -8023,13 +8624,13 @@ Encoded to BytesIO, size: 2526674 bytes
 
 # Computation times
 
-**00:30.774** total execution time for 4 files **from generated_examples/encoding**:
+**00:32.829** total execution time for 4 files **from generated_examples/encoding**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Encoding video with the Encoder](video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`video_encoding.py`) | 00:24.901 | 0.0 |
-| [Encoding audio and video streams with the Encoder](multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`multi_stream_encoding.py`) | 00:05.630 | 0.0 |
-| [Encoding images](image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py) (`image_encoding.py`) | 00:00.214 | 0.0 |
+| [Encoding video with the Encoder](video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`video_encoding.py`) | 00:26.307 | 0.0 |
+| [Encoding audio and video streams with the Encoder](multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`multi_stream_encoding.py`) | 00:06.326 | 0.0 |
+| [Encoding images](image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py) (`image_encoding.py`) | 00:00.167 | 0.0 |
 | [Encoding audio samples with AudioEncoder](audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py) (`audio_encoding.py`) | 00:00.029 | 0.0 |
 
 ---
@@ -8122,7 +8723,7 @@ print(f"Encoded to {output_path}, size: {Path(output_path).stat().st_size} bytes
 ```
 frames.shape = torch.Size([60, 3, 1080, 1920]), frames.dtype = torch.uint8
 frame_rate = 24 fps
-Encoded to /tmp/tmp4ocdq5dq.mp4, size: 2509386 bytes
+Encoded to /tmp/tmpvirkz542.mp4, size: 2509386 bytes
 ```
 
 Now that we have encoded data, let's decode it back to verify the
@@ -8399,7 +9000,7 @@ with encoder.open_file(custom_output):
  vs.add_frames(frames)
 ```
 
-**Total running time of the script:** (0 minutes 24.901 seconds)
+**Total running time of the script:** (0 minutes 26.307 seconds)
 
 [`Download Jupyter notebook: video_encoding.ipynb`](../../_downloads/e8868f804bffbeae56ed6b335353e809/video_encoding.ipynb)
 
@@ -8493,6 +9094,11 @@ Multi-threaded decoding pipelines
 [Raw frames and raw audio samples](low_level/raw_data.html)
 
 Raw frames and raw audio samples
+![](../_images/sphx_glr_demuxer_free_thumb.jpg)
+
+[Decoding packets that don't come from a Demuxer](low_level/demuxer_free.html)
+
+Decoding packets that don't come from a Demuxer
 ![](../_images/sphx_glr_cuda_streams_thumb.jpg)
 
 [Low-level APIs and CUDA streams synchronization](low_level/cuda_streams.html)
@@ -8553,9 +9159,10 @@ never ends.
 For simple end-to-end decoding, [`VideoDecoder`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) and
 [`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) are often all you need: they
 handle demuxing, decoding and conversion for you, in a single call. But that
-means you don't control these stages: you can't run them on different threads,
-stop before the conversion, or decode several streams in a single pass. The
-low-level APIs expose those three stages separately, one chain per media type:
+means you don't control these stages: you can't run them on different threads
+or processes, stop before the conversion, or decode several streams in a single
+pass. The low-level APIs expose those three stages separately, one chain per
+media type:
 
 ```
 Demuxer -> VideoPacketDecoder -> ColorConverter
@@ -8569,6 +9176,12 @@ This unlocks features that the high-level decoders don't offer:
 
 - **Performance gains via multi-threaded pipelines**: demux, decode and color-convert on separate
 threads. Each stage releases the GIL. ([tutorial](pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py)).
+- **Multi-process pipelines**: packets and codec parameters can be pickled, so
+the demuxing and the decoding can happen in different processes
+([tutorial](pipelines.html#low-level-across-processes)).
+- **Decoding without a Demuxer**: decode packets that come from elsewhere,
+e.g. a database, the network, or your own container parser
+([tutorial](demuxer_free.html#sphx-glr-generated-examples-low-level-demuxer-free-py)).
 - **Access raw YUV data, for SDR and HDR sources**: read the decoder's own planes, with no
 conversion and no copy, at the source's own precision. 10-bit HDR comes out
 as `uint16` with every bit intact. You also get access to the raw audio samples.
@@ -8613,7 +9226,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpuw6cfn65/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmps6aj1y55/video.mp4'], returncode=0)
 ```
 
 ## The three stages
@@ -8624,11 +9237,11 @@ Here is a complete video pipeline, which is equivalent to
 [`VideoDecoder.get_all_frames()`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_all_frames)
 
 ```
-from torchcodec.decoders import ColorConverter, Demuxer
+from torchcodec.decoders import ColorConverter, Demuxer, VideoPacketDecoder
 
 demuxer = Demuxer(video_path)
 (video_stream,) = demuxer.streams
-packet_decoder = video_stream.make_decoder(device=device)
+packet_decoder = VideoPacketDecoder(video_stream.codec_parameters, device=device)
 color_converter = ColorConverter(device=device)
 
 def decode_frames(demuxer, packet_decoder, color_converter):
@@ -8649,12 +9262,13 @@ print(f"{len(frames)} frames, {frames[0].data.shape = }, "
 
 We create a [`Demuxer`](../../generated/torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer) over the file
 and let it follow the default video stream, which comes back as a
-[`VideoStream`](../../generated/torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream). From that stream we build a [`VideoPacketDecoder`](../../generated/torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder),
-which decodes the demuxer's [`Packet`](../../generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet) objects into [`RawFrame`](../../generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame)
-objects. A [`RawFrame`](../../generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame) typically contains raw YUV data that you can
-access: see [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-low-level-raw-data-py) for more
-details. Finally, a [`ColorConverter`](../../generated/torchcodec.decoders.ColorConverter.html#torchcodec.decoders.ColorConverter) turns
-each of those into an RGB [`Frame`](../../generated/torchcodec.Frame.html#torchcodec.Frame), the same object a
+[`VideoStream`](../../generated/torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream). From that stream's codec parameters, we build a
+[`VideoPacketDecoder`](../../generated/torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder), which decodes the demuxer's [`Packet`](../../generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet)
+objects into [`RawFrame`](../../generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame) objects. A [`RawFrame`](../../generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame) typically
+contains raw YUV data that you can access: see
+[Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-low-level-raw-data-py) for more details.
+Finally, a [`ColorConverter`](../../generated/torchcodec.decoders.ColorConverter.html#torchcodec.decoders.ColorConverter) turns each of those into an RGB
+[`Frame`](../../generated/torchcodec.Frame.html#torchcodec.Frame), the same object a
 [`VideoDecoder`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) would have handed you.
 
 Importantly, [`VideoPacketDecoder.decode()`](../../generated/torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder.decode) returns a list of
@@ -8665,7 +9279,7 @@ you must iterate over it. For the same reason, you must call
 [`drain()`](../../generated/torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder.drain) at the end to retrieve any remaining frames
 that the decoder may be holding.
 
-Both [`VideoStream.make_decoder()`](../../generated/torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.make_decoder) and [`ColorConverter`](../../generated/torchcodec.decoders.ColorConverter.html#torchcodec.decoders.ColorConverter) accept a
+Both [`VideoPacketDecoder`](../../generated/torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder) and [`ColorConverter`](../../generated/torchcodec.decoders.ColorConverter.html#torchcodec.decoders.ColorConverter) accept a
 `device` parameter so you can run them on CPU or CUDA (they must match!),
 and the demuxing stage is always CPU only.
 
@@ -8675,7 +9289,7 @@ Audio decoding has the same three stages. The following pipeline is equivalent
 to [`AudioDecoder.get_all_samples()`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder.get_all_samples):
 
 ```
-from torchcodec.decoders import AudioConverter
+from torchcodec.decoders import AudioConverter, AudioPacketDecoder
 
 audio_path = temp_dir / "audio.wav"
 subprocess.run(
@@ -8688,7 +9302,7 @@ subprocess.run(
 )
 
 demuxer = Demuxer(audio_path, streams="audio")
-packet_decoder = demuxer.streams[0].make_decoder()
+packet_decoder = AudioPacketDecoder(demuxer.streams[0].codec_parameters)
 audio_converter = AudioConverter(sample_rate=16_000, num_channels=1)
 
 samples = []
@@ -8706,8 +9320,8 @@ print(f"{data.shape = }, {data.dtype = }, "
 data.shape = torch.Size([1, 80000]), data.dtype = torch.float32, 16 samples came out of drain()
 ```
 
-An [`AudioStream`](../../generated/torchcodec.decoders.AudioStream.html#torchcodec.decoders.AudioStream) builds an [`AudioPacketDecoder`](../../generated/torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder), which decodes
-[`Packet`](../../generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet) objects into [`RawAudioSamples`](../../generated/torchcodec.decoders.RawAudioSamples.html#torchcodec.decoders.RawAudioSamples): the codec's own
+The [`AudioPacketDecoder`](../../generated/torchcodec.decoders.AudioPacketDecoder.html#torchcodec.decoders.AudioPacketDecoder), built from the stream's codec parameters,
+decodes [`Packet`](../../generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet) objects into [`RawAudioSamples`](../../generated/torchcodec.decoders.RawAudioSamples.html#torchcodec.decoders.RawAudioSamples): the codec's own
 samples, in the codec's own sample type, as a `[num_channels, num_samples]`
 tensor. Those are the true source samples - 16-bit integers for the file
 above, not floats in `[-1, 1]`. [`AudioConverter`](../../generated/torchcodec.decoders.AudioConverter.html#torchcodec.decoders.AudioConverter) is what normalizes
@@ -8742,7 +9356,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpuw6cfn65/video.mp4', '-i', '/tmp/tmpuw6cfn65/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpuw6cfn65/av.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmps6aj1y55/video.mp4', '-i', '/tmp/tmps6aj1y55/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmps6aj1y55/av.mp4'], returncode=0)
 ```
 
 Which streams to follow is specified at construction time of the
@@ -8751,15 +9365,17 @@ or a tuple of them: `"video"` or `"audio"` for the [best stream](../../glossary.
 that type, an `int` for a stream index - which is how you reach the second
 video stream, or the fourth audio track - or `"all"` on its own for every
 audio and video stream in the file. `demuxer.streams` comes back in the
-order you asked for, and each of them builds its own decoder.
+order you asked for, and each of them needs its own decoder.
 
 ```
 demuxer = Demuxer(av_path, streams=("video", "audio"))
 video_stream, audio_stream = demuxer.streams
 
 decoders = {
- video_stream.index: video_stream.make_decoder(device=device),
- audio_stream.index: audio_stream.make_decoder(),
+ video_stream.index: VideoPacketDecoder(
+ video_stream.codec_parameters, device=device
+ ),
+ audio_stream.index: AudioPacketDecoder(audio_stream.codec_parameters),
 }
 color_converter = ColorConverter(device=device)
 audio_converter = AudioConverter()
@@ -8807,7 +9423,9 @@ whose resampler carries state across calls just the same.
 
 ```
 demuxer = Demuxer(video_path)
-packet_decoder = demuxer.streams[0].make_decoder(device=device)
+packet_decoder = VideoPacketDecoder(
+ demuxer.streams[0].codec_parameters, device=device
+)
 color_converter = ColorConverter(device=device)
 
 seconds = 2.5
@@ -8860,7 +9478,7 @@ read from the demuxer.
 demuxer = Demuxer(video_path)
 (video_stream,) = demuxer.streams
 index = video_stream.scan()
-packet_decoder = video_stream.make_decoder(device=device)
+packet_decoder = VideoPacketDecoder(video_stream.codec_parameters, device=device)
 color_converter = ColorConverter(device=device)
 
 print(f"{index.num_frames_from_content} frames at "
@@ -9082,7 +9700,9 @@ ffmpeg = subprocess.Popen(
 )
 
 demuxer = Demuxer(fifo_path)
-packet_decoder = demuxer.streams[0].make_decoder(device=device)
+packet_decoder = VideoPacketDecoder(
+ demuxer.streams[0].codec_parameters, device=device
+)
 color_converter = ColorConverter(device=device)
 
 frames = []
@@ -9116,7 +9736,7 @@ own precision.
 manage CUDA streams when you consume a [`RawFrame`](../../generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame) on a different CUDA
 stream than the one it was decoded on.
 
-**Total running time of the script:** (0 minutes 1.530 seconds)
+**Total running time of the script:** (0 minutes 1.549 seconds)
 
 [`Download Jupyter notebook: basics.ipynb`](../../_downloads/6982b776b242e8d98bf3991f1eabc245/basics.ipynb)
 
@@ -9161,7 +9781,7 @@ from pathlib import Path
 
 import torch
 
-from torchcodec.decoders import ColorConverter, Demuxer
+from torchcodec.decoders import ColorConverter, Demuxer, VideoPacketDecoder
 
 video_path = Path(tempfile.mkdtemp()) / "video.mp4"
 subprocess.run(
@@ -9179,7 +9799,9 @@ convert_stream = torch.cuda.Stream()
 
 def make_stages():
  demuxer = Demuxer(video_path)
- packet_decoder = demuxer.streams[0].make_decoder(device="cuda")
+ packet_decoder = VideoPacketDecoder(
+ demuxer.streams[0].codec_parameters, device="cuda"
+ )
  return demuxer, packet_decoder, ColorConverter(device="cuda")
 ```
 
@@ -9330,13 +9952,189 @@ print(f"Option 2: {len(frames)} frames, {frames[0].data.shape = }")
 Option 2: 60 frames, frames[0].data.shape = torch.Size([3, 720, 1280])
 ```
 
-**Total running time of the script:** (0 minutes 0.446 seconds)
+**Total running time of the script:** (0 minutes 0.451 seconds)
 
 [`Download Jupyter notebook: cuda_streams.ipynb`](../../_downloads/7aeb5a6bda96251b470424d6612d4f8b/cuda_streams.ipynb)
 
 [`Download Python source code: cuda_streams.py`](../../_downloads/ab55f67015aceb487036d64d7d04827f/cuda_streams.py)
 
 [`Download zipped: cuda_streams.zip`](../../_downloads/f49be4282787169735dc8557d7bffc6d/cuda_streams.zip)
+
+[Gallery generated by Sphinx-Gallery](https://sphinx-gallery.github.io)
+
+---
+
+# Decoding packets that don't come from a Demuxer
+
+Important
+
+**The low-level APIs are in beta.** Their signatures and semantics may still
+change slightly, in response to user feedback. Please [share your feedback](https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue)!
+
+Sometimes, you don't have a file to demux. Maybe your packets were demuxed
+ahead of time and stored in a database, maybe they arrive over the network, or
+maybe they come from a container format that TorchCodec can't read. You can
+still decode them: a [`VideoPacketDecoder`](../../generated/torchcodec.decoders.VideoPacketDecoder.html#torchcodec.decoders.VideoPacketDecoder) doesn't need a
+[`Demuxer`](../../generated/torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer). All it needs are the [`VideoCodecParameters`](../../generated/torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters) of the
+stream, and [`Packet`](../../generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet) objects, which you can build from the compressed
+data yourself.
+
+In this tutorial, we'll decode packets that an earlier job demuxed and stored,
+without the original file.
+
+Some boilerplate first: a test video, and the device we'll run on.
+
+```
+import subprocess
+import tempfile
+from pathlib import Path
+
+import torch
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"{device = }")
+
+temp_dir = Path(tempfile.mkdtemp())
+video_path = temp_dir / "video.mp4"
+subprocess.run(
+ [
+ "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+ "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=3",
+ "-c:v", "libx264", "-pix_fmt", "yuv420p", "-g", "30", "-bf", "2",
+ str(video_path),
+ ],
+ check=True,
+)
+```
+
+```
+device = 'cuda'
+
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-bf', '2', '/tmp/tmpdae50gr5/video.mp4'], returncode=0)
+```
+
+## Storing the packets
+
+Let's play the earlier job: it demuxes the video and stores, for each packet,
+its data, its [pts](../../glossary.html#term-pts) and its flags, which is the data we'll later need to
+reconstruct such Packets. It also stores the values a decoder needs about the
+stream, which we'll look at below.
+
+```
+from torchcodec.decoders import Demuxer
+
+demuxer = Demuxer(video_path)
+stream = demuxer.streams[0]
+rows = [(bytes(packet.data.numpy()), packet.pts, packet.flags) for packet in demuxer]
+stream_info = {
+ "codec": stream.codec_parameters.codec,
+ "time_base": stream.codec_parameters.time_base,
+ "extradata": stream.codec_parameters.extradata,
+ "width": stream.codec_parameters.width,
+ "height": stream.codec_parameters.height,
+ "pixel_format": stream.codec_parameters.pixel_format,
+ "r_frame_rate": stream.codec_parameters.r_frame_rate,
+}
+print(f"{len(rows)} packets stored")
+```
+
+```
+90 packets stored
+```
+
+From here on, there's no [`Demuxer`](../../generated/torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer) and no file: only `rows` and
+`stream_info`, which play the role of our database.
+
+```
+del demuxer, stream
+```
+
+## Codec parameters
+
+A decoder needs to know about the stream it decodes: its codec, the unit of
+the packets' timestamps, and some codec-specific values. That's what
+[`VideoCodecParameters`](../../generated/torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters) holds. Here, we build them from the stored
+values:
+
+```
+from torchcodec.decoders import VideoCodecParameters
+
+codec_parameters = VideoCodecParameters(
+ stream_info["codec"],
+ time_base=stream_info["time_base"],
+ extradata=stream_info["extradata"],
+ width=stream_info["width"],
+ height=stream_info["height"],
+ pixel_format=stream_info["pixel_format"],
+ r_frame_rate=stream_info["r_frame_rate"],
+)
+print(codec_parameters)
+```
+
+```
+VideoCodecParameters(codec='h264', time_base=Fraction(1, 15360), extradata=<47 bytes>, width=640, height=360, pixel_format='yuv420p', r_frame_rate=Fraction(30, 1))
+```
+
+Which fields you need depends on the codec. For H.264 in MP4, the decoder
+needs the `extradata`: it's where MP4 stores the codec's setup data,
+outside of the packets. To decode on CUDA, `width`, `height` and
+`pixel_format` are needed too, and `r_frame_rate` gives the frames their
+durations. To find out what to set for your own packets, print the codec
+parameters a [`Demuxer`](../../generated/torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer) reports for a similar file:
+`print(Demuxer(path).streams[0].codec_parameters)`.
+
+Note
+
+If the packets are demuxed with TorchCodec in the first place, as above,
+it's simpler and safer to store the whole [`VideoCodecParameters`](../../generated/torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters)
+object, e.g. pickled, rather than a few of its fields: it holds everything
+the decoder may need, including fields you wouldn't think of.
+
+## Decoding the packets
+
+[`Packet.from_bytes()`](../../generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet.from_bytes) builds a packet from its data, and
+[`Packet.from_tensor()`](../../generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet.from_tensor) does the same from a 1D uint8 tensor. Only the data
+is required, but the pts is what gives the decoded frames their timestamps.
+**Unlike in most TorchCodec APIs, timestamps are integers**, in units of the
+stream's time base. The rest is the usual decoding loop:
+
+```
+from torchcodec.decoders import ColorConverter, Packet, VideoPacketDecoder
+
+packets = [Packet.from_bytes(data, pts=pts, flags=flags) for data, pts, flags in rows]
+
+packet_decoder = VideoPacketDecoder(codec_parameters, device=device)
+color_converter = ColorConverter(device=device)
+
+frames = []
+for packet in packets:
+ frames += [color_converter.convert(f) for f in packet_decoder.decode(packet)]
+frames += [color_converter.convert(f) for f in packet_decoder.drain()]
+print(f"{len(frames)} frames, {frames[0].data.shape = }, {frames[0].data.device = }")
+```
+
+```
+90 frames, frames[0].data.shape = torch.Size([3, 360, 640]), frames[0].data.device = device(type='cuda', index=0)
+```
+
+## Matching frames to packets
+
+The frames don't come out of the decoder in the order the packets went in.
+But [`RawFrame.pts`](../../generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame.pts) is the pts of the packet the frame was decoded from,
+and both are integers: a frame can be matched exactly to its packet, e.g. to
+look up what you stored along with it.
+
+The codec parameters and the packets can also be pickled, e.g. to demux in
+one process and decode in another: see the last section of
+[Multi-threaded decoding pipelines](pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py).
+
+**Total running time of the script:** (0 minutes 0.291 seconds)
+
+[`Download Jupyter notebook: demuxer_free.ipynb`](../../_downloads/f205b88185dfa081992474f3aa491086/demuxer_free.ipynb)
+
+[`Download Python source code: demuxer_free.py`](../../_downloads/4ae8436389a2ee9b02a8bec142e829e3/demuxer_free.py)
+
+[`Download zipped: demuxer_free.zip`](../../_downloads/96fed78b9161537ee9aa98f668ea9974/demuxer_free.zip)
 
 [Gallery generated by Sphinx-Gallery](https://sphinx-gallery.github.io)
 
@@ -9359,6 +10157,11 @@ Multi-threaded decoding pipelines
 [Raw frames and raw audio samples](raw_data.html)
 
 Raw frames and raw audio samples
+![](../../_images/sphx_glr_demuxer_free_thumb.jpg)
+
+[Decoding packets that don't come from a Demuxer](demuxer_free.html)
+
+Decoding packets that don't come from a Demuxer
 ![](../../_images/sphx_glr_cuda_streams_thumb.jpg)
 
 [Low-level APIs and CUDA streams synchronization](cuda_streams.html)
@@ -9379,11 +10182,10 @@ own: running demuxing, decoding and color-conversion concurrently on several
 threads, choosing where to split them. Each of these steps individually release
 the GIL.
 
-Important
+Note
 
-These objects can cross threads, but not processes, so multi-processing
-is currently not supported. But it *can* be: if that's something you need,
-please open an issue.
+The demuxing and the decoding can also happen in different processes: see
+the last section.
 
 Note
 
@@ -9422,7 +10224,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp7nm1da_4/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp281ym07i/video.mp4'], returncode=0)
 ```
 
 ## One stage, one generator
@@ -9439,7 +10241,7 @@ concurrently, and since the stages release the GIL, that's real parallelism.
 import queue
 import threading
 
-from torchcodec.decoders import ColorConverter, Demuxer
+from torchcodec.decoders import ColorConverter, Demuxer, VideoPacketDecoder
 
 def demux(demuxer):
  yield from demuxer
@@ -9482,14 +10284,18 @@ boundary is moving one `prefetch()` call.
 def sequential(device):
  # demux -> decode -> color-convert, all on the calling thread.
  demuxer = Demuxer(video_path)
- packet_decoder = demuxer.streams[0].make_decoder(device=device)
+ packet_decoder = VideoPacketDecoder(
+ demuxer.streams[0].codec_parameters, device=device
+ )
  color_converter = ColorConverter(device=device)
  return color_convert(color_converter, decode(packet_decoder, demux(demuxer)))
 
 def convert_on_own_thread(device):
  # [demux + decode] on one thread || [color-convert] on another.
  demuxer = Demuxer(video_path)
- packet_decoder = demuxer.streams[0].make_decoder(device=device)
+ packet_decoder = VideoPacketDecoder(
+ demuxer.streams[0].codec_parameters, device=device
+ )
  color_converter = ColorConverter(device=device)
  raw_frames = prefetch(decode(packet_decoder, demux(demuxer)))
  return color_convert(color_converter, raw_frames)
@@ -9497,7 +10303,9 @@ def convert_on_own_thread(device):
 def demux_on_own_thread(device):
  # [demux] on one thread || [decode + color-convert] on another.
  demuxer = Demuxer(video_path)
- packet_decoder = demuxer.streams[0].make_decoder(device=device)
+ packet_decoder = VideoPacketDecoder(
+ demuxer.streams[0].codec_parameters, device=device
+ )
  color_converter = ColorConverter(device=device)
  packets = prefetch(demux(demuxer))
  return color_convert(color_converter, decode(packet_decoder, packets))
@@ -9505,7 +10313,9 @@ def demux_on_own_thread(device):
 def one_thread_each(device):
  # [demux] || [decode] || [color-convert], a thread per stage.
  demuxer = Demuxer(video_path)
- packet_decoder = demuxer.streams[0].make_decoder(device=device)
+ packet_decoder = VideoPacketDecoder(
+ demuxer.streams[0].codec_parameters, device=device
+ )
  color_converter = ColorConverter(device=device)
  packets = prefetch(demux(demuxer))
  raw_frames = prefetch(decode(packet_decoder, packets))
@@ -9587,7 +10397,49 @@ expected: they do the same work on one thread.
 two most expensive steps: decoding and color-conversion. Note: actual speedup
 will depend on the capabilities of the machine building these docs!
 
-**Total running time of the script:** (0 minutes 26.343 seconds)
+## Across processes
+
+The [`Packet`](../../generated/torchcodec.decoders.Packet.html#torchcodec.decoders.Packet) objects and the [`VideoCodecParameters`](../../generated/torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters) of a stream
+can be pickled, so the demuxing and the decoding can happen in different
+processes.
+
+Demuxing is cheap, so moving it to its own process rarely makes a pipeline
+faster on its own. It helps when the demuxing has to happen elsewhere than the
+decoding. Here, a background process demuxes a video and streams its packets
+to the main process, which decodes them on the GPU. The codec parameters are
+sent once, before the packets:
+
+```
+import torch.multiprocessing as mp
+from torchcodec.decoders import Demuxer, VideoPacketDecoder
+
+def demux(path, queue): # Must be importable by the child process.
+ demuxer = Demuxer(path)
+ queue.put(demuxer.streams[0].codec_parameters)
+ for packet in demuxer:
+ queue.put(packet)
+ queue.put(None)
+
+context = mp.get_context("spawn")
+queue = context.Queue(maxsize=64)
+process = context.Process(target=demux, args=(video_path, queue))
+process.start()
+
+packet_decoder = VideoPacketDecoder(queue.get(), device="cuda")
+while (packet := queue.get()) is not None:
+ for raw_frame in packet_decoder.decode(packet):
+ ...
+for raw_frame in packet_decoder.drain():
+ ...
+process.join()
+```
+
+Sending packets to another process isn't free: it takes from tens to
+hundreds of microseconds per packet, depending on its size. An API that
+pickles a group of packets at once, and decodes it at once, could reduce that
+cost. If it would help your use-case, please [open an issue](https://github.com/meta-pytorch/torchcodec/issues)!
+
+**Total running time of the script:** (0 minutes 26.411 seconds)
 
 [`Download Jupyter notebook: pipelines.ipynb`](../../_downloads/b6cf9084a4d02eed0052adaf54947e49/pipelines.ipynb)
 
@@ -9668,10 +10520,17 @@ no copy and no conversion. It also carries everything you need to interpret
 them.
 
 ```
-from torchcodec.decoders import ColorConverter, Demuxer
+from torchcodec.decoders import (
+ AudioPacketDecoder,
+ ColorConverter,
+ Demuxer,
+ VideoPacketDecoder,
+)
 
 demuxer = Demuxer(video_path)
-packet_decoder = demuxer.streams[0].make_decoder(device=device)
+packet_decoder = VideoPacketDecoder(
+ demuxer.streams[0].codec_parameters, device=device
+)
 raw_frame = next(decode_raw(demuxer, packet_decoder))
 
 Y, U, V = raw_frame.planes
@@ -9789,7 +10648,9 @@ subprocess.run(
 )
 
 hdr_demuxer = Demuxer(hdr_video_path)
-hdr_packet_decoder = hdr_demuxer.streams[0].make_decoder(device=device)
+hdr_packet_decoder = VideoPacketDecoder(
+ hdr_demuxer.streams[0].codec_parameters, device=device
+)
 hdr_raw = next(decode_raw(hdr_demuxer, hdr_packet_decoder))
 
 hdr_Y = hdr_raw.planes[0]
@@ -9849,7 +10710,7 @@ subprocess.run(
 )
 
 demuxer = Demuxer(audio_path, streams="audio")
-packet_decoder = demuxer.streams[0].make_decoder()
+packet_decoder = AudioPacketDecoder(demuxer.streams[0].codec_parameters)
 raw_samples = next(decode_raw(demuxer, packet_decoder))
 
 print(f"{raw_samples.data.dtype = }, {raw_samples.data.shape = }, "
@@ -9879,7 +10740,7 @@ print(f"{normalised.dtype = }, "
 normalised.dtype = torch.float32, range [-0.125, 0.125]
 ```
 
-**Total running time of the script:** (0 minutes 1.222 seconds)
+**Total running time of the script:** (0 minutes 1.227 seconds)
 
 [`Download Jupyter notebook: raw_data.ipynb`](../../_downloads/41298244eef267ccbc6ba0e0eba028b7/raw_data.ipynb)
 
@@ -9893,14 +10754,15 @@ normalised.dtype = torch.float32, range [-0.125, 0.125]
 
 # Computation times
 
-**00:29.542** total execution time for 4 files **from generated_examples/low_level**:
+**00:29.929** total execution time for 5 files **from generated_examples/low_level**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Multi-threaded decoding pipelines](pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py) (`pipelines.py`) | 00:26.343 | 0.0 |
-| [Build your own decoding pipeline](basics.html#sphx-glr-generated-examples-low-level-basics-py) (`basics.py`) | 00:01.530 | 0.0 |
-| [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-low-level-raw-data-py) (`raw_data.py`) | 00:01.222 | 0.0 |
-| [Low-level APIs and CUDA streams synchronization](cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) (`cuda_streams.py`) | 00:00.446 | 0.0 |
+| [Multi-threaded decoding pipelines](pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py) (`pipelines.py`) | 00:26.411 | 0.0 |
+| [Build your own decoding pipeline](basics.html#sphx-glr-generated-examples-low-level-basics-py) (`basics.py`) | 00:01.549 | 0.0 |
+| [Raw frames and raw audio samples](raw_data.html#sphx-glr-generated-examples-low-level-raw-data-py) (`raw_data.py`) | 00:01.227 | 0.0 |
+| [Low-level APIs and CUDA streams synchronization](cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) (`cuda_streams.py`) | 00:00.451 | 0.0 |
+| [Decoding packets that don't come from a Demuxer](demuxer_free.html#sphx-glr-generated-examples-low-level-demuxer-free-py) (`demuxer_free.py`) | 00:00.291 | 0.0 |
 
 ---
 
@@ -10245,7 +11107,8 @@ endless sources
 
 Multi-threaded pipelines
 
-How to overlap the stages on several threads, and where to split them
+How to overlap the stages on several threads, and how to demux and
+decode in different processes
 
 [generated_examples/low_level/pipelines.html](generated_examples/low_level/pipelines.html)
 
@@ -10254,6 +11117,13 @@ Raw frames and samples
 How to read the decoder's own YUV planes and audio samples
 
 [generated_examples/low_level/raw_data.html](generated_examples/low_level/raw_data.html)
+
+Decoding without a Demuxer
+
+How to decode packets that come from a database, the network, or your
+own container parser
+
+[generated_examples/low_level/demuxer_free.html](generated_examples/low_level/demuxer_free.html)
 
 ## Encoding
 
@@ -10293,28 +11163,29 @@ How to port `torchvision.io` image decoding and encoding code
 
 # Computation times
 
-**06:11.177** total execution time for 21 files **from all galleries**:
+**06:11.938** total execution time for 22 files **from all galleries**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Decoder Transforms: Applying transforms during decoding](generated_examples/decoding/transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`../../examples/decoding/transforms.py`) | 02:20.560 | 0.0 |
-| [Parallel video decoding: multi-processing and multi-threading](generated_examples/decoding/parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`../../examples/decoding/parallel_decoding.py`) | 01:25.385 | 0.0 |
-| [Streaming data through file-like support](generated_examples/decoding/file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`../../examples/decoding/file_like.py`) | 00:27.209 | 0.0 |
-| [Multi-threaded decoding pipelines](generated_examples/low_level/pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py) (`../../examples/low_level/pipelines.py`) | 00:26.343 | 0.0 |
-| [Exact vs Approximate seek mode: Performance and accuracy comparison](generated_examples/decoding/approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`../../examples/decoding/approximate_mode.py`) | 00:25.240 | 0.0 |
-| [Encoding video with the Encoder](generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`../../examples/encoding/video_encoding.py`) | 00:24.901 | 0.0 |
-| [Decoding with custom frame mappings](generated_examples/decoding/custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`../../examples/decoding/custom_frame_mappings.py`) | 00:23.534 | 0.0 |
-| [Encoding audio and video streams with the Encoder](generated_examples/encoding/multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`../../examples/encoding/multi_stream_encoding.py`) | 00:05.630 | 0.0 |
-| [Accelerated video decoding on GPUs with CUDA and NVDEC](generated_examples/decoding/basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`../../examples/decoding/basic_cuda_example.py`) | 00:04.727 | 0.0 |
-| [Decoding a video with VideoDecoder](generated_examples/decoding/basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`../../examples/decoding/basic_example.py`) | 00:02.145 | 0.0 |
-| [Build your own decoding pipeline](generated_examples/low_level/basics.html#sphx-glr-generated-examples-low-level-basics-py) (`../../examples/low_level/basics.py`) | 00:01.530 | 0.0 |
-| [Raw frames and raw audio samples](generated_examples/low_level/raw_data.html#sphx-glr-generated-examples-low-level-raw-data-py) (`../../examples/low_level/raw_data.py`) | 00:01.222 | 0.0 |
-| [Decoding audio streams with AudioDecoder](generated_examples/decoding/audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`../../examples/decoding/audio_decoding.py`) | 00:00.906 | 0.0 |
-| [How to sample video clips](generated_examples/decoding/sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`../../examples/decoding/sampling.py`) | 00:00.532 | 0.0 |
-| [Low-level APIs and CUDA streams synchronization](generated_examples/low_level/cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) (`../../examples/low_level/cuda_streams.py`) | 00:00.446 | 0.0 |
-| [Decoding HDR videos](generated_examples/decoding/hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py) (`../../examples/decoding/hdr_decoding.py`) | 00:00.435 | 0.0 |
-| [Encoding images](generated_examples/encoding/image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py) (`../../examples/encoding/image_encoding.py`) | 00:00.214 | 0.0 |
-| [Decoding images](generated_examples/decoding/image_decoding.html#sphx-glr-generated-examples-decoding-image-decoding-py) (`../../examples/decoding/image_decoding.py`) | 00:00.174 | 0.0 |
+| [Decoder Transforms: Applying transforms during decoding](generated_examples/decoding/transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`../../examples/decoding/transforms.py`) | 02:20.240 | 0.0 |
+| [Parallel video decoding: multi-processing and multi-threading](generated_examples/decoding/parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`../../examples/decoding/parallel_decoding.py`) | 01:25.252 | 0.0 |
+| [Multi-threaded decoding pipelines](generated_examples/low_level/pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py) (`../../examples/low_level/pipelines.py`) | 00:26.411 | 0.0 |
+| [Streaming data through file-like support](generated_examples/decoding/file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`../../examples/decoding/file_like.py`) | 00:26.335 | 0.0 |
+| [Encoding video with the Encoder](generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`../../examples/encoding/video_encoding.py`) | 00:26.307 | 0.0 |
+| [Exact vs Approximate seek mode: Performance and accuracy comparison](generated_examples/decoding/approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`../../examples/decoding/approximate_mode.py`) | 00:25.028 | 0.0 |
+| [Decoding with custom frame mappings](generated_examples/decoding/custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`../../examples/decoding/custom_frame_mappings.py`) | 00:23.489 | 0.0 |
+| [Encoding audio and video streams with the Encoder](generated_examples/encoding/multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`../../examples/encoding/multi_stream_encoding.py`) | 00:06.326 | 0.0 |
+| [Accelerated video decoding on GPUs with CUDA and NVDEC](generated_examples/decoding/basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`../../examples/decoding/basic_cuda_example.py`) | 00:04.789 | 0.0 |
+| [Decoding a video with VideoDecoder](generated_examples/decoding/basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`../../examples/decoding/basic_example.py`) | 00:02.132 | 0.0 |
+| [Build your own decoding pipeline](generated_examples/low_level/basics.html#sphx-glr-generated-examples-low-level-basics-py) (`../../examples/low_level/basics.py`) | 00:01.549 | 0.0 |
+| [Raw frames and raw audio samples](generated_examples/low_level/raw_data.html#sphx-glr-generated-examples-low-level-raw-data-py) (`../../examples/low_level/raw_data.py`) | 00:01.227 | 0.0 |
+| [Decoding audio streams with AudioDecoder](generated_examples/decoding/audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`../../examples/decoding/audio_decoding.py`) | 00:00.921 | 0.0 |
+| [Low-level APIs and CUDA streams synchronization](generated_examples/low_level/cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) (`../../examples/low_level/cuda_streams.py`) | 00:00.451 | 0.0 |
+| [Decoding HDR videos](generated_examples/decoding/hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py) (`../../examples/decoding/hdr_decoding.py`) | 00:00.434 | 0.0 |
+| [How to sample video clips](generated_examples/decoding/sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`../../examples/decoding/sampling.py`) | 00:00.420 | 0.0 |
+| [Decoding packets that don't come from a Demuxer](generated_examples/low_level/demuxer_free.html#sphx-glr-generated-examples-low-level-demuxer-free-py) (`../../examples/low_level/demuxer_free.py`) | 00:00.291 | 0.0 |
+| [Encoding images](generated_examples/encoding/image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py) (`../../examples/encoding/image_encoding.py`) | 00:00.167 | 0.0 |
+| [Decoding images](generated_examples/decoding/image_decoding.html#sphx-glr-generated-examples-decoding-image-decoding-py) (`../../examples/decoding/image_decoding.py`) | 00:00.124 | 0.0 |
 | [Encoding audio samples with AudioEncoder](generated_examples/encoding/audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py) (`../../examples/encoding/audio_encoding.py`) | 00:00.029 | 0.0 |
 | [Migrating from TorchVision to TorchCodec](generated_examples/migration/torchvision_migration.html#sphx-glr-generated-examples-migration-torchvision-migration-py) (`../../examples/migration/torchvision_migration.py`) | 00:00.014 | 0.0 |
 | [TorchCodec Performance Tips and Best Practices](generated_examples/decoding/performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py) (`../../examples/decoding/performance_tips.py`) | 00:00.000 | 0.0 |

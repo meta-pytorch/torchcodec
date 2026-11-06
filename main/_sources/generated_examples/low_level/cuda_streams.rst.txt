@@ -43,7 +43,7 @@ handles it.
 Some boilerplate first: a test video, the two streams we'll use, and a helper
 to build a fresh set of stages for each example below.
 
-.. GENERATED FROM PYTHON SOURCE LINES 40-70
+.. GENERATED FROM PYTHON SOURCE LINES 40-72
 
 .. code-block:: Python
 
@@ -53,7 +53,7 @@ to build a fresh set of stages for each example below.
 
     import torch
 
-    from torchcodec.decoders import ColorConverter, Demuxer
+    from torchcodec.decoders import ColorConverter, Demuxer, VideoPacketDecoder
 
 
     video_path = Path(tempfile.mkdtemp()) / "video.mp4"
@@ -73,7 +73,9 @@ to build a fresh set of stages for each example below.
 
     def make_stages():
         demuxer = Demuxer(video_path)
-        packet_decoder = demuxer.streams[0].make_decoder(device="cuda")
+        packet_decoder = VideoPacketDecoder(
+            demuxer.streams[0].codec_parameters, device="cuda"
+        )
         return demuxer, packet_decoder, ColorConverter(device="cuda")
 
 
@@ -84,7 +86,7 @@ to build a fresh set of stages for each example below.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 72-95
+.. GENERATED FROM PYTHON SOURCE LINES 74-97
 
 Waiting for the samples to be ready
 -----------------------------------
@@ -110,7 +112,7 @@ it has different semantics: it waits for everything currently queued on the
 decoding stream, so a consumer that has fallen behind waits for the decoder's
 whole backlog instead of for its own frame.
 
-.. GENERATED FROM PYTHON SOURCE LINES 97-120
+.. GENERATED FROM PYTHON SOURCE LINES 99-122
 
 Keeping the allocator from reusing the memory
 ---------------------------------------------
@@ -136,7 +138,7 @@ To learn more, see the *Streams and freeing memory* section of `this blog post
 
 You have two ways to handle this each with its own trade-offs.
 
-.. GENERATED FROM PYTHON SOURCE LINES 122-135
+.. GENERATED FROM PYTHON SOURCE LINES 124-137
 
 Option 1: sync back before dropping the frame
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -152,7 +154,7 @@ get this overlap back, you can work in batches: hold N frames, sync once, drop
 them together. The decoder then stalls once every N frames, and N is an
 explicit memory knob:
 
-.. GENERATED FROM PYTHON SOURCE LINES 135-167
+.. GENERATED FROM PYTHON SOURCE LINES 137-169
 
 .. code-block:: Python
 
@@ -201,7 +203,7 @@ explicit memory knob:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 168-187
+.. GENERATED FROM PYTHON SOURCE LINES 170-189
 
 Option 2: let the allocator handle it
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -223,7 +225,7 @@ blocks, which is a large stall at an unpredictable point.
    on ``RawFrame.planes`` is silently a no-op
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 187-207
+.. GENERATED FROM PYTHON SOURCE LINES 189-209
 
 .. code-block:: Python
 
@@ -263,7 +265,7 @@ blocks, which is a large stall at an unpredictable point.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 0.446 seconds)
+   **Total running time of the script:** (0 minutes 0.451 seconds)
 
 
 .. _sphx_glr_download_generated_examples_low_level_cuda_streams.py:

@@ -1,6 +1,6 @@
 # VideoPacketDecoder
 
-*class*torchcodec.decoders.VideoPacketDecoder(**args*, ***kwargs*)[[source]](../_modules/torchcodec/decoders/_blocks/_packet_decoder.html#VideoPacketDecoder)
+*class*torchcodec.decoders.VideoPacketDecoder(*codec_parameters: [VideoCodecParameters](torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters)*, *device: [str](https://docs.python.org/3/builtins/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) | [None](https://docs.python.org/3/builtins/constants.html#None) = None*, ***, *num_ffmpeg_threads: [int](https://docs.python.org/3/builtins/functions.html#int) = 1*)[[source]](../_modules/torchcodec/decoders/_blocks/_packet_decoder.html#VideoPacketDecoder)
 
 Decodes the compressed [`Packet`](torchcodec.decoders.Packet.html#torchcodec.decoders.Packet)s of one video stream into
 [`RawFrame`](torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame)s.
@@ -8,14 +8,12 @@ Decodes the compressed [`Packet`](torchcodec.decoders.Packet.html#torchcodec.dec
 This is a low-level API: for straightforward decoding, use
 [`VideoDecoder`](torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) instead.
 
-You should not build one yourself: [`VideoStream.make_decoder()`](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.make_decoder) is what
-creates it. Frames come out on the device given there.
-
-Feed it one packet at a time, and drain it at the end:
+Build it from the [`VideoCodecParameters`](torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters) of the stream to decode,
+then feed it one packet at a time, and drain it at the end:
 
 ```
 demuxer = Demuxer("video.mp4")
-decoder = demuxer.streams[0].make_decoder()
+decoder = VideoPacketDecoder(demuxer.streams[0].codec_parameters)
 
 for packet in demuxer:
  for raw_frame in decoder.decode(packet):
@@ -24,8 +22,31 @@ for raw_frame in decoder.drain():
  ...
 ```
 
+The codec parameters can also be pickled, to decode in another process
+than the demuxer, or built by hand, to decode packets that don't come from
+a [`Demuxer`](torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer) (see
+[Decoding packets that don't come from a Demuxer](../generated_examples/low_level/demuxer_free.html#sphx-glr-generated-examples-low-level-demuxer-free-py)). Frames come
+out on the device the decoder was built for.
+
 It is stateful. It holds the codec's reference-frame buffer, so it expects
 the packets of its own stream, in the order the demuxer produced them.
+
+Parameters:
+
+- **codec_parameters** ([*VideoCodecParameters*](torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters)) - The parameters of the stream
+to decode, e.g. [`VideoStream.codec_parameters`](torchcodec.decoders.VideoStream.html#torchcodec.decoders.VideoStream.codec_parameters).
+- **device** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*or*[*torch.device*](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device)*,**optional*) - The device to decode on (cpu or
+CUDA). If `None` (default), the current default device is used
+(see `torch.set_default_device`). With codec parameters you built
+yourself, CUDA needs some fields to be set: see
+[`VideoCodecParameters`](torchcodec.decoders.VideoCodecParameters.html#torchcodec.decoders.VideoCodecParameters).
+- **num_ffmpeg_threads** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The number of threads to use for
+CPU decoding. This has no effect when decoding on GPU. Use 1 for
+single-threaded decoding, which may be best if you are decoding
+multiple streams in parallel. Use a higher number for
+multi-threaded decoding, which is best for a single stream.
+Passing 0 lets FFmpeg decide on the number of threads.
+Default: 1.
 
 Examples using `VideoPacketDecoder`:
 
@@ -39,6 +60,16 @@ Build your own decoding pipeline
 [Low-level APIs and CUDA streams synchronization](../generated_examples/low_level/cuda_streams.html)
 
 Low-level APIs and CUDA streams synchronization
+![](../_images/sphx_glr_demuxer_free_thumb.jpg)
+
+[Decoding packets that don't come from a Demuxer](../generated_examples/low_level/demuxer_free.html)
+
+Decoding packets that don't come from a Demuxer
+![](../_images/sphx_glr_pipelines_thumb.jpg)
+
+[Multi-threaded decoding pipelines](../generated_examples/low_level/pipelines.html)
+
+Multi-threaded decoding pipelines
 ![](../_images/sphx_glr_raw_data_thumb.jpg)
 
 [Raw frames and raw audio samples](../generated_examples/low_level/raw_data.html)

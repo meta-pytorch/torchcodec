@@ -106,6 +106,7 @@ some metadata via the ``metadata`` attribute which is an
       begin_stream_seconds_from_header: 0.02505668934240363
       bit_rate: 108039
       codec: mp3
+      time_base: 1/14112000
       stream_index: 0
       media_type: audio
       sample_rate: 44100
@@ -291,7 +292,7 @@ details.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 0.906 seconds)
+   **Total running time of the script:** (0 minutes 0.921 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_audio_decoding.py:
