@@ -271,7 +271,7 @@ jobs:
     runs-on: linux.g5.4xlarge.nvidia.gpu
     env:
       PYTHON_VERSION: '3.11'
-      CUDA_VERSION: '13.0'
+      CUDA_VERSION: '13.2'
       FFMPEG_VERSION: '7'
     container:
       image: "pytorch/manylinux2_28-builder:cuda13.0"  # must be same as env!!
