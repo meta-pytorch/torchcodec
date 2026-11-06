@@ -13,6 +13,8 @@
 #include <pybind11/pybind11.h>
 #pragma pop_macro("TORCH_TARGET_VERSION")
 #include <cstdint>
+#include <cstring>
+#include <limits>
 #include <string>
 
 extern "C" {
@@ -91,16 +93,29 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_demuxer_seek(Tensor(a!) demuxer, float seconds, int? stream_index=None) -> ()");
   m.def(
       "_blocks_demuxer_scan(Tensor(a!) demuxer, int? stream_index=None) -> (Tensor, Tensor, Tensor, int, int)");
+  // The return names are the fields of VideoCodecParameters and
+  // AudioCodecParameters, which Python matches them against.
   m.def(
-      "_blocks_create_packet_decoder(Tensor demuxer, *, int? stream_index=None, int? num_threads=None, str device=\"cpu\") -> Tensor");
+      "_blocks_demuxer_get_codec_parameters(Tensor demuxer, int stream_index) -> (str codec, int[] time_base, Tensor? extradata, int? codec_tag, int? profile, int? level, int? bit_rate, int? bits_per_coded_sample, int? bits_per_raw_sample, str[] coded_side_data_names, Tensor[] coded_side_data_values, int? width, int? height, str? pixel_format, int[]? sample_aspect_ratio, int[]? framerate, int[]? r_frame_rate, str? field_order, str? color_range, str? color_primaries, str? color_transfer_characteristic, str? color_space, str? chroma_location, int? video_delay, str? sample_format, int? sample_rate, str? channel_layout, int? block_align, int? frame_size, int? initial_padding, int? trailing_padding, int? seek_preroll, str? container_format)");
+  // Takes the fields of VideoCodecParameters and AudioCodecParameters, under
+  // their names.
+  m.def(
+      "_blocks_create_packet_decoder(str media_type, str codec, int[] time_base, *, Tensor? extradata=None, int? codec_tag=None, int? profile=None, int? level=None, int? bit_rate=None, int? bits_per_coded_sample=None, int? bits_per_raw_sample=None, str[]? coded_side_data_names=None, Tensor[]? coded_side_data_values=None, int? width=None, int? height=None, str? pixel_format=None, int[]? sample_aspect_ratio=None, int[]? framerate=None, int[]? r_frame_rate=None, str? field_order=None, str? color_range=None, str? color_primaries=None, str? color_transfer_characteristic=None, str? color_space=None, str? chroma_location=None, int? video_delay=None, str? sample_format=None, int? sample_rate=None, str? channel_layout=None, int? block_align=None, int? frame_size=None, int? initial_padding=None, int? trailing_padding=None, int? seek_preroll=None, str? container_format=None, int? num_threads=None, str device=\"cpu\") -> Tensor");
+  // Takes the arguments of Packet.from_tensor(), under their names.
+  m.def(
+      "_blocks_create_packet(Tensor data, *, int? pts=None, int? dts=None, int duration=0, int flags=0, str[]? side_data_names=None, Tensor[]? side_data_values=None) -> Tensor");
+  // The return names are the Packet properties, which Python matches them
+  // against.
+  m.def(
+      "_blocks_packet_get_fields(Tensor packet) -> (Tensor data, int? pts, int? dts, int duration, int flags, str[] side_data_names, Tensor[] side_data_values)");
   m.def(
       "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
   m.def("_blocks_packet_decoder_reset(Tensor(a!) decoder) -> ()");
   m.def(
-      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, Tensor)");
+      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, int?, float, float, Tensor)");
   m.def(
-      "_blocks_audio_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, int, str)");
+      "_blocks_audio_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, int?, float, float, int, str)");
   m.def(
       "_blocks_create_color_converter(str device=\"cpu\", str output_dtype=\"uint8\") -> Tensor");
   m.def(
@@ -940,23 +955,506 @@ OpsScanOutput _blocks_demuxer_scan(
       static_cast<int64_t>(index.time_base.den));
 }
 
-torch::stable::Tensor _blocks_create_packet_decoder(
+namespace {
+// The codec parameters fields are None when they are at their FFmpeg default.
+std::optional<int64_t> unless_default(
+    int64_t value,
+    int64_t default_value = 0) {
+  if (value == default_value) {
+    return std::nullopt;
+  }
+  return value;
+}
+
+// [num, den], the schema's spelling of an AVRational.
+std::optional<std::vector<int64_t>> unless_unset(const AVRational& value) {
+  if (value.num == 0 || value.den == 0) {
+    return std::nullopt;
+  }
+  return std::vector<int64_t>{value.num, value.den};
+}
+
+// FFmpeg's *_name() functions return null for invalid values.
+std::optional<std::string> to_optional_string(const char* name) {
+  if (name == nullptr) {
+    return std::nullopt;
+  }
+  return std::string(name);
+}
+
+torch::stable::Tensor bytes_to_tensor(const uint8_t* data, size_t size) {
+  torch::stable::Tensor tensor =
+      torch::stable::empty({static_cast<int64_t>(size)}, kStableUInt8);
+  std::memcpy(tensor.mutable_data_ptr<uint8_t>(), data, size);
+  return tensor;
+}
+} // namespace
+
+using OpsCodecParametersOutput = std::tuple<
+    std::string, // codec
+    std::vector<int64_t>, // time_base
+    std::optional<torch::stable::Tensor>, // extradata
+    std::optional<int64_t>, // codec_tag
+    std::optional<int64_t>, // profile
+    std::optional<int64_t>, // level
+    std::optional<int64_t>, // bit_rate
+    std::optional<int64_t>, // bits_per_coded_sample
+    std::optional<int64_t>, // bits_per_raw_sample
+    std::vector<std::string>, // coded_side_data_names
+    std::vector<torch::stable::Tensor>, // coded_side_data_values
+    std::optional<int64_t>, // width
+    std::optional<int64_t>, // height
+    std::optional<std::string>, // pixel_format
+    std::optional<std::vector<int64_t>>, // sample_aspect_ratio
+    std::optional<std::vector<int64_t>>, // framerate
+    std::optional<std::vector<int64_t>>, // r_frame_rate
+    std::optional<std::string>, // field_order
+    std::optional<std::string>, // color_range
+    std::optional<std::string>, // color_primaries
+    std::optional<std::string>, // color_transfer_characteristic
+    std::optional<std::string>, // color_space
+    std::optional<std::string>, // chroma_location
+    std::optional<int64_t>, // video_delay
+    std::optional<std::string>, // sample_format
+    std::optional<int64_t>, // sample_rate
+    std::optional<std::string>, // channel_layout
+    std::optional<int64_t>, // block_align
+    std::optional<int64_t>, // frame_size
+    std::optional<int64_t>, // initial_padding
+    std::optional<int64_t>, // trailing_padding
+    std::optional<int64_t>, // seek_preroll
+    std::optional<std::string>>; // container_format
+
+// Enums are returned as FFmpeg's names for them.
+OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
     torch::stable::Tensor& demuxer,
-    std::optional<int64_t> stream_index,
+    int64_t stream_index) {
+  CodecParameters params =
+      unwrap_tensor_to_pointer<Demuxer>(demuxer)->get_codec_parameters(
+          static_cast<int>(stream_index));
+  const AVCodecParameters& codecpar = *params.codecpar;
+
+  OpsCodecParametersOutput output;
+  auto& [codec, time_base, extradata, codec_tag, profile, level, bit_rate, bits_per_coded_sample, bits_per_raw_sample, coded_side_data_names, coded_side_data_values, width, height, pixel_format, sample_aspect_ratio, framerate, r_frame_rate, field_order, color_range, color_primaries, color_transfer_characteristic, color_space, chroma_location, video_delay, sample_format, sample_rate, channel_layout, block_align, frame_size, initial_padding, trailing_padding, seek_preroll, container_format] =
+      output;
+
+  codec = avcodec_get_name(codecpar.codec_id);
+  time_base = {params.time_base.num, params.time_base.den};
+  if (codecpar.extradata_size > 0) {
+    extradata = bytes_to_tensor(codecpar.extradata, codecpar.extradata_size);
+  }
+  codec_tag = unless_default(codecpar.codec_tag);
+  profile = unless_default(codecpar.profile, kUnknownProfileOrLevel);
+  level = unless_default(codecpar.level, kUnknownProfileOrLevel);
+  bit_rate = unless_default(codecpar.bit_rate);
+  bits_per_coded_sample = unless_default(codecpar.bits_per_coded_sample);
+  bits_per_raw_sample = unless_default(codecpar.bits_per_raw_sample);
+  for (const AVPacketSideData& side_data : params.get_stream_side_data()) {
+    const char* name = av_packet_side_data_name(side_data.type);
+    // A type this FFmpeg can't name is a type it doesn't know what to do with
+    // either, so there's nothing a decoder would read from it.
+    if (name != nullptr) {
+      coded_side_data_names.emplace_back(name);
+      coded_side_data_values.push_back(
+          bytes_to_tensor(side_data.data, side_data.size));
+    }
+  }
+
+  if (codecpar.codec_type == AVMEDIA_TYPE_VIDEO) {
+    width = unless_default(codecpar.width);
+    height = unless_default(codecpar.height);
+    pixel_format = to_optional_string(
+        av_get_pix_fmt_name(static_cast<AVPixelFormat>(codecpar.format)));
+    sample_aspect_ratio = unless_unset(codecpar.sample_aspect_ratio);
+    framerate = unless_unset(get_framerate(codecpar));
+    r_frame_rate = unless_unset(params.r_frame_rate);
+    field_order =
+        to_optional_string(get_field_order_name(codecpar.field_order));
+    if (codecpar.color_range != AVCOL_RANGE_UNSPECIFIED) {
+      color_range =
+          to_optional_string(av_color_range_name(codecpar.color_range));
+    }
+    if (codecpar.color_primaries != AVCOL_PRI_UNSPECIFIED) {
+      color_primaries =
+          to_optional_string(av_color_primaries_name(codecpar.color_primaries));
+    }
+    if (codecpar.color_trc != AVCOL_TRC_UNSPECIFIED) {
+      color_transfer_characteristic =
+          to_optional_string(av_color_transfer_name(codecpar.color_trc));
+    }
+    if (codecpar.color_space != AVCOL_SPC_UNSPECIFIED) {
+      color_space =
+          to_optional_string(av_color_space_name(codecpar.color_space));
+    }
+    if (codecpar.chroma_location != AVCHROMA_LOC_UNSPECIFIED) {
+      chroma_location =
+          to_optional_string(av_chroma_location_name(codecpar.chroma_location));
+    }
+    video_delay = unless_default(codecpar.video_delay);
+  } else if (codecpar.codec_type == AVMEDIA_TYPE_AUDIO) {
+    sample_format = to_optional_string(
+        av_get_sample_fmt_name(static_cast<AVSampleFormat>(codecpar.format)));
+    sample_rate = unless_default(codecpar.sample_rate);
+    channel_layout = get_channel_layout_name(codecpar);
+    block_align = unless_default(codecpar.block_align);
+    frame_size = unless_default(codecpar.frame_size);
+    initial_padding = unless_default(codecpar.initial_padding);
+    trailing_padding = unless_default(codecpar.trailing_padding);
+    seek_preroll = unless_default(codecpar.seek_preroll);
+  }
+  if (params.container_format != nullptr) {
+    container_format = params.container_format->name;
+  }
+  return output;
+}
+
+namespace {
+AVRational to_rational(const char* field, const std::vector<int64_t>& value) {
+  STD_TORCH_CHECK(
+      value.size() == 2,
+      field,
+      " must be [num, den], got ",
+      value.size(),
+      " values.");
+  return {
+      validate_int64_to_int(value[0], field),
+      validate_int64_to_int(value[1], field)};
+}
+
+// FFmpeg's *_from_name() functions return a negative value for unknown names.
+template <typename Enum>
+Enum checked_enum(const char* field, const std::string& name, int value) {
+  STD_TORCH_CHECK(value >= 0, "Unknown ", field, ": ", name, ".");
+  return static_cast<Enum>(value);
+}
+
+void check_bytes(const char* field, const torch::stable::Tensor& tensor) {
+  STD_TORCH_CHECK(
+      tensor.scalar_type() == kStableUInt8 && tensor.dim() == 1 &&
+          tensor.is_contiguous() && tensor.device().type() == kStableCPU,
+      field,
+      " must be a contiguous 1D uint8 CPU tensor.");
+}
+} // namespace
+
+torch::stable::Tensor _blocks_create_packet_decoder(
+    std::string media_type,
+    std::string codec,
+    std::vector<int64_t> time_base,
+    std::optional<torch::stable::Tensor> extradata,
+    std::optional<int64_t> codec_tag,
+    std::optional<int64_t> profile,
+    std::optional<int64_t> level,
+    std::optional<int64_t> bit_rate,
+    std::optional<int64_t> bits_per_coded_sample,
+    std::optional<int64_t> bits_per_raw_sample,
+    std::optional<std::vector<std::string>> coded_side_data_names,
+    std::optional<std::vector<torch::stable::Tensor>> coded_side_data_values,
+    std::optional<int64_t> width,
+    std::optional<int64_t> height,
+    std::optional<std::string> pixel_format,
+    std::optional<std::vector<int64_t>> sample_aspect_ratio,
+    std::optional<std::vector<int64_t>> framerate,
+    std::optional<std::vector<int64_t>> r_frame_rate,
+    std::optional<std::string> field_order,
+    std::optional<std::string> color_range,
+    std::optional<std::string> color_primaries,
+    std::optional<std::string> color_transfer_characteristic,
+    std::optional<std::string> color_space,
+    std::optional<std::string> chroma_location,
+    std::optional<int64_t> video_delay,
+    std::optional<std::string> sample_format,
+    std::optional<int64_t> sample_rate,
+    std::optional<std::string> channel_layout,
+    std::optional<int64_t> block_align,
+    std::optional<int64_t> frame_size,
+    std::optional<int64_t> initial_padding,
+    std::optional<int64_t> trailing_padding,
+    std::optional<int64_t> seek_preroll,
+    std::optional<std::string> container_format,
     std::optional<int64_t> num_threads,
     std::string device) {
-  Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
   validate_device_interface(device);
-  std::optional<int> thread_count;
-  if (num_threads.has_value()) {
-    thread_count = static_cast<int>(num_threads.value());
+
+  CodecParameters params;
+  AVCodecParameters& codecpar = *params.codecpar;
+
+  const AVCodecDescriptor* descriptor =
+      avcodec_descriptor_get_by_name(codec.c_str());
+  STD_TORCH_CHECK(descriptor != nullptr, "Unknown codec: ", codec, ".");
+  AVMediaType expected_type = parse_media_type(media_type);
+  STD_TORCH_CHECK(
+      descriptor->type == expected_type,
+      "'",
+      codec,
+      "' is not a ",
+      media_type,
+      " codec.");
+  codecpar.codec_type = descriptor->type;
+  codecpar.codec_id = descriptor->id;
+  params.time_base = to_rational("time_base", time_base);
+
+  if (extradata.has_value()) {
+    check_bytes("extradata", *extradata);
+    int size = validate_int64_to_int(extradata->numel(), "extradata size");
+    // Zeroed padding past the end, which FFmpeg's parsers read into.
+    codecpar.extradata = static_cast<uint8_t*>(
+        av_mallocz(static_cast<size_t>(size) + AV_INPUT_BUFFER_PADDING_SIZE));
+    STD_TORCH_CHECK(
+        codecpar.extradata != nullptr, "Failed to allocate the extradata.");
+    std::memcpy(codecpar.extradata, extradata->const_data_ptr<uint8_t>(), size);
+    codecpar.extradata_size = size;
   }
+  if (codec_tag.has_value()) {
+    codecpar.codec_tag = validate_int64_to_uint32(*codec_tag, "codec_tag");
+  }
+  if (profile.has_value()) {
+    codecpar.profile = validate_int64_to_int(*profile, "profile");
+  }
+  if (level.has_value()) {
+    codecpar.level = validate_int64_to_int(*level, "level");
+  }
+  if (bit_rate.has_value()) {
+    codecpar.bit_rate = *bit_rate;
+  }
+  if (bits_per_coded_sample.has_value()) {
+    codecpar.bits_per_coded_sample =
+        validate_int64_to_int(*bits_per_coded_sample, "bits_per_coded_sample");
+  }
+  if (bits_per_raw_sample.has_value()) {
+    codecpar.bits_per_raw_sample =
+        validate_int64_to_int(*bits_per_raw_sample, "bits_per_raw_sample");
+  }
+  if (coded_side_data_names.has_value()) {
+    STD_TORCH_CHECK(
+        coded_side_data_values.has_value() &&
+            coded_side_data_values->size() == coded_side_data_names->size(),
+        "coded_side_data_names and coded_side_data_values must have the same "
+        "length.");
+    for (size_t i = 0; i < coded_side_data_names->size(); ++i) {
+      const torch::stable::Tensor& value = (*coded_side_data_values)[i];
+      check_bytes("coded_side_data values", value);
+      params.add_stream_side_data(
+          get_packet_side_data_type_from_name((*coded_side_data_names)[i]),
+          value.const_data_ptr<uint8_t>(),
+          value.numel());
+    }
+  }
+
+  if (width.has_value()) {
+    codecpar.width = validate_int64_to_int(*width, "width");
+  }
+  if (height.has_value()) {
+    codecpar.height = validate_int64_to_int(*height, "height");
+  }
+  if (pixel_format.has_value()) {
+    codecpar.format = checked_enum<AVPixelFormat>(
+        "pixel_format", *pixel_format, av_get_pix_fmt(pixel_format->c_str()));
+  }
+  if (sample_aspect_ratio.has_value()) {
+    codecpar.sample_aspect_ratio =
+        to_rational("sample_aspect_ratio", *sample_aspect_ratio);
+  }
+  if (framerate.has_value()) {
+    set_framerate(codecpar, to_rational("framerate", *framerate));
+  }
+  if (r_frame_rate.has_value()) {
+    params.r_frame_rate = to_rational("r_frame_rate", *r_frame_rate);
+  }
+  if (field_order.has_value()) {
+    codecpar.field_order = get_field_order_from_name(*field_order);
+  }
+  if (color_range.has_value()) {
+    codecpar.color_range = checked_enum<AVColorRange>(
+        "color_range",
+        *color_range,
+        av_color_range_from_name(color_range->c_str()));
+  }
+  if (color_primaries.has_value()) {
+    codecpar.color_primaries = checked_enum<AVColorPrimaries>(
+        "color_primaries",
+        *color_primaries,
+        av_color_primaries_from_name(color_primaries->c_str()));
+  }
+  if (color_transfer_characteristic.has_value()) {
+    codecpar.color_trc = checked_enum<AVColorTransferCharacteristic>(
+        "color_transfer_characteristic",
+        *color_transfer_characteristic,
+        av_color_transfer_from_name(color_transfer_characteristic->c_str()));
+  }
+  if (color_space.has_value()) {
+    codecpar.color_space = checked_enum<AVColorSpace>(
+        "color_space",
+        *color_space,
+        av_color_space_from_name(color_space->c_str()));
+  }
+  if (chroma_location.has_value()) {
+    codecpar.chroma_location = checked_enum<AVChromaLocation>(
+        "chroma_location",
+        *chroma_location,
+        av_chroma_location_from_name(chroma_location->c_str()));
+  }
+  if (video_delay.has_value()) {
+    codecpar.video_delay = validate_int64_to_int(*video_delay, "video_delay");
+  }
+
+  if (sample_format.has_value()) {
+    codecpar.format = checked_enum<AVSampleFormat>(
+        "sample_format",
+        *sample_format,
+        av_get_sample_fmt(sample_format->c_str()));
+  }
+  if (sample_rate.has_value()) {
+    codecpar.sample_rate = validate_int64_to_int(*sample_rate, "sample_rate");
+  }
+  if (channel_layout.has_value()) {
+    set_channel_layout(codecpar, *channel_layout);
+  }
+  if (block_align.has_value()) {
+    codecpar.block_align = validate_int64_to_int(*block_align, "block_align");
+  }
+  if (frame_size.has_value()) {
+    codecpar.frame_size = validate_int64_to_int(*frame_size, "frame_size");
+  }
+  if (initial_padding.has_value()) {
+    codecpar.initial_padding =
+        validate_int64_to_int(*initial_padding, "initial_padding");
+  }
+  if (trailing_padding.has_value()) {
+    codecpar.trailing_padding =
+        validate_int64_to_int(*trailing_padding, "trailing_padding");
+  }
+  if (seek_preroll.has_value()) {
+    codecpar.seek_preroll =
+        validate_int64_to_int(*seek_preroll, "seek_preroll");
+  }
+
+  if (container_format.has_value()) {
+    params.container_format = av_find_input_format(container_format->c_str());
+    STD_TORCH_CHECK(
+        params.container_format != nullptr,
+        "Unknown container_format: ",
+        *container_format,
+        ".");
+  }
+
   auto decoder = std::make_unique<PacketDecoder>(
-      *demuxer_ptr,
-      to_optional_int(stream_index),
+      params,
       StableDevice(device),
-      thread_count);
+      validate_optional_int64_to_int(num_threads, "num_threads"));
   return wrap_pointer_to_tensor<PacketDecoder>(std::move(decoder));
+}
+
+torch::stable::Tensor _blocks_create_packet(
+    const torch::stable::Tensor& data,
+    std::optional<int64_t> pts,
+    std::optional<int64_t> dts,
+    int64_t duration,
+    int64_t flags,
+    std::optional<std::vector<std::string>> side_data_names,
+    std::optional<std::vector<torch::stable::Tensor>> side_data_values) {
+  check_bytes("data", data);
+  int size = validate_int64_to_int(data.numel(), "data size");
+  int packet_flags = validate_int64_to_int(flags, "flags");
+  // It tells FFmpeg that the data can be trusted to hold pointers, which some
+  // decoders then follow.
+  STD_TORCH_CHECK(
+      (packet_flags & AV_PKT_FLAG_TRUSTED) == 0,
+      "flags must not contain AV_PKT_FLAG_TRUSTED.");
+
+  UniqueAVPacket packet(av_packet_alloc());
+  STD_TORCH_CHECK(packet != nullptr, "Failed to allocate the packet.");
+  // av_new_packet() also allocates the zeroed padding past the end of the
+  // data, which decoders read into.
+  int status = av_new_packet(packet.get(), size);
+  STD_TORCH_CHECK(
+      status == AVSUCCESS,
+      "Failed to allocate the packet data: ",
+      get_ffmpeg_error_string_from_error_code(status));
+  if (size > 0) {
+    std::memcpy(packet->data, data.const_data_ptr<uint8_t>(), size);
+  }
+  packet->pts = pts.value_or(AV_NOPTS_VALUE);
+  packet->dts = dts.value_or(AV_NOPTS_VALUE);
+  packet->duration = duration;
+  packet->flags = packet_flags;
+
+  if (side_data_names.has_value()) {
+    STD_TORCH_CHECK(
+        side_data_values.has_value() &&
+            side_data_values->size() == side_data_names->size(),
+        "side_data_names and side_data_values must have the same length.");
+    for (size_t i = 0; i < side_data_names->size(); ++i) {
+      const torch::stable::Tensor& value = (*side_data_values)[i];
+      check_bytes("side_data values", value);
+      int value_size =
+          validate_int64_to_int(value.numel(), "side_data value size");
+      uint8_t* destination = av_packet_new_side_data(
+          packet.get(),
+          get_packet_side_data_type_from_name((*side_data_names)[i]),
+          value_size);
+      STD_TORCH_CHECK(
+          destination != nullptr, "Failed to allocate the side data.");
+      if (value_size > 0) {
+        std::memcpy(destination, value.const_data_ptr<uint8_t>(), value_size);
+      }
+    }
+  }
+  return wrap_pointer_to_tensor(std::move(packet));
+}
+
+using OpsPacketFieldsOutput = std::tuple<
+    torch::stable::Tensor, // data
+    std::optional<int64_t>, // pts
+    std::optional<int64_t>, // dts
+    int64_t, // duration
+    int64_t, // flags
+    std::vector<std::string>, // side_data_names
+    std::vector<torch::stable::Tensor>>; // side_data_values
+
+OpsPacketFieldsOutput _blocks_packet_get_fields(torch::stable::Tensor& packet) {
+  const AVPacket* av_packet = unwrap_tensor_to_pointer<AVPacket>(packet);
+
+  OpsPacketFieldsOutput output;
+  auto& [data, pts, dts, duration, flags, side_data_names, side_data_values] =
+      output;
+  if (av_packet->size == 0) {
+    data = torch::stable::empty({int64_t(0)}, kStableUInt8);
+  } else {
+    // A view on the packet's data. As for the frame planes, the deleter
+    // captures a copy of the packet handle, which keeps the packet alive as
+    // long as the view is (see test_packet_data_outlives_packet).
+    torch::stable::Tensor handle_copy = packet;
+    int64_t sizes[] = {av_packet->size};
+    int64_t strides[] = {1};
+    data = torch::stable::from_blob(
+        av_packet->data,
+        {sizes, 1},
+        {strides, 1},
+        StableDevice(kStableCPU),
+        kStableUInt8,
+        [handle_copy](void*) {});
+  }
+  if (av_packet->pts != AV_NOPTS_VALUE) {
+    pts = av_packet->pts;
+  }
+  if (av_packet->dts != AV_NOPTS_VALUE) {
+    dts = av_packet->dts;
+  }
+  duration = av_packet->duration;
+  flags = av_packet->flags;
+  for (int i = 0; i < av_packet->side_data_elems; ++i) {
+    const AVPacketSideData& side_data = av_packet->side_data[i];
+    const char* name = av_packet_side_data_name(side_data.type);
+    // A type this FFmpeg can't name is a type it doesn't know what to do with
+    // either, so there's nothing a decoder would read from it.
+    if (name != nullptr) {
+      side_data_names.emplace_back(name);
+      side_data_values.push_back(
+          bytes_to_tensor(side_data.data, side_data.size));
+    }
+  }
+  return output;
 }
 
 int64_t _blocks_packet_decoder_send_packet(
@@ -976,13 +1474,29 @@ void _blocks_packet_decoder_reset(torch::stable::Tensor& decoder) {
   unwrap_tensor_to_pointer<PacketDecoder>(decoder)->reset();
 }
 
-// (frame_handle, status, pts_seconds, duration_seconds, storage).
+// (frame_handle, status, pts, pts_seconds, duration_seconds, storage). `pts`
+// is in the decoder's time base, and is None when the frame has no timestamp.
 using OpsReceiveFrameOutput = std::tuple<
     torch::stable::Tensor,
     int64_t,
+    std::optional<int64_t>,
     double,
     double,
     torch::stable::Tensor>;
+
+namespace {
+std::optional<int64_t> to_optional_pts(int64_t pts) {
+  if (pts == AV_NOPTS_VALUE) {
+    return std::nullopt;
+  }
+  return pts;
+}
+
+double pts_to_seconds_or_nan(int64_t pts, const AVRational& time_base) {
+  return pts == INT64_MIN ? std::numeric_limits<double>::quiet_NaN()
+                          : pts_to_seconds(pts, time_base);
+}
+} // namespace
 
 OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
     torch::stable::Tensor& decoder) {
@@ -994,12 +1508,14 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
     return std::make_tuple(
         torch::stable::full({1}, 0, kStableInt64),
         static_cast<int64_t>(status),
+        std::nullopt,
         0.0,
         0.0,
         torch::stable::empty({int64_t(0)}, kStableUInt8));
   }
   AVRational time_base = decoder_ptr->time_base();
-  double pts_seconds = pts_to_seconds(get_pts_or_dts(*av_frame), time_base);
+  int64_t pts = get_pts_or_dts(*av_frame);
+  double pts_seconds = pts_to_seconds_or_nan(pts, time_base);
   double duration_seconds = pts_to_seconds(get_duration(*av_frame), time_base);
   torch::stable::Tensor storage =
       decoder_ptr->get_frame_storage(*av_frame).value_or(
@@ -1007,17 +1523,24 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
   return std::make_tuple(
       wrap_pointer_to_tensor(std::move(av_frame)),
       static_cast<int64_t>(0),
+      to_optional_pts(pts),
       pts_seconds,
       duration_seconds,
       storage);
 }
 
-// (samples, status, pts_seconds, duration_seconds, sample_rate,
+// (samples, status, pts, pts_seconds, duration_seconds, sample_rate,
 // sample_format). `samples` is [num_channels, num_samples] in the frame's own
 // sample type; there is no frame handle because, unlike a video frame, nothing
-// downstream needs the AVFrame itself.
-using OpsReceiveAudioFrameOutput = std::
-    tuple<torch::stable::Tensor, int64_t, double, double, int64_t, std::string>;
+// downstream needs the AVFrame itself. `pts` is as for video frames.
+using OpsReceiveAudioFrameOutput = std::tuple<
+    torch::stable::Tensor,
+    int64_t,
+    std::optional<int64_t>,
+    double,
+    double,
+    int64_t,
+    std::string>;
 
 OpsReceiveAudioFrameOutput _blocks_audio_packet_decoder_receive_frame(
     torch::stable::Tensor& decoder) {
@@ -1033,6 +1556,7 @@ OpsReceiveAudioFrameOutput _blocks_audio_packet_decoder_receive_frame(
     return std::make_tuple(
         torch::stable::empty({int64_t(0)}, kStableUInt8),
         static_cast<int64_t>(status),
+        std::nullopt,
         0.0,
         0.0,
         static_cast<int64_t>(0),
@@ -1040,12 +1564,14 @@ OpsReceiveAudioFrameOutput _blocks_audio_packet_decoder_receive_frame(
   }
 
   AVRational time_base = decoder_ptr->time_base();
+  int64_t pts = get_pts_or_dts(*av_frame);
   const char* sample_format_name =
       av_get_sample_fmt_name(static_cast<AVSampleFormat>(av_frame->format));
   return std::make_tuple(
       get_audio_samples(*av_frame),
       static_cast<int64_t>(0),
-      pts_to_seconds(get_pts_or_dts(*av_frame), time_base),
+      to_optional_pts(pts),
+      pts_to_seconds_or_nan(pts, time_base),
       pts_to_seconds(get_duration(*av_frame), time_base),
       static_cast<int64_t>(av_frame->sample_rate),
       std::string(
@@ -1265,6 +1791,10 @@ void write_header_based_metadata(
   }
   if (stream_metadata.codec_name.has_value()) {
     map["codec"] = quote_value(stream_metadata.codec_name.value());
+  }
+  if (stream_metadata.time_base.has_value()) {
+    map["timeBaseNum"] = std::to_string(stream_metadata.time_base->num);
+    map["timeBaseDen"] = std::to_string(stream_metadata.time_base->den);
   }
   if (stream_metadata.post_rotation_width.has_value()) {
     map["width"] = std::to_string(*stream_metadata.post_rotation_width);
@@ -1695,6 +2225,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
       "_blocks_create_color_converter",
       TORCH_BOX(&_blocks_create_color_converter));
   m.impl(
+      "_blocks_create_packet_decoder",
+      TORCH_BOX(&_blocks_create_packet_decoder));
+  m.impl(
       "_blocks_create_audio_converter",
       TORCH_BOX(&_blocks_create_audio_converter));
   m.impl(
@@ -1771,8 +2304,10 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("_blocks_demuxer_seek", TORCH_BOX(&_blocks_demuxer_seek));
   m.impl("_blocks_demuxer_scan", TORCH_BOX(&_blocks_demuxer_scan));
   m.impl(
-      "_blocks_create_packet_decoder",
-      TORCH_BOX(&_blocks_create_packet_decoder));
+      "_blocks_demuxer_get_codec_parameters",
+      TORCH_BOX(&_blocks_demuxer_get_codec_parameters));
+  m.impl("_blocks_create_packet", TORCH_BOX(&_blocks_create_packet));
+  m.impl("_blocks_packet_get_fields", TORCH_BOX(&_blocks_packet_get_fields));
   m.impl(
       "_blocks_packet_decoder_send_packet",
       TORCH_BOX(&_blocks_packet_decoder_send_packet));

@@ -116,9 +116,14 @@ _blocks_demuxer_next_packet = (
 )
 _blocks_demuxer_seek = torch.ops.torchcodec_ns._blocks_demuxer_seek.default
 _blocks_demuxer_scan = torch.ops.torchcodec_ns._blocks_demuxer_scan.default
+_blocks_demuxer_get_codec_parameters = (
+    torch.ops.torchcodec_ns._blocks_demuxer_get_codec_parameters.default
+)
 _blocks_create_packet_decoder = (
     torch.ops.torchcodec_ns._blocks_create_packet_decoder.default
 )
+_blocks_create_packet = torch.ops.torchcodec_ns._blocks_create_packet.default
+_blocks_packet_get_fields = torch.ops.torchcodec_ns._blocks_packet_get_fields.default
 _blocks_packet_decoder_send_packet = (
     torch.ops.torchcodec_ns._blocks_packet_decoder_send_packet.default
 )

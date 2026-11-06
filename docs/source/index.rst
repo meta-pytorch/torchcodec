@@ -133,7 +133,8 @@ separate stages.
         :link: generated_examples/low_level/pipelines.html
         :link-type: url
 
-        How to overlap the stages on several threads, and where to split them
+        How to overlap the stages on several threads, and how to demux and
+        decode in different processes
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Raw frames and samples
@@ -141,6 +142,14 @@ separate stages.
         :link-type: url
 
         How to read the decoder's own YUV planes and audio samples
+
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Decoding without a Demuxer
+        :link: generated_examples/low_level/demuxer_free.html
+        :link-type: url
+
+        How to decode packets that come from a database, the network, or your
+        own container parser
 
 
 Encoding

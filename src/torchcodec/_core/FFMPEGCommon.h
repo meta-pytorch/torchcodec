@@ -79,6 +79,14 @@ extern "C" {
 #define FFMPEG_HAS_FRAME_DURATION 1
 #endif
 
+// FFmpeg 6.1 moved the stream-level side data, e.g. the display matrix, from
+// AVStream to AVCodecParameters.coded_side_data.
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(60, 31, 100)
+#define FFMPEG_HAS_CODED_SIDE_DATA 1
+#else
+#define FFMPEG_HAS_CODED_SIDE_DATA 0
+#endif
+
 namespace facebook::torchcodec {
 
 // Mirrors cudaVideoSurfaceFormat. Needed here because we don't want to include
@@ -140,6 +148,9 @@ using UniqueEncodingAVFormatContext = std::unique_ptr<
 using UniqueAVCodecContext = std::unique_ptr<
     AVCodecContext,
     Deleterp<AVCodecContext, void, avcodec_free_context>>;
+using UniqueAVCodecParameters = std::unique_ptr<
+    AVCodecParameters,
+    Deleterp<AVCodecParameters, void, avcodec_parameters_free>>;
 using SharedAVCodecContext = std::shared_ptr<AVCodecContext>;
 
 // create SharedAVCodecContext with custom deleter
@@ -429,9 +440,39 @@ std::optional<double> get_rotation_from_stream(const AVStream* av_stream);
 // Same, from a frame's own display matrix side data.
 std::optional<double> get_rotation_from_frame(const AVFrame& av_frame);
 
+// Same, from a display matrix. nullopt for a null or invalid matrix.
+std::optional<double> get_rotation_from_display_matrix(
+    const int32_t* display_matrix);
+
 // The stream's raw display matrix, or nullptr when it has none. Points into the
 // stream's side data, so it lives as long as the stream does.
 const int32_t* get_display_matrix_from_stream(const AVStream* av_stream);
+
+// FF_PROFILE_UNKNOWN, AV_PROFILE_UNKNOWN and AV_LEVEL_UNKNOWN: they are all
+// -99, but which of these names exist depends on the FFmpeg version.
+constexpr int kUnknownProfileOrLevel = -99;
+
+// The frame rate the codec reports, or {0, 1} when it doesn't report one.
+// Always {0, 1} before FFmpeg 6.1, which added AVCodecParameters.framerate.
+AVRational get_framerate(const AVCodecParameters& codecpar);
+
+// FFmpeg's description of the channel layout, e.g. "stereo", or nullopt when
+// there are no channels.
+std::optional<std::string> get_channel_layout_name(
+    const AVCodecParameters& codecpar);
+
+// "progressive", "tt", "bb", "tb" or "bt", which are the names ffprobe uses, or
+// nullptr when the field order is unknown. FFmpeg has no function for these.
+const char* get_field_order_name(AVFieldOrder field_order);
+
+// The inverses of the functions above, for building AVCodecParameters. They
+// raise on a name FFmpeg doesn't know, and on a value this FFmpeg version can't
+// hold.
+void set_framerate(AVCodecParameters& codecpar, const AVRational& framerate);
+void set_channel_layout(AVCodecParameters& codecpar, const std::string& name);
+AVFieldOrder get_field_order_from_name(const std::string& name);
+AVPacketSideDataType get_packet_side_data_type_from_name(
+    const std::string& name);
 
 // Makes `av_frame` carry `display_matrix` (or no display matrix at all, for
 // nullptr), replacing whatever it had.

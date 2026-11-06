@@ -88,6 +88,28 @@ plot(image)
 # decoded as RGB (3 channels) with ``torch.uint8`` values.
 
 # %%
+# Getting image metadata
+# ----------------------
+#
+# :func:`~torchcodec.decoders.get_image_metadata` returns the metadata of an
+# image without decoding it: only the headers are parsed, so it's much faster
+# than decoding. It accepts the same sources as
+# :func:`~torchcodec.decoders.decode_image`.
+from torchcodec.decoders import get_image_metadata
+
+metadata = get_image_metadata(raw_image_bytes)
+print(metadata)
+
+# %%
+# All the fields describe what the decoders return. ``width`` and ``height`` are
+# the dimensions of the decoded image, i.e. after the orientation metadata is
+# applied. ``num_channels`` is the number of channels you get with
+# ``mode="UNCHANGED"``, ``num_frames`` is the size of the ``N`` dimension for
+# animated images, and a ``bit_depth`` above 8 means that
+# ``output_dtype="auto"`` returns a ``torch.uint16`` tensor. See
+# :class:`~torchcodec.decoders.ImageMetadata` for details.
+
+# %%
 # Choosing the color mode
 # -----------------------
 #
@@ -122,7 +144,7 @@ print(f"{image_16bit.to(torch.int32).max() = }")  # scaled up to the 16-bit rang
 #
 # GIF, WebP and AVIF can hold a *sequence* of frames (an animation). In that
 # case :func:`~torchcodec.decoders.decode_gif`,
-# :func:`~torchcodec.decoders.decode_webp,
+# :func:`~torchcodec.decoders.decode_webp`,
 # :func:`~torchcodec.decoders.decode_avif`, and
 # :func:`~torchcodec.decoders.decode_heic` return an ``(N, C, H, W)`` tensor,
 # with one frame per animation frame, instead of the ``(C, H, W)`` you get for a

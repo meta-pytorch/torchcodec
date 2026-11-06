@@ -43,7 +43,7 @@ from pathlib import Path
 
 import torch
 
-from torchcodec.decoders import ColorConverter, Demuxer
+from torchcodec.decoders import ColorConverter, Demuxer, VideoPacketDecoder
 
 # sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_low_level_cuda_streams.jpg'
 
@@ -64,7 +64,9 @@ convert_stream = torch.cuda.Stream()
 
 def make_stages():
     demuxer = Demuxer(video_path)
-    packet_decoder = demuxer.streams[0].make_decoder(device="cuda")
+    packet_decoder = VideoPacketDecoder(
+        demuxer.streams[0].codec_parameters, device="cuda"
+    )
     return demuxer, packet_decoder, ColorConverter(device="cuda")
 
 

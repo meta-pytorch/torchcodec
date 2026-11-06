@@ -22,6 +22,19 @@ int validate_int64_to_int(int64_t value, const std::string& parameter_name) {
   return static_cast<int>(value);
 }
 
+uint32_t validate_int64_to_uint32(
+    int64_t value,
+    const std::string& parameter_name) {
+  STD_TORCH_CHECK(
+      value >= 0 && value <= std::numeric_limits<uint32_t>::max(),
+      parameter_name,
+      "=",
+      value,
+      " is out of range for uint32 type.");
+
+  return static_cast<uint32_t>(value);
+}
+
 std::optional<int> validate_optional_int64_to_int(
     const std::optional<int64_t>& value,
     const std::string& parameter_name) {

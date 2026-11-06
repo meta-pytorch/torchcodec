@@ -125,6 +125,8 @@ JpegEncoder(image).to_file("output.jpg")  # also .to_tensor() and .to_file_like(
    conda install "ffmpeg" -c conda-forge
    ```
 
+   Refer to the official [FFmpeg download page](https://ffmpeg.org/download.html) for more installation options.
+
    > **Note:** FFmpeg is an *optional* dependency. It is needed for video
    > and audio decoding and encoding (`VideoDecoder`, `AudioDecoder`,
    > `VideoEncoder`, `AudioEncoder`, etc.). The image decoders and encoders

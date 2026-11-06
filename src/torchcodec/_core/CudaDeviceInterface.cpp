@@ -115,22 +115,18 @@ void CudaDeviceInterface::initialize(
 }
 
 void CudaDeviceInterface::initialize_video_decoding(
-    const AVStream* av_stream,
-    const UniqueDecodingAVFormatContext& av_format_ctx,
+    const CodecParameters& codec_parameters,
     [[maybe_unused]] const VideoStreamOptions& video_stream_options) {
-  STD_TORCH_CHECK(av_stream != nullptr, "avStream is null");
-  time_base_ = av_stream->time_base;
+  time_base_ = codec_parameters.time_base;
 
   cpu_interface_ = create_device_interface(kStableCPU);
   STD_TORCH_CHECK(
       cpu_interface_ != nullptr, "Failed to create CPU device interface");
   cpu_interface_->initialize(codec_context_);
-  cpu_interface_->initialize_video(
-      av_stream,
-      av_format_ctx,
-      VideoStreamOptions(),
-      {},
-      /*resizedOutputDims=*/std::nullopt);
+  cpu_interface_->initialize_video_decoding(
+      codec_parameters, VideoStreamOptions());
+  cpu_interface_->initialize_color_conversion(
+      VideoStreamOptions(), {}, /*resizedOutputDims=*/std::nullopt);
 }
 
 void CudaDeviceInterface::initialize_color_conversion(
