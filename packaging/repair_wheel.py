@@ -218,12 +218,6 @@ def repair_macos(wheels):
                 # ($0=search, $1=wheel): macOS SIP strips DYLD_* vars from
                 # inherited env on CI (see cibuildwheel #816).
                 #
-                # Not DYLD_LIBRARY_PATH: dyld applies that one by leaf name to
-                # every lib loaded by the delocate process itself, so conda's
-                # libiconv.2.dylib would shadow the system one and crash dyld
-                # (missing _iconv). The fallback path is only consulted for libs
-                # not found at their install name. delocate searches both vars.
-                #
                 # --no-sanitize-rpaths: delocate otherwise deletes every absolute
                 # LC_RPATH from each lib. They'd lose the
                 # /opt/homebrew/opt/ffmpeg/lib rpath that lets a user's Homebrew
