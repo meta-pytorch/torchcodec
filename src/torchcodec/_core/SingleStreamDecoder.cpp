@@ -1078,8 +1078,6 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
     return AudioFramesOutput{torch::stable::empty({num_channels, 0}), 0.0};
   }
 
-  auto start_pts = seconds_to_closest_pts(start_seconds, stream_info.time_base);
-
   // We must figure out if we need to seek, and where to. The following figures
   // out the value of target_preroll_seconds. See the [Audio pre-roll and
   // post-roll]  note.
@@ -1131,8 +1129,15 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
 
     target_postroll_seconds = 2 * filter_length / src_sample_rate;
   }
-  auto target_seek_pts = seconds_to_closest_pts(
-      start_seconds - target_preroll_seconds, stream_info.time_base);
+  // The time base can be much coarser than a sample (1ms in Matroska), so
+  // start_seconds and stop_seconds are never converted to their closest pts:
+  // that could exclude the frames containing them. Frames are selected by
+  // comparing their bounds in seconds instead. The seek target is rounded down:
+  // seeking a bit early only decodes an extra frame.
+  const AVRational& time_base = stream_info.time_base;
+  double seek_seconds = start_seconds - target_preroll_seconds;
+  auto target_seek_pts = static_cast<int64_t>(
+      std::floor(seek_seconds * time_base.den / time_base.num));
 
   int64_t min_pts = stream_info.stream->start_time != AV_NOPTS_VALUE
       ? stream_info.stream->start_time
@@ -1149,8 +1154,8 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
         last_decoded_av_frame_pts_ + last_decoded_av_frame_duration_;
     // We seek if we need to go backwards, or if the target is far enough
     // forward that decoding every intermediate frame would be wasteful.
-    needs_seek = start_pts < current_end ||
-        start_pts > current_end + (start_pts - target_seek_pts);
+    needs_seek = start_seconds < pts_to_seconds(current_end, time_base) ||
+        target_seek_pts > current_end;
   }
 
   if (needs_seek) {
@@ -1173,27 +1178,24 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
   std::vector<torch::stable::Tensor> frames;
 
   std::optional<double> first_frame_pts_seconds = std::nullopt;
-  auto stop_pts = stop_seconds_optional.has_value()
-      ? seconds_to_closest_pts(*stop_seconds_optional, stream_info.time_base)
-      : INT64_MAX;
 
   // When resampling, we must send the prerolled and postrolled frames through
   // the resampler!
-  auto output_start_pts =
-      is_resampling ? std::min(start_pts, target_seek_pts) : start_pts;
-  auto output_stop_pts = (stop_pts == INT64_MAX) ? stop_pts
-                                                 : stop_pts +
-          seconds_to_closest_pts(target_postroll_seconds,
-                                 stream_info.time_base);
+  double output_start_seconds = is_resampling ? seek_seconds : start_seconds;
+  double output_stop_seconds = stop_seconds_optional.has_value()
+      ? *stop_seconds_optional + target_postroll_seconds
+      : std::numeric_limits<double>::infinity();
 
   auto finished = false;
   while (!finished) {
     try {
       UniqueAVFrame av_frame = decode_av_frame(
-          [output_start_pts, output_stop_pts](const AVFrame& av_frame) {
-            return output_start_pts <
-                get_pts_or_dts(av_frame) + get_duration(av_frame) &&
-                output_stop_pts > get_pts_or_dts(av_frame);
+          [output_start_seconds, output_stop_seconds, &time_base](
+              const AVFrame& av_frame) {
+            int64_t pts = get_pts_or_dts(av_frame);
+            return output_start_seconds <
+                pts_to_seconds(pts + get_duration(av_frame), time_base) &&
+                output_stop_seconds > pts_to_seconds(pts, time_base);
           });
       auto frame_output = convert_av_frame_to_frame_output(*av_frame);
       if (!first_frame_pts_seconds.has_value()) {
@@ -1204,17 +1206,19 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
       finished = true;
     }
 
-    // We're done once output_stop_pts falls within the last decoded frame,
+    // We're done once output_stop_seconds falls within the last decoded frame,
     // bounds
     // included. Excluding the upper bound would look more natural, but when
-    // output_stop_pts lands exactly on a frame boundary we'd keep going: the
-    // frame starting there is rejected by the pts filter above, as is every
-    // frame after it, so we'd decode to EOF for the same output.
+    // output_stop_seconds lands exactly on a frame boundary we'd keep going:
+    // the frame starting there is rejected by the pts filter above, as is
+    // every frame after it, so we'd decode to EOF for the same output.
 
     auto last_decoded_av_frame_end =
         last_decoded_av_frame_pts_ + last_decoded_av_frame_duration_;
-    finished |= (last_decoded_av_frame_pts_) <= output_stop_pts &&
-        (output_stop_pts <= last_decoded_av_frame_end);
+    finished |= pts_to_seconds(last_decoded_av_frame_pts_, time_base) <=
+            output_stop_seconds &&
+        output_stop_seconds <=
+            pts_to_seconds(last_decoded_av_frame_end, time_base);
   }
 
   auto last_samples = device_interface_->maybe_flush_audio_buffers();
