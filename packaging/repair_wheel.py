@@ -455,6 +455,8 @@ def check_bundling():
       libavif should keep us under it.
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
     - (Linux only) libtorchcodec_image.so links FFmpeg.
+    - (Linux only) one of our libtorchcodec_*.so uses the CPython C API: wheels
+      are tagged py3-none and must work on any Python version.
     - (MacOS only) a bundled libtorchcodec_core*.dylib is missing the Homebrew
       FFmpeg rpath
     """
@@ -573,6 +575,40 @@ def check_bundling():
                 f"{lib_name} must not link FFmpeg, but its DT_NEEDED lists: "
                 + " ".join(ffmpeg_needed)
             )
+
+    def _assert_linux_libs_no_python(zf):
+        """Enforce that none of our own libraries use the CPython C API.
+
+        Our wheels are tagged py3-none (see wheel.py-api in pyproject.toml),
+        which is only correct if no compiled code depends on a specific Python
+        version or ABI.
+        """
+        from elftools.elf.elffile import ELFFile
+
+        members = [
+            n
+            for n in zf.namelist()
+            if _is_shared_lib(n) and n.rsplit("/", 1)[-1].startswith("libtorchcodec_")
+        ]
+        assert members, "No libtorchcodec_* libraries found in wheel"
+        for member in members:
+            elf = ELFFile(io.BytesIO(zf.read(member)))
+            dynamic = elf.get_section_by_name(".dynamic")
+            needed = (
+                [t.needed for t in dynamic.iter_tags("DT_NEEDED")] if dynamic else []
+            )
+            python_needed = [n for n in needed if n.startswith("libpython")]
+            dynsym = elf.get_section_by_name(".dynsym")
+            python_symbols = [
+                sym.name
+                for sym in (dynsym.iter_symbols() if dynsym else [])
+                if sym["st_shndx"] == "SHN_UNDEF" and sym.name.startswith(("Py", "_Py"))
+            ]
+            if python_needed or python_symbols:
+                raise RuntimeError(
+                    f"{member} must not use the CPython C API, but it links "
+                    f"{python_needed} and references {python_symbols[:10]}"
+                )
 
     def _assert_linux_libjpeg_is_turbo(zf):
         jpeg_members = [
@@ -721,6 +757,7 @@ def check_bundling():
             if platform.system() == "Linux":
                 _assert_linux_libjpeg_is_turbo(zf)
                 _assert_linux_lib_no_ffmpeg(zf, "libtorchcodec_image.so")
+                _assert_linux_libs_no_python(zf)
             elif platform.system() == "Darwin":
                 _assert_macos_homebrew_rpath_is_present(zf)
         print("OK: only libjpeg (and allowed libs) bundled.")
