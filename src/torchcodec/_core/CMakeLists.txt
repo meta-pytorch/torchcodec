@@ -302,7 +302,8 @@ function(make_torchcodec_libraries
     #    On Mac, it is dylib. On Windows it's dll.
     #
     # None of our libraries use the CPython C API: they're all loaded through
-    # torch.ops.load_library. Don't link against Python or pybind11.
+    # torch.ops.load_library, which is what lets us ship Python-agnostic
+    # (py3-none) wheels. Don't link against Python or pybind11.
 
     # 1. Create libtorchcodec_coreN.{ext}.
     set(core_library_name "libtorchcodec_core${ffmpeg_major_version}")
