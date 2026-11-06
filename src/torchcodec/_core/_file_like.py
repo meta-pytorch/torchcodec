@@ -10,85 +10,56 @@ See Note [File-like objects through ctypes] below.
 """
 
 import ctypes
-import operator
+from dataclasses import dataclass
 from typing import Any
 
 # Note [File-like objects through ctypes]
 #
-# Decoders and encoders can read from or write to a Python file-like object.
-# FFmpeg drives the IO from C++, so C++ has to call the object's read(), write()
-# and seek() methods. This is how it does it without any of our compiled
-# libraries using the CPython C API.
+# File-like objects are user-specified Python objects with a read, write, and
+# seek method. They can be used as the source or destination of a decoder or
+# encoder, instead of a file on disk.
 #
-# The struct. _FileLikeCallbacks is a ctypes.Structure: each instance is an
-# actual C struct in memory, laid out exactly like FileLikeCallbacks in
-# FileLikeIO.h (an int64 id_ followed by five function pointers).
-# create_file_like_context() fills one in and returns its address as a plain
-# int, which goes through the custom ops as their `int file_like_context`
-# argument. On the C++ side, adopt_file_like_context() casts that int back to a
-# FileLikeCallbacks* and copies the struct into a FileLikeIO.
+# Their read(), write(), and seek() methods are called from C++ by FFmpeg. We do
+# this binding through ctypes (not pybind11! See below why).
 #
-# The id_. The id_ field is the Python id() of the _Entry holding the file-like
-# object, and its key in _entries. The callbacks are module-level functions
-# shared by all file-like objects, so C++ passes id_ back as the first argument
-# of every callback, and the callback looks up _entries[id_] to know which
-# file-like object to use. C++ never dereferences it. id() is unique among
-# objects that are alive at the same time, and an _Entry stays alive as long as
-# it's in _entries, so two live entries never share an id_.
+# When a user gives us a file-like object, we create a _FileLikeContext to hold
+# it, and we associate it with a _FileLikeCallbacks struct, which mirrors the
+# C++ FileLikeCallbacks struct. This _FileLikeCallbacks struct **is a C struct
+# in memory!** (that's what ctypes does). It holds callback pointers to the
+# Python functions below (_read, _write, _seek, _release, _get_error). Each of
+# these functions then calls the corresponding method of the file-like object:
+# they know how, because they're given the Python id() of the _FileLikeContext
+# that they must call those methods on.
 #
-# The callbacks. ctypes turns each of the Python functions below into a C
-# function pointer (_READ_FN_TYPE(_read), etc.): it generates, through libffi,
-# a small piece of machine code that is a regular C function. FileLikeIO.cpp
-# calls it like any other C function, e.g.
-# `callbacks_.read(callbacks_.id_, buf, request)`. That machine code enters
-# CPython's _ctypes module, which converts the C arguments to Python ints, calls
-# _read(id_, buf, size), and converts its return value back to an int64.
-# _read() calls the file-like object's read() and copies the bytes into buf.
+# ctypes automatically acquires the GIL for each callback.
 #
-# The GIL. The ops run with the GIL released, so C++ calls the callbacks from a
-# thread that doesn't hold it. _ctypes wraps every callback in
-# PyGILState_Ensure() / PyGILState_Release(), so the GIL is taken for the
-# duration of each callback. On free-threaded builds there is no GIL, and
-# PyGILState_Ensure() attaches the calling thread to the interpreter, which is
-# what running Python code requires.
+# The _FileLikeContext object is kept alive by Python, not by C++. It
+# is stored in _ALIVE_CONTEXTS until its release() callback is called from C++,
+# upon destruction of its associated FileLikeIO object.
 #
-# Lifetime. The file-like object is kept alive by Python, not by C++: its _Entry
-# sits in _entries, and C++ only holds its id_ and the function pointers. What
-# C++ owns is the duty to release it: the FileLikeIO destructor calls
-# release(id_), which removes the entry from _entries and with it the reference
-# to the file-like object. FileLikeIO lives as long as the
-# decoder or encoder that adopted it, so the file-like object stays alive until
-# that decoder or encoder is destroyed. Every op adopts the context before doing
-# anything else, so release() runs even if the op then fails. But if the address
-# never reaches adopt_file_like_context(), e.g. because the op call fails before
-# entering C++, release() is never called and the entry leaks, along with the
-# file-like object. The function pointers themselves are module-level and live
-# forever.
+# A Python exception cannot be raised from within a callback because it cannot
+# cross the C++ boundary. So all callbacks catch exceptions and return a special
+# value instead (_CALLBACK_ERROR). When C++ sees that value, it calls the
+# get_error() callback to fetch the error message, which is then turned into a
+# RuntimeError via STD_TORCH_CHECK(false, the_message).
 #
-# Exceptions. A Python exception can't propagate through C code: ctypes would
-# just print it and return to C++ as if nothing happened. So every callback
-# catches everything, stores the exception on its _Entry, and returns
-# _CALLBACK_ERROR. C++ then calls get_error() to fetch "TypeName: message" and
-# raises a RuntimeError with it. The tradeoff is that the original exception
-# type is lost: if a user's read() raises a TypeError, they get a RuntimeError
-# whose message contains "TypeError: ...".
+# Why go the hard way of using ctypes instead of just using pybind? Mainly
+# because we want our wheels to be py3-none, i.e. we don't want our wheels to be
+# tied to a CPython version. We could use pybind and rely on stable ABIs like
+# abi3/abi3t, but only from 3.15, and we don't want to wait that long.
 #
-# Why not pybind11. pybind11, like any code using the CPython C API, is compiled
-# into our library against the headers of one specific Python: it inlines
-# reference counting, and relies on struct layouts and private symbols, all of
-# which differ between Python versions and between regular and free-threaded
-# builds. A library built that way only works with the Python it was built
-# for. The limited API (abi3) would make it work across regular builds, but not
-# free-threaded ones: those need abi3t, which only exists from Python 3.15. With
-# ctypes we still go through the CPython C API, but that code lives in CPython's
-# own _ctypes module, which is compiled for and ships with every Python. Our
-# libraries only make plain C function calls, so they work with any Python
-# version. The price is a fraction of a microsecond more per callback than
-# pybind11, which doesn't show in practice: FFmpeg does IO in 64 KB chunks, so a
-# typical op makes tens to hundreds of callbacks.
+# Note that ctypes does call the same Python C APIs that pybind does, so why can
+# we keep our wheels py3-none?  The main difference here is that *our* C++
+# doesn't use them (directly or transitively through pybind). We only rely on
+# ctypes, from Python, and C++ has no idea it's talking to Python.  ctypes
+# itself *is* compiled against a specific CPython version, just like pybind code
+# would be. But that's fine: ctypes is part of CPython's standard library, so
+# every Python installation ships its own ctypes, compiled for that exact
+# version.
 
 # Must match kFileLikeCallbackError in FileLikeIO.h.
 _CALLBACK_ERROR = -(2**63)
+_INT64_MAX = 2**63 - 1
 
 _READ_FN_TYPE = ctypes.CFUNCTYPE(
     ctypes.c_int64, ctypes.c_int64, ctypes.c_void_p, ctypes.c_int64
@@ -117,73 +88,108 @@ class _FileLikeCallbacks(ctypes.Structure):
     ]
 
 
-class _Entry:
-    __slots__ = ("file_like", "callbacks", "error")
-
-    def __init__(self, file_like: Any):
-        self.file_like = file_like
-        self.callbacks: _FileLikeCallbacks | None = None
-        self.error: BaseException | None = None
+@dataclass
+class _FileLikeContext:
+    file_like: Any
+    callbacks: _FileLikeCallbacks | None = None
+    error_message: str | None = None
 
 
 # Keeps the file-like objects alive until C++ calls release(). Keyed by id_.
-_entries: dict[int, _Entry] = {}
+_ALIVE_CONTEXTS: dict[int, _FileLikeContext] = {}
 
 
-# The callbacks catch all exceptions, see "Exceptions" in
-# Note [File-like objects through ctypes].
-def _read(id_: int, buf: int, size: int) -> int:
-    entry = _entries[id_]
+def _format_error(e: BaseException) -> str:
     try:
-        data = entry.file_like.read(size)
-        if not isinstance(data, bytes):
-            raise TypeError(
-                f"read() must return bytes, got {type(data).__name__} instead."
-            )
-        num_bytes = len(data)
-        if num_bytes > size:
-            raise ValueError(
-                f"Requested up to {size} bytes but, received {num_bytes} bytes. "
-                "The given object does not conform to read protocol of file object."
-            )
-        ctypes.memmove(buf, data, num_bytes)
-        return num_bytes
+        return f"{type(e).__name__}: {e}"
+    except BaseException:
+        # e.g. the exception's __str__ raised.
+        return "<unprintable exception>"
+
+
+# NEVER call this outside of a try/except if within a callback
+def _check_int64_result(result: Any, method: str) -> int:
+    # ctypes would turn a non-int, e.g. None, into a garbage value.
+    if not isinstance(result, int):
+        raise TypeError(f"{method}() must return an int, got {type(result).__name__}.")
+    # Excludes _CALLBACK_ERROR, which C++ would take for an error. Also excludes
+    # values outside the int64 range, which ctypes would silently wrap, e.g.
+    # 2**63 would reach C++ as _CALLBACK_ERROR.
+    if not _CALLBACK_ERROR < result <= _INT64_MAX:
+        raise ValueError(
+            f"{method}() returned {result}, which is outside the supported range "
+            f"[{_CALLBACK_ERROR + 1}, {_INT64_MAX}]."
+        )
+    return result
+
+
+def _read(id_: int, buf: int, size: int) -> int:
+    context = _ALIVE_CONTEXTS[id_]
+    try:
+        # Fill buf unless we reach EOF: read() may return fewer bytes than
+        # requested.
+        total_num_read = 0
+        while total_num_read < size:
+            request = size - total_num_read
+            data = context.file_like.read(request)
+            if not isinstance(data, bytes):
+                raise TypeError(
+                    f"read() must return bytes, got {type(data).__name__} instead."
+                )
+            num_bytes = len(data)
+            if num_bytes == 0:
+                break
+            # Guards the memmove below against overflowing buf.
+            if num_bytes > request:
+                raise ValueError(
+                    f"Requested up to {request} bytes but, received {num_bytes} "
+                    "bytes. The given object does not conform to read protocol "
+                    "of file object."
+                )
+            ctypes.memmove(buf + total_num_read, data, num_bytes)
+            total_num_read += num_bytes
+        return total_num_read
     except BaseException as e:
-        entry.error = e
+        context.error_message = _format_error(e)
         return _CALLBACK_ERROR
 
 
 def _write(id_: int, buf: int, size: int) -> int:
-    entry = _entries[id_]
+    context = _ALIVE_CONTEXTS[id_]
     try:
-        return operator.index(entry.file_like.write(ctypes.string_at(buf, size)))
+        result = context.file_like.write(ctypes.string_at(buf, size))
+        return _check_int64_result(result, "write")
     except BaseException as e:
-        entry.error = e
+        context.error_message = _format_error(e)
         return _CALLBACK_ERROR
 
 
 def _seek(id_: int, offset: int, whence: int) -> int:
-    entry = _entries[id_]
+    context = _ALIVE_CONTEXTS[id_]
     try:
-        return operator.index(entry.file_like.seek(offset, whence))
+        result = context.file_like.seek(offset, whence)
+        return _check_int64_result(result, "seek")
     except BaseException as e:
-        entry.error = e
+        context.error_message = _format_error(e)
         return _CALLBACK_ERROR
 
 
 def _release(id_: int) -> None:
-    _entries.pop(id_, None)
+    _ALIVE_CONTEXTS.pop(id_, None)
 
 
 def _get_error(id_: int, buf: int, buf_len: int) -> int:
-    entry = _entries[id_]
-    error, entry.error = entry.error, None
-    message = f"{type(error).__name__}: {error}".encode()
-    # Don't truncate in the middle of a multi-byte UTF-8 sequence: the message
-    # must remain valid UTF-8 to be turned back into a Python str.
-    message = message[:buf_len].decode(errors="ignore").encode()
-    ctypes.memmove(buf, message, len(message))
-    return len(message)
+    try:
+        context = _ALIVE_CONTEXTS[id_]
+        message, context.error_message = context.error_message, None
+        encoded = (message or "unknown error").encode(errors="replace")
+        # Don't truncate in the middle of a multi-byte UTF-8 sequence: the
+        # message must remain valid UTF-8 to be turned back into a Python str.
+        encoded = encoded[:buf_len].decode(errors="ignore").encode()
+        ctypes.memmove(buf, encoded, len(encoded))
+        return len(encoded)
+    except BaseException:
+        return 0
 
 
 # These must stay alive for as long as C++ may call them, i.e. forever.
@@ -195,12 +201,7 @@ _get_error_fn = _GET_ERROR_FN_TYPE(_get_error)
 
 
 def create_file_like_context(file_like: Any, is_for_writing: bool) -> int:
-    """Return an int to pass as the ``file_like_context`` of a custom op.
-
-    The returned value must be passed to exactly one custom op, which becomes
-    responsible for releasing the file-like object. See "Lifetime" in
-    Note [File-like objects through ctypes].
-    """
+    """Create a _FileLikeContext and return the C address of its _FileLikeCallbacks struct."""
     if is_for_writing:
         if not hasattr(file_like, "write"):
             raise RuntimeError(
@@ -211,10 +212,10 @@ def create_file_like_context(file_like: Any, is_for_writing: bool) -> int:
     if not hasattr(file_like, "seek"):
         raise RuntimeError("File like object must implement a seek method.")
 
-    entry = _Entry(file_like)
-    id_ = id(entry)
-    entry.callbacks = _FileLikeCallbacks(
+    context = _FileLikeContext(file_like)
+    id_ = id(context)
+    context.callbacks = _FileLikeCallbacks(
         id_, _read_fn, _write_fn, _seek_fn, _release_fn, _get_error_fn
     )
-    _entries[id_] = entry
-    return ctypes.addressof(entry.callbacks)
+    _ALIVE_CONTEXTS[id_] = context
+    return ctypes.addressof(context.callbacks)

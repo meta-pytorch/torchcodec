@@ -6,6 +6,7 @@
 
 #include "FileLikeIO.h"
 
+#include <algorithm>
 #include <string>
 
 #include "StableABICompat.h"
@@ -26,6 +27,9 @@ void FileLikeIO::check_callback_result(int64_t result, const char* method) {
   std::string message(1024, '\0');
   int64_t length = callbacks_.get_error(
       callbacks_.id_, message.data(), static_cast<int64_t>(message.size()));
+  // get_error() never returns more than buf_len, but if it ever raised, ctypes
+  // would hand us a garbage length.
+  length = std::clamp<int64_t>(length, 0, message.size());
   message.resize(static_cast<size_t>(length));
   STD_TORCH_CHECK(
       false,
@@ -36,31 +40,10 @@ void FileLikeIO::check_callback_result(int64_t result, const char* method) {
 }
 
 int FileLikeIO::read(uint8_t* buf, int size) {
-  int total_num_read = 0;
-  while (total_num_read < size) {
-    int request = size - total_num_read;
-    int64_t num_bytes_read = callbacks_.read(callbacks_.id_, buf, request);
-    check_callback_result(num_bytes_read, "read");
-    if (num_bytes_read == 0) {
-      break;
-    }
-
-    // The Python side refuses to copy more than `request` bytes into buf, so
-    // this is only a sanity check.
-    STD_TORCH_CHECK(
-        num_bytes_read <= request,
-        "Requested up to ",
-        request,
-        " bytes but, received ",
-        num_bytes_read,
-        " bytes. The given object does not conform to read protocol "
-        "of file object.");
-
-    buf += num_bytes_read;
-    total_num_read += static_cast<int>(num_bytes_read);
-  }
-
-  return total_num_read == 0 ? -1 : total_num_read;
+  // The Python side fills buf unless it reaches EOF.
+  int64_t num_bytes_read = callbacks_.read(callbacks_.id_, buf, size);
+  check_callback_result(num_bytes_read, "read");
+  return num_bytes_read == 0 ? -1 : static_cast<int>(num_bytes_read);
 }
 
 int FileLikeIO::write(const uint8_t* buf, int size) {

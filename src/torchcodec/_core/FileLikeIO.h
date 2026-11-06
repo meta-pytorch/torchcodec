@@ -24,9 +24,9 @@ namespace facebook::torchcodec {
 // buf_len) and returns the number of bytes written. release() drops the Python
 // side's reference to the file-like object and must be called exactly once.
 struct FileLikeCallbacks {
-  // Python id() of the entry holding the file-like object on the Python side.
-  // Never dereferenced: it's only passed back to every callback, so that the
-  // shared Python callbacks know which file-like object to use.
+  // Python id() of the _FileLikeContext holding the file-like object on the
+  // Python side. Never dereferenced: it's only passed back to every callback,
+  // so that the shared Python callbacks know which file-like object to use.
   int64_t id_;
   int64_t (*read)(int64_t id_, uint8_t* buf, int64_t size);
   int64_t (*write)(int64_t id_, const uint8_t* buf, int64_t size);
