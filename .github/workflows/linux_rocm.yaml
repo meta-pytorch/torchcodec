@@ -42,9 +42,9 @@ jobs:
       build-python-only: "enable"
 
   filter-matrix:
-    # Keep ROCm >= 10.1 and drop older versions from the matrix, since
-    # rocJPEG support is only available from 10.1 onwards. Python limiting
-    # is handled by generate-matrix (build-python-only).
+    # TEMPORARY: drop ROCm < 10.1 (rocJPEG needs 10.1+). Remove this filter
+    # once the nightly matrix no longer includes ROCm 10.0 or earlier.
+    # Python limiting is handled by generate-matrix (build-python-only).
     needs: generate-matrix
     runs-on: ubuntu-latest
     outputs:
@@ -60,13 +60,13 @@ jobs:
           echo "$build_matrix" | jq .
           echo "::endgroup::"
           # Remap to hyphenated keys (python-version / rocm-version) to match
-          # the rest of torchcodec's workflows. One entry per ROCm version;
-          # build-python-only already left a single Python in the matrix.
+          # the rest of torchcodec's workflows. build-python-only already left
+          # a single Python, so there is at most one entry per ROCm version.
           test_matrix=$(echo "$build_matrix" | jq -c '{
             include: [
               .include[]
               | {"python-version": .python_version, "rocm-version": .gpu_arch_version}
-            ] | unique_by(."rocm-version")
+            ]
           }')
           echo "test-matrix=$test_matrix" >> "$GITHUB_OUTPUT"
           echo "::group::Filtered test matrix"
