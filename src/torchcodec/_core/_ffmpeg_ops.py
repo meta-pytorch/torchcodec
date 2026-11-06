@@ -17,11 +17,9 @@ import warnings
 import torch
 from torch.library import get_ctx, register_fake
 from torchcodec._core._ffmpeg_op_names import FFMPEG_OP_NAMES
-from torchcodec._internally_replaced_utils import load_pybind_ops
+from torchcodec._core._file_like import create_file_like_context
 
 __all__ = sorted(FFMPEG_OP_NAMES)
-
-_pybind_ops = load_pybind_ops()
 
 
 # Note: We use disallow_in_graph because PyTorch does constant propagation of
@@ -260,11 +258,8 @@ def create_from_bytes(video_bytes: bytes, seek_mode: str | None = None) -> torch
 def create_from_file_like(
     file_like: io.RawIOBase | io.BufferedReader, seek_mode: str | None = None
 ) -> torch.Tensor:
-    assert _pybind_ops is not None
     return _create_from_file_like(
-        _pybind_ops.create_file_like_context(
-            file_like, False  # False means not for writing
-        ),
+        create_file_like_context(file_like, False),  # False means not for writing
         seek_mode,
     )
 
@@ -276,11 +271,8 @@ def _blocks_create_demuxer_from_bytes(video_bytes: bytes) -> torch.Tensor:
 def _blocks_create_demuxer_from_file_like(
     file_like: io.RawIOBase | io.BufferedReader,
 ) -> torch.Tensor:
-    assert _pybind_ops is not None
     return _blocks_create_demuxer_from_file_like_context(
-        _pybind_ops.create_file_like_context(
-            file_like, False  # False means not for writing
-        ),
+        create_file_like_context(file_like, False),  # False means not for writing
     )
 
 
@@ -291,11 +283,8 @@ def create_wav_decoder_from_bytes(wav_bytes: bytes) -> torch.Tensor:
 def create_wav_decoder_from_file_like(
     file_like: io.RawIOBase | io.BufferedReader,
 ) -> torch.Tensor:
-    assert _pybind_ops is not None
     return _create_wav_decoder_from_file_like(
-        _pybind_ops.create_file_like_context(
-            file_like, False  # False means not for writing
-        ),
+        create_file_like_context(file_like, False),  # False means not for writing
     )
 
 
@@ -304,11 +293,10 @@ def streaming_encoder_open_file_like(
     format: str,
     file_like: io.RawIOBase | io.BufferedIOBase,
 ) -> None:
-    assert _pybind_ops is not None
     _streaming_encoder_open_file_like(
         encoder,
         format,
-        _pybind_ops.create_file_like_context(file_like, True),
+        create_file_like_context(file_like, True),
     )
 
 
