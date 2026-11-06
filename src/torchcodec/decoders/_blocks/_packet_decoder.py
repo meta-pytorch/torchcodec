@@ -337,7 +337,7 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
     def _receive_ready_frames(self) -> list[RawAudioSamples]:
         samples = []
         while True:
-            data, status, pts, pts_seconds, duration_seconds, sample_rate, _ = (
+            data, status, pts, pts_seconds, duration_seconds, sample_rate = (
                 _blocks_audio_packet_decoder_receive_frame(self._handle)
             )
             if status != 0:  # EAGAIN (need more packets) or EOF: nothing ready

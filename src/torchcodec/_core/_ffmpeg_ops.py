@@ -9,6 +9,7 @@
 # This module is split out from ``ops.py`` and imported by it when FFmpeg is
 # available.
 
+import ctypes
 import io
 import json
 import warnings
@@ -105,12 +106,6 @@ _blocks_demuxer_add_stream = torch.ops.torchcodec_ns._blocks_demuxer_add_stream.
 _blocks_demuxer_get_audio_video_stream_indices = (
     torch.ops.torchcodec_ns._blocks_demuxer_get_audio_video_stream_indices.default
 )
-_blocks_demuxer_container_json_metadata = (
-    torch.ops.torchcodec_ns._blocks_demuxer_container_json_metadata.default
-)
-_blocks_demuxer_stream_json_metadata = (
-    torch.ops.torchcodec_ns._blocks_demuxer_stream_json_metadata.default
-)
 _blocks_demuxer_next_packet = (
     torch.ops.torchcodec_ns._blocks_demuxer_next_packet.default
 )
@@ -156,17 +151,16 @@ _blocks_audio_converter_reset = (
     torch.ops.torchcodec_ns._blocks_audio_converter_reset.default
 )
 _blocks_frame_metadata = torch.ops.torchcodec_ns._blocks_frame_metadata.default
+_blocks_get_ffmpeg_enum_name = (
+    torch.ops.torchcodec_ns._blocks_get_ffmpeg_enum_name.default
+)
 _blocks_frame_planes = torch.ops.torchcodec_ns._blocks_frame_planes.default
 
 _test_frame_pts_equality = torch.ops.torchcodec_ns._test_frame_pts_equality.default
-_get_container_json_metadata = (
-    torch.ops.torchcodec_ns.get_container_json_metadata.default
-)
 _get_key_frame_indices = torch.ops.torchcodec_ns._get_key_frame_indices.default
 scan_all_streams_to_update_metadata = (
     torch.ops.torchcodec_ns.scan_all_streams_to_update_metadata.default
 )
-_get_stream_json_metadata = torch.ops.torchcodec_ns.get_stream_json_metadata.default
 _get_json_ffmpeg_library_versions = (
     torch.ops.torchcodec_ns._get_json_ffmpeg_library_versions.default
 )
@@ -208,9 +202,6 @@ _create_wav_decoder_from_file_like = (
     torch.ops.torchcodec_ns._create_wav_decoder_from_file_like.default
 )
 get_wav_samples_in_range = torch.ops.torchcodec_ns.get_wav_samples_in_range.default
-get_wav_metadata_from_decoder = (
-    torch.ops.torchcodec_ns.get_wav_metadata_from_decoder.default
-)
 
 
 # =============================
@@ -221,6 +212,45 @@ def _bytes_to_tensor(data: bytes) -> torch.Tensor:
         # Ignore warning stating that the underlying buffer is non-writable.
         warnings.filterwarnings("ignore", category=UserWarning)
         return torch.frombuffer(data, dtype=torch.uint8)
+
+
+def _json_tensor_to_str(tensor: torch.Tensor) -> str:
+    # See Note [Returning text from ops] in custom_ops.cpp.
+    return ctypes.string_at(tensor.data_ptr(), tensor.numel()).decode()
+
+
+def _blocks_demuxer_container_json_metadata(demuxer: torch.Tensor) -> str:
+    return _json_tensor_to_str(
+        torch.ops.torchcodec_ns._blocks_demuxer_container_json_metadata.default(demuxer)
+    )
+
+
+def _blocks_demuxer_stream_json_metadata(
+    demuxer: torch.Tensor, stream_index: int
+) -> str:
+    return _json_tensor_to_str(
+        torch.ops.torchcodec_ns._blocks_demuxer_stream_json_metadata.default(
+            demuxer, stream_index
+        )
+    )
+
+
+def _get_container_json_metadata(decoder: torch.Tensor) -> str:
+    return _json_tensor_to_str(
+        torch.ops.torchcodec_ns.get_container_json_metadata.default(decoder)
+    )
+
+
+def _get_stream_json_metadata(decoder: torch.Tensor, stream_index: int) -> str:
+    return _json_tensor_to_str(
+        torch.ops.torchcodec_ns.get_stream_json_metadata.default(decoder, stream_index)
+    )
+
+
+def get_wav_metadata_from_decoder(decoder: torch.Tensor) -> str:
+    return _json_tensor_to_str(
+        torch.ops.torchcodec_ns.get_wav_metadata_from_decoder.default(decoder)
+    )
 
 
 def create_from_bytes(video_bytes: bytes, seek_mode: str | None = None) -> torch.Tensor:
@@ -502,13 +532,15 @@ def get_json_metadata_abstract(decoder: torch.Tensor) -> str:
 
 
 @register_fake("torchcodec_ns::get_container_json_metadata")
-def get_container_json_metadata_abstract(decoder: torch.Tensor) -> str:
-    return ""
+def get_container_json_metadata_abstract(decoder: torch.Tensor) -> torch.Tensor:
+    return torch.empty(get_ctx().new_dynamic_size(), dtype=torch.uint8)
 
 
 @register_fake("torchcodec_ns::get_stream_json_metadata")
-def get_stream_json_metadata_abstract(decoder: torch.Tensor, stream_idx: int) -> str:
-    return ""
+def get_stream_json_metadata_abstract(
+    decoder: torch.Tensor, stream_idx: int
+) -> torch.Tensor:
+    return torch.empty(get_ctx().new_dynamic_size(), dtype=torch.uint8)
 
 
 @register_fake("torchcodec_ns::_test_frame_pts_equality")
@@ -660,5 +692,5 @@ def get_wav_samples_in_range_abstract(
 
 
 @register_fake("torchcodec_ns::get_wav_metadata_from_decoder")
-def get_wav_metadata_from_decoder_abstract(decoder: torch.Tensor) -> str:
-    return ""
+def get_wav_metadata_from_decoder_abstract(decoder: torch.Tensor) -> torch.Tensor:
+    return torch.empty(get_ctx().new_dynamic_size(), dtype=torch.uint8)

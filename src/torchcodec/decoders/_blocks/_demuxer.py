@@ -243,6 +243,21 @@ class FrameIndex:
         return self.pts_seconds[self.key_frame_indices]
 
 
+_CODEC_PARAMETERS_TEXT_FIELDS = (
+    "codec",
+    "pixel_format",
+    "field_order",
+    "color_range",
+    "color_primaries",
+    "color_transfer_characteristic",
+    "color_space",
+    "chroma_location",
+    "sample_format",
+    "channel_layout",
+    "container_format",
+)
+
+
 @_process_local("Reach it through a Demuxer built in that process.")
 class _Stream:
     _media_type: str
@@ -269,6 +284,11 @@ class _Stream:
         )
         names = [r.name for r in _blocks_demuxer_get_codec_parameters._schema.returns]
         fields: dict[str, Any] = dict(zip(names, outputs))
+        # The text fields come as UTF-8 bytes in uint8 CPU tensors, see
+        # Note [Returning text from ops] in custom_ops.cpp.
+        for name in _CODEC_PARAMETERS_TEXT_FIELDS:
+            if fields[name] is not None:
+                fields[name] = _tensor_to_bytes(fields[name]).decode()
         container_format = fields.pop("container_format")
 
         # The binary fields come as contiguous uint8 CPU tensors, we want them
@@ -277,7 +297,7 @@ class _Stream:
         side_data_values = fields.pop("coded_side_data_values")
         if side_data_names:
             fields["coded_side_data"] = {
-                name: _tensor_to_bytes(value)
+                _tensor_to_bytes(name).decode(): _tensor_to_bytes(value)
                 for name, value in zip(side_data_names, side_data_values)
             }
         extradata = fields["extradata"]
@@ -537,12 +557,12 @@ class Demuxer:
         return list(streams)
 
     def _add_stream(self, selector: int | str) -> _Stream:
-        index, media_type = _blocks_demuxer_add_stream(
+        index, is_video = _blocks_demuxer_add_stream(
             self._handle,
             selector if isinstance(selector, int) else None,
             selector if isinstance(selector, str) else None,
         )
-        stream_class = VideoStream if media_type == "video" else AudioStream
+        stream_class = VideoStream if is_video else AudioStream
         return stream_class(self, index)
 
     def __iter__(self) -> Demuxer:

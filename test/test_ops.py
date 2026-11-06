@@ -10,6 +10,7 @@ from functools import partial
 
 os.environ["TORCH_LOGS"] = "output_code"
 import json
+import re
 
 import numpy as np
 import pytest
@@ -1144,6 +1145,27 @@ class TestAudioDecoderOps:
         )
 
         torch.testing.assert_close(frames_file_like, frames_references)
+
+
+def test_no_op_returns_str():
+    # See Note [Returning text from ops] in custom_ops.cpp.
+    allowed = {
+        # Cached in Python, so it leaks at most once per distinct value.
+        "_blocks_get_ffmpeg_enum_name",
+        # Debugging and test-only ops.
+        "get_json_metadata",
+        "_get_json_ffmpeg_library_versions",
+        "_get_backend_details",
+    }
+    offenders = []
+    for qualified_name in torch._C._dispatch_get_all_op_names():
+        namespace, _, name = qualified_name.partition("::")
+        if namespace != "torchcodec_ns" or name in allowed:
+            continue
+        schema = getattr(torch.ops.torchcodec_ns, name).default._schema
+        if any(re.search(r"\bstr\b", str(r.type)) for r in schema.returns):
+            offenders.append(str(schema))
+    assert offenders == []
 
 
 if __name__ == "__main__":
