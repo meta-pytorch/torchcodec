@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import enum
+import functools
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -13,12 +15,31 @@ import torch
 
 from torchcodec._core.ops import (
     _blocks_create_packet,
+    _blocks_ffmpeg_enum_name,
     _blocks_frame_metadata,
     _blocks_frame_planes,
     _blocks_packet_get_fields,
 )
 
 from ._helpers import _bytes_to_tensor, _process_local, _tensor_to_bytes
+
+
+# Must match FFmpegEnum in custom_ops.cpp.
+class _FFmpegEnum(enum.IntEnum):
+    PIXEL_FORMAT = 0
+    COLOR_SPACE = 1
+    COLOR_RANGE = 2
+    COLOR_PRIMARIES = 3
+    COLOR_TRANSFER_CHARACTERISTIC = 4
+    PACKET_SIDE_DATA_TYPE = 5
+
+
+# Before torch 2.14, every str returned from our ops is leaked
+# (pytorch/pytorch#190493). The cache bounds that to one string per distinct
+# value for the whole process.
+@functools.cache
+def _ffmpeg_enum_name(kind: _FFmpegEnum, value: int) -> str:
+    return _blocks_ffmpeg_enum_name(int(kind), value)
 
 
 class _Metadata(NamedTuple):
@@ -229,9 +250,11 @@ class Packet:
         e.g. ``"Skip Samples"``."""
         fields = self._get_fields()
         return {
-            name: _tensor_to_bytes(value)
-            for name, value in zip(
-                fields["side_data_names"], fields["side_data_values"]
+            _ffmpeg_enum_name(_FFmpegEnum.PACKET_SIDE_DATA_TYPE, type_): (
+                _tensor_to_bytes(value)
+            )
+            for type_, value in zip(
+                fields["side_data_types"], fields["side_data_values"]
             )
         }
 
@@ -328,7 +351,25 @@ class RawFrame:
 
     def _get_metadata(self) -> _Metadata:
         if self._metadata is None:
-            self._metadata = _Metadata(*_blocks_frame_metadata(self._handle))
+            (
+                pixel_format,
+                color_space,
+                color_range,
+                color_primaries,
+                color_transfer_characteristic,
+                *rest,
+            ) = _blocks_frame_metadata(self._handle)
+            self._metadata = _Metadata(
+                _ffmpeg_enum_name(_FFmpegEnum.PIXEL_FORMAT, pixel_format),
+                _ffmpeg_enum_name(_FFmpegEnum.COLOR_SPACE, color_space),
+                _ffmpeg_enum_name(_FFmpegEnum.COLOR_RANGE, color_range),
+                _ffmpeg_enum_name(_FFmpegEnum.COLOR_PRIMARIES, color_primaries),
+                _ffmpeg_enum_name(
+                    _FFmpegEnum.COLOR_TRANSFER_CHARACTERISTIC,
+                    color_transfer_characteristic,
+                ),
+                *rest,
+            )
         return self._metadata
 
     @property

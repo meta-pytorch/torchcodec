@@ -84,9 +84,9 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_demuxer_add_stream(Tensor(a!) demuxer, int? stream_index=None, str? media_type=None) -> (int, str)");
   m.def(
       "_blocks_demuxer_get_audio_video_stream_indices(Tensor demuxer) -> Tensor");
-  m.def("_blocks_demuxer_container_json_metadata(Tensor demuxer) -> str");
+  m.def("_blocks_demuxer_container_json_metadata(Tensor demuxer) -> Tensor");
   m.def(
-      "_blocks_demuxer_stream_json_metadata(Tensor demuxer, int stream_index) -> str");
+      "_blocks_demuxer_stream_json_metadata(Tensor demuxer, int stream_index) -> Tensor");
   m.def(
       "_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool, int)");
   m.def(
@@ -107,7 +107,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   // The return names are the Packet properties, which Python matches them
   // against.
   m.def(
-      "_blocks_packet_get_fields(Tensor packet) -> (Tensor data, int? pts, int? dts, int duration, int flags, str[] side_data_names, Tensor[] side_data_values)");
+      "_blocks_packet_get_fields(Tensor packet) -> (Tensor data, int? pts, int? dts, int duration, int flags, int[] side_data_types, Tensor[] side_data_values)");
   m.def(
       "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
@@ -115,7 +115,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, int?, float, float, Tensor)");
   m.def(
-      "_blocks_audio_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, int?, float, float, int, str)");
+      "_blocks_audio_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, int?, float, float, int)");
   m.def(
       "_blocks_create_color_converter(str device=\"cpu\", str output_dtype=\"uint8\") -> Tensor");
   m.def(
@@ -127,14 +127,15 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "_blocks_convert_frame(Tensor(a!) converter, Tensor frame, Device device) -> Tensor");
   m.def(
-      "_blocks_frame_metadata(Tensor frame) -> (str, str, str, str, str, int, int, int, float)");
+      "_blocks_frame_metadata(Tensor frame) -> (int, int, int, int, int, int, int, int, float)");
+  m.def("_blocks_ffmpeg_enum_name(int kind, int value) -> str");
   m.def(
       "_blocks_frame_planes(Tensor frame, Device device) -> (Tensor, Tensor, Tensor, Tensor)");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
   m.def("get_json_metadata(Tensor(a!) decoder) -> str");
-  m.def("get_container_json_metadata(Tensor(a!) decoder) -> str");
+  m.def("get_container_json_metadata(Tensor(a!) decoder) -> Tensor");
   m.def(
-      "get_stream_json_metadata(Tensor(a!) decoder, int stream_index) -> str");
+      "get_stream_json_metadata(Tensor(a!) decoder, int stream_index) -> Tensor");
   m.def("_get_json_ffmpeg_library_versions() -> str");
   m.def("_get_backend_details(Tensor(a!) decoder) -> str");
   m.def(
@@ -163,7 +164,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("_create_wav_decoder_from_file_like(int file_like_context) -> Tensor");
   m.def(
       "get_wav_samples_in_range(Tensor(a!) decoder, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
-  m.def("get_wav_metadata_from_decoder(Tensor(a!) decoder) -> str");
+  m.def("get_wav_metadata_from_decoder(Tensor(a!) decoder) -> Tensor");
 }
 
 namespace {
@@ -359,6 +360,18 @@ std::string map_to_json(
   ss << "}";
 
   return ss.str();
+}
+
+// Before torch 2.14, every str returned from a stable ABI op is leaked
+// (pytorch/pytorch#190493). The JSON metadata is fetched for each decoder, so
+// it's returned as UTF-8 bytes in a uint8 tensor instead.
+torch::stable::Tensor map_to_json_tensor(
+    const std::map<std::string, std::string>& metadata_map) {
+  std::string json = map_to_json(metadata_map);
+  torch::stable::Tensor tensor =
+      torch::stable::empty({static_cast<int64_t>(json.size())}, kStableUInt8);
+  std::memcpy(tensor.mutable_data_ptr<uint8_t>(), json.data(), json.size());
+  return tensor;
 }
 
 SeekMode seek_mode_from_string(std::string_view seek_mode) {
@@ -1409,14 +1422,14 @@ using OpsPacketFieldsOutput = std::tuple<
     std::optional<int64_t>, // dts
     int64_t, // duration
     int64_t, // flags
-    std::vector<std::string>, // side_data_names
+    std::vector<int64_t>, // side_data_types
     std::vector<torch::stable::Tensor>>; // side_data_values
 
 OpsPacketFieldsOutput _blocks_packet_get_fields(torch::stable::Tensor& packet) {
   const AVPacket* av_packet = unwrap_tensor_to_pointer<AVPacket>(packet);
 
   OpsPacketFieldsOutput output;
-  auto& [data, pts, dts, duration, flags, side_data_names, side_data_values] =
+  auto& [data, pts, dts, duration, flags, side_data_types, side_data_values] =
       output;
   if (av_packet->size == 0) {
     data = torch::stable::empty({int64_t(0)}, kStableUInt8);
@@ -1445,11 +1458,10 @@ OpsPacketFieldsOutput _blocks_packet_get_fields(torch::stable::Tensor& packet) {
   flags = av_packet->flags;
   for (int i = 0; i < av_packet->side_data_elems; ++i) {
     const AVPacketSideData& side_data = av_packet->side_data[i];
-    const char* name = av_packet_side_data_name(side_data.type);
     // A type this FFmpeg can't name is a type it doesn't know what to do with
     // either, so there's nothing a decoder would read from it.
-    if (name != nullptr) {
-      side_data_names.emplace_back(name);
+    if (av_packet_side_data_name(side_data.type) != nullptr) {
+      side_data_types.push_back(static_cast<int64_t>(side_data.type));
       side_data_values.push_back(
           bytes_to_tensor(side_data.data, side_data.size));
     }
@@ -1529,18 +1541,17 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
       storage);
 }
 
-// (samples, status, pts, pts_seconds, duration_seconds, sample_rate,
-// sample_format). `samples` is [num_channels, num_samples] in the frame's own
-// sample type; there is no frame handle because, unlike a video frame, nothing
-// downstream needs the AVFrame itself. `pts` is as for video frames.
+// (samples, status, pts, pts_seconds, duration_seconds, sample_rate).
+// `samples` is [num_channels, num_samples] in the frame's own sample type;
+// there is no frame handle because, unlike a video frame, nothing downstream
+// needs the AVFrame itself. `pts` is as for video frames.
 using OpsReceiveAudioFrameOutput = std::tuple<
     torch::stable::Tensor,
     int64_t,
     std::optional<int64_t>,
     double,
     double,
-    int64_t,
-    std::string>;
+    int64_t>;
 
 OpsReceiveAudioFrameOutput _blocks_audio_packet_decoder_receive_frame(
     torch::stable::Tensor& decoder) {
@@ -1559,23 +1570,18 @@ OpsReceiveAudioFrameOutput _blocks_audio_packet_decoder_receive_frame(
         std::nullopt,
         0.0,
         0.0,
-        static_cast<int64_t>(0),
-        std::string(""));
+        static_cast<int64_t>(0));
   }
 
   AVRational time_base = decoder_ptr->time_base();
   int64_t pts = get_pts_or_dts(*av_frame);
-  const char* sample_format_name =
-      av_get_sample_fmt_name(static_cast<AVSampleFormat>(av_frame->format));
   return std::make_tuple(
       get_audio_samples(*av_frame),
       static_cast<int64_t>(0),
       to_optional_pts(pts),
       pts_to_seconds_or_nan(pts, time_base),
       pts_to_seconds(get_duration(*av_frame), time_base),
-      static_cast<int64_t>(av_frame->sample_rate),
-      std::string(
-          sample_format_name == nullptr ? "unknown" : sample_format_name));
+      static_cast<int64_t>(av_frame->sample_rate));
 }
 
 torch::stable::Tensor _blocks_create_color_converter(
@@ -1622,12 +1628,16 @@ void _blocks_audio_converter_reset(torch::stable::Tensor& converter) {
   unwrap_tensor_to_pointer<AudioConverter>(converter)->reset();
 }
 
+// The enum fields are returned as FFmpeg's raw values, to be named by
+// _blocks_ffmpeg_enum_name(). Before torch 2.14, every str returned from a
+// stable ABI op is leaked (pytorch/pytorch#190493), so this op, which runs once
+// per frame, must not return any.
 using OpsFrameMetadataOutput = std::tuple<
-    std::string, // pixel format
-    std::string, // color space
-    std::string, // color range
-    std::string, // color primaries
-    std::string, // color transfer characteristic
+    int64_t, // pixel format
+    int64_t, // color space
+    int64_t, // color range
+    int64_t, // color primaries
+    int64_t, // color transfer characteristic
     int64_t, // bit depth
     int64_t, // width
     int64_t, // height
@@ -1638,15 +1648,56 @@ OpsFrameMetadataOutput _blocks_frame_metadata(
   FrameMetadata metadata =
       get_frame_metadata(*unwrap_tensor_to_pointer<AVFrame>(tensor_handle));
   return std::make_tuple(
-      metadata.pixel_format,
-      metadata.color_space,
-      metadata.color_range,
-      metadata.color_primaries,
-      metadata.color_transfer_characteristic,
+      static_cast<int64_t>(metadata.pixel_format),
+      static_cast<int64_t>(metadata.color_space),
+      static_cast<int64_t>(metadata.color_range),
+      static_cast<int64_t>(metadata.color_primaries),
+      static_cast<int64_t>(metadata.color_transfer_characteristic),
       metadata.bit_depth,
       metadata.width,
       metadata.height,
       metadata.rotation);
+}
+
+// Must match _FFmpegEnum in decoders/_blocks/_frame.py.
+enum class FFmpegEnum : int64_t {
+  PixelFormat = 0,
+  ColorSpace = 1,
+  ColorRange = 2,
+  ColorPrimaries = 3,
+  ColorTransferCharacteristic = 4,
+  PacketSideDataType = 5,
+};
+
+// The name FFmpeg gives to `value` of the enum `kind`. The values aren't stable
+// across FFmpeg versions (e.g. AVPixelFormat), so they can only be named by the
+// FFmpeg that produced them.
+std::string _blocks_ffmpeg_enum_name(int64_t kind, int64_t value) {
+  const char* name = nullptr;
+  switch (static_cast<FFmpegEnum>(kind)) {
+    case FFmpegEnum::PixelFormat:
+      name = av_get_pix_fmt_name(static_cast<AVPixelFormat>(value));
+      break;
+    case FFmpegEnum::ColorSpace:
+      name = av_color_space_name(static_cast<AVColorSpace>(value));
+      break;
+    case FFmpegEnum::ColorRange:
+      name = av_color_range_name(static_cast<AVColorRange>(value));
+      break;
+    case FFmpegEnum::ColorPrimaries:
+      name = av_color_primaries_name(static_cast<AVColorPrimaries>(value));
+      break;
+    case FFmpegEnum::ColorTransferCharacteristic:
+      name = av_color_transfer_name(
+          static_cast<AVColorTransferCharacteristic>(value));
+      break;
+    case FFmpegEnum::PacketSideDataType:
+      name = av_packet_side_data_name(static_cast<AVPacketSideDataType>(value));
+      break;
+    default:
+      STD_TORCH_CHECK(false, "Unknown FFmpeg enum kind: ", kind);
+  }
+  return name != nullptr ? name : "unknown";
 }
 
 using OpsFramePlanesOutput = std::tuple<
@@ -1848,7 +1899,7 @@ void write_header_based_metadata(
 // facts plus one entry per stream, and nothing derived from content. The
 // low-level APIs never merge the two, so a caller always knows which of the
 // two sources a number came from.
-std::string _blocks_demuxer_container_json_metadata(
+torch::stable::Tensor _blocks_demuxer_container_json_metadata(
     torch::stable::Tensor& demuxer) {
   ContainerMetadata metadata = get_container_metadata_from_format_context(
       unwrap_tensor_to_pointer<Demuxer>(demuxer)->format_context().get());
@@ -1870,10 +1921,10 @@ std::string _blocks_demuxer_container_json_metadata(
         std::to_string(*metadata.best_audio_stream_index);
   }
   map["numStreams"] = std::to_string(metadata.all_stream_metadata.size());
-  return map_to_json(map);
+  return map_to_json_tensor(map);
 }
 
-std::string _blocks_demuxer_stream_json_metadata(
+torch::stable::Tensor _blocks_demuxer_stream_json_metadata(
     torch::stable::Tensor& demuxer,
     int64_t stream_index) {
   ContainerMetadata metadata = get_container_metadata_from_format_context(
@@ -1886,10 +1937,11 @@ std::string _blocks_demuxer_stream_json_metadata(
 
   std::map<std::string, std::string> map;
   write_header_based_metadata(map, metadata.all_stream_metadata[stream_index]);
-  return map_to_json(map);
+  return map_to_json_tensor(map);
 }
 
-std::string get_container_json_metadata(torch::stable::Tensor& decoder) {
+torch::stable::Tensor get_container_json_metadata(
+    torch::stable::Tensor& decoder) {
   auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
 
   auto container_metadata = video_decoder->get_container_metadata();
@@ -1917,11 +1969,11 @@ std::string get_container_json_metadata(torch::stable::Tensor& decoder) {
   map["numStreams"] =
       std::to_string(container_metadata.all_stream_metadata.size());
 
-  return map_to_json(map);
+  return map_to_json_tensor(map);
 }
 
-// Get the stream metadata as a string.
-std::string get_stream_json_metadata(
+// Get the stream metadata as JSON.
+torch::stable::Tensor get_stream_json_metadata(
     torch::stable::Tensor& decoder,
     int64_t stream_index) {
   auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
@@ -1981,7 +2033,7 @@ std::string get_stream_json_metadata(
     write_fallback_based_metadata(map, stream_metadata, SeekMode::approximate);
   }
 
-  return map_to_json(map);
+  return map_to_json_tensor(map);
 }
 
 // Returns version information about the various FFMPEG libraries that are
@@ -2156,7 +2208,8 @@ OpsAudioFramesOutput get_wav_samples_in_range(
   return make_ops_audio_frames_output(audio_frames);
 }
 
-std::string get_wav_metadata_from_decoder(torch::stable::Tensor& decoder) {
+torch::stable::Tensor get_wav_metadata_from_decoder(
+    torch::stable::Tensor& decoder) {
   auto wav_decoder = unwrap_tensor_to_get_wav_decoder(decoder);
   StreamMetadata stream_metadata = wav_decoder->get_stream_metadata();
 
@@ -2175,7 +2228,7 @@ std::string get_wav_metadata_from_decoder(torch::stable::Tensor& decoder) {
   metadata_map["mediaType"] = quote_value("audio");
   metadata_map["beginStreamSeconds"] =
       fmt::to_string(*stream_metadata.begin_stream_pts_seconds_from_content);
-  return map_to_json(metadata_map);
+  return map_to_json_tensor(metadata_map);
 }
 
 void _set_nvdec_cache_capacity(int64_t capacity) {
@@ -2233,6 +2286,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl(
       "_get_json_ffmpeg_library_versions",
       TORCH_BOX(&_get_json_ffmpeg_library_versions));
+  m.impl("_blocks_ffmpeg_enum_name", TORCH_BOX(&_blocks_ffmpeg_enum_name));
   m.impl("create_streaming_encoder", TORCH_BOX(&create_streaming_encoder));
   m.impl(
       "streaming_encoder_add_video_stream",
