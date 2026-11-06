@@ -45,6 +45,16 @@ encode_png_to_file_like = torch.ops.torchcodec_ns.encode_png_to_file_like.defaul
 encode_jpeg_to_file = torch.ops.torchcodec_ns.encode_jpeg_to_file.default
 encode_jpeg_to_file_like = torch.ops.torchcodec_ns.encode_jpeg_to_file_like.default
 encode_jpeg_to_tensor_cuda = torch.ops.torchcodec_ns.encode_jpeg_to_tensor_cuda.default
+probe_gif_from_tensor = torch.ops.torchcodec_ns.probe_gif_from_tensor.default
+probe_gif_from_file = torch.ops.torchcodec_ns.probe_gif_from_file.default
+probe_avif_from_tensor = torch.ops.torchcodec_ns.probe_avif_from_tensor.default
+probe_avif_from_file = torch.ops.torchcodec_ns.probe_avif_from_file.default
+png_skip_idat_chunks_from_tensor = (
+    torch.ops.torchcodec_ns.png_skip_idat_chunks_from_tensor.default
+)
+png_skip_idat_chunks_from_file = (
+    torch.ops.torchcodec_ns.png_skip_idat_chunks_from_file.default
+)
 
 
 def get_decode_heic():

@@ -235,6 +235,13 @@ torch::stable::Tensor Demuxer::get_audio_video_stream_indices() const {
   return out;
 }
 
+CodecParameters Demuxer::get_codec_parameters(
+    std::optional<int> stream_index) const {
+  return CodecParameters(
+      *format_context_->streams[resolve_stream_index(stream_index)],
+      format_context_->iformat);
+}
+
 int Demuxer::resolve_stream_index(std::optional<int> stream_index) const {
   if (stream_index.has_value()) {
     STD_TORCH_CHECK(
@@ -275,9 +282,20 @@ void Demuxer::seek(double seconds, std::optional<int> stream_index) {
       desired_pts,
       desired_pts,
       0);
+  bool can_seek_bytes = !(format_context_->iformat->flags & AVFMT_NO_BYTE_SEEK);
+  if (status < 0 && can_seek_bytes && seconds == 0) {
+    // Streams without timestamps, like raw H.264 or HEVC streams, can't seek
+    // to a timestamp, but they can still be rewound to their start.
+    status = avformat_seek_file(
+        format_context_.get(), -1, 0, 0, 0, AVSEEK_FLAG_BYTE);
+  }
   STD_TORCH_CHECK(
       status >= 0,
-      get_seek_error_message(format_context_.get(), desired_pts, status));
+      get_seek_error_message(format_context_.get(), desired_pts, status),
+      can_seek_bytes ? " If this stream has no timestamps (e.g. a raw H.264 "
+                       "or HEVC stream), it can only be rewound to its start, "
+                       "by seeking to 0."
+                     : "");
 }
 
 void Demuxer::scan_all_video_streams() {

@@ -25,9 +25,10 @@ never ends.
 For simple end-to-end decoding, :class:`~torchcodec.decoders.VideoDecoder` and
 :class:`~torchcodec.decoders.AudioDecoder` are often all you need: they
 handle demuxing, decoding and conversion for you, in a single call. But that
-means you don't control these stages: you can't run them on different threads,
-stop before the conversion, or decode several streams in a single pass. The
-low-level APIs expose those three stages separately, one chain per media type:
+means you don't control these stages: you can't run them on different threads
+or processes, stop before the conversion, or decode several streams in a single
+pass. The low-level APIs expose those three stages separately, one chain per
+media type:
 
 .. code-block::
 
@@ -42,6 +43,12 @@ This unlocks features that the high-level decoders don't offer:
 * **Performance gains via multi-threaded pipelines**: demux, decode and color-convert on separate
   threads. Each stage releases the GIL. (:ref:`tutorial
   <sphx_glr_generated_examples_low_level_pipelines.py>`).
+* **Multi-process pipelines**: packets and codec parameters can be pickled, so
+  the demuxing and the decoding can happen in different processes
+  (:ref:`tutorial <low_level_across_processes>`).
+* **Decoding without a Demuxer**: decode packets that come from elsewhere,
+  e.g. a database, the network, or your own container parser
+  (:ref:`tutorial <sphx_glr_generated_examples_low_level_demuxer_free.py>`).
 * **Access raw YUV data, for SDR and HDR sources**: read the decoder's own planes, with no
   conversion and no copy, at the source's own precision. 10-bit HDR comes out
   as ``uint16`` with every bit intact. You also get access to the raw audio samples.
@@ -96,11 +103,11 @@ subprocess.run(
 # :meth:`VideoDecoder.get_all_frames()
 # <torchcodec.decoders.VideoDecoder.get_all_frames>`
 
-from torchcodec.decoders import ColorConverter, Demuxer
+from torchcodec.decoders import ColorConverter, Demuxer, VideoPacketDecoder
 
 demuxer = Demuxer(video_path)
 (video_stream,) = demuxer.streams
-packet_decoder = video_stream.make_decoder(device=device)
+packet_decoder = VideoPacketDecoder(video_stream.codec_parameters, device=device)
 color_converter = ColorConverter(device=device)
 
 
@@ -120,12 +127,13 @@ print(f"{len(frames)} frames, {frames[0].data.shape = }, "
 #
 # We create a :class:`Demuxer` over the file
 # and let it follow the default video stream, which comes back as a
-# :class:`VideoStream`. From that stream we build a :class:`VideoPacketDecoder`,
-# which decodes the demuxer's :class:`Packet` objects into :class:`RawFrame`
-# objects. A :class:`RawFrame` typically contains raw YUV data that you can
-# access: see :ref:`sphx_glr_generated_examples_low_level_raw_data.py` for more
-# details. Finally, a :class:`ColorConverter` turns
-# each of those into an RGB :class:`~torchcodec.Frame`, the same object a
+# :class:`VideoStream`. From that stream's codec parameters, we build a
+# :class:`VideoPacketDecoder`, which decodes the demuxer's :class:`Packet`
+# objects into :class:`RawFrame` objects. A :class:`RawFrame` typically
+# contains raw YUV data that you can access: see
+# :ref:`sphx_glr_generated_examples_low_level_raw_data.py` for more details.
+# Finally, a :class:`ColorConverter` turns each of those into an RGB
+# :class:`~torchcodec.Frame`, the same object a
 # :class:`~torchcodec.decoders.VideoDecoder` would have handed you.
 #
 #
@@ -137,7 +145,7 @@ print(f"{len(frames)} frames, {frames[0].data.shape = }, "
 # :meth:`~VideoPacketDecoder.drain` at the end to retrieve any remaining frames
 # that the decoder may be holding.
 #
-# Both :meth:`VideoStream.make_decoder` and :class:`ColorConverter` accept a
+# Both :class:`VideoPacketDecoder` and :class:`ColorConverter` accept a
 # ``device`` parameter so you can run them on CPU or CUDA (they must match!),
 # and the demuxing stage is always CPU only.
 
@@ -148,7 +156,7 @@ print(f"{len(frames)} frames, {frames[0].data.shape = }, "
 # Audio decoding has the same three stages. The following pipeline is equivalent
 # to :meth:`AudioDecoder.get_all_samples()
 # <torchcodec.decoders.AudioDecoder.get_all_samples>`:
-from torchcodec.decoders import AudioConverter
+from torchcodec.decoders import AudioConverter, AudioPacketDecoder
 
 audio_path = temp_dir / "audio.wav"
 subprocess.run(
@@ -161,7 +169,7 @@ subprocess.run(
 )
 
 demuxer = Demuxer(audio_path, streams="audio")
-packet_decoder = demuxer.streams[0].make_decoder()
+packet_decoder = AudioPacketDecoder(demuxer.streams[0].codec_parameters)
 audio_converter = AudioConverter(sample_rate=16_000, num_channels=1)
 
 samples = []
@@ -175,8 +183,8 @@ print(f"{data.shape = }, {data.dtype = }, "
       f"{samples[-1].data.shape[1]} samples came out of drain()")
 
 # %%
-# An :class:`AudioStream` builds an :class:`AudioPacketDecoder`, which decodes
-# :class:`Packet` objects into :class:`RawAudioSamples`: the codec's own
+# The :class:`AudioPacketDecoder`, built from the stream's codec parameters,
+# decodes :class:`Packet` objects into :class:`RawAudioSamples`: the codec's own
 # samples, in the codec's own sample type, as a ``[num_channels, num_samples]``
 # tensor. Those are the true source samples - 16-bit integers for the file
 # above, not floats in ``[-1, 1]``. :class:`AudioConverter` is what normalizes
@@ -218,13 +226,15 @@ subprocess.run(
 # that type, an ``int`` for a stream index - which is how you reach the second
 # video stream, or the fourth audio track - or ``"all"`` on its own for every
 # audio and video stream in the file.  ``demuxer.streams`` comes back in the
-# order you asked for, and each of them builds its own decoder.
+# order you asked for, and each of them needs its own decoder.
 demuxer = Demuxer(av_path, streams=("video", "audio"))
 video_stream, audio_stream = demuxer.streams
 
 decoders = {
-    video_stream.index: video_stream.make_decoder(device=device),
-    audio_stream.index: audio_stream.make_decoder(),
+    video_stream.index: VideoPacketDecoder(
+        video_stream.codec_parameters, device=device
+    ),
+    audio_stream.index: AudioPacketDecoder(audio_stream.codec_parameters),
 }
 color_converter = ColorConverter(device=device)
 audio_converter = AudioConverter()
@@ -265,7 +275,9 @@ print(f"{len(frames)} frames up to {frames[-1].pts_seconds:.2f}s, "
 # every other decoder fed by that demuxer, and every :class:`AudioConverter`,
 # whose resampler carries state across calls just the same.
 demuxer = Demuxer(video_path)
-packet_decoder = demuxer.streams[0].make_decoder(device=device)
+packet_decoder = VideoPacketDecoder(
+    demuxer.streams[0].codec_parameters, device=device
+)
 color_converter = ColorConverter(device=device)
 
 seconds = 2.5
@@ -316,7 +328,7 @@ print(f"asked for {seconds}s, landed on {landed_on.pts_seconds:.3f}s, "
 demuxer = Demuxer(video_path)
 (video_stream,) = demuxer.streams
 index = video_stream.scan()
-packet_decoder = video_stream.make_decoder(device=device)
+packet_decoder = VideoPacketDecoder(video_stream.codec_parameters, device=device)
 color_converter = ColorConverter(device=device)
 
 print(f"{index.num_frames_from_content} frames at "
@@ -543,7 +555,9 @@ ffmpeg = subprocess.Popen(
 )
 
 demuxer = Demuxer(fifo_path)
-packet_decoder = demuxer.streams[0].make_decoder(device=device)
+packet_decoder = VideoPacketDecoder(
+    demuxer.streams[0].codec_parameters, device=device
+)
 color_converter = ColorConverter(device=device)
 
 frames = []

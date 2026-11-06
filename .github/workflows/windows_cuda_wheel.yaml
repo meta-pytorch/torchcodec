@@ -9,10 +9,14 @@ on:
       - release/*
     tags:
         - v[0-9]+.[0-9]+.[0-9]+-rc[0-9]+
+  schedule:
+    # Nightly wheels are built from main and uploaded because trigger-event is
+    # `schedule`, see _binary_upload.yml in pytorch/test-infra.
+    - cron: '30 9 * * *'
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}-${{ github.ref_type == 'branch' && github.sha }}-${{ github.event_name == 'workflow_dispatch' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}-${{ github.ref_type == 'branch' && github.sha }}-${{ github.event_name }}
   cancel-in-progress: true
 
 permissions:
@@ -79,7 +83,7 @@ jobs:
           # For the actual release we should add that label and change this to
           # include more python versions.
         python-version: ['3.11']
-        cuda-version: ['13.0', '13.2']
+        cuda-version: ['13.2', '13.4']
         # TODO: FFmpeg 5 on Windows segfaults in avcodec_open2() when passing
         # bad parameters.
         # See https://github.com/pytorch/torchcodec/pull/806
@@ -111,8 +115,9 @@ jobs:
       - name: Install CUDA and FFmpeg conda packages
         run: |
           conda install -y \
-            "nvidia::cuda-nvrtc=${{ matrix.cuda-version }}" \
-            "nvidia::cuda-cudart=${{ matrix.cuda-version }}" \
+            "conda-forge::cuda-version=${{ matrix.cuda-version }}" \
+            "conda-forge::cuda-nvrtc" \
+            "conda-forge::cuda-cudart" \
             "conda-forge::ffmpeg=${{ matrix.ffmpeg-version-for-tests }}"
       - name: Check env
         run: |
@@ -167,7 +172,7 @@ jobs:
     needs: build
     env:
       PYTHON_VERSION: '3.11'
-      CUDA_VERSION: '13.0'
+      CUDA_VERSION: '13.2'
       FFMPEG_VERSION: '7'
     steps:
       - name: Setup env vars

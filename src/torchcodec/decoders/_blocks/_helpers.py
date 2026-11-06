@@ -6,6 +6,24 @@
 
 from __future__ import annotations
 
+import ctypes
+
+import torch
+
+
+def _bytes_to_tensor(data: bytes | bytearray | memoryview) -> torch.Tensor:
+    # torch.frombuffer() rejects an empty buffer.
+    if not data:
+        return torch.empty(0, dtype=torch.uint8)
+    return torch.frombuffer(bytearray(data), dtype=torch.uint8)
+
+
+def _tensor_to_bytes(tensor: torch.Tensor) -> bytes:
+    """The inverse of _bytes_to_tensor(), for a contiguous uint8 CPU tensor."""
+    # ctypes.string_at() avoids depending on numpy, and is much faster than
+    # going through tensor.tolist().
+    return ctypes.string_at(tensor.data_ptr(), tensor.numel())
+
 
 def _process_local(hint: str):
     """Class decorator refusing to pickle, copy or deepcopy the instances.

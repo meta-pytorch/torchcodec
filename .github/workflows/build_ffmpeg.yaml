@@ -85,8 +85,9 @@ jobs:
       job-name: Build
       upload-artifact: ffmpeg-lgpl-macos-${{ matrix.ffmpeg-version }}
       repository: meta-pytorch/torchcodec
-      runner: macos-14-xlarge
+      runner: macos-15-xlarge
       script: |
+        export MACOSX_DEPLOYMENT_TARGET=14.0
         export FFMPEG_VERSION="${{ matrix.ffmpeg-version }}"
         export FFMPEG_ROOT="${PWD}/ffmpeg"
 

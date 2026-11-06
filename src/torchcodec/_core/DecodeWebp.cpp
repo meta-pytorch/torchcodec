@@ -37,7 +37,6 @@ torch::stable::Tensor decode_webp(
 #include <torch/headeronly/core/MemoryFormat.h>
 
 #include <algorithm>
-#include <cstring>
 
 #include "Exif.h"
 #include "ImageCommon.h"
@@ -65,19 +64,10 @@ ExifOrientation fetch_webp_exif_orientation(const uint8_t* data, size_t size) {
   ExifOrientation orientation = ExifOrientation::Unspecified;
   WebPChunkIterator chunk_iter;
   if (WebPDemuxGetChunk(demux, "EXIF", 1, &chunk_iter)) {
-    const uint8_t* exif = chunk_iter.chunk.bytes;
-    size_t exif_size = chunk_iter.chunk.size;
     // Some encoders prefix the payload with the "Exif\0\0" marker (like the
-    // JPEG APP1 segment); skip it so we're left with the TIFF header.
-    constexpr size_t exif_prefix_size = 6;
-    if (exif_size >= exif_prefix_size &&
-        std::memcmp(exif, "Exif\0\0", exif_prefix_size) == 0) {
-      exif += exif_prefix_size;
-      exif_size -= exif_prefix_size;
-    }
-    if (exif_size > 0) {
-      orientation = fetch_exif_orientation(exif, exif_size);
-    }
+    // JPEG APP1 segment).
+    orientation = fetch_exif_orientation_after_prefixes(
+        chunk_iter.chunk.bytes, chunk_iter.chunk.size);
     WebPDemuxReleaseChunkIterator(&chunk_iter);
   }
 

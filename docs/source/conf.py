@@ -96,6 +96,7 @@ class CustomGalleryExampleSortKey:
                 "basics.py",
                 "pipelines.py",
                 "raw_data.py",
+                "demuxer_free.py",
                 "cuda_streams.py",
             ]
         else:

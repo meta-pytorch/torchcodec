@@ -11,9 +11,14 @@ from typing import NamedTuple
 
 import torch
 
-from torchcodec._core.ops import _blocks_frame_metadata, _blocks_frame_planes
+from torchcodec._core.ops import (
+    _blocks_create_packet,
+    _blocks_frame_metadata,
+    _blocks_frame_planes,
+    _blocks_packet_get_fields,
+)
 
-from ._helpers import _process_local
+from ._helpers import _bytes_to_tensor, _process_local, _tensor_to_bytes
 
 
 class _Metadata(NamedTuple):
@@ -29,16 +34,16 @@ class _Metadata(NamedTuple):
     rotation: float
 
 
-@_process_local(
-    "Build a Demuxer in each process instead, from the same source: a packet "
-    "is only decodable by a decoder built from its own stream."
-)
 class Packet:
-    """One compressed packet of one stream, as a :class:`Demuxer` produced it.
+    """One compressed packet of one stream.
 
-    You should not build one yourself: a ``Demuxer`` creates them, and a
-    :class:`VideoPacketDecoder` or an :class:`AudioPacketDecoder` consumes
-    them. The contents are opaque: a ``Packet`` is a handle to an FFmpeg packet.
+    A :class:`Demuxer` creates them, and a :class:`VideoPacketDecoder` or an
+    :class:`AudioPacketDecoder` consumes them. You can also build one from
+    compressed data that doesn't come from a ``Demuxer``, with
+    :meth:`from_bytes` or :meth:`from_tensor`.
+
+    Packets can be pickled, e.g. to be decoded in another process. The pickles
+    are only guaranteed to be readable by the same version of TorchCodec.
     """
 
     stream_index: int
@@ -59,6 +64,186 @@ class Packet:
         # it exists so a decoder can catch a missing reset(), not for callers to
         # reason about. See _BasePacketDecoder.decode().
         self._generation = generation
+
+    @classmethod
+    def from_bytes(
+        cls,
+        data: bytes | bytearray | memoryview,
+        *,
+        pts: int | None = None,
+        dts: int | None = None,
+        duration: int = 0,
+        flags: int = 0,
+        side_data: dict[str, bytes] | None = None,
+        stream_index: int = 0,
+    ) -> Packet:
+        """Build a packet from compressed data, e.g. read from a database or
+        received from the network.
+
+        Only ``data`` is required: most codecs need nothing else to decode it.
+
+        Args:
+            data (bytes, bytearray or memoryview): The compressed data of one
+                packet. It is copied. Each packet must contain exactly one
+                access unit, which is what a demuxer such as :class:`Demuxer`
+                or FFmpeg's produces.
+            pts (int, optional): The :term:`pts`, in units of the stream's time
+                base (:attr:`StreamMetadata.time_base`). The decoded frames'
+                :attr:`RawFrame.pts` come from it.
+                ``None`` (default) if unknown.
+            dts (int, optional): The decoding timestamp, in units of the
+                stream's time base. ``None`` (default) if unknown.
+            duration (int, optional): How long the packet lasts, in units of
+                the stream's time base. Default: 0, for unknown.
+            flags (int, optional): FFmpeg's ``AV_PKT_FLAG_*`` bits, e.g. 1
+                (``AV_PKT_FLAG_KEY``) for a keyframe. ``AV_PKT_FLAG_TRUSTED``
+                (8) isn't allowed. Default: 0.
+            side_data (dict, optional): Extra data about the packet, keyed by
+                FFmpeg's names for its types, e.g. ``"Skip Samples"``.
+            stream_index (int, optional): See :attr:`stream_index`. Default: 0.
+
+        Returns:
+            Packet: The packet.
+        """
+        if not isinstance(data, (bytes, bytearray, memoryview)):
+            raise TypeError(
+                f"data must be bytes, bytearray or memoryview, got {type(data)}."
+            )
+        return cls.from_tensor(
+            _bytes_to_tensor(data),
+            pts=pts,
+            dts=dts,
+            duration=duration,
+            flags=flags,
+            side_data=side_data,
+            stream_index=stream_index,
+        )
+
+    @classmethod
+    def from_tensor(
+        cls,
+        data: torch.Tensor,
+        *,
+        pts: int | None = None,
+        dts: int | None = None,
+        duration: int = 0,
+        flags: int = 0,
+        side_data: dict[str, bytes] | None = None,
+        stream_index: int = 0,
+    ) -> Packet:
+        """Build a packet from compressed data in a tensor.
+
+        Same as :meth:`from_bytes`, except for ``data``.
+
+        Args:
+            data (torch.Tensor): The compressed data of one packet, as a
+                contiguous 1D uint8 CPU tensor. It is copied. Each packet
+                must contain exactly one access unit, which is what a
+                demuxer such as :class:`Demuxer` or FFmpeg's produces.
+            pts (int, optional): See :meth:`from_bytes`.
+            dts (int, optional): See :meth:`from_bytes`.
+            duration (int, optional): See :meth:`from_bytes`.
+            flags (int, optional): See :meth:`from_bytes`.
+            side_data (dict, optional): See :meth:`from_bytes`.
+            stream_index (int, optional): See :meth:`from_bytes`.
+
+        Returns:
+            Packet: The packet.
+        """
+        if not isinstance(data, torch.Tensor):
+            raise TypeError(f"data must be a tensor, got {type(data)}.")
+        side_data = side_data or {}
+        handle = _blocks_create_packet(
+            data,
+            pts=pts,
+            dts=dts,
+            duration=duration,
+            flags=flags,
+            side_data_names=list(side_data),
+            side_data_values=[_bytes_to_tensor(v) for v in side_data.values()],
+        )
+        return cls(handle, stream_index)
+
+    def _get_fields(self) -> dict:
+        outputs = _blocks_packet_get_fields(self._handle)
+        names = [r.name for r in _blocks_packet_get_fields._schema.returns]
+        return dict(zip(names, outputs))
+
+    def __reduce__(self):
+        kwargs = {
+            "pts": self.pts,
+            "dts": self.dts,
+            "duration": self.duration,
+            "flags": self.flags,
+            "side_data": self.side_data,
+            "stream_index": self.stream_index,
+        }
+        # The data is pickled as bytes rather than as the data tensor. Under
+        # torch.multiprocessing (mp.Queue, DataLoader workers...), a tensor is
+        # copied into a shared memory file, which the receiver gets through a
+        # file descriptor. That has a fixed cost of a few hundred microseconds,
+        # which only pays off above a few MB, while a packet is usually a few
+        # KB: copying its bytes into the pickle is about 10x faster. And every
+        # tensor in flight holds a file descriptor, so sending a few thousand
+        # packets at once would hit the open files limit.
+        #
+        # The generation is kept so that a decoder in another process still
+        # catches a missing reset() after a seek.
+        return (
+            _unpickle_packet,
+            (_tensor_to_bytes(self.data), kwargs, self._generation),
+        )
+
+    @property
+    def data(self) -> torch.Tensor:
+        """The compressed data, as a 1D uint8 CPU tensor.
+
+        It is a view on the packet's data: writing to it modifies the packet,
+        so ``.clone()`` it first.
+        """
+        return self._get_fields()["data"]
+
+    @property
+    def pts(self) -> int | None:
+        """The :term:`pts`, in units of the stream's time base
+        (:attr:`StreamMetadata.time_base`). ``None`` if unknown."""
+        return self._get_fields()["pts"]
+
+    @property
+    def dts(self) -> int | None:
+        """The decoding timestamp, in units of the stream's time base. ``None``
+        if unknown."""
+        return self._get_fields()["dts"]
+
+    @property
+    def duration(self) -> int:
+        """How long the packet lasts, in units of the stream's time base. 0 if
+        unknown."""
+        return self._get_fields()["duration"]
+
+    @property
+    def flags(self) -> int:
+        """FFmpeg's ``AV_PKT_FLAG_*`` bits, e.g. ``flags & 1`` is set for
+        keyframes."""
+        return self._get_fields()["flags"]
+
+    @property
+    def side_data(self) -> dict[str, bytes]:
+        """Extra data about the packet, keyed by FFmpeg's names for its types,
+        e.g. ``"Skip Samples"``."""
+        fields = self._get_fields()
+        return {
+            name: _tensor_to_bytes(value)
+            for name, value in zip(
+                fields["side_data_names"], fields["side_data_values"]
+            )
+        }
+
+
+def _unpickle_packet(data: bytes, kwargs: dict, generation: int) -> Packet:
+    packet = Packet.from_bytes(data, **kwargs)
+    packet._generation = generation
+    return packet
 
 
 @_process_local(
@@ -83,8 +268,8 @@ class RawFrame:
                 print(y.shape, u.shape, v.shape)
 
     Nothing here has been converted. The samples are in the codec's own pixel
-    format (typically YUV), on the device that was passed to
-    :meth:`VideoStream.make_decoder`, and
+    format (typically YUV), on the device of the :class:`VideoPacketDecoder`
+    that decoded them, and
     :attr:`width`, :attr:`height` and :attr:`planes` are all pre-rotation:
     :attr:`rotation` is what a :class:`ColorConverter` applies for you, and
     what you have to apply yourself if you convert :attr:`planes` on your own.
@@ -99,8 +284,17 @@ class RawFrame:
         :ref:`sphx_glr_generated_examples_low_level_cuda_streams.py`.
     """
 
+    pts: int | None
+    """The :term:`pts` of this frame, in units of the stream's time base
+    (:attr:`StreamMetadata.time_base`), like the :attr:`Packet.pts` it comes
+    from. ``None`` if the frame has no
+    timestamp (e.g. in raw H.264 streams).
+
+    Unlike :attr:`pts_seconds`, it is exact: use it to match a frame to the
+    timestamp of a packet."""
     pts_seconds: float
-    """The :term:`pts` of this frame, in seconds."""
+    """The :term:`pts` of this frame, in seconds. ``NaN`` if the frame has no
+    timestamp (e.g. in raw H.264 streams)."""
     duration_seconds: float
     """How long this frame is displayed for, in seconds."""
     storage_cuda: torch.Tensor | None
@@ -115,12 +309,14 @@ class RawFrame:
     def __init__(
         self,
         handle: torch.Tensor,
+        pts: int | None,
         pts_seconds: float,
         duration_seconds: float,
         storage: torch.Tensor | None = None,
     ):
         self._handle = handle
         self.storage_cuda = storage
+        self.pts = pts
         self.pts_seconds = pts_seconds
         self.duration_seconds = duration_seconds
         self._metadata: _Metadata | None = None
@@ -232,8 +428,8 @@ class RawFrame:
         and ``nv12`` both give three (``y, u, v = planes``), ``yuva420p`` four
         (``y, u, v, a = planes``) and ``gray`` one (``(y,) = planes``).
 
-        They are always on the device that was passed to
-        :meth:`VideoStream.make_decoder`, including when a CUDA decoder has to
+        They are always on the device of the :class:`VideoPacketDecoder` that
+        decoded them, including when a CUDA decoder has to
         fall back to decoding on the CPU: it uploads those frames before handing
         them out.
 
@@ -293,8 +489,16 @@ class RawAudioSamples:
     :class:`AudioConverter` does."""
     sample_rate: int
     """The source's sample rate, in Hz."""
+    pts: int | None
+    """The :term:`pts` of the first sample, in units of the stream's time base
+    (:attr:`StreamMetadata.time_base`), like the :attr:`Packet.pts` it comes
+    from. ``None`` if it is unknown.
+
+    Unlike :attr:`pts_seconds`, it is exact: use it to match samples to the
+    timestamp of a packet."""
     pts_seconds: float
-    """The :term:`pts` of the first sample, in seconds."""
+    """The :term:`pts` of the first sample, in seconds. ``NaN`` if it is
+    unknown."""
     duration_seconds: float
     """How long these samples last, in seconds."""
     # See Packet._generation.

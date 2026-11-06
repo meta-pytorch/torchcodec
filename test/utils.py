@@ -20,6 +20,7 @@ from torchcodec.decoders import (
     decode_jpeg,
     decode_png,
     decode_webp,
+    Demuxer,
     set_cuda_backend,
     VideoDecoder,
 )
@@ -235,6 +236,36 @@ def assert_tensor_close_on_at_least(
         )
 
 
+def demux_with_open_files_limit(path, max_open_files):
+    # The target of a spawned process, so it has to live in an importable
+    # module. The limit only applies to that process.
+    import resource
+
+    _, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    resource.setrlimit(resource.RLIMIT_NOFILE, (max_open_files, hard))
+    return list(Demuxer(path))
+
+
+def demux_in_subprocess(path, packets_queue, done):
+    # The target of a spawned process, so it has to live in an importable
+    # module. It sends the codec parameters of the video stream, then its
+    # packets, then None, or the exception it raised.
+    #
+    # The packets' data is sent as shared memory file descriptors, which the
+    # parent fetches from this process when it reads them: this process must
+    # stay alive until the parent has read everything, and signals `done`.
+    try:
+        demuxer = Demuxer(path)
+        packets_queue.put(demuxer.streams[0].codec_parameters)
+        for packet in demuxer:
+            packets_queue.put(packet)
+        packets_queue.put(None)
+    except Exception as e:
+        packets_queue.put(e)
+    finally:
+        done.wait(timeout=120)
+
+
 # We embed filtergraph expressions in filenames, but they contain characters that
 # some filesystems don't like. We turn all special characters into underscores.
 def sanitize_filtergraph_expression(expression: str) -> str:
@@ -296,6 +327,16 @@ GRAYSCALE_JPEG = TestImage(
 # with the GRADIENT_JPEG recipe above, then:
 # Image.fromarray(rgb).convert("CMYK").save("cmyk.jpg", quality=90)
 CMYK_JPEG = TestImage(filename="cmyk.jpg", width=1280, height=720, num_channels=4)
+
+# 360p progressive RGB JPEG. nvJPEG's HW engine doesn't support progressive
+# JPEGs, so on GPUs that have one, this is decoded by the SW path. Its size
+# differs from GRADIENT_JPEG on purpose so that batch tests can tell them apart.
+# Generated with the GRADIENT_JPEG recipe above with h, w = 360, 640, then:
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save(
+#     "gradient_progressive.jpg", quality=90, progressive=True)
+GRADIENT_PROGRESSIVE_JPEG = TestImage(
+    filename="gradient_progressive.jpg", width=640, height=360, num_channels=3
+)
 
 # JPEG with a bad Huffman table (damaged but still decodable). Taken from
 # torchvision's test assets (test/assets/damaged_jpeg/bad_huffman.jpg).
