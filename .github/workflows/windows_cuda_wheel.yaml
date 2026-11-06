@@ -1,7 +1,7 @@
 name: Windows CUDA
 
 on:
-  # pull_request:
+  pull_request:
   push:
     branches:
       - nightly
@@ -160,7 +160,6 @@ jobs:
           time python benchmarks/decoders/gpu_benchmark.py --devices=cuda:0,cpu --resize_devices=none
 
   install-and-test-on-cpu-only-machine:
-    if: false
     # This job tests that CUDA wheels work fine on CPU-only machines.  Note that
     # we still install a CUDA-enabled version of torch, and that's by design.
     # Essentially, what we want to make sure is that

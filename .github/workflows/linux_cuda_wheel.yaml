@@ -141,7 +141,6 @@ jobs:
           ${CONDA_RUN} time python benchmarks/decoders/gpu_benchmark.py --devices=cuda:0,cpu --resize_devices=none
 
   install-and-test-on-cpu-only-machine:
-    if: false
     # This job tests that CUDA wheels work fine on CPU-only machines.  Note that
     # we still install a CUDA-enabled version of torch, and that's by design.
     # Essentially, what we want to make sure is that
@@ -207,7 +206,6 @@ jobs:
           FAIL_WITHOUT_IMAGE_CODECS=1 pytest --override-ini="addopts=-v" test --tb=short
 
   install-and-test-no-ffmpeg:
-    if: false
     # Asserts that the CUDA wheel works WITHOUT FFmpeg installed: it must import,
     # the FFmpeg-free image decoders must work, and the FFmpeg-backed entry
     # points must fail with a clear error.
