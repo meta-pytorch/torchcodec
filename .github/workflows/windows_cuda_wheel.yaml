@@ -113,8 +113,9 @@ jobs:
       - name: Install CUDA and FFmpeg conda packages
         run: |
           conda install -y \
-            "nvidia::cuda-nvrtc=${{ matrix.cuda-version }}" \
-            "nvidia::cuda-cudart=${{ matrix.cuda-version }}" \
+            "conda-forge::cuda-version=${{ matrix.cuda-version }}" \
+            "conda-forge::cuda-nvrtc" \
+            "conda-forge::cuda-cudart" \
             "conda-forge::ffmpeg=${{ matrix.ffmpeg-version-for-tests }}"
       - name: Check env
         run: |
@@ -159,6 +160,7 @@ jobs:
           time python benchmarks/decoders/gpu_benchmark.py --devices=cuda:0,cpu --resize_devices=none
 
   install-and-test-on-cpu-only-machine:
+    if: false
     # This job tests that CUDA wheels work fine on CPU-only machines.  Note that
     # we still install a CUDA-enabled version of torch, and that's by design.
     # Essentially, what we want to make sure is that

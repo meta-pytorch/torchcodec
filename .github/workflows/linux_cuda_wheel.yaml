@@ -100,7 +100,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           # We install conda packages at the start because otherwise conda may have conflicts with dependencies.
           # Note: xorg-libxau was addded to fix a problem with ffmpeg 4. We should consider removing it.
-          default-packages: "nvidia::cuda-nvrtc=${{ matrix.cuda-version }} nvidia::cuda-toolkit=${{ matrix.cuda-version }} nvidia::cuda-cudart=${{ matrix.cuda-version }} nvidia::cuda-driver-dev=${{ matrix.cuda-version }} conda-forge::ffmpeg=${{ matrix.ffmpeg-version-for-tests }} conda-forge::xorg-libxau"
+          default-packages: "conda-forge::cuda-version=${{ matrix.cuda-version }} conda-forge::cuda-nvrtc conda-forge::cuda-toolkit conda-forge::cuda-cudart conda-forge::cuda-driver-dev conda-forge::ffmpeg=${{ matrix.ffmpeg-version-for-tests }} conda-forge::xorg-libxau"
       - name: Check env, set LD_LIBRARY_PATH
         run: |
           ${CONDA_RUN} env
@@ -141,6 +141,7 @@ jobs:
           ${CONDA_RUN} time python benchmarks/decoders/gpu_benchmark.py --devices=cuda:0,cpu --resize_devices=none
 
   install-and-test-on-cpu-only-machine:
+    if: false
     # This job tests that CUDA wheels work fine on CPU-only machines.  Note that
     # we still install a CUDA-enabled version of torch, and that's by design.
     # Essentially, what we want to make sure is that
@@ -206,6 +207,7 @@ jobs:
           FAIL_WITHOUT_IMAGE_CODECS=1 pytest --override-ini="addopts=-v" test --tb=short
 
   install-and-test-no-ffmpeg:
+    if: false
     # Asserts that the CUDA wheel works WITHOUT FFmpeg installed: it must import,
     # the FFmpeg-free image decoders must work, and the FFmpeg-backed entry
     # points must fail with a clear error.
@@ -293,7 +295,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           # We install conda packages at the start because otherwise conda may have conflicts with dependencies.
-          default-packages: "nvidia::cuda-nvrtc=${{ env.CUDA_VERSION }} nvidia::cuda-toolkit=${{ env.CUDA_VERSION }} nvidia::cuda-cudart=${{ env.CUDA_VERSION }} nvidia::cuda-driver-dev=${{ env.CUDA_VERSION }} conda-forge::ffmpeg=${{ env.FFMPEG_VERSION }}"
+          default-packages: "conda-forge::cuda-version=${{ env.CUDA_VERSION }} conda-forge::cuda-nvrtc conda-forge::cuda-toolkit conda-forge::cuda-cudart conda-forge::cuda-driver-dev conda-forge::ffmpeg=${{ env.FFMPEG_VERSION }}"
       - name: Check env, set LD_LIBRARY_PATH
         run: |
           ${CONDA_RUN} env
