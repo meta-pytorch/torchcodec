@@ -86,8 +86,9 @@ jobs:
       job-name: Build
       upload-artifact: libavif-macos-${{ matrix.libavif-version }}
       repository: meta-pytorch/torchcodec
-      runner: macos-14-xlarge
+      runner: macos-15-xlarge
       script: |
+        export MACOSX_DEPLOYMENT_TARGET=14.0
         export LIBAVIF_VERSION="${{ matrix.libavif-version }}"
         export LIBAVIF_ROOT="${PWD}/libavif"
 
