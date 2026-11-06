@@ -100,7 +100,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           # We install conda packages at the start because otherwise conda may have conflicts with dependencies.
           # Note: xorg-libxau was addded to fix a problem with ffmpeg 4. We should consider removing it.
-          default-packages: "conda-forge::cuda-version=${{ matrix.cuda-version }} conda-forge::cuda-nvrtc conda-forge::cuda-toolkit conda-forge::cuda-cudart conda-forge::cuda-driver-dev conda-forge::ffmpeg=${{ matrix.ffmpeg-version-for-tests }} conda-forge::xorg-libxau"
+          default-packages: "conda-forge::cuda-version=${{ matrix.cuda-version }} conda-forge::cuda-nvrtc conda-forge::cuda-cudart conda-forge::cuda-driver-dev conda-forge::ffmpeg=${{ matrix.ffmpeg-version-for-tests }} conda-forge::xorg-libxau"
       - name: Check env, set LD_LIBRARY_PATH
         run: |
           ${CONDA_RUN} env
@@ -295,7 +295,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           # We install conda packages at the start because otherwise conda may have conflicts with dependencies.
-          default-packages: "conda-forge::cuda-version=${{ env.CUDA_VERSION }} conda-forge::cuda-nvrtc conda-forge::cuda-toolkit conda-forge::cuda-cudart conda-forge::cuda-driver-dev conda-forge::ffmpeg=${{ env.FFMPEG_VERSION }}"
+          default-packages: "conda-forge::cuda-version=${{ env.CUDA_VERSION }} conda-forge::cuda-nvrtc conda-forge::cuda-cudart conda-forge::cuda-driver-dev conda-forge::ffmpeg=${{ env.FFMPEG_VERSION }}"
       - name: Check env, set LD_LIBRARY_PATH
         run: |
           ${CONDA_RUN} env
