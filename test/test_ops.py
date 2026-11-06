@@ -1148,12 +1148,10 @@ class TestAudioDecoderOps:
 
 
 def test_no_op_returns_str():
-    # Before torch 2.14, every str returned from a stable ABI op is leaked
-    # (pytorch/pytorch#190493). Text that can be returned more than once per
-    # process must come back some other way, e.g. as bytes in a uint8 tensor.
+    # See Note [Returning text from ops] in custom_ops.cpp.
     allowed = {
         # Cached in Python, so it leaks at most once per distinct value.
-        "_blocks_ffmpeg_enum_name",
+        "_blocks_get_ffmpeg_enum_name",
         # Debugging and test-only ops.
         "get_json_metadata",
         "_get_json_ffmpeg_library_versions",

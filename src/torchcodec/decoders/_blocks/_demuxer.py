@@ -284,8 +284,8 @@ class _Stream:
         )
         names = [r.name for r in _blocks_demuxer_get_codec_parameters._schema.returns]
         fields: dict[str, Any] = dict(zip(names, outputs))
-        # The text fields come as UTF-8 bytes in uint8 CPU tensors, as a str
-        # returned by an op is leaked before torch 2.14.
+        # The text fields come as UTF-8 bytes in uint8 CPU tensors, see
+        # Note [Returning text from ops] in custom_ops.cpp.
         for name in _CODEC_PARAMETERS_TEXT_FIELDS:
             if fields[name] is not None:
                 fields[name] = _tensor_to_bytes(fields[name]).decode()

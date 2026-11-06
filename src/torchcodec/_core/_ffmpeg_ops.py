@@ -151,7 +151,9 @@ _blocks_audio_converter_reset = (
     torch.ops.torchcodec_ns._blocks_audio_converter_reset.default
 )
 _blocks_frame_metadata = torch.ops.torchcodec_ns._blocks_frame_metadata.default
-_blocks_ffmpeg_enum_name = torch.ops.torchcodec_ns._blocks_ffmpeg_enum_name.default
+_blocks_get_ffmpeg_enum_name = (
+    torch.ops.torchcodec_ns._blocks_get_ffmpeg_enum_name.default
+)
 _blocks_frame_planes = torch.ops.torchcodec_ns._blocks_frame_planes.default
 
 _test_frame_pts_equality = torch.ops.torchcodec_ns._test_frame_pts_equality.default
@@ -213,8 +215,7 @@ def _bytes_to_tensor(data: bytes) -> torch.Tensor:
 
 
 def _json_tensor_to_str(tensor: torch.Tensor) -> str:
-    # The JSON metadata ops return UTF-8 bytes in a uint8 tensor rather than a
-    # str, which would be leaked before torch 2.14 (pytorch/pytorch#190493).
+    # See Note [Returning text from ops] in custom_ops.cpp.
     return ctypes.string_at(tensor.data_ptr(), tensor.numel()).decode()
 
 

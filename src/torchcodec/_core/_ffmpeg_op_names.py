@@ -56,7 +56,7 @@ FFMPEG_OP_NAMES = frozenset(
         "_blocks_audio_converter_reset",
         "_blocks_convert_frame",
         "_blocks_frame_metadata",
-        "_blocks_ffmpeg_enum_name",
+        "_blocks_get_ffmpeg_enum_name",
         "_blocks_frame_planes",
         "_test_frame_pts_equality",
         "_get_container_json_metadata",

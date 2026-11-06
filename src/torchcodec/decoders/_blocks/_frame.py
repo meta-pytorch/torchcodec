@@ -15,9 +15,9 @@ import torch
 
 from torchcodec._core.ops import (
     _blocks_create_packet,
-    _blocks_ffmpeg_enum_name,
     _blocks_frame_metadata,
     _blocks_frame_planes,
+    _blocks_get_ffmpeg_enum_name,
     _blocks_packet_get_fields,
 )
 
@@ -34,12 +34,10 @@ class _FFmpegEnum(enum.IntEnum):
     PACKET_SIDE_DATA_TYPE = 5
 
 
-# Before torch 2.14, every str returned from our ops is leaked
-# (pytorch/pytorch#190493). The cache bounds that to one string per distinct
-# value for the whole process.
+# See Note [Returning text from ops] in custom_ops.cpp.
 @functools.cache
-def _ffmpeg_enum_name(kind: _FFmpegEnum, value: int) -> str:
-    return _blocks_ffmpeg_enum_name(int(kind), value)
+def _get_ffmpeg_enum_name(*, kind: _FFmpegEnum, value: int) -> str:
+    return _blocks_get_ffmpeg_enum_name(kind=int(kind), value=value)
 
 
 class _Metadata(NamedTuple):
@@ -254,9 +252,9 @@ class Packet:
         e.g. ``"Skip Samples"``."""
         fields = self._get_fields()
         return {
-            _ffmpeg_enum_name(_FFmpegEnum.PACKET_SIDE_DATA_TYPE, type_): (
-                _tensor_to_bytes(value)
-            )
+            _get_ffmpeg_enum_name(
+                kind=_FFmpegEnum.PACKET_SIDE_DATA_TYPE, value=type_
+            ): (_tensor_to_bytes(value))
             for type_, value in zip(
                 fields["side_data_types"], fields["side_data_values"]
             )
@@ -364,13 +362,17 @@ class RawFrame:
                 *rest,
             ) = _blocks_frame_metadata(self._handle)
             self._metadata = _Metadata(
-                _ffmpeg_enum_name(_FFmpegEnum.PIXEL_FORMAT, pixel_format),
-                _ffmpeg_enum_name(_FFmpegEnum.COLOR_SPACE, color_space),
-                _ffmpeg_enum_name(_FFmpegEnum.COLOR_RANGE, color_range),
-                _ffmpeg_enum_name(_FFmpegEnum.COLOR_PRIMARIES, color_primaries),
-                _ffmpeg_enum_name(
-                    _FFmpegEnum.COLOR_TRANSFER_CHARACTERISTIC,
-                    color_transfer_characteristic,
+                _get_ffmpeg_enum_name(
+                    kind=_FFmpegEnum.PIXEL_FORMAT, value=pixel_format
+                ),
+                _get_ffmpeg_enum_name(kind=_FFmpegEnum.COLOR_SPACE, value=color_space),
+                _get_ffmpeg_enum_name(kind=_FFmpegEnum.COLOR_RANGE, value=color_range),
+                _get_ffmpeg_enum_name(
+                    kind=_FFmpegEnum.COLOR_PRIMARIES, value=color_primaries
+                ),
+                _get_ffmpeg_enum_name(
+                    kind=_FFmpegEnum.COLOR_TRANSFER_CHARACTERISTIC,
+                    value=color_transfer_characteristic,
                 ),
                 *rest,
             )

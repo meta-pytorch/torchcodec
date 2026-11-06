@@ -128,7 +128,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_convert_frame(Tensor(a!) converter, Tensor frame, Device device) -> Tensor");
   m.def(
       "_blocks_frame_metadata(Tensor frame) -> (int, int, int, int, int, int, int, int, float)");
-  m.def("_blocks_ffmpeg_enum_name(int kind, int value) -> str");
+  m.def("_blocks_get_ffmpeg_enum_name(*, int kind, int value) -> str");
   m.def(
       "_blocks_frame_planes(Tensor frame, Device device) -> (Tensor, Tensor, Tensor, Tensor)");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
@@ -362,9 +362,33 @@ std::string map_to_json(
   return ss.str();
 }
 
-// Before torch 2.14, every str returned from a stable ABI op is leaked
-// (pytorch/pytorch#190493). Ops that return text more than once per process
-// return it as UTF-8 bytes in a uint8 tensor instead.
+// Note [Returning text from ops]
+//
+// Before torch 2.14, every str returned from a stable ABI op is leaked:
+// libtorch converts it to a Python str without freeing the C++ one
+// (pytorch/pytorch#190493). We support older torch versions, so ops that can
+// run more than once per process don't return str. Instead:
+//
+// - Values of an FFmpeg enum (pixel format, color space, packet side data
+//   type...) are returned as ints, and Python names them with
+//   _blocks_get_ffmpeg_enum_name(). Python caches its results, so each distinct
+//   value leaks at most once per process. The names can't be hardcoded in
+//   Python, as the int values can differ between FFmpeg versions (e.g. FFmpeg 5
+//   removed AV_PIX_FMT_XVMC, shifting all the pixel formats after it).
+// - Free-form text (JSON metadata, channel layouts...) is returned as UTF-8
+//   bytes in a uint8 tensor by string_to_tensor(), and decoded in Python.
+//
+// test_no_op_returns_str enforces this. The few ops it allows to return str are
+// cached or only meant for debugging.
+//
+// Ops taking str arguments have a similar leak (pytorch/pytorch#191340), but
+// the leaking code there is torch header code compiled into our library: it
+// depends on the torch version we build against, not on the one we run with.
+// There is nothing to work around here, as our wheels are built against torch
+// >= 2.14, which doesn't have the issue.
+//
+// Once the minimum supported torch version is 2.14, all of this can go away and
+// these ops can return str again.
 torch::stable::Tensor string_to_tensor(std::string_view str) {
   torch::stable::Tensor tensor =
       torch::stable::empty({static_cast<int64_t>(str.size())}, kStableUInt8);
@@ -918,7 +942,8 @@ torch::stable::Tensor _blocks_demuxer_get_audio_video_stream_indices(
 
 // (stream index, is video) of the stream that is now being followed. The
 // media type comes back so the caller doesn't have to ask for it separately
-// when it identified the stream by index.
+// when it identified the stream by index. It's a bool rather than a str, see
+// Note [Returning text from ops].
 std::tuple<int64_t, bool> _blocks_demuxer_add_stream(
     torch::stable::Tensor& demuxer,
     std::optional<int64_t> stream_index,
@@ -1047,8 +1072,8 @@ using OpsCodecParametersOutput = std::tuple<
     std::optional<int64_t>, // seek_preroll
     std::optional<torch::stable::Tensor>>; // container_format
 
-// Enums are returned as FFmpeg's names for them. All text goes through
-// string_to_tensor(), as this runs for every stream a decoder is made for.
+// Enums are returned as FFmpeg's names for them. All text is returned as
+// tensors, see Note [Returning text from ops].
 OpsCodecParametersOutput _blocks_demuxer_get_codec_parameters(
     torch::stable::Tensor& demuxer,
     int64_t stream_index) {
@@ -1433,6 +1458,7 @@ using OpsPacketFieldsOutput = std::tuple<
     std::optional<int64_t>, // dts
     int64_t, // duration
     int64_t, // flags
+    // See Note [Returning text from ops].
     std::vector<int64_t>, // side_data_types
     std::vector<torch::stable::Tensor>>; // side_data_values
 
@@ -1639,10 +1665,8 @@ void _blocks_audio_converter_reset(torch::stable::Tensor& converter) {
   unwrap_tensor_to_pointer<AudioConverter>(converter)->reset();
 }
 
-// The enum fields are returned as FFmpeg's raw values, to be named by
-// _blocks_ffmpeg_enum_name(). Before torch 2.14, every str returned from a
-// stable ABI op is leaked (pytorch/pytorch#190493), so this op, which runs once
-// per frame, must not return any.
+// The enum fields are returned as FFmpeg's raw values, see
+// Note [Returning text from ops].
 using OpsFrameMetadataOutput = std::tuple<
     int64_t, // pixel format
     int64_t, // color space
@@ -1680,10 +1704,9 @@ enum class FFmpegEnum : int64_t {
   PacketSideDataType = 5,
 };
 
-// The name FFmpeg gives to `value` of the enum `kind`. The values aren't stable
-// across FFmpeg versions (e.g. AVPixelFormat), so they can only be named by the
-// FFmpeg that produced them.
-std::string _blocks_ffmpeg_enum_name(int64_t kind, int64_t value) {
+// The name FFmpeg gives to `value` of the enum `kind`. See
+// Note [Returning text from ops].
+std::string _blocks_get_ffmpeg_enum_name(int64_t kind, int64_t value) {
   const char* name = nullptr;
   switch (static_cast<FFmpegEnum>(kind)) {
     case FFmpegEnum::PixelFormat:
@@ -2297,7 +2320,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl(
       "_get_json_ffmpeg_library_versions",
       TORCH_BOX(&_get_json_ffmpeg_library_versions));
-  m.impl("_blocks_ffmpeg_enum_name", TORCH_BOX(&_blocks_ffmpeg_enum_name));
+  m.impl(
+      "_blocks_get_ffmpeg_enum_name", TORCH_BOX(&_blocks_get_ffmpeg_enum_name));
   m.impl("create_streaming_encoder", TORCH_BOX(&create_streaming_encoder));
   m.impl(
       "streaming_encoder_add_video_stream",
