@@ -57,7 +57,9 @@ Only `data` is required: most codecs need nothing else to decode it.
 Parameters:
 
 - **data** ([*bytes*](https://docs.python.org/3/builtins/stdtypes.html#bytes)*,*[*bytearray*](https://docs.python.org/3/builtins/stdtypes.html#bytearray)*or*[*memoryview*](https://docs.python.org/3/builtins/stdtypes.html#memoryview)) - The compressed data of one
-packet. It is copied.
+packet. It is copied. Each packet must contain exactly one
+access unit, which is what a demuxer such as [`Demuxer`](torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer)
+or FFmpeg's produces.
 - **pts** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - The [pts](../glossary.html#term-pts), in units of the stream's time
 base ([`StreamMetadata.time_base`](torchcodec.decoders.StreamMetadata.html#torchcodec.decoders.StreamMetadata.time_base)). The decoded frames'
 [`RawFrame.pts`](torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame.pts) come from it.
@@ -90,7 +92,9 @@ Same as `from_bytes()`, except for `data`.
 Parameters:
 
 - **data** ([*torch.Tensor*](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)) - The compressed data of one packet, as a
-contiguous 1D uint8 CPU tensor. It is copied.
+contiguous 1D uint8 CPU tensor. It is copied. Each packet
+must contain exactly one access unit, which is what a
+demuxer such as [`Demuxer`](torchcodec.decoders.Demuxer.html#torchcodec.decoders.Demuxer) or FFmpeg's produces.
 - **pts** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - See `from_bytes()`.
 - **dts** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - See `from_bytes()`.
 - **duration** ([*int*](https://docs.python.org/3/builtins/functions.html#int)*,**optional*) - See `from_bytes()`.
