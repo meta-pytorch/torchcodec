@@ -6,7 +6,9 @@
 
 from __future__ import annotations
 
-from typing import Generic, TYPE_CHECKING, TypeVar
+import dataclasses
+from fractions import Fraction
+from typing import Any, Generic, TypeVar
 
 import torch
 
@@ -19,64 +21,78 @@ from torchcodec._core.ops import (
     _blocks_packet_decoder_send_packet,
 )
 
+from .._decoder_utils import convert_device_to_str
+from ._codec_parameters import (
+    _CodecParameters,
+    AudioCodecParameters,
+    VideoCodecParameters,
+)
 from ._frame import Packet, RawAudioSamples, RawFrame
-
-if TYPE_CHECKING:
-    # Only for the annotation: _demuxer imports this module to build decoders,
-    # so importing it back at runtime would be circular.
-    from ._demuxer import _Stream
+from ._helpers import _bytes_to_tensor, _process_local
 
 
-# TODO_API_BREAKDOWN DOC P1 revisit every single docstring / comments at some point.
+# TODO_API_BREAKDOWN DOC P1 revisit every single comment across all low-level APIs
 
 _Decoded = TypeVar("_Decoded", RawFrame, RawAudioSamples)
-_Self = TypeVar("_Self", bound="_BasePacketDecoder")
 
 
+@_process_local(
+    "A codec context holds reference frames and entropy state that FFmpeg "
+    "cannot serialise. Build one in each process, from the stream's "
+    "codec_parameters: those can be pickled."
+)
 class _BasePacketDecoder(Generic[_Decoded]):
-    """Shared machinery for :class:`VideoPacketDecoder` and
-    :class:`AudioPacketDecoder`.
-
-    Decoding is the same ``avcodec_send_packet`` / ``avcodec_receive_frame``
-    pair for both, so the C++ side is a single class; what differs is only what
-    a decoded frame is turned into, which is :meth:`_receive_ready_frames`.
-    """
-
     _handle: torch.Tensor
     _drained: bool
     _generation: int | None
 
-    # *args so that a call with arguments gets the message below rather than a
-    # TypeError about the argument count.
-    def __init__(self, *args, **kwargs) -> None:
-        raise RuntimeError(
-            f"{type(self).__name__} cannot be instantiated directly. Build one "
-            "from the stream whose packets it decodes, with "
-            "stream.make_decoder()."
-        )
+    def _init(
+        self,
+        codec_parameters: _CodecParameters,
+        *,
+        media_type: str,
+        device_str: str,
+        num_ffmpeg_threads: int | None = None,
+    ) -> None:
+        # The op takes the fields of the codec parameters under their own
+        # names, except for coded_side_data, which it takes as two lists.
+        kwargs: dict[str, Any] = {}
+        for f in dataclasses.fields(codec_parameters):
+            value = getattr(codec_parameters, f.name)
+            if not f.init or value is None:
+                continue
+            if isinstance(value, Fraction):
+                value = [value.numerator, value.denominator]
+            elif isinstance(value, bytes):
+                value = _bytes_to_tensor(value)
+            elif f.name == "coded_side_data":
+                kwargs["coded_side_data_names"] = list(value)
+                kwargs["coded_side_data_values"] = [
+                    _bytes_to_tensor(data) for data in value.values()
+                ]
+                continue
+            kwargs[f.name] = value
+        if codec_parameters._container_format_PRIVATE_DO_NOT_USE is not None:
+            kwargs["container_format"] = (
+                codec_parameters._container_format_PRIVATE_DO_NOT_USE
+            )
 
-    @classmethod
-    def _from_stream(cls: type[_Self], stream: _Stream, device_str: str) -> _Self:
-        decoder = cls.__new__(cls)
-        decoder._handle = _blocks_create_packet_decoder(
-            stream._demuxer._handle,
-            stream_index=stream.index,
-            num_threads=1,
+        self._handle = _blocks_create_packet_decoder(
+            media_type,
+            num_threads=num_ffmpeg_threads,
             device=device_str,
+            **kwargs,
         )
-        decoder._drained = False
+        self._drained = False
         # The demuxer position these packets come from. None until the first
         # packet, and again after every reset(), so it is adopted rather than
         # tracked: the decoder never needs a reference back to the demuxer.
-        decoder._generation = None
-        return decoder
+        self._generation = None
 
     def _receive_ready_frames(self) -> list[_Decoded]:
         raise NotImplementedError
 
     def decode(self, packet: Packet) -> list[_Decoded]:
-        """Send one packet and return whatever is now ready (possibly empty,
-        e.g. while the codec buffers B-frames)."""
         if self._drained:
             raise RuntimeError(
                 "This decoder has been drained, and a codec that has been told "
@@ -98,38 +114,129 @@ class _BasePacketDecoder(Generic[_Decoded]):
         return self._receive_ready_frames()
 
     def drain(self) -> list[_Decoded]:
-        """Tell the codec the stream ended, and return the frames it was still
-        holding on to."""
         _blocks_packet_decoder_send_eof(self._handle)
         frames = self._receive_ready_frames()
         self._drained = True
         return frames
 
     def reset(self) -> None:
-        """Drop the codec's buffered state and start over. Needed after the
-        demuxer seeked, and after ``drain()``."""
+        """Drop the codec's buffered state and start over.
+
+        Needed after a :meth:`Demuxer.seek`, and after :meth:`drain`.
+        """
         _blocks_packet_decoder_reset(self._handle)
         self._drained = False
         self._generation = None
 
 
 class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
-    """Decode building block: turns compressed :class:`Packet`\\ s into decoded
-    (YUV) :class:`RawFrame`\\ s.
+    """Decodes the compressed :class:`Packet`\\ s of one video stream into
+    :class:`RawFrame`\\ s.
 
-    Not built directly: it comes from
-    :meth:`~torchcodec.decoders._blocks.VideoStream.make_decoder`, which is what
-    binds it to the stream whose codec parameters it decodes with. It is
-    stateful (it holds the codec's reference-frame buffer), passive, and *not*
-    thread-safe: use one ``VideoPacketDecoder`` per thread. FFmpeg's internal
-    codec thread count is kept at 1 for now (not exposed); parallelism comes
-    from composing blocks on your own threads.
+    This is a low-level API: for straightforward decoding, use
+    :class:`~torchcodec.decoders.VideoDecoder` instead.
+
+    Build it from the :class:`VideoCodecParameters` of the stream to decode,
+    then feed it one packet at a time, and drain it at the end::
+
+        demuxer = Demuxer("video.mp4")
+        decoder = VideoPacketDecoder(demuxer.streams[0].codec_parameters)
+
+        for packet in demuxer:
+            for raw_frame in decoder.decode(packet):
+                ...
+        for raw_frame in decoder.drain():
+            ...
+
+    The codec parameters can also be pickled, to decode in another process
+    than the demuxer, or built by hand, to decode packets that don't come from
+    a :class:`Demuxer` (see
+    :ref:`sphx_glr_generated_examples_low_level_demuxer_free.py`). Frames come
+    out on the device the decoder was built for.
+
+    It is stateful. It holds the codec's reference-frame buffer, so it expects
+    the packets of its own stream, in the order the demuxer produced them.
+
+    Args:
+        codec_parameters (VideoCodecParameters): The parameters of the stream
+            to decode, e.g. :attr:`VideoStream.codec_parameters`.
+        device (str or torch.device, optional): The device to decode on (cpu or
+            CUDA). If ``None`` (default), the current default device is used
+            (see ``torch.set_default_device``). With codec parameters you built
+            yourself, CUDA needs some fields to be set: see
+            :class:`VideoCodecParameters`.
+        num_ffmpeg_threads (int, optional): The number of threads to use for
+            CPU decoding. This has no effect when decoding on GPU. Use 1 for
+            single-threaded decoding, which may be best if you are decoding
+            multiple streams in parallel. Use a higher number for
+            multi-threaded decoding, which is best for a single stream.
+            Passing 0 lets FFmpeg decide on the number of threads.
+            Default: 1.
     """
+
+    def __init__(
+        self,
+        codec_parameters: VideoCodecParameters,
+        device: str | torch.device | None = None,
+        *,
+        num_ffmpeg_threads: int = 1,
+    ):
+        if not isinstance(codec_parameters, VideoCodecParameters):
+            raise TypeError(
+                "codec_parameters must be a VideoCodecParameters, got "
+                f"{type(codec_parameters).__name__}."
+            )
+        if num_ffmpeg_threads is None:
+            raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
+        self._init(
+            codec_parameters,
+            media_type="video",
+            device_str=convert_device_to_str(device),
+            num_ffmpeg_threads=num_ffmpeg_threads,
+        )
+
+    # methods calling super() only to pin the return type down to RawFrame. The
+    # base class is generic over _Decoded, which isn't ideal for the rendered
+    # docs.
+    def decode(self, packet: Packet) -> list[RawFrame]:
+        """Send one :class:`Packet` to the codec and return the
+        :class:`RawFrame`\\ s that are ready.
+
+        **This can return zero, one, or more than one** :class:`RawFrame`. What
+        comes back is not the decoding of the packet you just passed: a codec
+        that is buffering B-frames, or still priming itself, will emit what it owes
+        you on a later call.
+
+        Args:
+            packet (Packet): A packet of this decoder's own stream.
+
+        Returns:
+            The possibly empty list of :class:`RawFrame`\\ s that the codec has
+            ready, in presentation order.
+
+        Raises:
+            RuntimeError: If this decoder has been drained, or if the demuxer
+                seeked without it being :meth:`reset` afterwards.
+        """
+        return super().decode(packet)
+
+    def drain(self) -> list[RawFrame]:
+        """Tell the codec the stream has ended, and return the
+        :class:`RawFrame`\\ s it was still holding.
+
+        Skipping this loses the tail of the stream. A drained decoder refuses
+        any further packet; :meth:`reset` makes it usable again.
+
+        Returns:
+            The possibly empty list of :class:`RawFrame`\\ s that the codec was
+            still holding, in presentation order.
+        """
+        return super().drain()
 
     def _receive_ready_frames(self) -> list[RawFrame]:
         frames = []
         while True:
-            handle, status, pts_seconds, duration_seconds, device, storage = (
+            handle, status, pts, pts_seconds, duration_seconds, storage = (
                 _blocks_packet_decoder_receive_frame(self._handle)
             )
             if status != 0:  # EAGAIN (need more packets) or EOF: nothing ready
@@ -137,9 +244,9 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
             frames.append(
                 RawFrame(
                     handle,
+                    pts,
                     pts_seconds,
                     duration_seconds,
-                    device=device,
                     storage=storage if storage.numel() > 0 else None,
                 )
             )
@@ -147,25 +254,90 @@ class VideoPacketDecoder(_BasePacketDecoder[RawFrame]):
 
 
 class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
-    """Decode building block: turns compressed :class:`Packet`\\ s into
+    """Decodes the compressed :class:`Packet`\\ s of one audio stream into
     :class:`RawAudioSamples`.
 
-    Not built directly: it comes from
-    :meth:`~torchcodec.decoders._blocks.AudioStream.make_decoder`. It is
-    stateful: a lossy codec's overlap-add state means the frames decoded right
-    after a seek are subtly wrong until it re-primes, so ``reset()`` is
-    necessary but not by itself sufficient - see
-    :meth:`~torchcodec.decoders._blocks.Demuxer.seek`. Passive and *not*
-    thread-safe: use one ``AudioPacketDecoder`` per thread.
+    This is a low-level API: for straightforward decoding, use
+    :class:`~torchcodec.decoders.AudioDecoder` instead.
 
-    Audio is always decoded on the CPU, and that doesn't change with
-    ``torch.set_default_device``.
+    Build it from the :class:`AudioCodecParameters` of the stream to decode,
+    then feed it one packet at a time, and drain it at the end::
+
+        demuxer = Demuxer("audio.mp3", streams="audio")
+        decoder = AudioPacketDecoder(demuxer.streams[0].codec_parameters)
+
+        for packet in demuxer:
+            for raw_samples in decoder.decode(packet):
+                ...
+        for raw_samples in decoder.drain():
+            ...
+
+    The codec parameters can also be pickled, to decode in another process
+    than the demuxer, or built by hand, to decode packets that don't come from
+    a :class:`Demuxer` (see
+    :ref:`sphx_glr_generated_examples_low_level_demuxer_free.py`). Audio is
+    always decoded on the CPU.
+
+    It is stateful. A lossy codec carries state from one frame to the next, so
+    it expects the packets of its own stream, in the order the demuxer produced
+    them. After a :meth:`Demuxer.seek`, :meth:`reset` is necessary but not
+    sufficient: the first samples that come out are subtly wrong until the codec
+    re-primes, so decode a margin before your target and throw it away.
+
+    Args:
+        codec_parameters (AudioCodecParameters): The parameters of the stream
+            to decode, e.g. :attr:`AudioStream.codec_parameters`.
     """
+
+    def __init__(self, codec_parameters: AudioCodecParameters):
+        if not isinstance(codec_parameters, AudioCodecParameters):
+            raise TypeError(
+                "codec_parameters must be an AudioCodecParameters, got "
+                f"{type(codec_parameters).__name__}."
+            )
+        # No num_ffmpeg_threads: audio is always decoded on a single thread.
+        self._init(codec_parameters, media_type="audio", device_str="cpu")
+
+    # See VideoPacketDecoder: pinning the return type down to RawAudioSamples.
+    def decode(self, packet: Packet) -> list[RawAudioSamples]:
+        """Send one :class:`Packet` to the codec and return the
+        :class:`RawAudioSamples` that are ready.
+
+        **This can return zero, one, or more than one**
+        :class:`RawAudioSamples`. What comes back is not the decoding of the
+        packet you just passed: a codec that is still priming itself will emit
+        what it owes you on a later call.
+
+        Args:
+            packet (Packet): A packet of this decoder's own stream.
+
+        Returns:
+            The possibly empty list of :class:`RawAudioSamples` that the codec
+            has ready, in presentation order.
+
+        Raises:
+            RuntimeError: If this decoder has been drained, or if the demuxer
+                seeked without it being :meth:`reset` afterwards.
+        """
+        return super().decode(packet)
+
+    def drain(self) -> list[RawAudioSamples]:
+        """Tell the codec the stream has ended, and return the
+        :class:`RawAudioSamples` it was still holding.
+
+        Skipping this loses the tail of the stream. A drained decoder refuses
+        any further packet; :meth:`reset` makes it usable again.
+
+        Returns:
+            The possibly empty list of :class:`RawAudioSamples` that the codec
+            was still holding, in presentation order.
+        """
+        return super().drain()
 
     def _receive_ready_frames(self) -> list[RawAudioSamples]:
         samples = []
         while True:
-            data, status, pts_seconds, duration_seconds, sample_rate, sample_format = (
+            data, status, pts, pts_seconds, duration_seconds, sample_rate, _ = (
                 _blocks_audio_packet_decoder_receive_frame(self._handle)
             )
             if status != 0:  # EAGAIN (need more packets) or EOF: nothing ready
@@ -174,7 +346,7 @@ class AudioPacketDecoder(_BasePacketDecoder[RawAudioSamples]):
                 RawAudioSamples(
                     data=data,
                     sample_rate=sample_rate,
-                    sample_format=sample_format,
+                    pts=pts,
                     pts_seconds=pts_seconds,
                     duration_seconds=duration_seconds,
                     # Carried onward so AudioConverter can make the same check:

@@ -6,27 +6,40 @@
 
 import concurrent.futures
 import contextlib
+import copy
+import dataclasses
 import gc
 import io
 import itertools
 import math
 import os
+import pickle
 import queue
+import socket
+import struct
 import subprocess
 import threading
+import zlib
+from fractions import Fraction
 from functools import partial
+from multiprocessing.reduction import ForkingPickler
 from typing import NamedTuple
 
 import numpy
 import pytest
 import torch
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, PngImagePlugin
 from torchcodec import _core, ffmpeg_major_version, FrameBatch
 from torchcodec._core.ops import _blocks_demuxer_add_stream, _blocks_demuxer_scan
 from torchcodec._frame import Frame
 from torchcodec.decoders import (
+    AudioCodecParameters,
+    AudioConverter,
     AudioDecoder,
+    AudioPacketDecoder,
+    AudioStream,
     AudioStreamMetadata,
+    ColorConverter,
     decode_avif,
     decode_gif,
     decode_heic,
@@ -34,26 +47,24 @@ from torchcodec.decoders import (
     decode_jpeg,
     decode_png,
     decode_webp,
-    get_nvdec_cache_capacity,
-    ImageReadMode,
-    set_cuda_backend,
-    set_nvdec_cache_capacity,
-    VideoDecoder,
-    VideoStreamMetadata,
-    WavDecoder,
-)
-from torchcodec.decoders._blocks import (
-    AudioConverter,
-    AudioPacketDecoder,
-    AudioStream,
-    ColorConverter,
     Demuxer,
+    FrameIndex,
     get_container_metadata,
+    get_image_metadata,
+    get_nvdec_cache_capacity,
+    ImageMetadata,
+    ImageReadMode,
     Packet,
     RawAudioSamples,
     RawFrame,
+    set_cuda_backend,
+    set_nvdec_cache_capacity,
+    VideoCodecParameters,
+    VideoDecoder,
     VideoPacketDecoder,
     VideoStream,
+    VideoStreamMetadata,
+    WavDecoder,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.decoders._image_decoders import _source_to_tensor
@@ -66,15 +77,22 @@ from .utils import (
     ANIMATED_HEIC,
     assert_frames_equal,
     assert_tensor_close_on_at_least,
+    AV1_RESERVED_COLOR_METADATA,
     AV1_VIDEO,
     BAD_HUFFMAN_JPEG,
     BT2020_LIMITED_RANGE_10BIT,
     BT601_FULL_RANGE,
+    BT601_FULL_RANGE_10BIT,
+    BT601_FULL_RANGE_10BIT_RGB,
     BT601_LIMITED_RANGE,
     BT709_FULL_RANGE,
     CMYK_JPEG,
+    CODED64_DISPLAY50_VIDEO,
+    CODED64_DISPLAY52_VIDEO,
     CORRUPT_JPEG,
     cuda_devices,
+    demux_in_subprocess,
+    demux_with_open_files_limit,
     DISCARD_FIRST_KEYFRAME_VIDEO,
     FRAME_EXCEEDS_SCREEN_GIF,
     get_ffmpeg_minor_version,
@@ -90,6 +108,7 @@ from .utils import (
     GRADIENT_JPEG,
     GRADIENT_MIRRORED_HEIC,
     GRADIENT_PNG,
+    GRADIENT_PROGRESSIVE_JPEG,
     GRADIENT_ROTATED_HEIC,
     GRADIENT_WEBP,
     GRAYSCALE_16BIT_PNG,
@@ -115,6 +134,7 @@ from .utils import (
     needs_jpeg,
     needs_png,
     needs_webp,
+    NVDEC_SURFACE_REUSE_VIDEO,
     psnr,
     RGBA_AVIF,
     RGBA_HEIC,
@@ -139,11 +159,15 @@ from .utils import (
     TEST_SRC_2_720P_MPEG4,
     TEST_SRC_2_720P_VP8,
     TEST_SRC_2_720P_VP9,
+    TEST_SRC_2_720P_VP9_ALTREF,
     TEST_SRC_2_MPEG4_MP4,
     TESTSRC2_444_10BIT_HEVC,
     TESTSRC2_444_12BIT_HEVC,
     TESTSRC2_444_8BIT_HEVC,
     TESTSRC2_AV1_10BIT,
+    TESTSRC2_FULL_RANGE_422,
+    TESTSRC2_GBRP_HEVC,
+    TESTSRC2_GRAY_HEVC,
     TESTSRC2_ODD_HEIGHT_444,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT,
@@ -156,10 +180,50 @@ from .utils import (
     TESTSRC2_ODD_WIDTH_MPEG2,
     TESTSRC2_ODD_WIDTH_VP9,
     TESTSRC2_ODD_WIDTH_VP9_10BIT,
+    TESTSRC2_YUVA420P_FFV1,
     TRANSPARENT_GIF,
     UNSEEKABLE_SWF,
     WAV_ODD_DATA_TRAILING_CHUNK,
 )
+
+
+def _assert_local_file_and_file_like_agree(open_source, tmp_path):
+    # Opens the very same DASH manifest twice, once as a local file and once as
+    # a file-like, and asserts that neither reaches the network.
+    # FFmpeg already denies support for mpeg-dash by default on files. This test
+    # is mainly here to ensure we also deny it by default on file-like. Whether
+    # this should be supported (consistently across input types) is an open
+    # question.
+
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        server.listen()
+        port = server.getsockname()[1]
+
+        manifest = f"""<?xml version="1.0" encoding="utf-8"?>
+<mpd xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-live:2011" type="static" mediapresentationduration="pt2.0s">
+  <Period id="0" start="PT0.0S">
+    <AdaptationSet id="0" contentType="audio" mimeType="audio/mp4">
+      <Representation id="0" codecs="mp4a.40.2" bandwidth="64000" audioSamplingRate="44100">
+        <BaseURL>http://127.0.0.1:{port}/</BaseURL>
+        <SegmentTemplate timescale="1000000" duration="1000000" initialization="init.m4s" media="seg-$Number$.m4s" startNumber="1"/>
+      </Representation>
+    </AdaptationSet>
+  </Period>
+</MPD>
+""".encode()
+
+        local_file = tmp_path / "manifest.mpd"
+        local_file.write_bytes(manifest)
+
+        for source in (local_file, io.BytesIO(manifest)):
+            with pytest.raises(RuntimeError, match="open input"):
+                open_source(source)
+
+        # Assert that the demuxer never reached out to the network
+        server.setblocking(False)
+        with pytest.raises(BlockingIOError):
+            server.accept()
 
 
 class TestDecoder:
@@ -236,6 +300,10 @@ class TestDecoder:
         # like object from open()
         with pytest.raises(TypeError, match="binary reading?"):
             Decoder(open(NASA_VIDEO.path))
+
+    @pytest.mark.parametrize("Decoder", (VideoDecoder, AudioDecoder))
+    def test_no_network_access(self, Decoder, tmp_path):
+        _assert_local_file_and_file_like_agree(Decoder, tmp_path)
 
 
 class TestVideoDecoder:
@@ -747,6 +815,14 @@ class TestVideoDecoder:
         assert decoded_frame10.duration_seconds == ref_frame_info10.duration_seconds
         assert decoded_frame10.pts_seconds == ref_frame_info10.pts_seconds
         assert_frames_equal(decoded_frame10.data, ref_frame10.to(device=device))
+
+    def test_reserved_color_metadata(self):
+        # Non-regression test for
+        # https://github.com/meta-pytorch/torchcodec/issues/1759
+        # (Failed on FFmpeg >= 8)
+        decoder = VideoDecoder(AV1_RESERVED_COLOR_METADATA.path)
+        frames = decoder.get_frames_in_range(0, len(decoder))
+        assert frames.data.shape == (5, 3, 64, 80)
 
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
@@ -1677,6 +1753,18 @@ class TestVideoDecoder:
 
             assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=90, atol=3)
 
+    @pytest.mark.parametrize("device", all_supported_devices())
+    def test_full_range_10bit(self, device):
+        # Non regression test ensuring >8bit full range videos are decoded
+        # correctly on CPU and GPU. We used to not pass the color-range tag to
+        # libswscale (worked fine for 8 bit as it could be derived from pixel
+        # format), but didn't for >8bit.
+        decoder, _ = make_video_decoder(BT601_FULL_RANGE_10BIT.path, device=device)
+        expected = torch.tensor(BT601_FULL_RANGE_10BIT_RGB, dtype=torch.float32)
+
+        frame = decoder[0].cpu().float()
+        assert (frame - expected[:, None, None]).abs().max() <= 3
+
     @needs_cuda
     @pytest.mark.parametrize(
         "asset",
@@ -1836,7 +1924,7 @@ class TestVideoDecoder:
             # NVDEC does, so the two disagree along every colour edge in the
             # frame. Only ~79% of samples land within 5, hence the loose bound;
             # the pixels themselves are checked exactly by
-            # TestBlocks::test_matches_video_decoder, where both sides are ours.
+            # TestLowLevel::test_matches_video_decoder, where both sides are ours.
             percentage, atol = 75, 5
         else:
             percentage, atol = 98, 3
@@ -2366,9 +2454,54 @@ class TestVideoDecoder:
         torch.testing.assert_close(cpu_frames, cuda_frames.cpu(), rtol=0, atol=1)
 
     @needs_cuda
+    @pytest.mark.parametrize(
+        "video",
+        (
+            TESTSRC2_GRAY_HEVC,
+            TESTSRC2_GBRP_HEVC,
+            TESTSRC2_YUVA420P_FFV1,
+            TESTSRC2_FULL_RANGE_422,
+        ),
+        ids=lambda video: video.path.stem,
+    )
+    def test_cpu_fallback_matches_cpu_special_cases(self, video):
+        # Non regression test for a bunch of special-case videos that go through
+        # the fallback. These videos are natively "YUV" and the upload path must
+        # still handle them correctly. The equivalent test for the low-level APIs
+        # is test_cpu_fallback_upload_keeps_full_range
+
+        if ffmpeg_major_version is not None and ffmpeg_major_version <= 6:
+            pytest.skip("Colors don't line up across devices before FFmpeg 6")
+
+        num_frames = 5
+        cpu_decoder = VideoDecoder(video.path, device="cpu")
+        cuda_decoder = VideoDecoder(video.path, device="cuda")
+        assert cuda_decoder.cpu_fallback
+
+        cpu_frames = cpu_decoder[:num_frames]
+        cuda_frames = cuda_decoder[:num_frames].cpu()
+
+        torch.testing.assert_close(cuda_frames, cpu_frames, atol=3, rtol=0)
+
+    @needs_cuda
     def test_nvdec_cuda_interface_error(self):
         with pytest.raises(RuntimeError, match="torch_parse_device_string"):
             VideoDecoder(NASA_VIDEO.path, device="cuda:0:bad_variant")
+
+    @needs_cuda
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_nvdec_vp9_superframe_seek(self, seek_mode):
+        # Non-regression test for https://fburl.com/workplace/s406jd8a
+        # (internal, sorry).
+        # Seeking on VP9 with hidden alt-ref frames must return the frame that
+        # was asked for, not a neighbouring one. See note about track_pts_ourselves_
+        asset = TEST_SRC_2_720P_VP9_ALTREF
+        cpu_decoder = VideoDecoder(asset.path, device="cpu", seek_mode=seek_mode)
+
+        for index in (10, 24, 38, 52):
+            # A fresh decoder each time, so that the very first read is a seek.
+            gpu_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+            assert_frames_equal(gpu_decoder[index], cpu_decoder[index].to("cuda"))
 
     @needs_cuda
     def test_set_cuda_backend(self):
@@ -2476,6 +2609,51 @@ class TestVideoDecoder:
             # Create a new decoder, it's not cached since capacity is 0
             create_decoder()
             assert _core._get_nvdec_cache_size(device_index=0) == 0
+
+    @needs_cuda
+    def test_nvdec_cache_different_display_areas(self):
+        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1704
+        # Videos with the same coded dimensions but different display areas do
+        # share a cached decoder, and that's fine: the decoder outputs the whole
+        # coded frame, and we apply the display area crop ourselves. If the
+        # decoder were the one cropping, sharing it across different display
+        # areas would silently corrupt the frames.
+        # See Note: [NVDEC surface dimensions and cropping].
+        with self.restore_nvdec_cache_capacity():
+            # Evict any leftover cached decoders from previous tests
+            set_nvdec_cache_capacity(0)
+
+        for priming_video, video in itertools.permutations(
+            (CODED64_DISPLAY50_VIDEO, CODED64_DISPLAY52_VIDEO)
+        ):
+            reference = VideoDecoder(video.path, device="cpu")[:].cuda()
+
+            decoder = VideoDecoder(priming_video.path, device="cuda")
+            decoder[0]
+            assert not decoder.cpu_fallback
+            del decoder
+            gc.collect()
+
+            decoder = VideoDecoder(video.path, device="cuda")
+            frames = decoder[:]
+            assert not decoder.cpu_fallback
+            del decoder
+            gc.collect()
+
+            assert_frames_equal(frames, reference)
+            # A single cached decoder was enough for both videos
+            assert _core._get_nvdec_cache_size(device_index=0) == 1
+
+    @needs_cuda
+    def test_nvdec_surface_reuse(self):
+        # Non regression test for https://github.com/meta-pytorch/torchcodec/pull/1758
+        reference = VideoDecoder(NVDEC_SURFACE_REUSE_VIDEO.path, device="cpu")[:]
+
+        decoder = VideoDecoder(NVDEC_SURFACE_REUSE_VIDEO.path, device="cuda")
+        frames = decoder[:]
+        assert not decoder.cpu_fallback
+
+        assert_frames_equal(frames, reference.cuda())
 
     def test_cpu_fallback_no_fallback_on_cpu_device(self):
         """Test that CPU device doesn't trigger fallback (it's not a fallback scenario)."""
@@ -2867,6 +3045,34 @@ class TestVideoDecoder:
             )
 
 
+def _make_adpcm_file(tmp_path, codec, container="wav"):
+    # Creates a file whose decoded frames mostly have no pts. ADPCM decoders
+    # output one frame per block, and libavcodec only gives a pts to the first
+    # frame of each packet. At 44.1kHz stereo with 512-byte blocks, the bitrate
+    # is high enough that the WAV demuxer puts several blocks in each packet, on
+    # all FFmpeg versions. Remuxing into MKV keeps those packets.
+    path = tmp_path / f"{codec}.wav"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=1",
+            "-ac", "2", "-c:a", codec, "-block_size", "512", str(path),
+        ],
+        check=True,
+    )  # fmt: skip
+    if container != "wav":
+        remuxed_path = path.with_suffix(f".{container}")
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-i", str(path), "-c", "copy", str(remuxed_path),
+            ],
+            check=True,
+        )  # fmt: skip
+        path = remuxed_path
+    return path
+
+
 class TestAudioDecoder:
     @pytest.mark.parametrize(
         "asset", (NASA_AUDIO, NASA_AUDIO_MP3, SINE_MONO_S32, SINE_16_CHANNEL_S16)
@@ -2920,6 +3126,103 @@ class TestAudioDecoder:
         path = str(tmp_path / "test.flac")
         AudioEncoder(torch.rand(1, 1000), sample_rate=16000).to_file(path)
         AudioDecoder(path).get_all_samples()
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize("codec", ("adpcm_ms", "adpcm_ima_wav"))
+    def test_multi_block_packets(self, tmp_path, codec):
+        # Non-regression test for
+        # https://github.com/meta-pytorch/torchcodec/issues/1767
+        # Frames without a pts used to be dropped. See _make_adpcm_file().
+        path = _make_adpcm_file(tmp_path, codec)
+        decoder = AudioDecoder(path)
+        samples = decoder.get_all_samples()
+
+        reference = subprocess.run(
+            ["ffmpeg", "-v", "error", "-i", str(path), "-f", "f32le", "-"],
+            check=True,
+            capture_output=True,
+        ).stdout
+        reference = torch.frombuffer(bytearray(reference), dtype=torch.float32)
+        reference = reference.reshape(-1, 2).T
+        torch.testing.assert_close(samples.data, reference, atol=0, rtol=0)
+
+        start_seconds, stop_seconds = 0.5, 0.6
+        samples = decoder.get_samples_played_in_range(start_seconds, stop_seconds)
+        start = round(start_seconds * 44100)
+        stop = round(stop_seconds * 44100)
+        assert samples.pts_seconds == pytest.approx(start_seconds)
+        torch.testing.assert_close(
+            samples.data, reference[:, start:stop], atol=0, rtol=0
+        )
+
+    @needs_ffmpeg_cli
+    def test_mkv_packets_without_duration(self, tmp_path):
+        # Non-regression test for
+        # https://github.com/meta-pytorch/torchcodec/issues/1772
+        # Matroska SimpleBlocks don't store a duration, so the decoded frames
+        # have a duration of 0 and used to be dropped by the range filter.
+        path = tmp_path / "alac.mkv"
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-i", str(SINE_MONO_S16.path), "-c:a", "alac", str(path),
+            ],
+            check=True,
+        )  # fmt: skip
+        # ALAC is lossless, so we can compare against the original WAV.
+        reference = AudioDecoder(SINE_MONO_S16.path).get_all_samples().data
+
+        samples = AudioDecoder(path).get_all_samples()
+        assert samples.pts_seconds == 0
+        torch.testing.assert_close(samples.data, reference, atol=0, rtol=0)
+
+        start_seconds, stop_seconds = 0.3, 1.0
+        samples = AudioDecoder(path).get_samples_played_in_range(
+            start_seconds, stop_seconds
+        )
+        sample_rate = SINE_MONO_S16.stream_infos[0].sample_rate
+        start = round(start_seconds * sample_rate)
+        stop = round(stop_seconds * sample_rate)
+        assert samples.pts_seconds == pytest.approx(start_seconds)
+        torch.testing.assert_close(
+            samples.data, reference[:, start:stop], atol=0, rtol=0
+        )
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize(
+        "start_seconds, stop_seconds",
+        (
+            (0.2558, 0.4),  # start just before a frame boundary
+            (0.1, 0.5122),  # stop just after a frame boundary
+        ),
+    )
+    def test_range_bounds_within_half_tick_of_frame_boundary(
+        self, tmp_path, start_seconds, stop_seconds
+    ):
+        # Matroska has a 1ms time base and these ALAC frames are 256ms long.
+        # start_seconds and stop_seconds are less than half a tick away from a
+        # frame boundary. Rounding them to the closest tick used to exclude the
+        # frame that contains them, returning fewer samples than requested.
+        path = tmp_path / "alac.mkv"
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-i", str(SINE_MONO_S16.path), "-c:a", "alac", str(path),
+            ],
+            check=True,
+        )  # fmt: skip
+        reference = AudioDecoder(SINE_MONO_S16.path).get_all_samples().data
+
+        samples = AudioDecoder(path).get_samples_played_in_range(
+            start_seconds, stop_seconds
+        )
+        sample_rate = SINE_MONO_S16.stream_infos[0].sample_rate
+        start = round(start_seconds * sample_rate)
+        stop = round(stop_seconds * sample_rate)
+        assert samples.pts_seconds == pytest.approx(start_seconds)
+        torch.testing.assert_close(
+            samples.data, reference[:, start:stop], atol=0, rtol=0
+        )
 
     def test_unseekable_format(self):
         decoder = AudioDecoder(UNSEEKABLE_SWF.path)
@@ -3333,6 +3636,39 @@ class TestAudioDecoder:
 
         torch.testing.assert_close(torch.cat(chunks, dim=1), full.data, atol=0, rtol=0)
 
+    @needs_ffmpeg_cli
+    def test_chunk_boundary_half_sample_after_frame_start(self, tmp_path):
+        # Same as test_chunk_boundary_half_sample, but each boundary is half a
+        # sample after the start of a FLAC frame, so the second chunk starts
+        # decoding at that frame. The two chunks used to disagree on which one
+        # returns the boundary sample, depending on floating-point errors in
+        # `boundary - first_pts`.
+        frame_size = 1000
+        path = tmp_path / "sine.flac"
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-i", str(SINE_MONO_S32.path), "-c:a", "flac",
+                "-frame_size", str(frame_size), str(path),
+            ],
+            check=True,
+        )  # fmt: skip
+        sample_rate = SINE_MONO_S32.sample_rate
+        full = AudioDecoder(path).get_all_samples()
+        num_samples = full.data.shape[1]
+        end_seconds = full.pts_seconds + num_samples / sample_rate
+
+        for frame_start in range(frame_size, num_samples, frame_size):
+            boundary = (frame_start + 0.5) / sample_rate
+            decoder = AudioDecoder(path)
+            chunks = [
+                decoder.get_samples_played_in_range(full.pts_seconds, boundary).data,
+                decoder.get_samples_played_in_range(boundary, end_seconds).data,
+            ]
+            torch.testing.assert_close(
+                torch.cat(chunks, dim=1), full.data, atol=0, rtol=0
+            )
+
     def test_decode_s16_ffmpeg4(self):
         # Non-regression test for https://github.com/pytorch/torchcodec/issues/843
         # Ensures that decoding s16 on FFmpeg4 handles
@@ -3526,7 +3862,35 @@ class TestWavDecoder:
             assert wav_samples.pts_seconds == audio_samples.pts_seconds
 
 
-def _block_devices():
+def _make_raw_h264(tmp_path, num_frames=30):
+    # An Annex B elementary stream: no container, hence no timestamps.
+    path = tmp_path / "raw.h264"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-i", str(NASA_VIDEO.path), "-map", "0:3", "-frames:v", str(num_frames),
+            "-c:v", "libx264", "-bf", "2", "-g", "10", "-f", "h264", str(path),
+        ],
+        check=True,
+    )  # fmt: skip
+    return path
+
+
+def _make_raw_hevc(tmp_path, num_frames=30):
+    path = tmp_path / "raw.hevc"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-i", str(NASA_VIDEO.path), "-map", "0:3", "-frames:v", str(num_frames),
+            "-c:v", "libx265", "-x265-params", "keyint=10:min-keyint=10:log-level=error",
+            "-f", "hevc", str(path),
+        ],
+        check=True,
+    )  # fmt: skip
+    return path
+
+
+def _low_level_devices():
     return ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
 
 
@@ -3542,16 +3906,19 @@ def _is_msb_aligned(pix_fmt):
     return pix_fmt.startswith("p0")
 
 
-# TODO_API_BREAKDOWN CC P2: this entire class should probably be folded in the
-# test/utils asset class.
 class _PlanesCase(NamedTuple):
     """A video, how many significant bits its samples carry, and the pixel
     format its frames come out in on each device."""
+
+    # Note: this might be merged into TestVideo, but really all these fields are
+    # only tested / relevant in the low-level APIs.
 
     video: object
     bit_depth: int
     cpu_pix_fmt: str
     cuda_pix_fmt: str
+    cpu_num_planes: int = 3
+    cuda_num_planes: int = 3
     # FFmpeg 6 added P012. Before that, NVDEC's 12-bit surface can only be
     # described as p016le, which claims 16 bits instead of 12. Set this for the
     # sources that hit it: same samples either way (they're msb-aligned, so
@@ -3561,6 +3928,9 @@ class _PlanesCase(NamedTuple):
 
     def pix_fmt(self, device):
         return self.cuda_pix_fmt if device == "cuda" else self.cpu_pix_fmt
+
+    def num_planes(self, device):
+        return self.cuda_num_planes if device == "cuda" else self.cpu_num_planes
 
 
 # Sources with more than 8 bits per sample.
@@ -3577,7 +3947,8 @@ _HDR_VIDEOS = (
 
 # Videos spanning the pixel-format axes RawFrame.planes has to handle: 4:2:0 vs
 # 4:4:4 chroma, even vs odd dims (chroma rounds up), and 8- vs 10-/12-bit
-# (uint8 vs uint16 planes). All are YUV, so planes are (Y, U, V).
+# (uint8 vs uint16 planes). All are YUV, so planes are (Y, U, V) - the sources
+# whose frames aren't three YUV planes are in _NON_YUV_PLANES_VIDEOS below.
 _PLANES_VIDEOS = (
     _PlanesCase(NASA_VIDEO, 8, "yuv420p", "nv12"),  # even dims
     _PlanesCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9, 8, "yuv420p", "nv12"),  # odd
@@ -3604,6 +3975,24 @@ _PLANES_VIDEOS = (
 )
 
 
+# Sources whose frames aren't three YUV planes on the CPU. NVDEC decodes none of
+# them - monochrome, planar RGB and FFV1 all send it to the CPU fallback - and
+# the fallback converts to an NVDEC surface format before uploading, so on CUDA
+# they are three YUV planes like everything else. That conversion is what
+# RawFrame.pixel_format promises ("on CUDA it is always an NVDEC surface format"). It
+# keeps the pixels where they were - see test_cpu_fallback_matches_cpu - but not
+# what YUV has no room for: grayscale gains neutral chroma, and alpha is dropped
+# outright.
+_NON_YUV_PLANES_VIDEOS = (
+    _PlanesCase(TESTSRC2_GRAY_HEVC, 8, "gray", "nv12", cpu_num_planes=1),
+    # Planar RGB. The planes come out (R, G, B), which is *not* the order the
+    # format stores them in: FFmpeg's gbrp is green, blue, red.
+    _PlanesCase(TESTSRC2_GBRP_HEVC, 8, "gbrp", "yuv444p"),
+    # Alpha, which is full size like luma rather than subsampled like chroma.
+    _PlanesCase(TESTSRC2_YUVA420P_FFV1, 8, "yuva420p", "nv12", cpu_num_planes=4),
+)
+
+
 def _planes_ids(case):
     return case.video.path.stem
 
@@ -3621,7 +4010,7 @@ class _CustomReader:
         return self._file.seek(offset, whence)
 
 
-_BLOCKS_SOURCES = (
+_LOW_LEVEL_SOURCES = (
     pytest.param(lambda path: path, id="path"),
     pytest.param(lambda path: str(path), id="str"),
     pytest.param(lambda path: path.read_bytes(), id="bytes"),
@@ -3637,13 +4026,13 @@ _BLOCKS_SOURCES = (
 )
 
 
-class TestBlocks:
+class TestLowLevel:
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_block_output_types(self, device):
         # Demuxer yields Packets, VideoPacketDecoder yields RawFrames, and
         # ColorConverter yields Frames with the expected shape/dtype.
-        demuxer, decoder, converter = self._make_blocks(NASA_VIDEO.path, device)
+        demuxer, decoder, converter = self._make_stages(NASA_VIDEO.path, device)
 
         num_packets = 0
         for packet in demuxer:
@@ -3701,7 +4090,7 @@ class TestBlocks:
         ),
     )
     def test_stream_selection_errors(self, streams, match):
-        with pytest.raises((ValueError, RuntimeError), match=match):
+        with pytest.raises(ValueError, match=match):
             Demuxer(NASA_VIDEO.path, streams=streams)
 
     def test_audio_stream_has_no_scan(self):
@@ -3751,10 +4140,30 @@ class TestBlocks:
         assert seen[video.index] > 0
         assert seen[audio.index] > 0
 
+    def test_demuxer_is_its_own_iterator(self):
+        demuxer = Demuxer(NASA_VIDEO.path)
+        assert iter(demuxer) is demuxer
+
+        # Iterating is a position in the container, not a pass over a
+        # collection: a new loop resumes where the previous one stopped.
+        first = next(demuxer)
+        rest = list(demuxer)
+        assert len(rest) > 0
+
+        for _ in range(2):
+            with pytest.raises(StopIteration):
+                next(demuxer)
+
+        # A seek puts an exhausted demuxer back within the container, and
+        # next() picks it up from there - no need to re-iter() it.
+        demuxer.seek(0)
+        assert next(demuxer).stream_index == first.stream_index
+        assert len(list(demuxer)) == len(rest)
+
     # ===== metadata =====
 
     def test_stream_metadata_matches_the_decoders(self):
-        # The blocks report the header tier and nothing else, but where a field
+        # The low-level APIs report the header tier and nothing else, but where a field
         # exists on both sides it has to say the same thing - same name, same
         # value.
         demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
@@ -3836,6 +4245,14 @@ class TestBlocks:
             "StreamMetadata",
         ]
         assert [s.stream_index for s in metadata.streams] == list(range(6))
+        assert [s.media_type for s in metadata.streams] == [
+            "video",
+            "audio",
+            "subtitle",
+            "video",
+            "audio",
+            "subtitle",
+        ]
 
     def test_get_container_metadata_reads_no_packets(self):
         class CountingFileLike:
@@ -3859,12 +4276,678 @@ class TestBlocks:
 
         assert probed.bytes_read < demuxed.bytes_read
 
+    # ===== codec parameters =====
+
+    def test_video_codec_parameters(self):
+        params = Demuxer(NASA_VIDEO.path).streams[0].codec_parameters
+
+        has_framerate = ffmpeg_major_version > 6 or (
+            ffmpeg_major_version == 6 and get_ffmpeg_minor_version() >= 1
+        )
+        assert params == VideoCodecParameters(
+            codec="h264",
+            time_base=Fraction(1, 30000),
+            extradata=params.extradata,
+            codec_tag=0x31637661,  # "avc1"
+            profile=100,
+            level=21,
+            bit_rate=128783,
+            bits_per_coded_sample=24,
+            bits_per_raw_sample=8,
+            width=480,
+            height=270,
+            pixel_format="yuv420p",
+            sample_aspect_ratio=Fraction(1, 1),
+            framerate=Fraction(30000, 1001) if has_framerate else None,
+            r_frame_rate=Fraction(30000, 1001),
+            field_order=params.field_order,
+            color_range="tv",
+            color_primaries="bt709",
+            color_transfer_characteristic="bt709",
+            color_space="bt709",
+            chroma_location="left",
+            video_delay=2,
+        )
+        # FFmpeg 4 doesn't report it.
+        assert params.field_order in (None, "progressive")
+        # The avcC box, which starts with its version, 1.
+        assert len(params.extradata) == 48
+        assert params.extradata[0] == 1
+
+    def test_audio_codec_parameters(self):
+        params = Demuxer(NASA_VIDEO.path, streams="audio").streams[0].codec_parameters
+
+        assert params == AudioCodecParameters(
+            codec="aac",
+            time_base=Fraction(1, 16000),
+            extradata=params.extradata,
+            codec_tag=0x6134706D,  # "mp4a"
+            profile=1,  # AAC LC
+            bit_rate=128837,
+            bits_per_coded_sample=16,
+            sample_format="fltp",
+            sample_rate=16000,
+            channel_layout="stereo",
+            frame_size=1024,
+            initial_padding=params.initial_padding,
+        )
+        assert len(params.extradata) == 5
+        # The AAC encoder delay, signaled by the MP4 edit list. Only some FFmpeg
+        # versions report it as the initial padding.
+        assert params.initial_padding in (None, 1024)
+
+    def test_codec_parameters_display_matrix(self):
+        (video,) = Demuxer(NASA_VIDEO_ROTATED.path).streams
+        display_matrix = video.codec_parameters.coded_side_data["Display Matrix"]
+
+        # A 90 degree rotation, as FFmpeg stores it: 9 int32s, in 16.16 fixed
+        # point except for the last column, in 2.30.
+        assert video.metadata.rotation == 90
+        assert struct.unpack("9i", display_matrix) == (
+            0,
+            -65536,
+            0,
+            65536,
+            0,
+            0,
+            0,
+            0,
+            1 << 30,
+        )
+
+        assert (
+            Demuxer(NASA_VIDEO.path).streams[0].codec_parameters.coded_side_data is None
+        )
+
+    def test_codec_parameters_are_picklable_frozen_values(self):
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        for params in (s.codec_parameters for s in demuxer.streams):
+            assert pickle.loads(pickle.dumps(params)) == params
+            with pytest.raises(dataclasses.FrozenInstanceError):
+                params.codec = "hevc"
+
+    def test_codec_parameters_constructor(self):
+        params = VideoCodecParameters(
+            codec="h264",
+            time_base=Fraction(1, 30000),
+            codec_tag=0x31637661,
+            sample_aspect_ratio=Fraction(4, 3),
+        )
+        assert params.width is None
+        assert repr(params) == (
+            "VideoCodecParameters(codec='h264', time_base=Fraction(1, 30000), "
+            "codec_tag=828601953, sample_aspect_ratio=Fraction(4, 3))"
+        )
+
+        assert repr(
+            AudioCodecParameters(
+                codec="opus",
+                time_base=Fraction(1, 48000),
+                extradata=b"OpusHead" + bytes(11),
+                coded_side_data={"Replay Gain": bytes(16)},
+            )
+        ) == (
+            "AudioCodecParameters(codec='opus', time_base=Fraction(1, 48000), "
+            "extradata=<19 bytes>, coded_side_data={'Replay Gain': <16 bytes>})"
+        )
+
+        assert VideoCodecParameters("h264", time_base=Fraction(1, 30000)) == (
+            VideoCodecParameters(codec="h264", time_base=Fraction(1, 30000))
+        )
+        with pytest.raises(TypeError, match="positional"):
+            VideoCodecParameters("h264", Fraction(1, 30000))
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        (
+            (
+                {"codec": "", "time_base": Fraction(1, 1)},
+                "codec must be a non-empty string",
+            ),
+            (
+                {"codec": None, "time_base": Fraction(1, 1)},
+                "codec must be a non-empty string",
+            ),
+            (
+                {"codec": "h264", "time_base": (1, 30000)},
+                "time_base must be a Fraction",
+            ),
+            ({"codec": "h264", "time_base": 0.5}, "time_base must be a Fraction"),
+            (
+                {"codec": "h264", "time_base": Fraction(-1, 1)},
+                "time_base must be positive",
+            ),
+            (
+                {
+                    "codec": "h264",
+                    "time_base": Fraction(1, 1),
+                    "r_frame_rate": (30000, 1001),
+                },
+                "r_frame_rate must be a Fraction",
+            ),
+        ),
+    )
+    def test_codec_parameters_constructor_errors(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            VideoCodecParameters(**kwargs)
+
+    # ===== packet decoders built from codec parameters =====
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    @pytest.mark.parametrize("video", (NASA_VIDEO, NASA_VIDEO_ROTATED))
+    def test_video_packet_decoder_from_pickled_codec_parameters(self, device, video):
+        # What the decoding process of a multi-process pipeline does.
+        demuxer = Demuxer(video.path)
+        params = pickle.loads(pickle.dumps(demuxer.streams[0].codec_parameters))
+        decoder = VideoPacketDecoder(params, device)
+        converter = ColorConverter(device=device)
+
+        raw_frames = [f for packet in demuxer for f in decoder.decode(packet)]
+        raw_frames += decoder.drain()
+
+        # VideoDecoder builds its decoder from the demuxed stream directly.
+        expected = VideoDecoder(video.path, device=device)
+        assert len(raw_frames) == len(expected)
+        for i, raw_frame in enumerate(raw_frames):
+            frame = converter.convert(raw_frame)
+            expected_frame = expected.get_frame_at(i)
+            torch.testing.assert_close(frame.data, expected_frame.data, rtol=0, atol=0)
+            assert frame.pts_seconds == expected_frame.pts_seconds
+            assert frame.duration_seconds == expected_frame.duration_seconds
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    @pytest.mark.parametrize(
+        "video",
+        (
+            NASA_VIDEO,
+            TEST_SRC_2_720P_H265,
+            TEST_SRC_2_720P_MPEG4,
+            TEST_SRC_2_MPEG4_MP4,
+        ),
+    )
+    def test_video_packet_decoder_from_hand_built_codec_parameters(self, device, video):
+        # On CUDA, this checks NVDEC's bitstream filter choice: hand-built
+        # parameters have no container, so NVDEC picks the filter from the codec
+        # alone, instead of from the container as it does with a Demuxer.
+        demuxer = Demuxer(video.path)
+        stream_params = demuxer.streams[0].codec_parameters
+        params = VideoCodecParameters(
+            codec=stream_params.codec,
+            time_base=stream_params.time_base,
+            extradata=stream_params.extradata,
+            width=stream_params.width,
+            height=stream_params.height,
+            pixel_format=stream_params.pixel_format,
+            r_frame_rate=stream_params.r_frame_rate,
+        )
+        decoder = VideoPacketDecoder(params, device)
+        converter = ColorConverter(device=device)
+
+        frames = [
+            converter.convert(f) for packet in demuxer for f in decoder.decode(packet)
+        ]
+        frames += [converter.convert(f) for f in decoder.drain()]
+
+        expected = VideoDecoder(video.path, device=device)
+        assert len(frames) == len(expected)
+        for i, frame in enumerate(frames):
+            expected_frame = expected.get_frame_at(i)
+            torch.testing.assert_close(frame.data, expected_frame.data, rtol=0, atol=0)
+            assert frame.pts_seconds == expected_frame.pts_seconds
+            assert frame.duration_seconds == expected_frame.duration_seconds
+
+    @needs_cuda
+    def test_nvdec_needs_dimensions_pixel_format_and_frame_rate(self):
+        # This test documents what NVDEC needs in hand-built codec parameters.
+        # Without width, height and pixel_format, it may silently decode on the
+        # CPU: it does for MPEG-4, but not for H.264 and HEVC whose decoders
+        # read them from the extradata. Without r_frame_rate, the frames'
+        # durations are 0.
+        asset = TEST_SRC_2_720P_MPEG4
+
+        def decode(params, device):
+            demuxer = Demuxer(asset.path)
+            decoder = VideoPacketDecoder(params, device)
+            converter = ColorConverter(device=device)
+            frames = [converter.convert(f) for p in demuxer for f in decoder.decode(p)]
+            return frames + [converter.convert(f) for f in decoder.drain()]
+
+        # dataclasses.replace() drops the container, like hand-built parameters.
+        params = dataclasses.replace(Demuxer(asset.path).streams[0].codec_parameters)
+        nvdec_frames = decode(params, "cuda")
+        assert all(f.duration_seconds > 0 for f in nvdec_frames)
+
+        frames = decode(dataclasses.replace(params, r_frame_rate=None), "cuda")
+        assert all(f.duration_seconds == 0 for f in frames)
+
+        frames = decode(
+            dataclasses.replace(params, width=None, height=None, pixel_format=None),
+            "cuda",
+        )
+        cpu_frames = decode(params, "cpu")
+        assert frames[0].data.device.type == "cuda"
+        # We don't expose the .cpu_fallback on the PacketDecoder yet, so we
+        # can't cleanly check that it actually fell back to the CPU. Below is
+        # the best we can do.
+        assert not torch.equal(frames[0].data, nvdec_frames[0].data)
+        # Not exact: CPU-decoded frames go through a different color conversion
+        # when they're uploaded to the GPU.
+        torch.testing.assert_close(
+            frames[0].data.cpu(), cpu_frames[0].data, rtol=0, atol=2
+        )
+
+    def test_audio_packet_decoder_from_pickled_codec_parameters(self):
+        def decode(make_decoder):
+            demuxer = Demuxer(NASA_VIDEO.path, streams="audio")
+            decoder = make_decoder(demuxer.streams[0])
+            samples = [s for packet in demuxer for s in decoder.decode(packet)]
+            return samples + decoder.drain()
+
+        expected = decode(lambda stream: stream.make_decoder())
+        samples = decode(
+            lambda stream: AudioPacketDecoder(
+                pickle.loads(pickle.dumps(stream.codec_parameters))
+            )
+        )
+        assert len(samples) == len(expected) > 0
+        for s, e in zip(samples, expected):
+            torch.testing.assert_close(s.data, e.data, rtol=0, atol=0)
+            assert s.pts_seconds == e.pts_seconds
+
+    def test_stream_metadata_time_base(self):
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        for stream in demuxer.streams:
+            assert stream.metadata.time_base is not None
+            assert stream.metadata.time_base == stream.codec_parameters.time_base
+
+    def test_codec_parameters_carry_the_container_format(self):
+        params = Demuxer(NASA_VIDEO.path).streams[0].codec_parameters
+
+        assert params._container_format_PRIVATE_DO_NOT_USE == "mov,mp4,m4a,3gp,3g2,mj2"
+        unpickled = pickle.loads(pickle.dumps(params))
+        assert (
+            unpickled._container_format_PRIVATE_DO_NOT_USE
+            == params._container_format_PRIVATE_DO_NOT_USE
+        )
+        # It's not part of the API.
+        assert "mov" not in repr(params)
+        assert params == VideoCodecParameters(
+            **{
+                f.name: getattr(params, f.name)
+                for f in dataclasses.fields(params)
+                if f.init
+            }
+        )
+
+    def test_mpeg_program_stream_resync_needs_the_container_format(self):
+        # This test documents the one behavior difference caused by the
+        # existence (or absence) of the
+        # VideoCodecParameters._container_format_PRIVATE_DO_NOT_USE field.
+        # It exists when the codec parameters come from a Demuxer, and is None
+        # otherwise (e.g. user-created).
+        #
+        # Seeking in an MPEG program stream lands mid-frame, so the first
+        # packets after the seek can't be decoded. When
+        # _container_format_PRIVATE_DO_NOT_USE is set, the the decoder can skips
+        # those packets until it properly resyncs based on that information.
+        # Without it, the decoder doesn't know what to do, and it raises on
+        # them, and it'd be up to the user to skip those packets themselves.
+        asset = SINE_STEREO_MP2_MPEG_PS
+
+        def decode_after_seek(params):
+            demuxer = Demuxer(asset.path, streams="audio")
+            decoder = AudioPacketDecoder(params)
+            demuxer.seek(2.0)
+            decoder.reset()
+            return [s for packet in demuxer for s in decoder.decode(packet)]
+
+        params = Demuxer(asset.path, streams="audio").streams[0].codec_parameters
+        assert params._container_format_PRIVATE_DO_NOT_USE == "mpeg"
+        assert len(decode_after_seek(params)) > 0
+
+        params_without_container = AudioCodecParameters(
+            **{
+                f.name: getattr(params, f.name)
+                for f in dataclasses.fields(params)
+                if f.init
+            }
+        )
+        assert params_without_container._container_format_PRIVATE_DO_NOT_USE is None
+        with pytest.raises(RuntimeError, match="Failed to send packet"):
+            decode_after_seek(params_without_container)
+
+    def test_packet_decoder_codec_parameters_type_errors(self):
+        video_params = Demuxer(NASA_VIDEO.path).streams[0].codec_parameters
+        audio_params = (
+            Demuxer(NASA_VIDEO.path, streams="audio").streams[0].codec_parameters
+        )
+        with pytest.raises(TypeError, match="must be a VideoCodecParameters"):
+            VideoPacketDecoder(audio_params)
+        with pytest.raises(TypeError, match="must be an AudioCodecParameters"):
+            AudioPacketDecoder(video_params)
+
+    @pytest.mark.parametrize(
+        "kwargs, match",
+        (
+            ({"codec": "not_a_codec"}, "Unknown codec"),
+            ({"codec": "aac"}, "'aac' is not a video codec"),
+            ({"pixel_format": "not_a_pixel_format"}, "Unknown pixel_format"),
+            ({"color_space": "not_a_color_space"}, "Unknown color_space"),
+            ({"field_order": "not_a_field_order"}, "Unknown field_order"),
+            ({"width": 2**40}, "width=.* is out of range"),
+            ({"codec_tag": -1}, "codec_tag=-1 is out of range"),
+            ({"coded_side_data": {"not_a_type": b"x"}}, "Unknown side data type"),
+            ({"coded_side_data": {"Display Matrix": bytes(10)}}, "must be 36 bytes"),
+        ),
+    )
+    def test_video_packet_decoder_invalid_codec_parameters(self, kwargs, match):
+        params = VideoCodecParameters(
+            **{"codec": "h264", "time_base": Fraction(1, 30000), **kwargs}
+        )
+        with pytest.raises(RuntimeError, match=match):
+            VideoPacketDecoder(params)
+
+    # ===== packets built from bytes =====
+
+    @pytest.mark.parametrize(
+        "asset, media_type, device",
+        (
+            (NASA_VIDEO, "video", "cpu"),
+            pytest.param(NASA_VIDEO, "video", "cuda", marks=pytest.mark.needs_cuda),
+            (NASA_AUDIO_MP3, "audio", "cpu"),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "constructor", ("from_bytes", "from_tensor", "pickle", "forking_pickler")
+    )
+    def test_packets_rebuilt_from_their_data_decode_the_same(
+        self, asset, media_type, device, constructor
+    ):
+        def rebuild(packet):
+            if constructor == "pickle":
+                return pickle.loads(pickle.dumps(packet))
+            if constructor == "forking_pickler":
+                # What a DataLoader worker or an mp.Queue uses: it moves the
+                # data tensor into shared memory.
+                return pickle.loads(ForkingPickler.dumps(packet))
+            data = packet.data
+            if constructor == "from_bytes":
+                data = bytes(data.numpy())
+            return getattr(Packet, constructor)(
+                data,
+                pts=packet.pts,
+                dts=packet.dts,
+                duration=packet.duration,
+                flags=packet.flags,
+                side_data=packet.side_data,
+                stream_index=packet.stream_index,
+            )
+
+        def decode(transform):
+            demuxer = Demuxer(asset.path, streams=media_type)
+            stream = demuxer.streams[0]
+            decoder = (
+                stream.make_decoder(device)
+                if media_type == "video"
+                else stream.make_decoder()
+            )
+            frames = [f for p in demuxer for f in decoder.decode(transform(p))]
+            return frames + decoder.drain()
+
+        if media_type == "audio":
+            # The MP3 decoder needs this side data to drop the priming samples.
+            first_packet = next(Demuxer(asset.path, streams="audio"))
+            assert "Skip Samples" in first_packet.side_data
+
+        expected = decode(lambda packet: packet)
+        frames = decode(rebuild)
+        assert len(frames) == len(expected) > 0
+        for frame, expected_frame in zip(frames, expected):
+            if media_type == "video":
+                for plane, expected_plane in zip(frame.planes, expected_frame.planes):
+                    torch.testing.assert_close(plane, expected_plane, rtol=0, atol=0)
+            else:
+                torch.testing.assert_close(
+                    frame.data, expected_frame.data, rtol=0, atol=0
+                )
+            assert frame.pts_seconds == expected_frame.pts_seconds
+            assert frame.duration_seconds == expected_frame.duration_seconds
+
+    def test_packet_from_bytes_properties(self):
+        packet = Packet.from_bytes(
+            b"abc",
+            pts=10,
+            dts=5,
+            duration=3,
+            flags=1,
+            side_data={"Skip Samples": bytes(10)},
+            stream_index=2,
+        )
+        assert packet.data.dtype == torch.uint8
+        assert bytes(packet.data.numpy()) == b"abc"
+        assert packet.pts == 10
+        assert packet.dts == 5
+        assert packet.duration == 3
+        assert packet.flags == 1
+        assert packet.side_data == {"Skip Samples": bytes(10)}
+        assert packet.stream_index == 2
+
+        packet = Packet.from_bytes(b"")
+        assert packet.data.numel() == 0
+        assert packet.pts is None
+        assert packet.dts is None
+        assert packet.duration == 0
+        assert packet.flags == 0
+        assert packet.side_data == {}
+        assert packet.stream_index == 0
+
+    def test_packet_data_is_copied(self):
+        data = bytearray(b"abc")
+        from_bytes = Packet.from_bytes(data)
+        from_memoryview = Packet.from_bytes(memoryview(data))
+        tensor = torch.frombuffer(data, dtype=torch.uint8)
+        from_tensor = Packet.from_tensor(tensor)
+        data[0] = ord("x")
+        for packet in (from_bytes, from_memoryview, from_tensor):
+            assert bytes(packet.data.numpy()) == b"abc"
+
+    @pytest.mark.skipif(IS_WINDOWS, reason="No open files limit to lower")
+    def test_send_many_packets_across_processes(self):
+        # Under torch.multiprocessing, every tensor in flight holds a file
+        # descriptor. Packets are pickled as bytes, so sending more of them than
+        # the open files limit allows works.
+        max_open_files = 256
+        expected = list(Demuxer(NASA_VIDEO.path))
+        assert len(expected) > max_open_files
+
+        context = torch.multiprocessing.get_context("spawn")
+        with concurrent.futures.ProcessPoolExecutor(1, mp_context=context) as pool:
+            packets = pool.submit(
+                demux_with_open_files_limit, NASA_VIDEO.path, max_open_files
+            ).result()
+
+        assert len(packets) == len(expected)
+        for packet, expected_packet in zip(packets, expected):
+            assert torch.equal(packet.data, expected_packet.data)
+            assert packet.pts == expected_packet.pts
+
+    def test_pickled_packet_keeps_its_generation(self):
+        demuxer = Demuxer(NASA_VIDEO.path)
+        decoder = demuxer.streams[0].make_decoder()
+        decoder.decode(next(demuxer))
+        demuxer.seek(1.0)
+        packet = next(demuxer)
+        assert packet._generation != 0
+
+        unpickled = pickle.loads(pickle.dumps(packet))
+        assert unpickled._generation == packet._generation
+        with pytest.raises(RuntimeError, match="reset"):
+            decoder.decode(unpickled)
+
+    def test_packet_data_outlives_packet(self):
+        # grep for this test name to see associated comment in the code.
+        packet = next(Demuxer(NASA_VIDEO.path))
+        data = packet.data
+        saved = data.clone()
+
+        del packet
+        gc.collect()
+
+        torch.testing.assert_close(data, saved, rtol=0, atol=0)
+
+    @pytest.mark.parametrize(
+        "make_packet, error, match",
+        (
+            (lambda: Packet.from_bytes("abc"), TypeError, "must be bytes"),
+            (lambda: Packet.from_tensor(b"abc"), TypeError, "must be a tensor"),
+            (
+                lambda: Packet.from_tensor(torch.zeros(3)),
+                RuntimeError,
+                "must be a contiguous 1D uint8 CPU tensor",
+            ),
+            (
+                lambda: Packet.from_tensor(torch.zeros(6, dtype=torch.uint8)[::2]),
+                RuntimeError,
+                "must be a contiguous 1D uint8 CPU tensor",
+            ),
+            (
+                lambda: Packet.from_bytes(b"abc", flags=8),
+                RuntimeError,
+                "AV_PKT_FLAG_TRUSTED",
+            ),
+            (
+                lambda: Packet.from_bytes(b"abc", side_data={"not_a_type": b"x"}),
+                RuntimeError,
+                "Unknown side data type",
+            ),
+        ),
+    )
+    def test_packet_from_bytes_errors(self, make_packet, error, match):
+        with pytest.raises(error, match=match):
+            make_packet()
+
+    def test_demuxed_packets_properties(self):
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        video, audio = demuxer.streams
+        frame_index = video.scan()
+        packets = list(demuxer)
+        video_packets = sorted(
+            (p for p in packets if p.stream_index == video.index), key=lambda p: p.pts
+        )
+        audio_packets = [p for p in packets if p.stream_index == audio.index]
+
+        assert [p.pts for p in video_packets] == frame_index._pts.tolist()
+        AV_PKT_FLAG_KEY = 1
+        assert [bool(p.flags & AV_PKT_FLAG_KEY) for p in video_packets] == (
+            frame_index.is_key_frame.tolist()
+        )
+        assert all(p.duration > 0 for p in video_packets)
+        assert all(p.data.dtype == torch.uint8 and p.data.numel() > 0 for p in packets)
+        assert video_packets[0].side_data == {}
+        assert list(audio_packets[0].side_data) == ["Skip Samples"]
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_packets_from_bytes_only_need_pts(self, device):
+        # The NASA video has B-frames, so its packets' dts differ from their
+        # pts, but the decoder doesn't need them.
+        demuxer = Demuxer(NASA_VIDEO.path)
+        decoder = demuxer.streams[0].make_decoder(device)
+        packets = list(demuxer)
+        assert any(p.pts != p.dts for p in packets)
+
+        def decode(rebuild):
+            decoder.reset()
+            frames = [f for p in packets for f in decoder.decode(rebuild(p))]
+            return frames + decoder.drain()
+
+        expected = decode(lambda p: p)
+        frames = decode(lambda p: Packet.from_tensor(p.data, pts=p.pts))
+        assert len(frames) == len(expected)
+        for frame, expected_frame in zip(frames, expected):
+            assert frame.pts == expected_frame.pts
+            torch.testing.assert_close(
+                frame.planes[0], expected_frame.planes[0], rtol=0, atol=0
+            )
+
+        frames = decode(lambda p: Packet.from_tensor(p.data))
+        assert len(frames) == len(expected)
+        assert all(f.pts is None for f in frames)
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_packets_from_bytes_keep_the_discard_flag(self, device):
+        # This video's first packets are before the start of its edit list: the
+        # demuxer flags them AV_PKT_FLAG_DISCARD, and the decoder decodes them
+        # without returning their frames. Packets from another MP4 parser need
+        # the flag to decode to the same frames as the Demuxer's.
+        AV_PKT_FLAG_DISCARD = 4
+        path = DISCARD_FIRST_KEYFRAME_VIDEO.path
+        demuxer = Demuxer(path)
+        stream = demuxer.streams[0]
+        packets = list(demuxer)
+        assert any(p.flags & AV_PKT_FLAG_DISCARD for p in packets)
+
+        def decode(flags_mask):
+            decoder = stream.make_decoder(device)
+            rebuilt = [
+                Packet.from_tensor(
+                    p.data,
+                    pts=p.pts,
+                    dts=p.dts,
+                    duration=p.duration,
+                    flags=p.flags & flags_mask,
+                )
+                for p in packets
+            ]
+            frames = [f for p in rebuilt for f in decoder.decode(p)]
+            return [f.pts for f in frames + decoder.drain()]
+
+        expected = [f.pts for f in self._decoded_frames(path, device)]
+        assert decode(flags_mask=~0) == expected
+        assert len(decode(flags_mask=~AV_PKT_FLAG_DISCARD)) > len(expected)
+
+    def test_decode_targets_with_a_reused_decoder(self):
+        # Packets come from storage, as in
+        # https://github.com/meta-pytorch/torchcodec/pull/1585: from the key
+        # frame preceding each target up to the target.
+        AV_PKT_FLAG_KEY = 1
+        demuxer = Demuxer(NASA_VIDEO.path)
+        decoder = demuxer.streams[0].make_decoder()
+        rows = [
+            (bytes(p.data.numpy()), p.pts, bool(p.flags & AV_PKT_FLAG_KEY))
+            for p in demuxer
+        ]
+        expected = {
+            f.pts: f.planes[0] for f in self._decoded_frames(NASA_VIDEO.path, "cpu")
+        }
+
+        def decode_target(target_pts):
+            decoder.reset()
+            start = max(
+                i
+                for i, (_, pts, is_key) in enumerate(rows)
+                if is_key and pts <= target_pts
+            )
+            for data, pts, _ in rows[start:]:
+                for raw_frame in decoder.decode(Packet.from_bytes(data, pts=pts)):
+                    if raw_frame.pts == target_pts:
+                        return raw_frame
+            for raw_frame in decoder.drain():
+                if raw_frame.pts == target_pts:
+                    return raw_frame
+
+        all_pts = sorted(expected)
+        for target_pts in [all_pts[i] for i in (0, 50, 3, 200, 199)]:
+            raw_frame = decode_target(target_pts)
+            torch.testing.assert_close(
+                raw_frame.planes[0], expected[target_pts], atol=0, rtol=0
+            )
+
     def test_adding_a_stream_after_demuxing_raises(self):
         # Demuxer follows its streams from construction, so this is only
         # reachable underneath it - but the demuxer is what enforces it, and a
         # stream added late would start from wherever the container now is.
         demuxer = Demuxer(NASA_VIDEO.path)
-        demuxer.next_packet()
+        next(demuxer)
 
         with pytest.raises(RuntimeError, match="before the first packet"):
             _blocks_demuxer_add_stream(demuxer._handle, 4)
@@ -3922,7 +5005,7 @@ class TestBlocks:
         return drain()
 
     @staticmethod
-    def _make_blocks(path, device):
+    def _make_stages(path, device):
         demuxer = Demuxer(path)
         decoder = demuxer.streams[0].make_decoder(device)
         converter = ColorConverter(device=device)
@@ -3930,35 +5013,64 @@ class TestBlocks:
 
     def _decoded_frames(self, path, device):
         # demux + decode, as a single generator of RawFrames (pts order).
-        demuxer, decoder, _ = self._make_blocks(path, device)
+        demuxer, decoder, _ = self._make_stages(path, device)
         return self._decode(decoder, self._demux(demuxer))
 
     def _decode_sequential(self, path, device):
         # demux -> decode -> color-convert, all on the calling thread.
-        demuxer, decoder, converter = self._make_blocks(path, device)
+        demuxer, decoder, converter = self._make_stages(path, device)
         return list(
             self._convert(converter, self._decode(decoder, self._demux(demuxer)))
         )
 
     def _decode_prefetch_frames(self, path, device):
         # [demux + decode] on one thread || [color-convert] on another.
-        demuxer, decoder, converter = self._make_blocks(path, device)
+        demuxer, decoder, converter = self._make_stages(path, device)
 
         frames = self.prefetch(self._decode(decoder, self._demux(demuxer)))
         return list(self._convert(converter, frames))
 
     def _decode_prefetch_packets(self, path, device):
         # [demux] on one thread || [decode + color-convert] on another.
-        demuxer, decoder, converter = self._make_blocks(path, device)
+        demuxer, decoder, converter = self._make_stages(path, device)
         packets = self.prefetch(self._demux(demuxer))
         return list(self._convert(converter, self._decode(decoder, packets)))
 
     def _decode_prefetch_packets_and_frames(self, path, device):
         # [demux] || [decode] || [color-convert], each on its own thread.
-        demuxer, decoder, converter = self._make_blocks(path, device)
+        demuxer, decoder, converter = self._make_stages(path, device)
         packets = self.prefetch(self._demux(demuxer))
         frames = self.prefetch(self._decode(decoder, packets))
         return list(self._convert(converter, frames))
+
+    def _decode_with_demuxer_in_subprocess(self, path, device):
+        # [demux] in a spawned process || [decode + color-convert] in this one.
+        # Only the codec parameters and the packets cross over, pickled.
+        context = torch.multiprocessing.get_context("spawn")
+        # Bounded like prefetch()'s queue, which also caps the number of
+        # packets in flight, each holding a shared memory file descriptor.
+        packets_queue = context.Queue(maxsize=8)
+        done = context.Event()
+        process = context.Process(
+            target=demux_in_subprocess, args=(path, packets_queue, done)
+        )
+        process.start()
+
+        def receive():
+            while (item := packets_queue.get(timeout=120)) is not None:
+                if isinstance(item, Exception):
+                    raise item
+                yield item
+
+        try:
+            items = receive()
+            decoder = VideoPacketDecoder(next(items), device)
+            converter = ColorConverter(device=device)
+            return list(self._convert(converter, self._decode(decoder, items)))
+        finally:
+            done.set()
+            process.join(timeout=60)
+            process.kill()
 
     def _to_frame_batch(self, frames):
         return FrameBatch(
@@ -4034,7 +5146,7 @@ class TestBlocks:
         ),
         ids=lambda f: f.__name__.removeprefix("_decode_"),
     )
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_matches_video_decoder(self, video, decode_method, device):
         if (
             video
@@ -4058,7 +5170,25 @@ class TestBlocks:
             got.duration_seconds, ref.duration_seconds, atol=0, rtol=0
         )
 
-    @pytest.mark.parametrize("device", _block_devices())
+    # Spawning a process is slow, hence fewer videos than
+    # test_matches_video_decoder. The rotated one checks that the display
+    # matrix crosses over in the codec parameters.
+    @pytest.mark.parametrize("video", (NASA_VIDEO, NASA_VIDEO_ROTATED))
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_matches_video_decoder_across_processes(self, video, device):
+        got = self._to_frame_batch(
+            self._decode_with_demuxer_in_subprocess(video.path, device)
+        )
+        ref = VideoDecoder(video.path, device=device).get_all_frames()
+
+        assert got.data.shape == ref.data.shape
+        self._assert_matches_video_decoder(got.data, ref.data, video)
+        torch.testing.assert_close(got.pts_seconds, ref.pts_seconds, atol=0, rtol=0)
+        torch.testing.assert_close(
+            got.duration_seconds, ref.duration_seconds, atol=0, rtol=0
+        )
+
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_discard_first_keyframe(self, device):
         # The leading GOP of this asset is trimmed by an mp4 edit list, so its
         # packets are flagged AV_PKT_FLAG_DISCARD: they must be decoded (the
@@ -4072,18 +5202,18 @@ class TestBlocks:
         # Seeking to the start makes FFmpeg land on the discarded keyframe, so
         # those packets are sent down a second time: the tracking must survive
         # the seek.
-        frames = list(self._frames_after_seek(self._make_blocks(path, device), 0))
+        frames = list(self._frames_after_seek(self._make_stages(path, device), 0))
         assert [frame.pts_seconds for frame in frames] == expected_pts
 
     @pytest.mark.parametrize(
         "video", (NASA_VIDEO, NASA_VIDEO_HDR, TEST_SRC_2_12BIT_HDR)
     )
     @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.float32, "auto"))
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_output_dtype_matches_video_decoder(self, video, output_dtype, device):
-        # The blocks pipeline must agree with VideoDecoder for every dtype, on
+        # The low-level pipeline must agree with VideoDecoder for every dtype, on
         # both devices.
-        demuxer, decoder, _ = self._make_blocks(video.path, device)
+        demuxer, decoder, _ = self._make_stages(video.path, device)
         converter = ColorConverter(device=device, output_dtype=output_dtype)
         got = self._to_frame_batch(
             list(self._convert(converter, self._decode(decoder, self._demux(demuxer))))
@@ -4096,7 +5226,7 @@ class TestBlocks:
         assert got.data.shape == ref.data.shape
         self._assert_matches_video_decoder(got.data, ref.data, video)
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_output_dtype_auto_is_resolved_per_frame(self, device):
         converter = ColorConverter(device=device, output_dtype="auto")
         dtypes = []
@@ -4106,12 +5236,12 @@ class TestBlocks:
 
         assert dtypes == [torch.uint8, torch.float32, torch.uint8]
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_invalid_output_dtype(self, device):
         with pytest.raises(ValueError, match="Invalid output_dtype"):
             ColorConverter(device=device, output_dtype=torch.uint16)
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_color_converter_reused_across_videos(self, device):
         # A single unbound ColorConverter must correctly convert frames from
         # different videos - here interleaved frame-by-frame, so the converter
@@ -4164,9 +5294,9 @@ class TestBlocks:
         converted = ColorConverter(device=converter_device).convert(frame)
         assert converted.data.device.type == "cuda"
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_set_cuda_backend_is_a_noop(self, device):
-        # The blocks always use the NVDEC CUDA backend. Asking for the "ffmpeg"
+        # The low-level APIs always use the NVDEC CUDA backend. Asking for the "ffmpeg"
         # one changes nothing, rather than silently producing something else.
         with set_cuda_backend("ffmpeg"):
             got = self._to_frame_batch(self._decode_sequential(NASA_VIDEO.path, device))
@@ -4175,11 +5305,11 @@ class TestBlocks:
 
     def _first_frame(self, path, device):
         # The first RawFrame of a video
-        demuxer, decoder, converter = self._make_blocks(path, device)
+        demuxer, decoder, converter = self._make_stages(path, device)
         frame = next(self._decode(decoder, self._demux(demuxer)))
         return frame, converter
 
-    @pytest.mark.parametrize("device_str", _block_devices())
+    @pytest.mark.parametrize("device_str", _low_level_devices())
     def test_device_none_default_device(self, device_str):
         # VideoPacketDecoder and ColorConverter default to device=None, which should
         # respect both the torch.device() context manager and
@@ -4204,19 +5334,21 @@ class TestBlocks:
         finally:
             torch.set_default_device(original_device)
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_device_torch_device_instance(self, device):
         # device can be a torch.device instance, not just a string.
         frame, converter = self._first_frame(NASA_VIDEO.path, torch.device(device))
         assert frame.planes[0].device.type == device
         assert converter.convert(frame).data.device.type == device
 
-    @pytest.mark.parametrize("case", _PLANES_VIDEOS, ids=_planes_ids)
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize(
+        "case", _PLANES_VIDEOS + _NON_YUV_PLANES_VIDEOS, ids=_planes_ids
+    )
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_planes_structure(self, case, device):
         # planes shape/dtype/device and the accompanying metadata.
         frame, converter = self._first_frame(case.video.path, device)
-        planes, pix_fmt = frame.planes, frame.pix_fmt
+        planes, pix_fmt = frame.planes, frame.pixel_format
 
         expected_pix_fmt = case.pix_fmt(device)
         if (
@@ -4233,12 +5365,11 @@ class TestBlocks:
         )
 
         assert pix_fmt == expected_pix_fmt
-        assert frame.colorspace in ("bt709", "bt2020nc", "smpte170m", "unknown")
+        assert frame.color_space in ("bt709", "bt2020nc", "smpte170m", "gbr", "unknown")
         assert frame.color_range in ("tv", "pc", "unknown")  # FFmpeg has only these
 
         # All planes are 2D views living on the frame's own device.
-        # TODO_API_BREAKDOWN DESIGN P1: Can there be more planes? Should test?
-        assert len(planes) == 3
+        assert len(planes) == case.num_planes(device)
         for plane in planes:
             assert plane.ndim == 2
             assert plane.device.type == device
@@ -4257,20 +5388,52 @@ class TestBlocks:
             for plane in planes:
                 assert (plane.to(torch.int32) & unused_low_bits).count_nonzero() == 0
 
-        Y, U, V = planes
         height, width = converter.convert(frame).data.shape[1:]
-        assert Y.shape == (height, width) == (frame.height, frame.width)
+        # The first plane is always full size: luma, or red for a planar RGB
+        # format. So is a trailing alpha one, when the format has it.
+        assert planes[0].shape == (height, width) == (frame.height, frame.width)
+        if len(planes) == 4:
+            assert planes[3].shape == (height, width)
 
         # Below is just a fancy way to divide by 2 accounting for odd sizes,
         # matching the FFmpeg logic
-        log2_h, log2_w = (0, 0) if "444" in pix_fmt else (1, 1)
+        subsampled = not (pix_fmt.startswith("gbr") or "444" in pix_fmt)
+        log2_h, log2_w = (1, 1) if subsampled else (0, 0)
         expected_chroma_shape = (
             (height + (1 << log2_h) - 1) >> log2_h,
             (width + (1 << log2_w) - 1) >> log2_w,
         )
-        assert U.shape == V.shape == expected_chroma_shape
+        # Planes 1 and 2 are the subsampled ones for YUV, and full-size green
+        # and blue for planar RGB. Grayscale has neither.
+        for plane in planes[1:3]:
+            assert plane.shape == expected_chroma_shape
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
+    @pytest.mark.parametrize(
+        "video, color_space, color_primaries, color_trc",
+        (
+            pytest.param(BT709_FULL_RANGE, "bt709", "bt709", "bt709", id="bt709"),
+            pytest.param(
+                BT2020_LIMITED_RANGE_10BIT,
+                "bt2020nc",
+                "bt2020",
+                "smpte2084",
+                id="bt2020-pq",
+            ),
+        ),
+    )
+    def test_color_tags_match_the_source(
+        self, video, color_space, color_primaries, color_trc, device
+    ):
+        # For sources NVDEC decodes natively, the frame's tags are the source's
+        # on both devices - the CUDA path reads them out of the bitstream rather
+        # than off the container.
+        frame, _ = self._first_frame(video.path, device)
+        assert frame.color_space == color_space
+        assert frame.color_primaries == color_primaries
+        assert frame.color_transfer_characteristic == color_trc
+
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_planes_are_not_rotated_but_color_conversion_rotates(self, device):
         # The planes are views on the decoder's own memory, so they're in the
         # source's pre-rotation geometry, and so are the dims the frame reports.
@@ -4281,66 +5444,74 @@ class TestBlocks:
         height = NASA_VIDEO_ROTATED.get_height()  # post-rotation
         width = NASA_VIDEO_ROTATED.get_width()
         assert Y.shape == (width, height) == (frame.height, frame.width)
-        assert frame.rotation_degrees == 90
+        assert frame.rotation == 90
         assert converter.convert(frame).data.shape == (3, height, width)
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_no_rotation(self, device):
         frame, _ = self._first_frame(NASA_VIDEO.path, device)
-        assert frame.rotation_degrees == 0
+        # The stream reports None here, the frame flattens that to 0.
+        assert frame.rotation == 0
+
+    _LIFETIME_STRATEGIES = ("sync_back", "record_stream", "none", "plane_record_stream")
 
     @pytest.mark.needs_cuda
-    @pytest.mark.parametrize("record_stream", (True, False))
-    def test_storage_record_stream(self, record_stream):
-        # Using VideoPacketDecoder on one stream and consuming the frames on a
-        # different stream requires the user to call record_stream() on the
-        # frame storage.
-        # Without the record_stream() call the decoder's next frame may be
-        # handed the same buffer and overwrites it while the read is still
-        # queued.
-        # See [Standalone Frame Storage and the need for record_stream]
+    @pytest.mark.parametrize("strategy", _LIFETIME_STRATEGIES)
+    def test_cross_stream_frame_lifetime(self, strategy):
+        # Decode on one stream, read the planes on another. See our `cuda_streams.py` tutorial.
+        # The CUDA buffer belongs to the decoding stream, so once the frame is
+        # dropped a later frame's storage can land on top of samples that are
+        # still being read, unless the caller says otherwise. This tests
+        # illustrates the two right ways to handle that, and the two wrong ways,
+        # and the two wrong ways to do it.
         video = NASA_VIDEO.path
         decode_stream = torch.cuda.Stream()
         read_stream = torch.cuda.Stream()
 
         def run(separate_stream):
-            demuxer, decoder, _ = self._make_blocks(video, "cuda")
+            demuxer, decoder, _ = self._make_stages(video, "cuda")
             reads = []
             for packet in itertools.chain(demuxer, [None]):
                 with torch.cuda.stream(decode_stream):
                     decoded = (
                         decoder.drain() if packet is None else decoder.decode(packet)
                     )
-                with torch.cuda.stream(
-                    read_stream if separate_stream else decode_stream
-                ):
+                    decoded_event = torch.cuda.Event()
+                    decoded_event.record()
+
+                consumer = read_stream if separate_stream else decode_stream
+                decoded_event.wait(consumer)
+                with torch.cuda.stream(consumer):
                     while decoded:
                         frame = decoded.pop(0)
                         torch.cuda._sleep(20_000_000)  # ~10ms, fall behind
                         reads.append(frame.planes[0].clone())
-                        if separate_stream and record_stream:
-                            frame.storage.record_stream(read_stream)
+                        if not separate_stream:
+                            continue
+                        if strategy == "record_stream":
+                            frame.storage_cuda.record_stream(read_stream)
+                        elif strategy == "plane_record_stream":
+                            frame.planes[0].record_stream(read_stream)
+                        elif strategy == "sync_back":
+                            decode_stream.wait_stream(read_stream)
             torch.cuda.synchronize()
             return reads
 
         ref = run(separate_stream=False)
         got = run(separate_stream=True)
         wrong = sum(1 for a, b in zip(ref, got) if not torch.equal(a, b))
-        if record_stream:
+        if strategy in ("sync_back", "record_stream"):
             assert wrong == 0
         else:
-            # Guards the test itself: without the call this really does corrupt,
-            # so the assertion above is meaningful.
             assert wrong > 0
 
     @pytest.mark.needs_cuda
     def test_backlogged_converter_on_separate_stream(self):
-        # Similar test to test_storage_record_stream(), but with the ColorConverter on a
-        # separate stream. In this case, *we* call record_stream() on behalf of
-        # the user.
-        # See [Standalone Frame Storage and the need for record_stream]
+        # Similar to test above, with a ColorConverter. Forgetting to
+        # decoded_event.wait(convert_stream) or to call record_stream() should
+        # make this test fail.
         video = NASA_VIDEO.path
-        demuxer, decoder, converter = self._make_blocks(video, "cuda")
+        demuxer, decoder, converter = self._make_stages(video, "cuda")
         decode_stream = torch.cuda.Stream()
         convert_stream = torch.cuda.Stream()
 
@@ -4348,10 +5519,16 @@ class TestBlocks:
         for packet in itertools.chain(demuxer, [None]):
             with torch.cuda.stream(decode_stream):
                 decoded = decoder.drain() if packet is None else decoder.decode(packet)
+                decoded_event = torch.cuda.Event()
+                decoded_event.record()
+
+            decoded_event.wait(convert_stream)
             with torch.cuda.stream(convert_stream):
                 while decoded:
                     torch.cuda._sleep(20_000_000)  # ~10ms
-                    frames.append(converter.convert(decoded.pop(0)))
+                    raw_frame = decoded.pop(0)
+                    frames.append(converter.convert(raw_frame))
+                    raw_frame.storage_cuda.record_stream(convert_stream)
         torch.cuda.synchronize()
 
         got = self._to_frame_batch(frames)
@@ -4382,7 +5559,7 @@ class TestBlocks:
             )
 
     @pytest.mark.parametrize("case", _PLANES_VIDEOS, ids=_planes_ids)
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_color_converter_honors_sample_bit_depth(self, case, device):
         # Paint the planes with the limited-range black and white points,
         # expressed in the frame's own sample scale, and check the converter
@@ -4394,7 +5571,7 @@ class TestBlocks:
 
         def sample(value_8bit):
             value = value_8bit << (frame.bit_depth - 8)
-            if _is_msb_aligned(frame.pix_fmt):
+            if _is_msb_aligned(frame.pixel_format):
                 value <<= 16 - frame.bit_depth
             return value
 
@@ -4411,7 +5588,7 @@ class TestBlocks:
             # levels away.
             assert (data - expected).abs().max() <= 5
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_planes_mutation_visible_in_color_convert(self, device):
         # The planes are views into the frame's own memory, so editing them and
         # color-converting the frame reflects the edit.
@@ -4433,7 +5610,7 @@ class TestBlocks:
         for channel in edited:
             assert channel.min().item() == channel.max().item()
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_planes_are_views(self, device):
         # The planes view the frame's own buffer, and they're cached: asking
         # twice hands back the very same tensors.
@@ -4447,7 +5624,7 @@ class TestBlocks:
         assert int(planes_b[0][0, 0].item()) == (original ^ 0xFF)
 
     @pytest.mark.parametrize("case", _PLANES_VIDEOS, ids=_planes_ids)
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_planes_outlive_frame(self, case, device):
         # The views keep the frame alive, so they stay valid (readable and
         # writable) after the RawFrame they came from is dropped.
@@ -4466,7 +5643,7 @@ class TestBlocks:
         planes[0][0, 0] = 0  # still writable: the memory is valid
 
     @pytest.mark.parametrize("video", (NASA_VIDEO, BT709_FULL_RANGE))
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_neutral_chroma_is_grayscale(self, video, device):
         # Forcing the chroma planes to neutral (128) yields a gray image
         # (R == G == B). Not testing much, but fun - isn't it?
@@ -4501,8 +5678,50 @@ class TestBlocks:
         assert VideoDecoder(video.path, device="cuda").cpu_fallback
 
         frame, _ = self._first_frame(video.path, "cuda")
-        assert frame.pix_fmt == expected_pix_fmt
+        assert frame.pixel_format == expected_pix_fmt
         assert all(plane.device.type == "cuda" for plane in frame.planes)
+
+    @pytest.mark.needs_cuda
+    @pytest.mark.parametrize(
+        "video, expected_color_space, has_luma",
+        (
+            pytest.param(TESTSRC2_GRAY_HEVC, "unknown", True, id="gray"),
+            pytest.param(TESTSRC2_GBRP_HEVC, "smpte170m", False, id="gbrp"),
+            pytest.param(TESTSRC2_FULL_RANGE_422, "unknown", True, id="422"),
+        ),
+    )
+    def test_cpu_fallback_upload_keeps_full_range(
+        self, video, expected_color_space, has_luma
+    ):
+        if ffmpeg_major_version <= 6:
+            pytest.skip("don't know, don't care.")
+
+        # Full-range sources NVDEC can't decode, so they go through the CPU
+        # fallback and its conversion to an NVDEC surface format.
+        cpu_frame, cpu_converter = self._first_frame(video.path, "cpu")
+        cuda_frame, cuda_converter = self._first_frame(video.path, "cuda")
+
+        assert cpu_frame.color_range == "pc"
+        assert cuda_frame.color_range == "pc"
+        assert cuda_frame.color_space == expected_color_space
+
+        if has_luma:
+            # A source that already has luma keeps it sample for sample: only
+            # its chroma is touched.
+            height, width = cpu_frame.planes[0].shape
+            torch.testing.assert_close(
+                cuda_frame.planes[0][:height, :width].cpu(),
+                cpu_frame.planes[0],
+                atol=0,
+                rtol=0,
+            )
+
+        torch.testing.assert_close(
+            cuda_converter.convert(cuda_frame).data.cpu(),
+            cpu_converter.convert(cpu_frame).data,
+            atol=3,
+            rtol=0,
+        )
 
     @pytest.mark.parametrize(
         "pix_fmt, codec, container",
@@ -4529,19 +5748,19 @@ class TestBlocks:
         )  # fmt: skip
 
         frame, _ = self._first_frame(path, "cpu")
-        assert frame.pix_fmt == pix_fmt
+        assert frame.pixel_format == pix_fmt
         assert (frame.width, frame.height) == (64, 48)
         with pytest.raises(RuntimeError, match=f"Cannot expose {pix_fmt} as a view"):
             frame.planes
 
     # ===== seeking =====
 
-    def _frames_after_seek(self, blocks, seconds):
+    def _frames_after_seek(self, stages, seconds):
         # Seek, then yield every frame that comes out from there. A seek
         # invalidates the frames the decoder holds as references, hence the
         # reset(). The first frames yielded typically precede `seconds`: a
         # decoder can only start on a keyframe.
-        demuxer, decoder, converter = blocks
+        demuxer, decoder, converter = stages
         demuxer.seek(seconds)
         decoder.reset()
         for packet in demuxer:
@@ -4552,8 +5771,8 @@ class TestBlocks:
         for raw_frame in decoder.drain():
             yield converter.convert(raw_frame)
 
-    def _first_frame_after_seek(self, blocks, seconds):
-        return next(self._frames_after_seek(blocks, seconds))
+    def _first_frame_after_seek(self, stages, seconds):
+        return next(self._frames_after_seek(stages, seconds))
 
     @pytest.mark.parametrize(
         "video",
@@ -4565,7 +5784,7 @@ class TestBlocks:
             TEST_SRC_2_720P_MPEG4,
         ),
     )
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_seek_to_keyframe_matches_get_frame_played_at(self, video, device):
         # On a keyframe, seeking and taking the next frame is the same thing as
         # VideoDecoder.get_frame_played_at: the seek lands on that keyframe, so
@@ -4575,14 +5794,14 @@ class TestBlocks:
         for keyframe_index in video_decoder._get_key_frame_indices():
             seconds = video_decoder.get_frame_at(keyframe_index).pts_seconds
 
-            blocks = self._make_blocks(video.path, device)
-            got = self._first_frame_after_seek(blocks, seconds)
+            stages = self._make_stages(video.path, device)
+            got = self._first_frame_after_seek(stages, seconds)
             expected = video_decoder.get_frame_played_at(seconds)
 
             assert got.pts_seconds == expected.pts_seconds == seconds
             assert_frames_equal(got.data, expected.data)
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_seek_to_non_keyframe_differs_from_get_frame_played_at(self, device):
         # On anything else, the two differ: a decoder can only start on a
         # keyframe, so the seek goes *back* to the one preceding the target and
@@ -4596,9 +5815,9 @@ class TestBlocks:
         non_keyframe_index = keyframe_index + 3
         seconds = video_decoder.get_frame_at(non_keyframe_index).pts_seconds
 
-        blocks = self._make_blocks(NASA_VIDEO.path, device)
+        stages = self._make_stages(NASA_VIDEO.path, device)
         got = list(
-            itertools.islice(self._frames_after_seek(blocks, seconds), num_frames)
+            itertools.islice(self._frames_after_seek(stages, seconds), num_frames)
         )
         expected = video_decoder.get_frames_in_range(
             keyframe_index, keyframe_index + num_frames
@@ -4616,7 +5835,7 @@ class TestBlocks:
             assert_frames_equal(got_frame.data, expected_data)
 
     @pytest.mark.parametrize("seconds", (0.3, 0.5, 0.7))
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_seek_to_non_keyframe_can_land_past_target(self, seconds, device):
         # And sometimes decoding forward doesn't get you there at all. This
         # file's keyframes are reordered, and FFmpeg resolves a seek against
@@ -4625,16 +5844,16 @@ class TestBlocks:
         # far forward we decode. VideoDecoder's exact mode gets it right by
         # scanning the file for a presentation-order index, which is what we'd
         # need too.
-        blocks = self._make_blocks(H265_VIDEO.path, device)
+        stages = self._make_stages(H265_VIDEO.path, device)
 
-        got = self._first_frame_after_seek(blocks, seconds)
+        got = self._first_frame_after_seek(stages, seconds)
 
         assert got.pts_seconds > seconds
         exact = VideoDecoder(H265_VIDEO.path, seek_mode="exact", device=device)
         assert exact.get_frame_played_at(seconds).pts_seconds == seconds
 
     @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_seek_matches_video_decoder_approximate_get_frame_played_at(
         self, video, device
     ):
@@ -4648,7 +5867,7 @@ class TestBlocks:
         # rather than a property of these files. Every other API goes through
         # a frame index, which approximate mode derives from the header's
         # average fps and converts back into a pts - a round trip nothing in
-        # the blocks performs, and one that doesn't come back where it started
+        # the low-level APIs perform, and one that doesn't come back where it started
         # unless the file is constant-frame-rate.
         video_decoder = VideoDecoder(video.path, device=device)
         num_frames = video_decoder.metadata.num_frames
@@ -4666,10 +5885,10 @@ class TestBlocks:
                 video.path, seek_mode="approximate", device=device
             ).get_frame_played_at(seconds)
 
-            blocks = self._make_blocks(video.path, device)
+            stages = self._make_stages(video.path, device)
             got = next(
                 frame
-                for frame in self._frames_after_seek(blocks, seconds)
+                for frame in self._frames_after_seek(stages, seconds)
                 # VideoDecoder's own criterion: the first frame that hasn't
                 # finished playing by then. Not `pts_seconds >= seconds`, which
                 # would skip the target frame whenever we land right on it.
@@ -4679,7 +5898,7 @@ class TestBlocks:
             assert got.pts_seconds == expected.pts_seconds
             assert_frames_equal(got.data, expected.data)
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_seek_without_reset_raises(self, device):
         # Skipping the reset used to give you stale frames: a decoder holds a
         # few back, and those belong to wherever we were *before* the seek. They
@@ -4704,8 +5923,8 @@ class TestBlocks:
             next(frame for packet in demuxer for frame in decoder.decode(packet))
 
         # With the reset, that same seek starts exactly where it was asked to.
-        blocks = self._make_blocks(NASA_VIDEO.path, device)
-        assert self._first_frame_after_seek(blocks, seconds).pts_seconds == seconds
+        stages = self._make_stages(NASA_VIDEO.path, device)
+        assert self._first_frame_after_seek(stages, seconds).pts_seconds == seconds
 
     def test_seek_without_reset_raises_for_every_decoder(self):
         # The reason this check exists: with several streams there are several
@@ -4762,26 +5981,26 @@ class TestBlocks:
         converter.convert(raws[0])  # and now it is fine
 
     @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_seek_backwards(self, video, device):
         # Walking the keyframes in reverse, on a single demuxer and decoder:
         # every seek here goes back over ground that was already decoded, which
         # is the case a decoder can't get right on its own - it has to be told
         # to drop what it holds.
         video_decoder = VideoDecoder(video.path, device=device)
-        blocks = self._make_blocks(video.path, device)
+        stages = self._make_stages(video.path, device)
 
         for keyframe_index in reversed(list(video_decoder._get_key_frame_indices())):
             seconds = video_decoder.get_frame_at(keyframe_index).pts_seconds
 
-            got = self._first_frame_after_seek(blocks, seconds)
+            got = self._first_frame_after_seek(stages, seconds)
             expected = video_decoder.get_frame_played_at(seconds)
 
             assert got.pts_seconds == expected.pts_seconds == seconds
             assert_frames_equal(got.data, expected.data)
 
     @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_seek_is_repeatable(self, video, device):
         # Seeking to the same place twice, and going elsewhere and back, lands
         # on the same frame every time: neither block keeps state that biases
@@ -4790,19 +6009,19 @@ class TestBlocks:
         keyframe_indices = video_decoder._get_key_frame_indices()
         seconds = video_decoder.get_frame_at(keyframe_indices[0]).pts_seconds
         elsewhere = video_decoder.get_frame_at(keyframe_indices[-1]).pts_seconds
-        blocks = self._make_blocks(video.path, device)
+        stages = self._make_stages(video.path, device)
 
-        first = self._first_frame_after_seek(blocks, seconds)
-        again = self._first_frame_after_seek(blocks, seconds)
-        self._first_frame_after_seek(blocks, elsewhere)
-        after_going_elsewhere = self._first_frame_after_seek(blocks, seconds)
+        first = self._first_frame_after_seek(stages, seconds)
+        again = self._first_frame_after_seek(stages, seconds)
+        self._first_frame_after_seek(stages, elsewhere)
+        after_going_elsewhere = self._first_frame_after_seek(stages, seconds)
 
         for frame in (again, after_going_elsewhere):
             assert frame.pts_seconds == first.pts_seconds
             assert_frames_equal(frame.data, first.data)
 
     @pytest.mark.parametrize("video", _ALL_VIDEOS)
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_seek_to_mid_file_frame(self, video, device):
         # Breadth: containers keep their own index and codecs their own
         # reordering, so seeking is worth trying on every asset the sequential
@@ -4817,19 +6036,19 @@ class TestBlocks:
         video_decoder = VideoDecoder(video.path, device=device)
         expected = video_decoder.get_frame_at(video_decoder.metadata.num_frames // 2)
 
-        blocks = self._make_blocks(video.path, device)
+        stages = self._make_stages(video.path, device)
         got = next(
             frame
-            for frame in self._frames_after_seek(blocks, expected.pts_seconds)
+            for frame in self._frames_after_seek(stages, expected.pts_seconds)
             if frame.pts_seconds >= expected.pts_seconds
         )
 
         assert got.pts_seconds == expected.pts_seconds
         self._assert_matches_video_decoder(got.data, expected.data, video)
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_independent_pipelines_seek_in_parallel(self, device):
-        # What seeking is for: targets spread over a file, one set of blocks
+        # What seeking is for: targets spread over a file, one set of stages
         # per thread, each seeking to its own part of the stream and decoding
         # forward to the frame it wants. The pipelines share nothing - not even
         # the container, since each opens its own - so each has to come back
@@ -4839,10 +6058,10 @@ class TestBlocks:
         expected_frames = [video_decoder.get_frame_at(i) for i in frame_indices]
 
         def decode_frame_played_at(seconds):
-            blocks = self._make_blocks(NASA_VIDEO.path, device)
+            stages = self._make_stages(NASA_VIDEO.path, device)
             return next(
                 frame
-                for frame in self._frames_after_seek(blocks, seconds)
+                for frame in self._frames_after_seek(stages, seconds)
                 if frame.pts_seconds >= seconds
             )
 
@@ -4858,7 +6077,7 @@ class TestBlocks:
             assert got.pts_seconds == expected.pts_seconds
             assert_frames_equal(got.data, expected.data)
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_seek_while_demuxing_on_another_thread(self, device):
         # Demuxing on one thread and decoding on another. Each block belongs to
         # the thread that drives it, so the seek happens on the demux thread
@@ -4873,7 +6092,7 @@ class TestBlocks:
         keyframe_index = video_decoder._get_key_frame_indices()[1]
         seconds = video_decoder.get_frame_at(keyframe_index).pts_seconds
 
-        demuxer, decoder, converter = self._make_blocks(NASA_VIDEO.path, device)
+        demuxer, decoder, converter = self._make_stages(NASA_VIDEO.path, device)
 
         def demux_then_seek():
             for _, packet in zip(range(6), demuxer):
@@ -4905,7 +6124,7 @@ class TestBlocks:
             assert_frames_equal(frame.data, expected_data)
 
     @pytest.mark.parametrize("seconds", (1.0, 2.0, 3.0))
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_seek_mpeg_program_stream(self, seconds, device):
         # Seeking in an MPEG program stream lands on a container byte offset
         # rather than on a keyframe, so the packets that follow are typically
@@ -4916,14 +6135,20 @@ class TestBlocks:
         #
         # VideoDecoder can't act as a reference here: it fails on this asset's
         # video stream in both seek modes. We compare against a sequential
-        # decode of the same file through the blocks instead.
+        # decode of the same file through the low-level APIs instead.
         video = SINE_STEREO_MP2_MPEG_PS
+
+        def key(frame):
+            # The last frame of this asset has no pts: NaN, which can't be used
+            # as a dict key (it can, but it can't be accessed for comparison).
+            return None if math.isnan(frame.pts_seconds) else frame.pts_seconds
+
         sequential = {
-            frame.pts_seconds: frame.data
+            key(frame): frame.data
             for frame in self._decode_sequential(video.path, device)
         }
 
-        demuxer, decoder, converter = self._make_blocks(video.path, device)
+        demuxer, decoder, converter = self._make_stages(video.path, device)
         demuxer.seek(seconds)
         decoder.reset()
         got = list(
@@ -4932,7 +6157,7 @@ class TestBlocks:
 
         assert len(got) > 0
         for frame in got:
-            assert_frames_equal(frame.data, sequential[frame.pts_seconds])
+            assert_frames_equal(frame.data, sequential[key(frame)])
 
     @pytest.mark.parametrize(
         "video",
@@ -4944,38 +6169,38 @@ class TestBlocks:
         ),
     )
     @pytest.mark.parametrize("seconds_before_start", (0, 1e-4, 5.0, 1e9))
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_seek_before_start(self, video, seconds_before_start, device):
         # Asking for a time before the stream starts isn't an error: there's a
         # sensible place to land, and that's the beginning.
         video_decoder = VideoDecoder(video.path, device=device)
         begin = video_decoder.metadata.begin_stream_seconds
-        blocks = self._make_blocks(video.path, device)
+        stages = self._make_stages(video.path, device)
 
-        got = self._first_frame_after_seek(blocks, begin - seconds_before_start)
+        got = self._first_frame_after_seek(stages, begin - seconds_before_start)
 
         expected = video_decoder.get_frame_at(0)
         assert got.pts_seconds == expected.pts_seconds
         assert_frames_equal(got.data, expected.data)
 
     @pytest.mark.parametrize("seconds", (-1e9, -1.0, 0.0, 1e-3, 1e9))
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_seek_on_single_frame_video(self, seconds, device):
         # A file with a single frame: wherever we aim, there's only one place
         # to land.
         video = TEST_SRC_2_MPEG4_MP4
         video_decoder = VideoDecoder(video.path, device=device)
         assert video_decoder.metadata.num_frames == 1
-        blocks = self._make_blocks(video.path, device)
+        stages = self._make_stages(video.path, device)
 
-        got = self._first_frame_after_seek(blocks, seconds)
+        got = self._first_frame_after_seek(stages, seconds)
 
         expected = video_decoder.get_frame_at(0)
         assert got.pts_seconds == expected.pts_seconds
         assert_frames_equal(got.data, expected.data)
 
     @pytest.mark.parametrize("seconds_past_end", (0, 10, 1e9))
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_seek_past_end(self, seconds_past_end, device):
         # Same on the other side: we land on the last keyframe, because that's
         # the closest the file gets to the target. Everything decodable from
@@ -4983,9 +6208,9 @@ class TestBlocks:
         video_decoder = VideoDecoder(NASA_VIDEO.path, device=device)
         end = video_decoder.metadata.end_stream_seconds
         last_keyframe_index = video_decoder._get_key_frame_indices()[-1]
-        blocks = self._make_blocks(NASA_VIDEO.path, device)
+        stages = self._make_stages(NASA_VIDEO.path, device)
 
-        got = self._first_frame_after_seek(blocks, end + seconds_past_end)
+        got = self._first_frame_after_seek(stages, end + seconds_past_end)
 
         expected = video_decoder.get_frame_at(last_keyframe_index)
         assert got.pts_seconds == expected.pts_seconds < end
@@ -5026,14 +6251,14 @@ class TestBlocks:
 
     # ----- drain() -----
 
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_decode_after_drain_raises(self, device):
         # Draining ends the stream as far as the codec is concerned, and it
         # ignores anything sent afterwards. Rather than silently decoding
         # nothing, say so.
         demuxer = Demuxer(H265_VIDEO.path)
         decoder = demuxer.streams[0].make_decoder(device)
-        packet = demuxer.next_packet()
+        packet = next(demuxer)
         decoder.decode(packet)
         decoder.drain()
 
@@ -5125,6 +6350,81 @@ class TestBlocks:
                 got = float(index.pts_seconds[index.index_at(seconds)])
                 assert got == expected, f"frame {i}, {description} ({seconds}s)"
 
+    @pytest.mark.parametrize("video", (NASA_VIDEO, TEST_SRC_2_720P_VP9))
+    def test_index_at_tensor(self, video):
+        index = Demuxer(video.path).streams[0].scan()
+        seconds = index.pts_seconds + index.duration_seconds / 2
+
+        expected = [index.index_at(float(s)) for s in seconds]
+        assert index.index_at(seconds).tolist() == expected
+        # Shape is the query's, and a tensor in gives a tensor out even when
+        # there's a single value in it.
+        assert index.index_at(seconds.reshape(-1, 1)).shape == seconds.shape + (1,)
+        assert index.index_at(seconds[:1]).tolist() == expected[:1]
+        assert index.index_at(seconds[0]) == expected[0]
+        assert isinstance(index.index_at(seconds[0]), torch.Tensor)
+
+    @staticmethod
+    def _make_frame_index(pts, duration, time_base_den=1000):
+        return FrameIndex(
+            _is_key_frame=torch.zeros(len(pts), dtype=torch.bool),
+            _pts=torch.tensor(pts),
+            _duration=torch.tensor(duration),
+            _time_base_num=1,
+            _time_base_den=time_base_den,
+        )
+
+    @staticmethod
+    def _index_at_reference(index, seconds):
+        # What get_frame_played_at() does: walk the frames in presentation
+        # order and stop on the first one still on screen, falling back to the
+        # last frame when the target is past the end of the stream.
+        end_seconds = index.pts_seconds + index.duration_seconds
+        for i in range(len(index)):
+            if float(end_seconds[i]) > seconds:
+                return i
+        return len(index) - 1
+
+    def test_index_at_with_overlapping_frames(self):
+        # Non-regression test for index_at when a frame's duration overruns the
+        # start of the next one.
+        index = self._make_frame_index(pts=[0, 10, 20], duration=[100, 1, 1])
+        assert index.duration_seconds.tolist() == [0.1, 0.001, 0.001]
+
+        for seconds in (-1, 0, 0.005, 0.0105, 0.02, 0.0205, 0.05, 0.1, 1):
+            assert index.index_at(seconds) == self._index_at_reference(index, seconds)
+
+        # The stream still ends when its longest-lived frame does.
+        assert index.end_stream_seconds_from_content == 0.1
+
+    @pytest.mark.parametrize(
+        "pts, duration",
+        (
+            pytest.param([0, 10, 20], [10, 10, 10], id="contiguous"),
+            pytest.param([0, 10, 20], [4, 4, 4], id="gaps"),
+            pytest.param([0, 10, 20], [0, 0, 0], id="zero_durations"),
+            pytest.param([0, 10, 20], [100, 1, 1], id="overlapping"),
+            pytest.param([0, 10, 20], [4, 0, 100], id="mixed"),
+            pytest.param([7], [3], id="single_frame"),
+        ),
+    )
+    def test_index_at_frame_layouts(self, pts, duration):
+        # index_at() is a binary search standing in for the linear scan that
+        # get_frame_played_at() makes over decoded frames. The two must agree
+        # however the frames are laid out.
+        index = self._make_frame_index(pts, duration)
+
+        targets = [-0.001, 0, 1]
+        for frame_pts, frame_duration in zip(pts, duration):
+            targets += [
+                frame_pts / 1000,  # the frame's first instant
+                (frame_pts + frame_duration / 2) / 1000,
+                (frame_pts + frame_duration) / 1000,  # the instant it's gone
+            ]
+
+        for seconds in targets:
+            assert index.index_at(seconds) == self._index_at_reference(index, seconds)
+
     def test_scan_skips_discarded_packets(self):
         # This file's mp4 edit list flags its first packets - including the
         # first keyframe - as AV_PKT_FLAG_DISCARD. They're demuxed but never
@@ -5136,6 +6436,53 @@ class TestBlocks:
         assert len(list(Demuxer(video.path))) == 30  # number of packets
         assert len(index) == 25  # number of frames
         assert VideoDecoder(video.path, seek_mode="exact").metadata.num_frames == 25
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize("make_raw_stream", (_make_raw_h264, _make_raw_hevc))
+    def test_scan_stream_without_timestamps(self, tmp_path, make_raw_stream):
+        path = make_raw_stream(tmp_path)
+        demuxer = Demuxer(path)
+        frame_index = demuxer.streams[0].scan()
+
+        expected = list(self._decoded_frames(path, "cpu"))
+        assert len(frame_index) == len(expected) == 30
+        assert frame_index.pts_seconds.isnan().all()
+        assert (frame_index.duration_seconds > 0).all()
+        with pytest.raises(ValueError, match="no timestamps"):
+            frame_index.is_key_frame
+        with pytest.raises(ValueError, match="no timestamps"):
+            frame_index.key_frame_indices
+        with pytest.raises(ValueError, match="no timestamps"):
+            frame_index.index_at(0.5)
+        with pytest.raises(ValueError, match="no timestamps"):
+            frame_index.key_frame_seconds_for(0.5)
+
+        # The scan rewound the demuxer.
+        decoder = demuxer.streams[0].make_decoder()
+        frames = list(self._decode(decoder, self._demux(demuxer)))
+        assert len(frames) == len(expected)
+        for raw_frame, expected_raw_frame in zip(frames, expected):
+            for plane, expected_plane in zip(
+                raw_frame.planes, expected_raw_frame.planes
+            ):
+                torch.testing.assert_close(plane, expected_plane, atol=0, rtol=0)
+
+    @needs_ffmpeg_cli
+    def test_rewind_stream_without_timestamps(self, tmp_path):
+        path = _make_raw_h264(tmp_path)
+        expected = [p.data for p in Demuxer(path)]
+
+        demuxer = Demuxer(path)
+        for _ in range(12):
+            next(demuxer)
+        demuxer.seek(0)
+        packets = [p.data for p in demuxer]
+        assert len(packets) == len(expected)
+        for data, expected_data in zip(packets, expected):
+            assert torch.equal(data, expected_data)
+
+        with pytest.raises(RuntimeError, match="can only be rewound"):
+            demuxer.seek(0.5)
 
     @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
     def test_key_frame_seconds_for(self, video):
@@ -5170,12 +6517,12 @@ class TestBlocks:
             assert index.key_frame_seconds_for(pts_seconds[i]) == pts_seconds[5]
 
     @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_scan_seek_matches_video_decoder_exact(self, video, device):
         # What the scan is for. Snapping the target back to the preceding
         # keyframe before seeking is the entire difference between
         # VideoDecoder's two seek modes for a timestamp lookup, so doing it
-        # here makes the blocks reproduce the exact one - including on
+        # here makes the low-level APIs reproduce the exact one - including on
         # H265_VIDEO, where a plain seek lands past the target
         # (test_seek_to_non_keyframe_can_land_past_target) and this must not.
         index = Demuxer(video.path).streams[0].scan()
@@ -5196,15 +6543,15 @@ class TestBlocks:
                 video.path, seek_mode="exact", device=device
             ).get_frame_played_at(seconds)
 
-            blocks = self._make_blocks(video.path, device)
-            frames = self._frames_after_seek(blocks, seek_to)
+            stages = self._make_stages(video.path, device)
+            frames = self._frames_after_seek(stages, seek_to)
             got = next(frame for frame in frames if frame.pts_seconds >= target_pts)
 
             assert got.pts_seconds == expected.pts_seconds
             assert_frames_equal(got.data, expected.data)
 
     @pytest.mark.parametrize("video", (NASA_VIDEO, H265_VIDEO, TEST_SRC_2_720P_MPEG4))
-    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize("device", _low_level_devices())
     def test_scan_leaves_demuxer_at_the_start(self, video, device):
         # A scan reads the file all the way to the end and then rewinds, so a
         # pipeline built on that same demuxer still decodes the whole stream.
@@ -5227,7 +6574,7 @@ class TestBlocks:
         # The scan rewinds the container, which would silently desynchronise
         # every decoder already being fed from it.
         demuxer = Demuxer(NASA_VIDEO.path)
-        demuxer.next_packet()
+        next(demuxer)
 
         with pytest.raises(RuntimeError, match="before any packet is demuxed"):
             demuxer.streams[0].scan()
@@ -5300,7 +6647,7 @@ class TestBlocks:
 
     # ===== source kinds =====
 
-    @pytest.mark.parametrize("make_source", _BLOCKS_SOURCES)
+    @pytest.mark.parametrize("make_source", _LOW_LEVEL_SOURCES)
     def test_source_kinds(self, make_source):
         # Every source kind demuxes into the very same frames as the path does.
         got = self._decode_sequential(make_source(NASA_VIDEO.path), "cpu")
@@ -5313,7 +6660,7 @@ class TestBlocks:
             assert got_frame.pts_seconds == expected_pts
             assert_frames_equal(got_frame.data, expected_data)
 
-    @pytest.mark.parametrize("make_source", _BLOCKS_SOURCES)
+    @pytest.mark.parametrize("make_source", _LOW_LEVEL_SOURCES)
     def test_seek_on_every_source_kind(self, make_source):
         # Seeking anything but a path goes through the AVIO seek callback -
         # back into Python for a file-like, into our own buffer for bytes and
@@ -5323,12 +6670,15 @@ class TestBlocks:
             video_decoder._get_key_frame_indices()[1]
         ).pts_seconds
 
-        blocks = self._make_blocks(make_source(NASA_VIDEO.path), "cpu")
-        got = self._first_frame_after_seek(blocks, seconds)
+        stages = self._make_stages(make_source(NASA_VIDEO.path), "cpu")
+        got = self._first_frame_after_seek(stages, seconds)
         expected = video_decoder.get_frame_played_at(seconds)
 
         assert got.pts_seconds == expected.pts_seconds == seconds
         assert_frames_equal(got.data, expected.data)
+
+    def test_no_network_access(self, tmp_path):
+        _assert_local_file_and_file_like_agree(Demuxer, tmp_path)
 
     # ===== stream_index =====
 
@@ -5355,12 +6705,45 @@ class TestBlocks:
             assert_frames_equal(got_frame.data, expected_data)
 
     def test_audio_only_file_raises(self):
-        with pytest.raises(RuntimeError, match="No valid video stream found"):
+        with pytest.raises(ValueError, match="No valid video stream found"):
             Demuxer(NASA_AUDIO_MP3.path, streams="video")
 
     def test_video_only_file_raises(self):
-        with pytest.raises(RuntimeError, match="No valid audio stream found"):
+        with pytest.raises(ValueError, match="No valid audio stream found"):
             Demuxer(H265_VIDEO.path, streams="audio")
+
+    # ===== num_ffmpeg_threads =====
+
+    @pytest.mark.parametrize("num_ffmpeg_threads", (0, 1, 4))
+    def test_num_ffmpeg_threads(self, num_ffmpeg_threads):
+        demuxer = Demuxer(NASA_VIDEO.path)
+        decoder = demuxer.streams[0].make_decoder(num_ffmpeg_threads=num_ffmpeg_threads)
+        converter = ColorConverter()
+        got = [
+            converter.convert(raw_frame)
+            for raw_frame in itertools.islice(
+                self._decode(decoder, self._demux(demuxer)), 10
+            )
+        ]
+
+        expected = VideoDecoder(NASA_VIDEO.path, num_ffmpeg_threads=num_ffmpeg_threads)[
+            :10
+        ]
+
+        assert len(got) == len(expected) == 10
+        for got_frame, expected_data in zip(got, expected):
+            assert_frames_equal(got_frame.data, expected_data)
+
+    def test_num_ffmpeg_threads_none_raises(self):
+        (video,) = Demuxer(NASA_VIDEO.path).streams
+        with pytest.raises(ValueError, match="should be an int"):
+            video.make_decoder(num_ffmpeg_threads=None)
+
+    def test_audio_decoder_takes_no_num_ffmpeg_threads(self):
+        # See https://github.com/pytorch/torchcodec/issues/1253.
+        (audio,) = Demuxer(NASA_AUDIO_MP3.path, streams="audio").streams
+        with pytest.raises(TypeError, match="num_ffmpeg_threads"):
+            audio.make_decoder(num_ffmpeg_threads=4)
 
     # ===== audio streams =====
 
@@ -5385,7 +6768,7 @@ class TestBlocks:
     def test_audio_stream_selector(self, selector):
         assert len(list(Demuxer(NASA_VIDEO.path, streams=selector))) > 0
 
-    @pytest.mark.parametrize("make_source", _BLOCKS_SOURCES)
+    @pytest.mark.parametrize("make_source", _LOW_LEVEL_SOURCES)
     def test_audio_source_kinds(self, make_source):
         # Every source kind demuxes the very same packets as the path does.
         expected = len(list(Demuxer(NASA_AUDIO_MP3.path, streams="audio")))
@@ -5445,7 +6828,6 @@ class TestBlocks:
 
         for chunk in chunks:
             assert isinstance(chunk, RawAudioSamples)
-            assert chunk.sample_format == sample_format
             assert chunk.data.dtype == dtype
             assert chunk.data.ndim == 2
             assert chunk.data.is_contiguous()
@@ -5474,7 +6856,7 @@ class TestBlocks:
         # pins the de-interleaving, most visibly on the 16-channel asset.
         #
         # It holds after a seek too, but only once the caller has done the
-        # pre-roll these blocks don't do: a lossy codec decodes its first frames
+        # pre-roll these APIs do not do: a lossy codec decodes its first frames
         # after a seek from a flushed state, so they come out subtly wrong -
         # plausible, but not what whole-file decoding gives - until it
         # re-primes. Dropping those frames is exactly what pre-rolling means,
@@ -5483,7 +6865,7 @@ class TestBlocks:
         # perfectly after that.
         if seek_fraction is not None and asset is SINE_STEREO_MP2_MPEG_PS:
             pytest.skip(
-                "MPEG-PS resync after a seek is unreliable for both the blocks "
+                "MPEG-PS resync after a seek is unreliable for both the low-level APIs "
                 "and AudioDecoder (which raises seeking this file to 2.8s), so "
                 "it can't tell us anything here. See "
                 "test_audio_decoder_mpeg_ps_resync_after_seek."
@@ -5525,6 +6907,38 @@ class TestBlocks:
         assert pts == sorted(pts)
         assert pts[0] == pytest.approx(0, abs=1e-6)
 
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize(
+        "container, time_base_seconds", (("wav", 1 / 44100), ("mkv", 1e-3))
+    )
+    def test_audio_raw_samples_pts_multi_block_packets(
+        self, tmp_path, container, time_base_seconds
+    ):
+        # Non-regression test for
+        # https://github.com/meta-pytorch/torchcodec/issues/1767
+        # See _make_adpcm_file(). MKV's time base can't
+        # represent the frames' duration exactly, so the extrapolated pts must
+        # stay within one tick of the exact ones rather than drift away.
+        path = _make_adpcm_file(tmp_path, "adpcm_ms", container)
+        demuxer = Demuxer(path, streams="audio")
+        decoder = demuxer.streams[0].make_decoder()
+        chunks = []
+        for packet in demuxer:
+            chunks += decoder.decode(packet)
+        chunks += decoder.drain()
+
+        num_samples = 0
+        for chunk in chunks:
+            exact_pts_seconds = num_samples / chunk.sample_rate
+            exact_duration_seconds = chunk.num_samples / chunk.sample_rate
+            assert chunk.pts_seconds == pytest.approx(
+                exact_pts_seconds, abs=time_base_seconds
+            )
+            assert chunk.duration_seconds == pytest.approx(
+                exact_duration_seconds, abs=time_base_seconds
+            )
+            num_samples += chunk.num_samples
+
     def test_decoder_output_type_follows_the_stream(self):
         # The two decoders are one class in C++; the split is a Python-level
         # one, so that each has an exact output type and its own arguments.
@@ -5538,7 +6952,7 @@ class TestBlocks:
             # A codec needs more than one packet before it outputs anything.
             decoded = []
             while not decoded:
-                decoded = decoder.decode(demuxer.next_packet())
+                decoded = decoder.decode(next(demuxer))
             assert isinstance(decoded[0], expected_type)
 
     def test_audio_decoder_takes_no_device(self):
@@ -5599,7 +7013,7 @@ class TestBlocks:
         return torch.cat([chunk.data for chunk in chunks], dim=1)
 
     def _converted_and_expected(self, asset, seek_fraction, **converter_kwargs):
-        # Runs the blocks pipeline, seeking first when asked, and returns it
+        # Runs the low-level pipeline, seeking first when asked, and returns it
         # alongside the AudioDecoder output covering the same region.
         seek_seconds = (
             None if seek_fraction is None else asset.duration_seconds * seek_fraction
@@ -5782,7 +7196,7 @@ class TestBlocks:
             AudioConverter(**kwargs)
 
     def test_audio_pipeline_after_seek(self):
-        # Seeking gives you the tail of the stream, and the three blocks each
+        # Seeking gives you the tail of the stream, and the three stages each
         # need to be told about it. We deliberately do NOT assert that these
         # samples match the corresponding slice of a whole-file decode: with no
         # pre-roll and no alignment grid, they don't, and that's documented.
@@ -5811,7 +7225,7 @@ class TestBlocks:
 
     @pytest.mark.parametrize("stream_index", (-1, 6, 1000))
     def test_invalid_stream_index_raises(self, stream_index):
-        with pytest.raises(RuntimeError, match="is not a valid stream"):
+        with pytest.raises(ValueError, match="is not a valid stream"):
             Demuxer(NASA_VIDEO.path, streams=stream_index)
 
     def test_bad_source_type_raises(self):
@@ -5822,6 +7236,115 @@ class TestBlocks:
         # file-like object from open()
         with pytest.raises(TypeError, match="binary reading?"):
             Demuxer(open(NASA_VIDEO.path))
+
+    # ===== process-locality =====
+
+    @pytest.mark.parametrize(
+        "serialize",
+        (
+            pickle.dumps,
+            # What a DataLoader worker or an mp.Queue uses. It goes further
+            # than pickle: it rewrites a tensor's storage into shared memory
+            # in place, which on a view over FFmpeg's memory would run the
+            # blob's deleter.
+            lambda obj: ForkingPickler(io.BytesIO()).dump(obj),
+            copy.copy,
+            copy.deepcopy,
+        ),
+        ids=("pickle", "forking_pickler", "copy", "deepcopy"),
+    )
+    def test_process_local_objects_refuse_serialization(self, serialize):
+        # These all hold a raw pointer as their payload, so we ensure we raise
+        # gracefully instead of segfaulting.
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        video, audio = demuxer.streams
+        objects = [
+            demuxer,
+            video,
+            audio,
+            video.make_decoder(),
+            audio.make_decoder(),
+            ColorConverter(),
+            AudioConverter(),
+            next(self._decoded_frames(NASA_VIDEO.path, "cpu")),
+        ]
+
+        for obj in objects:
+            with pytest.raises(TypeError, match="cannot be pickled"):
+                serialize(obj)
+
+    def test_pipeline_outputs_are_picklable(self):
+        # Some stuff are still pickleable (not necessarily by design). This is
+        # just for completeness.
+        demuxer = Demuxer(NASA_VIDEO.path, streams=("video", "audio"))
+        video, audio = demuxer.streams
+        frame_index = video.scan()
+        video_decoder, audio_decoder = video.make_decoder(), audio.make_decoder()
+        color_converter, audio_converter = ColorConverter(), AudioConverter()
+
+        frame = raw_samples = None
+        for packet in demuxer:
+            if frame is None and packet.stream_index == video.index:
+                decoded = video_decoder.decode(packet)
+                if decoded:
+                    raw_frame = decoded[0]
+                    frame = color_converter.convert(raw_frame)
+            if raw_samples is None and packet.stream_index == audio.index:
+                decoded = audio_decoder.decode(packet)
+                raw_samples = decoded[0] if decoded else None
+            if frame is not None and raw_samples is not None:
+                break
+
+        for obj in (
+            frame,
+            audio_converter.convert(raw_samples),
+            raw_samples,
+            frame_index,
+            video.metadata,
+            tuple(plane.clone() for plane in raw_frame.planes),
+        ):
+            pickle.loads(pickle.dumps(obj))
+
+    # ===== integer pts =====
+
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_raw_frame_pts_are_the_packets_pts(self, device):
+        demuxer, decoder, _ = self._make_stages(NASA_VIDEO.path, device)
+        time_base = demuxer.streams[0].codec_parameters.time_base
+        packets = list(demuxer)
+        frames = list(self._decode(decoder, iter(packets)))
+
+        assert [f.pts for f in frames] == sorted(p.pts for p in packets)
+        for frame in frames:
+            assert frame.pts_seconds == pytest.approx(float(frame.pts * time_base))
+
+    def test_raw_audio_samples_pts(self):
+        demuxer = Demuxer(NASA_AUDIO_MP3.path, streams="audio")
+        decoder = demuxer.streams[0].make_decoder()
+        time_base = demuxer.streams[0].codec_parameters.time_base
+        samples = [s for p in demuxer for s in decoder.decode(p)] + decoder.drain()
+
+        assert len(samples) > 0
+        pts = [s.pts for s in samples]
+        assert all(isinstance(p, int) for p in pts)
+        assert pts == sorted(pts)
+        for s in samples:
+            assert s.pts_seconds == pytest.approx(float(s.pts * time_base))
+
+    # ===== missing pts =====
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize("device", _low_level_devices())
+    def test_pts_is_nan_without_timestamps(self, tmp_path, device):
+        demuxer, decoder, converter = self._make_stages(
+            _make_raw_h264(tmp_path), device
+        )
+        frames = list(self._decode(decoder, self._demux(demuxer)))
+        assert len(frames) == 30
+        for raw_frame in frames:
+            assert raw_frame.pts is None
+            assert math.isnan(raw_frame.pts_seconds)
+            assert math.isnan(converter.convert(raw_frame).pts_seconds)
 
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn
@@ -5858,6 +7381,114 @@ def _heic_param(*values):
     return pytest.param(decode_heic, *values, marks=pytest.mark.needs_heic, id="heic")
 
 
+def _orientation_test_image():
+    # Smooth so that nvJPEG and libjpeg outputs are close, but not symmetric so
+    # that a wrong orientation is caught.
+    y, x = numpy.mgrid[0:40, 0:60]
+    return Image.fromarray(
+        numpy.stack([x * 4, y * 6, (x + 2 * y) * 1.5], axis=-1).astype(numpy.uint8)
+    )
+
+
+def _jpeg_with_xmp_before_exif():
+    # A JPEG with EXIF orientation 6, and an XMP APP1 segment before the EXIF
+    # APP1 segment.
+    img = _orientation_test_image()
+    exif = img.getexif()
+    exif[0x0112] = 6  # 0x0112 is the EXIF orientation tag
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=95, exif=exif.tobytes())
+    data = buf.getvalue()
+    xmp = b"http://ns.adobe.com/xap/1.0/\x00<x:xmpmeta/>"
+    xmp_segment = b"\xff\xe1" + (len(xmp) + 2).to_bytes(2, "big") + xmp
+    # Right after the SOI marker, so before Pillow's EXIF segment.
+    return data[:2] + xmp_segment + data[2:]
+
+
+def _image_with_repeated_exif_prefix(fmt):
+    # EXIF orientation 6, with EXIF data that starts with two "Exif\0\0"
+    # prefixes. Exif.tobytes() already adds one.
+    img = _orientation_test_image()
+    exif = img.getexif()
+    exif[0x0112] = 6  # 0x0112 is the EXIF orientation tag
+    if fmt == "JPEG":
+        exif_bytes = b"Exif\x00\x00" + exif.tobytes()
+        save_kwargs = {"quality": 95}
+    else:
+        # When saving WebP, Pillow strips one prefix.
+        exif_bytes = b"Exif\x00\x00" * 2 + exif.tobytes()
+        save_kwargs = {"lossless": True}
+    buf = io.BytesIO()
+    img.save(buf, fmt, exif=exif_bytes, **save_kwargs)
+    return buf.getvalue()
+
+
+def _exif_bytes(orientation=None):
+    exif = Image.Exif()
+    if orientation is None:
+        exif[0x010F] = "camera"  # Make tag, so that the EXIF data isn't empty.
+    else:
+        exif[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
+    return exif.tobytes()
+
+
+def _raw_profile_exif(orientation):
+    # The text of an ImageMagick "Raw profile type exif" chunk: the EXIF data
+    # in hex, split in lines of 72 characters.
+    exif_hex = _exif_bytes(orientation).hex()
+    lines = [exif_hex[i : i + 72] for i in range(0, len(exif_hex), 72)]
+    return f"\nexif\n{len(exif_hex) // 2:8d}\n" + "\n".join(lines) + "\n"
+
+
+def _png(exif=None, raw_profile=None, zip_raw_profile=False, after_idat=()):
+    # A PNG with an optional eXIf chunk, and an optional "Raw profile type exif"
+    # text chunk (zTXt if zip_raw_profile, tEXt otherwise). Chunks whose type is
+    # in after_idat are moved after the (single) IDAT chunk.
+    pnginfo = PngImagePlugin.PngInfo()
+    if raw_profile is not None:
+        pnginfo.add_text("Raw profile type exif", raw_profile, zip=zip_raw_profile)
+    buf = io.BytesIO()
+    _orientation_test_image().save(buf, "PNG", exif=exif, pnginfo=pnginfo)
+    data = buf.getvalue()
+
+    chunks, pos = [], 8
+    while pos < len(data):
+        length = int.from_bytes(data[pos : pos + 4], "big")
+        chunks.append(data[pos : pos + 12 + length])
+        pos += 12 + length
+    moved = [c for c in chunks if c[4:8] in after_idat]
+    chunks = [c for c in chunks if c[4:8] not in after_idat]
+    idat = next(i for i, c in enumerate(chunks) if c[4:8] == b"IDAT")
+    return data[:8] + b"".join(chunks[: idat + 1] + moved + chunks[idat + 1 :])
+
+
+# PNGs whose orientation isn't in an eXIf chunk before the image data.
+_PNG_ORIENTATION_CASES = (
+    pytest.param(lambda: _png(raw_profile=_raw_profile_exif(6)), id="raw_profile"),
+    pytest.param(
+        lambda: _png(raw_profile=_raw_profile_exif(3), zip_raw_profile=True),
+        id="compressed_raw_profile",
+    ),
+    pytest.param(
+        lambda: _png(exif=_exif_bytes(), raw_profile=_raw_profile_exif(6)),
+        id="exif_takes_precedence_over_raw_profile",
+    ),
+    pytest.param(
+        lambda: _png(exif=_exif_bytes(6), after_idat=(b"eXIf",)),
+        id="exif_after_idat",
+    ),
+    pytest.param(
+        # The IEND chunk is the last 12 bytes.
+        lambda: _png(exif=_exif_bytes(6), after_idat=(b"eXIf",))[:-12],
+        id="exif_after_idat_without_iend",
+    ),
+    pytest.param(
+        lambda: _png(raw_profile=_raw_profile_exif(8), after_idat=(b"tEXt",)),
+        id="raw_profile_after_idat",
+    ),
+)
+
+
 class TestImageDecoder:
 
     # ===== shared helpers =====
@@ -5890,7 +7521,7 @@ class TestImageDecoder:
             return torch.ops.torchcodec_ns.decode_avif(data, mode)
 
     @staticmethod
-    def _make_transparent_png(path, kind):
+    def _make_transparent_png(path, kind, bits=8):
         # A PNG can encode transparency via a tRNS chunk instead of a full alpha
         # channel: a transparent colorkey for gray/RGB images, or per-palette-
         # entry alpha for palette images. The left half is transparent.
@@ -5912,7 +7543,7 @@ class TestImageDecoder:
             im = Image.fromarray(px, "P")
             im.putpalette([10, 20, 30, 200, 100, 50])
             im.info["transparency"] = bytes([0, 255])  # per-index alpha
-            im.save(path)
+            im.save(path, bits=bits)
 
     # ===== cross-codec tests: basics & API =====
 
@@ -6289,6 +7920,69 @@ class TestImageDecoder:
             assert decoded.shape == reference.shape
             assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
+    @needs_jpeg
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_jpeg_xmp_before_exif(self, device):
+        # APP1 segments can hold XMP too: the orientation must come from the
+        # first EXIF one, not from the first APP1 one.
+        data = _jpeg_with_xmp_before_exif()
+        decoded = decode_jpeg(data, mode="RGB", device=device).cpu()
+        reference = self._pil_to_tensor(
+            ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+        )
+
+        assert decoded.shape == reference.shape == (3, 60, 40)
+        # nvJPEG's output is slightly different from libjpeg's.
+        torch.testing.assert_close(
+            decoded, reference, rtol=0, atol=2 if device == "cpu" else 5
+        )
+
+    @pytest.mark.parametrize(
+        "decode_fn, fmt, atol",
+        (
+            _jpeg_param("JPEG", 2),
+            # nvJPEG's output is slightly different from libjpeg's.
+            _jpeg_cuda_param("JPEG", 5),
+            _webp_param("WEBP", 0),
+        ),
+    )
+    def test_repeated_exif_prefix(self, decode_fn, fmt, atol):
+        # Like Pillow, we skip any number of "Exif\0\0" prefixes.
+        data = _image_with_repeated_exif_prefix(fmt)
+        decoded = decode_fn(data, mode="RGB").cpu()
+        reference = self._pil_to_tensor(
+            ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+        )
+
+        assert decoded.shape == reference.shape == (3, 60, 40)
+        torch.testing.assert_close(decoded, reference, rtol=0, atol=atol)
+
+    @needs_png
+    @pytest.mark.parametrize("make_png", _PNG_ORIENTATION_CASES)
+    def test_png_orientation_matches_pil(self, make_png):
+        # Pillow's exif_transpose() loads the whole file before looking for the
+        # orientation, so it also sees the chunks after the image data.
+        data = make_png()
+        decoded = decode_png(data, mode="RGB")
+        reference = self._pil_to_tensor(
+            ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+        )
+        torch.testing.assert_close(decoded, reference)
+
+    @needs_png
+    def test_png_garbage_after_idat(self):
+        # The chunks after the image data are only read for their metadata: a
+        # corrupted tail must not make the decoding fail.
+        data = _png(exif=_exif_bytes(6), after_idat=(b"eXIf",))
+        iend = data.rindex(b"IEND") - 4
+        data = data[:iend] + b"\x00\x00\x00\x10garbage" + b"\xff" * 32
+        decoded = decode_png(data, mode="RGB")
+        assert decoded.shape == (3, 60, 40)
+        metadata = get_image_metadata(data)
+        assert (metadata.width, metadata.height, metadata.rotation) == (40, 60, -90)
+
     @needs_heic
     @needs_png
     @pytest.mark.parametrize(
@@ -6495,7 +8189,9 @@ class TestImageDecoder:
 
     @needs_cuda
     @needs_jpeg
-    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG))
+    @pytest.mark.parametrize(
+        "asset", (GRADIENT_JPEG, GRAYSCALE_JPEG, GRADIENT_PROGRESSIVE_JPEG)
+    )
     @pytest.mark.parametrize(
         "mode", ("UNCHANGED", "RGB", "GRAY", "RGB_ALPHA", "GRAY_ALPHA")
     )
@@ -6532,6 +8228,45 @@ class TestImageDecoder:
 
     @needs_cuda
     @needs_jpeg
+    @pytest.mark.parametrize("mode", ("UNCHANGED", "GRAY", "RGB"))
+    def test_cuda_jpeg_batch_mixed_hw_and_sw(self, mode):
+        # On GPUs with a HW JPEG engine, the baseline JPEGs of this batch are
+        # decoded by the HW path and the progressive ones by the SW path, so this
+        # checks that both paths run in a single call and that each output lands
+        # at the index of its source. On other GPUs, everything takes the SW path.
+        assets = [
+            GRADIENT_JPEG,
+            GRADIENT_PROGRESSIVE_JPEG,
+            GRAYSCALE_JPEG,
+            GRADIENT_PROGRESSIVE_JPEG,
+            GRADIENT_JPEG,
+        ]
+        batch = decode_jpeg([a.path for a in assets], mode=mode, device="cuda")
+        assert len(batch) == len(assets)
+        for decoded, asset in zip(batch, assets):
+            assert decoded.shape[1:] == (asset.height, asset.width)
+            single = decode_jpeg(asset.path, mode=mode, device="cuda")
+            assert decoded.shape == single.shape
+            torch.testing.assert_close(decoded, single, atol=0, rtol=0)
+
+    @needs_cuda
+    @needs_jpeg
+    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRADIENT_PROGRESSIVE_JPEG))
+    def test_cuda_jpeg_batch_no_corruption(self, asset):
+        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1802
+        # On the nvJPEG SW path (progressive JPEGs, and all JPEGs on GPUs without
+        # a HW JPEG engine), decoding an image could overwrite nvJPEG host buffers
+        # that the previous image's queued GPU work had yet to read, corrupting
+        # all but the last image of the batch. The race is timing-dependent,
+        # hence the many iterations.
+        single = decode_jpeg(asset.path, mode="RGB", device="cuda")
+        for _ in range(50):
+            batch = decode_jpeg([asset.path] * 3, mode="RGB", device="cuda")
+            for decoded in batch:
+                torch.testing.assert_close(decoded, single, atol=0, rtol=0)
+
+    @needs_cuda
+    @needs_jpeg
     def test_cuda_jpeg_single_vs_list_return_type(self):
         single = decode_jpeg(GRADIENT_JPEG.path, mode="RGB", device="cuda")
         assert isinstance(single, torch.Tensor)
@@ -6543,7 +8278,7 @@ class TestImageDecoder:
     @needs_jpeg
     def test_cuda_jpeg_errors(self):
         # Corrupt input raises.
-        with pytest.raises(RuntimeError, match="nvjpegDecode failed:"):
+        with pytest.raises(RuntimeError, match="Failed to decode JPEG"):
             decode_jpeg(CORRUPT_JPEG.path, device="cuda")
 
         cuda_data = torch.frombuffer(
@@ -6574,6 +8309,44 @@ class TestImageDecoder:
                 assert got.device.type == "cuda"
                 assert got.shape == ref.shape
                 assert_tensor_close_on_at_least(got.cpu(), ref, percentage=99, atol=3)
+
+    @needs_cuda
+    @needs_jpeg
+    def test_cuda_jpeg_waits_for_callers_stream(self):
+        # Non-regression test for https://github.com/meta-pytorch/torchcodec/pull/1634
+        # nvJPEG's hardware engine would write its destination before work that was
+        # already queued on the stream it was given has run.
+        #
+        # Here the reductions are queued behind a long-running kernel and their
+        # inputs are freed while they are still queued, so the decoder is handed
+        # that memory. The sums are exact integers, and are only wrong if the
+        # decoder wrote early.
+        num_bytes = 3 * GRADIENT_JPEG.height * GRADIENT_JPEG.width  # the output's size
+        values = (1, 2, 3, 4)
+        expected = float(sum(value * num_bytes for value in values))
+
+        landed_on_freed = 0
+        for _ in range(5):
+            victims = [
+                torch.full((num_bytes,), value, dtype=torch.uint8, device="cuda")
+                for value in values
+            ]
+            pointers = {victim.data_ptr() for victim in victims}
+            torch.cuda.synchronize()  # the victims' contents are resident
+
+            torch.cuda._sleep(200_000_000)  # keep the stream busy for ~100ms
+            total = torch.zeros((), dtype=torch.float64, device="cuda")
+            for victim in victims:
+                total = total + victim.sum(dtype=torch.float64)
+            victims.clear()  # freed while their reductions are still queued
+
+            decoded = decode_jpeg(GRADIENT_JPEG.path, device="cuda")
+            landed_on_freed += decoded.data_ptr() in pointers
+            torch.cuda.synchronize()
+            assert float(total) == expected
+
+        if not landed_on_freed:
+            pytest.skip("the allocator never reused a freed block, nothing was tested")
 
     # ===== PNG =====
 
@@ -6698,6 +8471,50 @@ class TestImageDecoder:
             reference[:-1][visible],
             percentage=99,
             atol=2,
+        )
+
+    @needs_png
+    @pytest.mark.parametrize(
+        "kind, bits", (("rgb", 8), ("gray", 8), ("palette", 8), ("palette", 1))
+    )
+    @pytest.mark.parametrize("output_mode", ("UNCHANGED", "GRAY", "RGB"))
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.uint16, "auto"))
+    def test_png_trns_without_alpha(
+        self, tmp_path, kind, bits, output_mode, output_dtype
+    ):
+        # Non-regression test for
+        # https://github.com/meta-pytorch/torchcodec/issues/1731
+        # libpng expands a tRNS chunk into a full alpha channel as a side effect
+        # of png_set_palette_to_rgb() (palette sources) and of
+        # png_set_expand_16() (uint16 output). Output modes that don't want
+        # alpha must strip it!
+        path = tmp_path / f"{kind}.png"
+        self._make_transparent_png(path, kind, bits=bits)
+
+        decoded = decode_png(path, mode=output_mode, output_dtype=output_dtype)
+
+        expected_dtype = torch.uint16 if output_dtype is torch.uint16 else torch.uint8
+        assert decoded.dtype == expected_dtype
+
+        gray_output = output_mode == "GRAY" or (
+            output_mode == "UNCHANGED" and kind == "gray"
+        )
+        num_color_channels = 1 if gray_output else 3
+        keeps_alpha = output_mode == "UNCHANGED" and kind == "palette"
+        assert decoded.shape[0] == num_color_channels + keeps_alpha
+
+        # PIL ignores tRNS when converting to a mode without alpha, so this is
+        # the color the decoder must produce too. The alpha channel itself is
+        # covered by test_png_trns_transparency.
+        reference = self._pil_to_tensor(
+            Image.open(path).convert("L" if gray_output else "RGB")
+        )
+        scale = 257 if expected_dtype is torch.uint16 else 1
+        assert_tensor_close_on_at_least(
+            decoded[:num_color_channels].to(torch.int32),
+            reference.to(torch.int32) * scale,
+            percentage=99,
+            atol=2 * scale,
         )
 
     @needs_png
@@ -7272,3 +9089,363 @@ class TestImageDecoder:
         finally:
             # Don't leak the (failure-poisoned) cache to other tests.
             iru.load_heic_library.cache_clear()
+
+
+class TestGetImageMetadata:
+    @staticmethod
+    def _assert_matches_decode(metadata, source):
+        # Every metadata field is defined by what the decoders output.
+        decoded = decode_image(source, mode="UNCHANGED", output_dtype="auto")
+        num_frames = decoded.shape[0] if decoded.ndim == 4 else 1
+        assert metadata.num_frames == num_frames
+        assert metadata.num_channels == decoded.shape[-3]
+        assert metadata.height == decoded.shape[-2]
+        assert metadata.width == decoded.shape[-1]
+        assert (metadata.bit_depth > 8) == (decoded.dtype == torch.uint16)
+
+    @pytest.mark.parametrize(
+        "make_source",
+        (
+            pytest.param(lambda a: a.path, id="path"),
+            pytest.param(lambda a: str(a.path), id="str"),
+            pytest.param(lambda a: a.path.read_bytes(), id="bytes"),
+            pytest.param(
+                lambda a: torch.frombuffer(
+                    bytearray(a.path.read_bytes()), dtype=torch.uint8
+                ),
+                id="tensor",
+            ),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "asset, fmt, num_channels, bit_depth, num_frames",
+        (
+            pytest.param(GRADIENT_JPEG, "jpeg", 3, 8, 1, marks=pytest.mark.needs_jpeg),
+            pytest.param(GRAYSCALE_JPEG, "jpeg", 1, 8, 1, marks=pytest.mark.needs_jpeg),
+            pytest.param(CMYK_JPEG, "jpeg", 4, 8, 1, marks=pytest.mark.needs_jpeg),
+            pytest.param(GRADIENT_PNG, "png", 3, 8, 1, marks=pytest.mark.needs_png),
+            pytest.param(GRAYSCALE_PNG, "png", 1, 8, 1, marks=pytest.mark.needs_png),
+            pytest.param(RGBA_PNG, "png", 4, 8, 1, marks=pytest.mark.needs_png),
+            pytest.param(
+                GRAYSCALE_ALPHA_PNG, "png", 2, 8, 1, marks=pytest.mark.needs_png
+            ),
+            pytest.param(
+                GRADIENT_16BIT_PNG, "png", 3, 16, 1, marks=pytest.mark.needs_png
+            ),
+            pytest.param(
+                GRAYSCALE_16BIT_PNG, "png", 1, 16, 1, marks=pytest.mark.needs_png
+            ),
+            pytest.param(
+                GRADIENT_INTERLACED_PNG, "png", 3, 8, 1, marks=pytest.mark.needs_png
+            ),
+            pytest.param(GRADIENT_WEBP, "webp", 3, 8, 1, marks=pytest.mark.needs_webp),
+            pytest.param(RGBA_WEBP, "webp", 4, 8, 1, marks=pytest.mark.needs_webp),
+            pytest.param(GRADIENT_GIF, "gif", 3, 8, 1),
+            pytest.param(ANIMATED_GIF, "gif", 4, 8, 4),
+            pytest.param(TRANSPARENT_GIF, "gif", 4, 8, 1),
+            pytest.param(FRAME_EXCEEDS_SCREEN_GIF, "gif", 4, 8, 1),
+            pytest.param(GRADIENT_AVIF, "avif", 3, 8, 1, marks=pytest.mark.needs_avif),
+            pytest.param(RGBA_AVIF, "avif", 4, 8, 1, marks=pytest.mark.needs_avif),
+            pytest.param(
+                GRADIENT_10BIT_AVIF, "avif", 3, 10, 1, marks=pytest.mark.needs_avif
+            ),
+            pytest.param(
+                GRADIENT_12BIT_AVIF, "avif", 3, 12, 1, marks=pytest.mark.needs_avif
+            ),
+            pytest.param(GRADIENT_HEIC, "heic", 3, 8, 1, marks=pytest.mark.needs_heic),
+            pytest.param(RGBA_HEIC, "heic", 4, 8, 1, marks=pytest.mark.needs_heic),
+            pytest.param(
+                GRADIENT_10BIT_HEIC, "heic", 3, 10, 1, marks=pytest.mark.needs_heic
+            ),
+            pytest.param(
+                GRADIENT_ROTATED_HEIC, "heic", 3, 8, 1, marks=pytest.mark.needs_heic
+            ),
+            pytest.param(
+                GRADIENT_MIRRORED_HEIC, "heic", 3, 8, 1, marks=pytest.mark.needs_heic
+            ),
+            pytest.param(ANIMATED_HEIC, "heic", 3, 8, 3, marks=pytest.mark.needs_heic),
+        ),
+    )
+    def test_matches_decode(
+        self, asset, fmt, num_channels, bit_depth, num_frames, make_source
+    ):
+        metadata = get_image_metadata(make_source(asset))
+        rotation = {
+            GRADIENT_ROTATED_HEIC.filename: -90.0,
+            GRADIENT_MIRRORED_HEIC.filename: 0.0,
+        }.get(asset.filename)
+        assert metadata == ImageMetadata(
+            format=fmt,
+            width=asset.width,
+            height=asset.height,
+            num_channels=num_channels,
+            bit_depth=bit_depth,
+            num_frames=num_frames,
+            rotation=rotation,
+        )
+        self._assert_matches_decode(metadata, make_source(asset))
+
+    @pytest.mark.parametrize(
+        "fmt, ext, save_kwargs",
+        (
+            pytest.param("JPEG", "jpg", {}, marks=pytest.mark.needs_jpeg, id="jpeg"),
+            pytest.param("PNG", "png", {}, marks=pytest.mark.needs_png, id="png"),
+            pytest.param("WEBP", "webp", {}, marks=pytest.mark.needs_webp, id="webp"),
+            pytest.param("AVIF", "avif", {}, marks=pytest.mark.needs_avif, id="avif"),
+        ),
+    )
+    @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
+    def test_exif_orientation(self, tmp_path, orientation, fmt, ext, save_kwargs):
+        # Width and height are reported after orientation is applied.
+        img = Image.fromarray(numpy.zeros((40, 60, 3), dtype=numpy.uint8))
+        exif = img.getexif()
+        exif[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
+        path = tmp_path / f"exif_{orientation}.{ext}"
+        img.save(path, fmt, exif=exif.tobytes(), **save_kwargs)
+
+        metadata = get_image_metadata(path)
+        expected_rotation = {
+            0: None,  # Not a valid EXIF orientation: the decoders ignore it.
+            1: 0,
+            2: 0,
+            3: 180,
+            4: 180,
+            5: 90,
+            6: -90,
+            7: -90,
+            8: 90,
+        }
+        if fmt == "AVIF":
+            # AVIF stores orientation as irot/imir properties, which aren't
+            # written for the identity orientation 1.
+            expected_rotation[1] = None
+        assert metadata.rotation == expected_rotation[orientation]
+        if orientation in (5, 6, 7, 8):
+            assert (metadata.width, metadata.height) == (40, 60)
+        else:
+            assert (metadata.width, metadata.height) == (60, 40)
+        self._assert_matches_decode(metadata, path)
+
+    @needs_jpeg
+    def test_jpeg_xmp_before_exif(self):
+        data = _jpeg_with_xmp_before_exif()
+        metadata = get_image_metadata(data)
+        assert metadata.rotation == -90
+        assert (metadata.width, metadata.height) == (40, 60)
+        self._assert_matches_decode(metadata, data)
+
+    @pytest.mark.parametrize(
+        "fmt",
+        (
+            pytest.param("JPEG", marks=pytest.mark.needs_jpeg),
+            pytest.param("WEBP", marks=pytest.mark.needs_webp),
+        ),
+    )
+    def test_repeated_exif_prefix(self, fmt):
+        data = _image_with_repeated_exif_prefix(fmt)
+        metadata = get_image_metadata(data)
+        assert metadata.rotation == -90
+        assert (metadata.width, metadata.height) == (40, 60)
+        self._assert_matches_decode(metadata, data)
+
+    @needs_png
+    @pytest.mark.parametrize("make_png", _PNG_ORIENTATION_CASES)
+    def test_png_orientation_matches_pil(self, make_png):
+        data = make_png()
+        metadata = get_image_metadata(data)
+
+        img = Image.open(io.BytesIO(data))
+        transposed = ImageOps.exif_transpose(img)  # Loads the whole file.
+        orientation = img.getexif().get(0x0112)
+        expected_rotation = {1: 0, 2: 0, 3: 180, 4: 180, 5: 90, 6: -90, 7: -90, 8: 90}
+        assert metadata.rotation == expected_rotation.get(orientation)
+        assert (metadata.width, metadata.height) == transposed.size
+        self._assert_matches_decode(metadata, data)
+
+    @needs_png
+    @pytest.mark.parametrize(
+        "raw_profile",
+        (
+            "\nexif\n4\nnot hex\n",
+            "\nexif\n4\n4d4d0",  # odd number of hex digits
+            "\nexif\n",  # no hex data at all
+        ),
+    )
+    def test_png_invalid_raw_profile(self, raw_profile):
+        # Pillow raises on these, we just ignore them.
+        data = _png(raw_profile=raw_profile)
+        metadata = get_image_metadata(data)
+        assert metadata.rotation is None
+        self._assert_matches_decode(metadata, data)
+
+    @needs_png
+    @pytest.mark.parametrize("source_kind", ("path", "bytes", "tensor"))
+    @pytest.mark.parametrize("truncated", (False, True))
+    def test_png_exif_after_many_idat_chunks(self, tmp_path, source_kind, truncated):
+        # Runs of IDAT chunks are skipped by the png_skip_idat_chunks_* ops.
+        data = _png(exif=_exif_bytes(6), after_idat=(b"eXIf",))
+        # Split the image data into 1-byte IDAT chunks.
+        idat_start = data.index(b"IDAT") - 4
+        idat_end = (
+            idat_start + 12 + int.from_bytes(data[idat_start : idat_start + 4], "big")
+        )
+        idat_chunks = b"".join(
+            b"\x00\x00\x00\x01IDAT"
+            + bytes([b])
+            + zlib.crc32(b"IDAT" + bytes([b])).to_bytes(4, "big")
+            for b in data[idat_start + 8 : idat_end - 4]
+        )
+        data = data[:idat_start] + idat_chunks + data[idat_end:]
+        assert data.count(b"IDAT") > 50
+        if truncated:
+            # In the middle of the IDAT chunks, so there's no eXIf chunk left.
+            data = data[: data.index(b"IDAT") + 100]
+        if source_kind == "path":
+            source = tmp_path / "img.png"
+            source.write_bytes(data)
+        elif source_kind == "bytes":
+            source = data
+        else:
+            source = torch.frombuffer(bytearray(data), dtype=torch.uint8)
+
+        metadata = get_image_metadata(source)
+        if truncated:
+            assert (metadata.width, metadata.height) == (60, 40)
+            assert metadata.rotation is None
+        else:
+            assert (metadata.width, metadata.height) == (40, 60)
+            assert metadata.rotation == -90
+            self._assert_matches_decode(metadata, source)
+
+    @needs_png
+    @pytest.mark.parametrize(
+        "pil_mode, save_kwargs, num_channels, bit_depth",
+        (
+            ("P", {}, 3, 8),
+            ("P", {"transparency": 0}, 4, 8),
+            ("P", {"bits": 4}, 3, 8),
+            ("L", {"transparency": 0}, 1, 8),
+            ("RGB", {"transparency": (0, 0, 0)}, 3, 8),
+            ("1", {}, 1, 1),
+        ),
+    )
+    def test_png_color_types(
+        self, tmp_path, pil_mode, save_kwargs, num_channels, bit_depth
+    ):
+        # Palettes are expanded to RGB(A) by the decoder, and a tRNS chunk only
+        # adds an alpha channel to palette images.
+        img = Image.fromarray(numpy.zeros((40, 60, 3), dtype=numpy.uint8))
+        path = tmp_path / "img.png"
+        img.convert(pil_mode).save(path, **save_kwargs)
+
+        metadata = get_image_metadata(path)
+        assert metadata.num_channels == num_channels
+        assert metadata.bit_depth == bit_depth
+        self._assert_matches_decode(metadata, path)
+
+    @pytest.mark.parametrize(
+        "fmt, ext, save_kwargs",
+        (
+            pytest.param("WEBP", "webp", {}, marks=pytest.mark.needs_webp, id="webp"),
+            pytest.param(
+                "WEBP",
+                "webp",
+                {"lossless": True},
+                marks=pytest.mark.needs_webp,
+                id="webp-lossless",
+            ),
+            pytest.param("GIF", "gif", {}, id="gif"),
+            pytest.param("AVIF", "avif", {}, marks=pytest.mark.needs_avif, id="avif"),
+        ),
+    )
+    @pytest.mark.parametrize("pil_mode", ("RGB", "RGBA"))
+    def test_animated(self, tmp_path, fmt, ext, save_kwargs, pil_mode):
+        frames = [
+            Image.fromarray(numpy.full((40, 60, 4), value, dtype=numpy.uint8)).convert(
+                pil_mode
+            )
+            for value in (0, 100, 200)
+        ]
+        path = tmp_path / f"animated.{ext}"
+        frames[0].save(
+            path, fmt, save_all=True, append_images=frames[1:], **save_kwargs
+        )
+
+        metadata = get_image_metadata(path)
+        assert metadata.num_frames == 3
+        assert (metadata.width, metadata.height) == (60, 40)
+        self._assert_matches_decode(metadata, path)
+
+    def test_heic_does_not_need_libheif(self, monkeypatch):
+        # Unlike decode_heic, getting the metadata of a HEIC file works without
+        # libheif.
+        from torchcodec import _internally_replaced_utils as iru
+
+        iru.load_heic_library.cache_clear()
+
+        def boom(path):
+            raise OSError("libheif.so.1: cannot open shared object file")
+
+        monkeypatch.setattr(torch.ops, "load_library", boom)
+        try:
+            metadata = get_image_metadata(GRADIENT_HEIC.path)
+        finally:
+            iru.load_heic_library.cache_clear()
+        assert (metadata.width, metadata.height) == (1280, 720)
+
+    def test_unrecognized_format_raises(self):
+        with pytest.raises(ValueError, match="Unsupported or unrecognized image"):
+            get_image_metadata(b"not an image at all")
+
+    def test_bad_source_type_raises(self):
+        with pytest.raises(TypeError, match="Unknown source type"):
+            get_image_metadata(123)
+
+    @pytest.mark.parametrize(
+        "asset, match",
+        (
+            (GRADIENT_JPEG, r"truncated"),
+            (CMYK_JPEG, r"truncated"),
+            (GRADIENT_PNG, r"truncated"),
+            (GRADIENT_16BIT_PNG, r"truncated"),
+            (GRADIENT_WEBP, r"truncated"),
+            (RGBA_WEBP, r"truncated"),
+            (GRADIENT_GIF, r"DGifOpen\(\) failed"),
+            (ANIMATED_GIF, r"DGifOpen\(\) failed"),
+            (GRADIENT_AVIF, r"Truncated data"),
+            (GRADIENT_HEIC, r"no 'meta' box"),
+            (ANIMATED_HEIC, r"no 'meta' box"),
+        ),
+    )
+    def test_truncated_headers_raise(self, asset, match):
+        # Enough data for the format to be detected, but not for the headers.
+        data = asset.path.read_bytes()
+        with pytest.raises(RuntimeError, match=match):
+            get_image_metadata(data[:16])
+
+    @pytest.mark.parametrize(
+        "asset, match",
+        (
+            (GRADIENT_JPEG, r"truncated"),
+            (CMYK_JPEG, r"truncated"),
+            (GRADIENT_PNG, r"corrupted"),
+            (GRADIENT_16BIT_PNG, r"corrupted"),
+            (GRADIENT_WEBP, r"corrupted or truncated"),
+            (RGBA_WEBP, r"corrupted or truncated"),
+            pytest.param(
+                GRADIENT_HEIC, "Unexpected end of file", marks=pytest.mark.needs_heic
+            ),
+        ),
+    )
+    def test_truncated_image_data(self, asset, match):
+        # Only the image data is truncated: the headers are still parsed, even
+        # though decoding fails.
+        data = asset.path.read_bytes()
+        truncated = data[: len(data) // 2]
+        assert get_image_metadata(truncated) == get_image_metadata(data)
+        with pytest.raises(RuntimeError, match=match):
+            decode_image(truncated)
+
+    def test_corrupt_png_raises(self):
+        with pytest.raises(RuntimeError, match="truncated or corrupted"):
+            get_image_metadata(SIGSEGV_PNG.path)

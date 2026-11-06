@@ -43,6 +43,8 @@ import torch
 
 from torchcodec.encoders import JpegEncoder, PngEncoder
 
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_torchvision_migration.jpg'
+
 raw_image_bytes = JpegEncoder(
     torch.randint(0, 256, (3, 256, 256), dtype=torch.uint8)
 ).to_tensor()

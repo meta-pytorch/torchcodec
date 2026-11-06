@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "AVIOContextHolder.h"
+#include "CodecParameters.h"
 #include "FFMPEGCommon.h"
 #include "StableABICompat.h"
 
@@ -26,14 +27,14 @@ namespace facebook::torchcodec {
 int read_next_packet(
     AVFormatContext* format_context,
     int active_stream_index,
-    ReferenceAVPacket& packet);
+    AVPacket& packet);
 
 // Same, for a demuxer following more than one stream: the packet comes from
 // whichever of `active_stream_indices` has the next one.
 int read_next_packet(
     AVFormatContext* format_context,
     const std::vector<int>& active_stream_indices,
-    ReferenceAVPacket& packet);
+    AVPacket& packet);
 
 std::string get_seek_error_message(
     const AVFormatContext* format_context,
@@ -106,6 +107,11 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
   // Only legal before the first packet is demuxed, which is what makes the
   // rewind harmless: nothing has been fed to a decoder yet.
   FrameIndex scan(std::optional<int> stream_index = std::nullopt);
+
+  // A copy of the codec parameters of the stream at `stream_index`, or of the
+  // only followed stream when it is left unspecified.
+  CodecParameters get_codec_parameters(
+      std::optional<int> stream_index = std::nullopt) const;
 
   // The index passed in, validated, or the only followed stream when it is left
   // unspecified.

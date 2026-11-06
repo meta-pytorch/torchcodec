@@ -71,11 +71,13 @@ class NVDECCache {
 
  private:
   // Cache key struct: a decoder can be reused and taken from the cache only if
-  // all these parameters match.
+  // all these parameters match. We deliberately store the coded dimensions, not
+  // the true displayed dimensions, to optimize cache hits. See [NVDEC surface
+  // dimensions and cropping] for more details.
   struct CacheKey {
     cudaVideoCodec codec_type;
-    uint32_t width;
-    uint32_t height;
+    uint32_t coded_width;
+    uint32_t coded_height;
     cudaVideoChromaFormat chroma_format;
     uint32_t bit_depth_luma_minus8;
     uint8_t num_decode_surfaces;
@@ -88,8 +90,8 @@ class NVDECCache {
         cudaVideoSurfaceFormat surface_fmt) {
       STD_TORCH_CHECK(video_format != nullptr, "videoFormat must not be null");
       codec_type = video_format->codec;
-      width = video_format->coded_width;
-      height = video_format->coded_height;
+      coded_width = video_format->coded_width;
+      coded_height = video_format->coded_height;
       chroma_format = video_format->chroma_format;
       bit_depth_luma_minus8 = video_format->bit_depth_luma_minus8;
       num_decode_surfaces = video_format->min_num_decode_surfaces;
@@ -102,16 +104,16 @@ class NVDECCache {
     bool operator<(const CacheKey& other) const {
       return std::tie(
                  codec_type,
-                 width,
-                 height,
+                 coded_width,
+                 coded_height,
                  chroma_format,
                  bit_depth_luma_minus8,
                  num_decode_surfaces,
                  output_surface_format) <
           std::tie(
                  other.codec_type,
-                 other.width,
-                 other.height,
+                 other.coded_width,
+                 other.coded_height,
                  other.chroma_format,
                  other.bit_depth_luma_minus8,
                  other.num_decode_surfaces,

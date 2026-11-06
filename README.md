@@ -1,6 +1,8 @@
 [**Installation**](#installing-torchcodec) | [**Documentation**](https://meta-pytorch.org/torchcodec) | [**Contributing**](CONTRIBUTING.md) | [**License**](#license)
 
-# TorchCodec
+<p align="center">
+  <img src="https://raw.githubusercontent.com/meta-pytorch/torchcodec/main/docs/source/_static/img/torchcodec_horizontal_logo.jpg" alt="TorchCodec" width="500">
+</p>
 
 TorchCodec is a PyTorch-native library for decoding and encoding media: videos,
 audio, and images, on CPU and CUDA GPU. It aims to be fast, easy to
@@ -123,6 +125,8 @@ JpegEncoder(image).to_file("output.jpg")  # also .to_tensor() and .to_file_like(
    conda install "ffmpeg" -c conda-forge
    ```
 
+   Refer to the official [FFmpeg download page](https://ffmpeg.org/download.html) for more installation options.
+
    > **Note:** FFmpeg is an *optional* dependency. It is needed for video
    > and audio decoding and encoding (`VideoDecoder`, `AudioDecoder`,
    > `VideoEncoder`, `AudioEncoder`, etc.). The image decoders and encoders
@@ -211,6 +215,7 @@ The following table indicates the compatibility between versions of
 | `torchcodec`       | `torch`            | Python              |
 | ------------------ | ------------------ | ------------------- |
 | `main` / `nightly` | `main` / `nightly` | `>=3.10`, `<=3.14`   |
+| `0.17`             | `>=2.11`             | `>=3.10`, `<=3.14`   |
 | `0.16`             | `>=2.11`             | `>=3.10`, `<=3.14`   |
 | `0.15`             | `>=2.11`             | `>=3.10`, `<=3.14`   |
 | `0.14`             | `>=2.11`             | `>=3.10`, `<=3.14`   |

@@ -10,6 +10,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include "CodecParameters.h"
 #include "FFMPEGCommon.h"
 #include "Frame.h"
 #include "StableABICompat.h"
@@ -58,9 +59,22 @@ class DeviceInterface {
 
   // Initialize state needed to decode packets into raw AVFrames.
   virtual void initialize_video_decoding(
-      [[maybe_unused]] const AVStream* av_stream,
-      [[maybe_unused]] const UniqueDecodingAVFormatContext& av_format_ctx,
+      [[maybe_unused]] const CodecParameters& codec_parameters,
       [[maybe_unused]] const VideoStreamOptions& video_stream_options) {}
+
+  // Same, from a demuxed stream: this is what SingleStreamDecoder calls, while
+  // PacketDecoder calls the overload above. Interfaces only need to implement
+  // the overload above. This one stays virtual so that out-of-tree interfaces
+  // overriding it keep working with SingleStreamDecoder.
+  virtual void initialize_video_decoding(
+      const AVStream* av_stream,
+      const UniqueDecodingAVFormatContext& av_format_ctx,
+      const VideoStreamOptions& video_stream_options) {
+    STD_TORCH_CHECK(av_stream != nullptr, "avStream is null");
+    initialize_video_decoding(
+        CodecParameters(*av_stream, av_format_ctx->iformat),
+        video_stream_options);
+  }
 
   // Initialize state needed to color-convert decoded AVFrames into output
   // tensors.
@@ -130,11 +144,13 @@ class DeviceInterface {
   // Returns AVSUCCESS on success, AVERROR(EAGAIN) if decoder queue full, or
   // other AVERROR on failure
   // Default implementation uses FFmpeg directly
-  virtual int send_packet(ReferenceAVPacket& av_packet) {
+  // The packet is borrowed: an implementation that hands it to something which
+  // takes ownership (a bitstream filter, say) must reference it first.
+  virtual int send_packet(const AVPacket& av_packet) {
     STD_TORCH_CHECK(
         codec_context_ != nullptr,
         "Codec context not available for default packet sending");
-    return avcodec_send_packet(codec_context_.get(), av_packet.get());
+    return avcodec_send_packet(codec_context_.get(), &av_packet);
   }
 
   // Send an EOF packet to flush the decoder

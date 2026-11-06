@@ -42,8 +42,16 @@ class StreamMetadata:
     """Bit rate of the stream, in seconds (float or None)."""
     codec: str | None
     """Codec (str or None)."""
+    time_base: Fraction | None
+    """The unit of the stream's timestamps, in seconds (Fraction or None): a
+    :term:`pts` of ``n`` means ``n * time_base`` seconds. That's the unit of
+    the integer timestamps of the low-level APIs, like :attr:`Packet.pts` and
+    :attr:`RawFrame.pts`."""
     stream_index: int
     """Index of the stream that this metadata refers to (int)."""
+    media_type: str
+    """Type of media the stream carries (str). One of ``"video"``, ``"audio"``,
+    ``"subtitle"``, ``"data"``, ``"attachment"`` or ``"unknown"``."""
 
     def __repr__(self):
         s = self.__class__.__name__ + ":\n"
@@ -62,7 +70,7 @@ class VideoStreamHeaderMetadata(StreamMetadata):
     """Height of the frames (int or None)."""
     num_frames_from_header: int | None
     """Number of frames, from the stream's metadata. This is potentially
-    inaccurate. We recommend using the ``num_frames`` attribute instead.
+    inaccurate.
     (int or None)."""
     average_fps_from_header: float | None
     """Averate fps of the stream, obtained from the header (float or None).
@@ -210,23 +218,19 @@ class AudioStreamMetadata(AudioStreamHeaderMetadata):
 class DemuxerMetadata:
     """Container-level metadata, as reported by the header.
 
-    This is what a demuxer can say about the container itself. Everything about
-    the streams it follows is on those streams; the full list of streams in the
-    file, including the ones that cannot be followed, comes from
-    ``get_container_metadata()`` instead.
+    This is what a :class:`~torchcodec.decoders.Demuxer` can say about
+    the container itself.
     """
 
     duration_seconds_from_header: float | None
     """Duration of the container, in seconds, obtained from the header (float
-    or None). Some containers carry a duration only here, with their streams
-    reporting none, which is why this is worth having separately."""
+    or None)."""
     bit_rate_from_header: float | None
-    """Overall bit rate of the container (float or None). Not the sum of the
-    streams' bit rates: it includes muxing overhead."""
+    """Overall bit rate of the container (float or None)."""
     best_video_stream_index: int | None
-    """Index of the stream FFmpeg considers the best video one (int or None)."""
+    """Index of the :term:`best stream` of video type (int or None)."""
     best_audio_stream_index: int | None
-    """Index of the stream FFmpeg considers the best audio one (int or None)."""
+    """Index of the :term:`best stream` of audio type (int or None)."""
 
     def __repr__(self):
         s = self.__class__.__name__ + ":\n"
@@ -237,18 +241,24 @@ class DemuxerMetadata:
 
 @dataclass
 class ContainerMetadata(DemuxerMetadata):
+    """Metadata of a container and of every stream in it.
+
+    Unlike :class:`DemuxerMetadata`, which describes the container alone, this
+    also lists the streams, including the ones that cannot be decoded.
+    """
+
     streams: list[StreamMetadata]
-    """One entry per stream in the file, indexed by stream index. Streams that
-    are neither video nor audio (subtitles, data) are plain
-    :class:`StreamMetadata`: you can see them, you cannot decode them."""
+    """One entry per stream in the file, indexed by stream index.
+
+    A video stream comes back as a :class:`VideoStreamHeaderMetadata` and an
+    audio stream as an :class:`AudioStreamHeaderMetadata`. The rest will be plain
+    :class:`StreamMetadata`. The ``media_type`` attribute tells the
+    entries apart."""
 
 
-def _get_optional_par_fraction(stream_dict):
+def _get_optional_fraction(stream_dict, name):
     try:
-        return Fraction(
-            stream_dict["sampleAspectRatioNum"],
-            stream_dict["sampleAspectRatioDen"],
-        )
+        return Fraction(stream_dict[f"{name}Num"], stream_dict[f"{name}Den"])
     except KeyError:
         return None
 
@@ -269,7 +279,9 @@ def _stream_metadata_from_dict(stream_dict: dict, stream_index: int) -> StreamMe
             "beginStreamSecondsFromHeader"
         ),
         codec=stream_dict.get("codec"),
+        time_base=_get_optional_fraction(stream_dict, "timeBase"),
         stream_index=stream_index,
+        media_type=stream_dict["mediaType"],
     )
     if stream_dict["mediaType"] == "video":
         return VideoStreamHeaderMetadata(
@@ -277,7 +289,7 @@ def _stream_metadata_from_dict(stream_dict: dict, stream_index: int) -> StreamMe
             height=stream_dict.get("height"),
             num_frames_from_header=stream_dict.get("numFramesFromHeader"),
             average_fps_from_header=stream_dict.get("averageFpsFromHeader"),
-            pixel_aspect_ratio=_get_optional_par_fraction(stream_dict),
+            pixel_aspect_ratio=_get_optional_fraction(stream_dict, "sampleAspectRatio"),
             rotation=stream_dict.get("rotation"),
             color_primaries=stream_dict.get("colorPrimaries"),
             color_space=stream_dict.get("colorSpace"),
@@ -316,7 +328,9 @@ def get_container_metadata(decoder: torch.Tensor) -> ContainerMetadata:
                 "beginStreamSecondsFromHeader"
             ),
             codec=stream_dict.get("codec"),
+            time_base=_get_optional_fraction(stream_dict, "timeBase"),
             stream_index=stream_index,
+            media_type=stream_dict["mediaType"],
         )
         # Only the video and audio classes have the computed fields; a stream of
         # any other type is described by its header alone.
@@ -341,7 +355,9 @@ def get_container_metadata(decoder: torch.Tensor) -> ContainerMetadata:
                     num_frames_from_header=stream_dict.get("numFramesFromHeader"),
                     num_frames_from_content=stream_dict.get("numFramesFromContent"),
                     average_fps_from_header=stream_dict.get("averageFpsFromHeader"),
-                    pixel_aspect_ratio=_get_optional_par_fraction(stream_dict),
+                    pixel_aspect_ratio=_get_optional_fraction(
+                        stream_dict, "sampleAspectRatio"
+                    ),
                     rotation=stream_dict.get("rotation"),
                     color_primaries=stream_dict.get("colorPrimaries"),
                     color_space=stream_dict.get("colorSpace"),

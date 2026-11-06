@@ -12,6 +12,73 @@
 
 #include "StableABICompat.h"
 
+#include <cstring>
+
+#ifdef _WIN32
+#include <fstream>
+#else
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
+#include "ImageCommon.h"
+
+namespace facebook::torchcodec {
+
+namespace {
+
+int64_t read_chunk_length(const uint8_t* header) {
+  return (int64_t(header[0]) << 24) | (int64_t(header[1]) << 16) |
+      (int64_t(header[2]) << 8) | int64_t(header[3]);
+}
+
+} // namespace
+
+int64_t png_skip_idat_chunks_from_tensor(
+    const torch::stable::Tensor& input,
+    int64_t offset) {
+  auto contig_input = validate_encoded_data(input);
+  auto data = contig_input.const_data_ptr<uint8_t>();
+  int64_t size = contig_input.numel();
+  STD_TORCH_CHECK(offset >= 0, "offset must be non-negative, got ", offset);
+  while (offset + 8 <= size && std::memcmp(data + offset + 4, "IDAT", 4) == 0) {
+    offset += 12 + read_chunk_length(data + offset);
+  }
+  return offset;
+}
+
+int64_t png_skip_idat_chunks_from_file(std::string filename, int64_t offset) {
+  STD_TORCH_CHECK(offset >= 0, "offset must be non-negative, got ", offset);
+  // The chunk headers are usually 8 KB apart (libpng's default), so buffered
+  // reads would end up reading the whole file: we do one small unbuffered read
+  // per chunk instead.
+  uint8_t header[8];
+#ifdef _WIN32
+  std::ifstream file;
+  file.rdbuf()->pubsetbuf(nullptr, 0);
+  file.open(filename, std::ios::binary);
+  STD_TORCH_CHECK(
+      file.is_open(), "Failed to open file for reading: ", filename);
+  while (file.seekg(offset) &&
+         file.read(reinterpret_cast<char*>(header), sizeof(header)) &&
+         std::memcmp(header + 4, "IDAT", 4) == 0) {
+    offset += 12 + read_chunk_length(header);
+  }
+#else
+  int fd = open(filename.c_str(), O_RDONLY | O_CLOEXEC);
+  STD_TORCH_CHECK(fd >= 0, "Failed to open file for reading: ", filename);
+  while (pread(fd, header, sizeof(header), offset) ==
+             static_cast<ssize_t>(sizeof(header)) &&
+         std::memcmp(header + 4, "IDAT", 4) == 0) {
+    offset += 12 + read_chunk_length(header);
+  }
+  close(fd);
+#endif
+  return offset;
+}
+
+} // namespace facebook::torchcodec
+
 #if !TORCHCODEC_ENABLE_PNG
 
 namespace facebook::torchcodec {
@@ -47,6 +114,9 @@ torch::stable::Tensor decode_png(
 #include <bit>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <string_view>
+#include <vector>
 
 #include "Exif.h"
 #include "ImageCommon.h"
@@ -73,21 +143,101 @@ void error_callback(png_structp png_ptr, png_const_charp error_message) {
   png_longjmp(png_ptr, 1);
 }
 
-ExifOrientation fetch_png_exif_orientation(
+// Decodes the text of an ImageMagick "Raw profile type exif" chunk, i.e.
+// "\nexif\n<length>\n<hex data, over multiple lines>", the way Pillow does:
+// bytes.fromhex("".join(text.split("\n")[3:])). Returns false if the hex data
+// is invalid.
+bool decode_raw_profile_exif(
+    std::string_view text,
+    std::vector<unsigned char>& exif) {
+  for (int i = 0; i < 3; ++i) {
+    size_t newline = text.find('\n');
+    if (newline == std::string_view::npos) {
+      return true;
+    }
+    text.remove_prefix(newline + 1);
+  }
+  auto hex_value = [](char c) -> int {
+    if (c >= '0' && c <= '9') {
+      return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+      return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+      return c - 'A' + 10;
+    }
+    return -1;
+  };
+  int high_nibble = -1;
+  for (char c : text) {
+    if (c == '\n') {
+      continue;
+    }
+    if (high_nibble < 0 &&
+        std::string_view(" \t\r\v\f").find(c) != std::string_view::npos) {
+      continue;
+    }
+    int value = hex_value(c);
+    if (value < 0) {
+      return false;
+    }
+    if (high_nibble < 0) {
+      high_nibble = value;
+    } else {
+      exif.push_back(static_cast<unsigned char>(high_nibble << 4 | value));
+      high_nibble = -1;
+    }
+  }
+  return high_nibble < 0;
+}
+
+// Finds the orientation the way Pillow's ImageOps.exif_transpose() does, after
+// it loaded the whole file: from the eXIf chunk, or else from an ImageMagick
+// "Raw profile type exif" text chunk. Both can come before or after the image
+// data, i.e. in info_ptr or in end_info.
+ExifOrientation fetch_png_orientation(
     png_structp png_ptr,
-    png_infop info_ptr) {
-  png_uint_32 num_exif = 0;
+    png_infop info_ptr,
+    png_infop end_info) {
   png_bytep exif = nullptr;
-
-  if (png_get_valid(png_ptr, info_ptr, PNG_INFO_eXIf)) {
-    png_get_eXIf_1(png_ptr, info_ptr, &num_exif, &exif);
+  png_uint_32 num_exif = 0;
+  std::string_view raw_profile_exif;
+  bool found_raw_profile_exif = false;
+  for (png_infop info : {info_ptr, end_info}) {
+    if (info == nullptr) {
+      continue;
+    }
+    if (exif == nullptr && png_get_valid(png_ptr, info, PNG_INFO_eXIf)) {
+      png_get_eXIf_1(png_ptr, info, &num_exif, &exif);
+    }
+    png_textp texts = nullptr;
+    int num_texts = png_get_text(png_ptr, info, &texts, nullptr);
+    for (int i = 0; i < num_texts; ++i) {
+      std::string_view text(
+          texts[i].text,
+          texts[i].compression >= PNG_ITXT_COMPRESSION_NONE
+              ? texts[i].itxt_length
+              : texts[i].text_length);
+      // Like Pillow, we keep the last chunk with this keyword.
+      if (std::strcmp(texts[i].key, "Raw profile type exif") == 0) {
+        raw_profile_exif = text;
+        found_raw_profile_exif = true;
+      }
+    }
   }
 
+  ExifOrientation orientation = ExifOrientation::Unspecified;
+  std::vector<unsigned char> decoded_exif;
   if (exif != nullptr && num_exif > 0) {
-    return fetch_exif_orientation(exif, num_exif);
-  } else {
-    return ExifOrientation::Unspecified;
+    orientation = fetch_exif_orientation(exif, num_exif);
+  } else if (
+      found_raw_profile_exif &&
+      decode_raw_profile_exif(raw_profile_exif, decoded_exif)) {
+    orientation = fetch_exif_orientation_after_prefixes(
+        decoded_exif.data(), decoded_exif.size());
   }
+  return orientation;
 }
 
 struct SourceCtx {
@@ -180,7 +330,6 @@ PngHeader read_header_and_configure(
   // called after png_set_palette_to_rgb()).
   bool has_trns = png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS) != 0;
 
-  bool expanded_palette = false;
   if (read_mode == ImageReadMode::UNCHANGED) {
     if (is_palette) {
       // A PNG palette (PLTE chunk) is always RGB triplets
@@ -193,78 +342,71 @@ PngHeader read_header_and_configure(
         png_set_tRNS_to_alpha(png_ptr);
         num_output_channels = 4;
       }
-      expanded_palette = true;
+    } else if (has_trns) {
+      png_set_strip_alpha(png_ptr);
     }
   } else {
     bool has_color = (color_type & PNG_COLOR_MASK_COLOR) != 0;
-    bool has_alpha = (color_type & PNG_COLOR_MASK_ALPHA) != 0;
+    bool has_alpha = (color_type & PNG_COLOR_MASK_ALPHA) != 0 || has_trns;
 
     png_uint_32 opaque_alpha = output_16 ? 65535 : 255;
 
     switch (read_mode) {
       case ImageReadMode::GRAY:
-        if (color_type != PNG_COLOR_TYPE_GRAY) {
-          if (is_palette) {
-            png_set_palette_to_rgb(png_ptr);
-          }
-
-          if (has_alpha) {
-            png_set_strip_alpha(png_ptr);
-          }
-
-          if (has_color) {
-            png_set_rgb_to_gray(png_ptr, 1, 0.2989, 0.587);
-          }
-          num_output_channels = 1;
+        if (is_palette) {
+          png_set_palette_to_rgb(png_ptr);
         }
+
+        if (has_alpha) {
+          png_set_strip_alpha(png_ptr);
+        }
+
+        if (has_color) {
+          png_set_rgb_to_gray(png_ptr, 1, 0.2989, 0.587);
+        }
+        num_output_channels = 1;
         break;
       case ImageReadMode::GRAY_ALPHA:
-        if (color_type != PNG_COLOR_TYPE_GRAY_ALPHA) {
-          if (is_palette) {
-            png_set_palette_to_rgb(png_ptr);
-          }
-
-          if (has_trns) {
-            png_set_tRNS_to_alpha(png_ptr);
-          } else if (!has_alpha) {
-            png_set_add_alpha(png_ptr, opaque_alpha, PNG_FILLER_AFTER);
-          }
-
-          if (has_color) {
-            png_set_rgb_to_gray(png_ptr, 1, 0.2989, 0.587);
-          }
-          num_output_channels = 2;
+        if (is_palette) {
+          png_set_palette_to_rgb(png_ptr);
         }
+
+        if (has_trns) {
+          png_set_tRNS_to_alpha(png_ptr);
+        } else if (!has_alpha) {
+          png_set_add_alpha(png_ptr, opaque_alpha, PNG_FILLER_AFTER);
+        }
+
+        if (has_color) {
+          png_set_rgb_to_gray(png_ptr, 1, 0.2989, 0.587);
+        }
+        num_output_channels = 2;
         break;
       case ImageReadMode::RGB:
-        if (color_type != PNG_COLOR_TYPE_RGB) {
-          if (is_palette) {
-            png_set_palette_to_rgb(png_ptr);
-          } else if (!has_color) {
-            png_set_gray_to_rgb(png_ptr);
-          }
-
-          if (has_alpha) {
-            png_set_strip_alpha(png_ptr);
-          }
-          num_output_channels = 3;
+        if (is_palette) {
+          png_set_palette_to_rgb(png_ptr);
+        } else if (!has_color) {
+          png_set_gray_to_rgb(png_ptr);
         }
+
+        if (has_alpha) {
+          png_set_strip_alpha(png_ptr);
+        }
+        num_output_channels = 3;
         break;
       case ImageReadMode::RGB_ALPHA:
-        if (color_type != PNG_COLOR_TYPE_RGB_ALPHA) {
-          if (is_palette) {
-            png_set_palette_to_rgb(png_ptr);
-          } else if (!has_color) {
-            png_set_gray_to_rgb(png_ptr);
-          }
-
-          if (has_trns) {
-            png_set_tRNS_to_alpha(png_ptr);
-          } else if (!has_alpha) {
-            png_set_add_alpha(png_ptr, opaque_alpha, PNG_FILLER_AFTER);
-          }
-          num_output_channels = 4;
+        if (is_palette) {
+          png_set_palette_to_rgb(png_ptr);
+        } else if (!has_color) {
+          png_set_gray_to_rgb(png_ptr);
         }
+
+        if (has_trns) {
+          png_set_tRNS_to_alpha(png_ptr);
+        } else if (!has_alpha) {
+          png_set_add_alpha(png_ptr, opaque_alpha, PNG_FILLER_AFTER);
+        }
+        num_output_channels = 4;
         break;
       default:
         png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
@@ -278,18 +420,29 @@ PngHeader read_header_and_configure(
 
   // libpng knows how to scale 16-bit samples to 8-bit, and vice versa, so we
   // can use that instead of doing it ourselves.
-  bool need_scaling = false;
   if (output_16 && bit_depth != 16) {
     png_set_expand_16(png_ptr);
-    need_scaling = true;
   } else if (!output_16 && bit_depth == 16) {
     png_set_scale_16(png_ptr);
-    need_scaling = true;
   }
 
-  if (read_mode != ImageReadMode::UNCHANGED || need_scaling ||
-      expanded_palette) {
-    png_read_update_info(png_ptr, info_ptr);
+  png_read_update_info(png_ptr, info_ptr);
+
+  // png_read_row() writes as many bytes as libpng's own post-transformation
+  // layout dictates, but we size the output tensor from num_output_channels,
+  // which we track by hand above. We make sure they agree.
+  size_t expected_row_bytes = static_cast<size_t>(width) *
+      static_cast<size_t>(num_output_channels) * (output_16 ? 2 : 1);
+  size_t actual_row_bytes = png_get_rowbytes(png_ptr, info_ptr);
+  if (actual_row_bytes != expected_row_bytes) {
+    png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
+    STD_TORCH_CHECK(
+        false,
+        "decode_png: libpng rows are ",
+        actual_row_bytes,
+        " bytes instead of the expected ",
+        expected_row_bytes,
+        ". This should never happen, please report a bug to the TorchCodec repo.");
   }
 
   return {
@@ -324,6 +477,16 @@ void decode_rows(
       row_ptr += stride;
     }
   }
+}
+
+// Reads the chunks after the image data, which can hold metadata too (into
+// end_info). Unlike the image data, these are optional: on error, e.g. if the
+// file is truncated after IDAT, we keep whatever chunks were read until then.
+void read_end(png_structp png_ptr, png_infop end_info) {
+  if (setjmp(png_jmpbuf(png_ptr)) != 0) {
+    return;
+  }
+  png_read_end(png_ptr, end_info);
 }
 
 } // namespace
@@ -388,10 +551,14 @@ torch::stable::Tensor decode_png(
       header.num_passes,
       stride);
 
+  auto end_info = png_create_info_struct(png_ptr);
+  if (end_info != nullptr) {
+    read_end(png_ptr, end_info);
+  }
   ExifOrientation exif_orientation =
-      fetch_png_exif_orientation(png_ptr, info_ptr);
+      fetch_png_orientation(png_ptr, info_ptr, end_info);
 
-  png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
+  png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
 
   return exif_orientation_transform(
       stable_permute(output, {2, 0, 1}), exif_orientation);

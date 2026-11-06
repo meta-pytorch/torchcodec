@@ -36,15 +36,19 @@ namespace {
 template <typename IsActive>
 int read_next_active_packet(
     AVFormatContext* format_context,
-    ReferenceAVPacket& packet,
+    AVPacket& packet,
     IsActive is_active) {
   int status = AVSUCCESS;
   do {
-    status = av_read_frame(format_context, packet.get());
+    // av_read_frame() requires a packet with nothing to free in it, so drop
+    // what the previous iteration read from a stream we're not following. A
+    // no-op on the first iteration.
+    av_packet_unref(&packet);
+    status = av_read_frame(format_context, &packet);
     if (status == AVERROR_EOF || status < AVSUCCESS) {
       return status;
     }
-  } while (!is_active(packet->stream_index));
+  } while (!is_active(packet.stream_index));
   return AVSUCCESS;
 }
 } // namespace
@@ -52,7 +56,7 @@ int read_next_active_packet(
 int read_next_packet(
     AVFormatContext* format_context,
     int active_stream_index,
-    ReferenceAVPacket& packet) {
+    AVPacket& packet) {
   return read_next_active_packet(
       format_context, packet, [active_stream_index](int stream_index) {
         return stream_index == active_stream_index;
@@ -62,7 +66,7 @@ int read_next_packet(
 int read_next_packet(
     AVFormatContext* format_context,
     const std::vector<int>& active_stream_indices,
-    ReferenceAVPacket& packet) {
+    AVPacket& packet) {
   return read_next_active_packet(
       format_context, packet, [&active_stream_indices](int stream_index) {
         return std::find(
@@ -108,6 +112,7 @@ Demuxer::Demuxer(std::unique_ptr<AVIOContextHolder> avio_context_holder)
   AVFormatContext* raw_context = avformat_alloc_context();
   STD_TORCH_CHECK(raw_context != nullptr, "Failed to allocate AVFormatContext");
   raw_context->pb = avio_context_holder_->get_avio_context();
+  forbid_nested_protocols(raw_context);
 
   int status = avformat_open_input(&raw_context, nullptr, nullptr, nullptr);
   if (status != 0) {
@@ -230,6 +235,13 @@ torch::stable::Tensor Demuxer::get_audio_video_stream_indices() const {
   return out;
 }
 
+CodecParameters Demuxer::get_codec_parameters(
+    std::optional<int> stream_index) const {
+  return CodecParameters(
+      *format_context_->streams[resolve_stream_index(stream_index)],
+      format_context_->iformat);
+}
+
 int Demuxer::resolve_stream_index(std::optional<int> stream_index) const {
   if (stream_index.has_value()) {
     STD_TORCH_CHECK(
@@ -270,9 +282,20 @@ void Demuxer::seek(double seconds, std::optional<int> stream_index) {
       desired_pts,
       desired_pts,
       0);
+  bool can_seek_bytes = !(format_context_->iformat->flags & AVFMT_NO_BYTE_SEEK);
+  if (status < 0 && can_seek_bytes && seconds == 0) {
+    // Streams without timestamps, like raw H.264 or HEVC streams, can't seek
+    // to a timestamp, but they can still be rewound to their start.
+    status = avformat_seek_file(
+        format_context_.get(), -1, 0, 0, 0, AVSEEK_FLAG_BYTE);
+  }
   STD_TORCH_CHECK(
       status >= 0,
-      get_seek_error_message(format_context_.get(), desired_pts, status));
+      get_seek_error_message(format_context_.get(), desired_pts, status),
+      can_seek_bytes ? " If this stream has no timestamps (e.g. a raw H.264 "
+                       "or HEVC stream), it can only be rewound to its start, "
+                       "by seeking to 0."
+                     : "");
 }
 
 void Demuxer::scan_all_video_streams() {
@@ -305,7 +328,7 @@ void Demuxer::scan_all_video_streams() {
   while (true) {
     ReferenceAVPacket packet(auto_packet_);
     int status =
-        read_next_packet(format_context_.get(), video_stream_indices, packet);
+        read_next_packet(format_context_.get(), video_stream_indices, *packet);
     if (status == AVERROR_EOF) {
       break;
     }
@@ -328,11 +351,6 @@ void Demuxer::scan_all_video_streams() {
   has_scanned_ = true;
 }
 
-// TODO_API_BREAKDOWN DESIGN P1 I'm starting to wonder if this should be named
-// 'scan()' in the python API. We only really scan once, but this is a
-// per-stream call. demuxer.scan(0) pays for the scan and demuxer.scan(1)
-// doesn't, but the 'scan()' name suggests that it does. Maybe this should be
-// .get_frame_index() (but 'index' is still overloaded). Ah.
 FrameIndex Demuxer::scan(std::optional<int> stream_index) {
   AVStream* scanned_stream =
       format_context_->streams[resolve_stream_index(stream_index)];
@@ -378,11 +396,11 @@ UniqueAVPacket Demuxer::next_packet() {
       "This demuxer isn't following any stream yet.");
   has_demuxed_ = true;
 
-  // TODO_API_BREAKDOWN CC P2: Not a fan of the ReferenceAVPacket / AutoAVPacket
-  // / UniqueAVPacket dance here. Can we simplify?
-  ReferenceAVPacket packet(auto_packet_);
+  UniqueAVPacket packet(av_packet_alloc());
+  STD_TORCH_CHECK(packet != nullptr, "Failed to allocate AVPacket");
+
   int status =
-      read_next_packet(format_context_.get(), active_stream_indices_, packet);
+      read_next_packet(format_context_.get(), active_stream_indices_, *packet);
   if (status == AVERROR_EOF) {
     return UniqueAVPacket{};
   }
@@ -391,12 +409,7 @@ UniqueAVPacket Demuxer::next_packet() {
       "Could not read frame from input file: ",
       get_ffmpeg_error_string_from_error_code(status));
 
-  // Move the reference out into a fresh, independent packet the caller owns.
-  // This is what makes the packet safe to hand to another thread.
-  UniqueAVPacket owned(av_packet_alloc());
-  STD_TORCH_CHECK(owned != nullptr, "Failed to allocate AVPacket");
-  av_packet_move_ref(owned.get(), packet.get());
-  return owned;
+  return packet;
 }
 
 } // namespace facebook::torchcodec

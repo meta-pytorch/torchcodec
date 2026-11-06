@@ -63,6 +63,7 @@ SingleStreamDecoder::SingleStreamDecoder(
   STD_TORCH_CHECK(raw_context != nullptr, "Unable to alloc avformat context");
 
   raw_context->pb = avio_context_holder_->get_avio_context();
+  forbid_nested_protocols(raw_context);
   int status = avformat_open_input(&raw_context, nullptr, nullptr, nullptr);
   if (status != 0) {
     avformat_free_context(raw_context);
@@ -174,6 +175,13 @@ void SingleStreamDecoder::scan_file_and_update_metadata_and_index() {
     // We got a valid packet. Let's figure out what stream it belongs to and
     // record its relevant metadata.
     int stream_index = packet->stream_index;
+    if (stream_index < 0 ||
+        stream_index >=
+            static_cast<int>(container_metadata_.all_stream_metadata.size())) {
+      // in theory, a video may add a stream midway through the file, which
+      // could cause OOB access. See D124080592.
+      continue;
+    }
 
     auto& stream_metadata =
         container_metadata_.all_stream_metadata[stream_index];
@@ -516,6 +524,7 @@ void SingleStreamDecoder::add_audio_stream(
 
   auto& stream_info = stream_infos_[active_stream_index_];
   stream_info.audio_stream_options = audio_stream_options;
+  audio_pts_extrapolator_ = AudioPtsExtrapolator(stream_info.time_base);
 
   // FFmpeg docs say that the decoder will try to decode natively in this
   // format, if it can. Docs don't say what the decoder does when it doesn't
@@ -1069,8 +1078,6 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
     return AudioFramesOutput{torch::stable::empty({num_channels, 0}), 0.0};
   }
 
-  auto start_pts = seconds_to_closest_pts(start_seconds, stream_info.time_base);
-
   // We must figure out if we need to seek, and where to. The following figures
   // out the value of target_preroll_seconds. See the [Audio pre-roll and
   // post-roll]  note.
@@ -1122,8 +1129,15 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
 
     target_postroll_seconds = 2 * filter_length / src_sample_rate;
   }
-  auto target_seek_pts = seconds_to_closest_pts(
-      start_seconds - target_preroll_seconds, stream_info.time_base);
+  // The time base can be much coarser than a sample (1ms in Matroska), so
+  // start_seconds and stop_seconds are never converted to their closest pts:
+  // that could exclude the frames containing them. Frames are selected by
+  // comparing their bounds in seconds instead. The seek target is rounded down:
+  // seeking a bit early only decodes an extra frame.
+  const AVRational& time_base = stream_info.time_base;
+  double seek_seconds = start_seconds - target_preroll_seconds;
+  auto target_seek_pts = static_cast<int64_t>(
+      std::floor(seek_seconds * time_base.den / time_base.num));
 
   int64_t min_pts = stream_info.stream->start_time != AV_NOPTS_VALUE
       ? stream_info.stream->start_time
@@ -1140,8 +1154,8 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
         last_decoded_av_frame_pts_ + last_decoded_av_frame_duration_;
     // We seek if we need to go backwards, or if the target is far enough
     // forward that decoding every intermediate frame would be wasteful.
-    needs_seek = start_pts < current_end ||
-        start_pts > current_end + (start_pts - target_seek_pts);
+    needs_seek = start_seconds < pts_to_seconds(current_end, time_base) ||
+        target_seek_pts > current_end;
   }
 
   if (needs_seek) {
@@ -1164,27 +1178,24 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
   std::vector<torch::stable::Tensor> frames;
 
   std::optional<double> first_frame_pts_seconds = std::nullopt;
-  auto stop_pts = stop_seconds_optional.has_value()
-      ? seconds_to_closest_pts(*stop_seconds_optional, stream_info.time_base)
-      : INT64_MAX;
 
   // When resampling, we must send the prerolled and postrolled frames through
   // the resampler!
-  auto output_start_pts =
-      is_resampling ? std::min(start_pts, target_seek_pts) : start_pts;
-  auto output_stop_pts = (stop_pts == INT64_MAX) ? stop_pts
-                                                 : stop_pts +
-          seconds_to_closest_pts(target_postroll_seconds,
-                                 stream_info.time_base);
+  double output_start_seconds = is_resampling ? seek_seconds : start_seconds;
+  double output_stop_seconds = stop_seconds_optional.has_value()
+      ? *stop_seconds_optional + target_postroll_seconds
+      : std::numeric_limits<double>::infinity();
 
   auto finished = false;
   while (!finished) {
     try {
       UniqueAVFrame av_frame = decode_av_frame(
-          [output_start_pts, output_stop_pts](const AVFrame& av_frame) {
-            return output_start_pts <
-                get_pts_or_dts(av_frame) + get_duration(av_frame) &&
-                output_stop_pts > get_pts_or_dts(av_frame);
+          [output_start_seconds, output_stop_seconds, &time_base](
+              const AVFrame& av_frame) {
+            int64_t pts = get_pts_or_dts(av_frame);
+            return output_start_seconds <
+                pts_to_seconds(pts + get_duration(av_frame), time_base) &&
+                output_stop_seconds > pts_to_seconds(pts, time_base);
           });
       auto frame_output = convert_av_frame_to_frame_output(*av_frame);
       if (!first_frame_pts_seconds.has_value()) {
@@ -1195,17 +1206,19 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
       finished = true;
     }
 
-    // We're done once output_stop_pts falls within the last decoded frame,
+    // We're done once output_stop_seconds falls within the last decoded frame,
     // bounds
     // included. Excluding the upper bound would look more natural, but when
-    // output_stop_pts lands exactly on a frame boundary we'd keep going: the
-    // frame starting there is rejected by the pts filter above, as is every
-    // frame after it, so we'd decode to EOF for the same output.
+    // output_stop_seconds lands exactly on a frame boundary we'd keep going:
+    // the frame starting there is rejected by the pts filter above, as is
+    // every frame after it, so we'd decode to EOF for the same output.
 
     auto last_decoded_av_frame_end =
         last_decoded_av_frame_pts_ + last_decoded_av_frame_duration_;
-    finished |= (last_decoded_av_frame_pts_) <= output_stop_pts &&
-        (output_stop_pts <= last_decoded_av_frame_end);
+    finished |= pts_to_seconds(last_decoded_av_frame_pts_, time_base) <=
+            output_stop_seconds &&
+        output_stop_seconds <=
+            pts_to_seconds(last_decoded_av_frame_end, time_base);
   }
 
   auto last_samples = device_interface_->maybe_flush_audio_buffers();
@@ -1392,6 +1405,7 @@ bool SingleStreamDecoder::maybe_seek_to_before_desired_pts() {
 
   decode_stats_.num_flushes++;
   device_interface_->flush();
+  audio_pts_extrapolator_.reset();
   return true;
 }
 
@@ -1428,6 +1442,11 @@ UniqueAVFrame SingleStreamDecoder::decode_av_frame(
     }
 
     decode_stats_.num_frames_received_by_decoder++;
+    if (status == AVSUCCESS &&
+        stream_infos_[active_stream_index_].av_media_type ==
+            AVMEDIA_TYPE_AUDIO) {
+      audio_pts_extrapolator_.process(*av_frame);
+    }
     // Is this the kind of frame we're looking for?
     if (status == AVSUCCESS && filter_function(*av_frame)) {
       // Yes, this is the frame we'll return; break out of the decoding loop.
@@ -1452,7 +1471,7 @@ UniqueAVFrame SingleStreamDecoder::decode_av_frame(
     // the Demuxer building block.)
     ReferenceAVPacket packet(auto_av_packet);
     status =
-        read_next_packet(format_context_.get(), active_stream_index_, packet);
+        read_next_packet(format_context_.get(), active_stream_index_, *packet);
     decode_stats_.num_packets_read++;
 
     if (status == AVERROR_EOF) {
@@ -1479,7 +1498,7 @@ UniqueAVFrame SingleStreamDecoder::decode_av_frame(
 
     // We got a valid packet. Send it to the decoder, and we'll receive it in
     // the next iteration.
-    status = device_interface_->send_packet(packet);
+    status = device_interface_->send_packet(*packet);
 
     if (status == AVERROR_INVALIDDATA && packet_data_may_be_misaligned) {
       // The MPEG-PS demuxer doesn't return proper packets just after a seek, so

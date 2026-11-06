@@ -68,6 +68,9 @@ ContainerMetadata get_container_metadata_from_format_context(
         avcodec_get_name(av_stream->codecpar->codec_id);
     stream_metadata.media_type = av_stream->codecpar->codec_type;
     stream_metadata.bit_rate = av_stream->codecpar->bit_rate;
+    if (av_stream->time_base.num > 0 && av_stream->time_base.den > 0) {
+      stream_metadata.time_base = av_stream->time_base;
+    }
 
     int64_t frame_count = av_stream->nb_frames;
     if (frame_count > 0) {

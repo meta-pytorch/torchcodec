@@ -32,6 +32,8 @@ struct StreamMetadata {
 
   std::optional<AVCodecID> codec_id;
   std::optional<std::string> codec_name;
+  // The unit of the stream's packet timestamps.
+  std::optional<AVRational> time_base;
   std::optional<double> duration_seconds_from_header;
   std::optional<double> begin_stream_seconds_from_header;
   std::optional<int64_t> num_frames_from_header;

@@ -6,6 +6,7 @@
 
 #include "FFMPEGCommon.h"
 
+#include <cstdio>
 #include <cstring>
 
 #include "StableABICompat.h"
@@ -91,6 +92,10 @@ AVPacket* ReferenceAVPacket::get() {
   return av_packet_;
 }
 
+AVPacket& ReferenceAVPacket::operator*() {
+  return *av_packet_;
+}
+
 AVPacket* ReferenceAVPacket::operator->() {
   return av_packet_;
 }
@@ -137,6 +142,37 @@ void set_duration(AVFrame& av_frame, int64_t duration) {
 #else
   av_frame.pkt_duration = duration;
 #endif
+}
+
+void AudioPtsExtrapolator::process(AVFrame& av_frame) {
+  if (av_frame.sample_rate != sample_rate_) {
+    // next_frame_start_ was counted at the old rate. A rate change within a
+    // packet is far-fetched enough that we don't bother converting it.
+    sample_rate_ = av_frame.sample_rate;
+    next_frame_start_ = INT64_MIN;
+  }
+  if (sample_rate_ <= 0) {
+    return;
+  }
+  AVRational samples_time_base = {1, sample_rate_};
+
+  set_duration(
+      av_frame,
+      av_rescale_q(av_frame.nb_samples, samples_time_base, time_base_));
+
+  int64_t pts = get_pts_or_dts(av_frame);
+  if (pts != INT64_MIN) {
+    // Real pts: nothing to fix, just remember where this frame ends.
+    next_frame_start_ =
+        av_rescale_q(pts, time_base_, samples_time_base) + av_frame.nb_samples;
+  } else if (next_frame_start_ != INT64_MIN) {
+    // No pts: this frame starts where the previous one ended.
+    // TODO: log when we guess a pts like this, so users can tell their
+    // timestamps were extrapolated rather than read from the file.
+    av_frame.pts =
+        av_rescale_q(next_frame_start_, samples_time_base, time_base_);
+    next_frame_start_ += av_frame.nb_samples;
+  }
 }
 
 const int* get_supported_sample_rates(const AVCodec& av_codec) {
@@ -736,6 +772,17 @@ void set_ffmpeg_log_level() {
   av_log_set_level(log_level);
 }
 
+void forbid_nested_protocols(AVFormatContext* format_context) {
+  // See _assert_local_file_and_file_like_agree
+  // We call this explicitly so that the file-like behavior matches the default
+  // behavior of FFmpeg on local files.
+  int status = av_opt_set(format_context, "protocol_whitelist", "", 0);
+  STD_TORCH_CHECK(
+      status == 0,
+      "Failed to set protocol whitelist: ",
+      get_ffmpeg_error_string_from_error_code(status));
+}
+
 AVIOContext* avio_alloc_context(
     uint8_t* buffer,
     int buffer_size,
@@ -833,7 +880,6 @@ const int32_t* get_display_matrix_from_stream(const AVStream* av_stream) {
   return display_matrix;
 }
 
-namespace {
 std::optional<double> get_rotation_from_display_matrix(
     const int32_t* display_matrix) {
   if (display_matrix == nullptr) {
@@ -852,7 +898,6 @@ std::optional<double> get_rotation_from_display_matrix(
 
   return rotation;
 }
-} // namespace
 
 std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
   return get_rotation_from_display_matrix(
@@ -867,6 +912,125 @@ std::optional<double> get_rotation_from_frame(const AVFrame& av_frame) {
   }
   return get_rotation_from_display_matrix(
       reinterpret_cast<const int32_t*>(side_data->data));
+}
+
+AVRational get_framerate([[maybe_unused]] const AVCodecParameters& codecpar) {
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(60, 11, 100)
+  return codecpar.framerate;
+#else
+  return {0, 1};
+#endif
+}
+
+std::optional<std::string> get_channel_layout_name(
+    const AVCodecParameters& codecpar) {
+#if FFMPEG_HAS_CH_LAYOUT
+  if (codecpar.ch_layout.nb_channels == 0) {
+    return std::nullopt;
+  }
+  std::vector<char> buffer(64);
+  // Returns the size the description needs, which may be more than we gave.
+  int size = av_channel_layout_describe(
+      &codecpar.ch_layout, buffer.data(), buffer.size());
+  if (size <= 0) {
+    return std::nullopt;
+  }
+  if (static_cast<size_t>(size) > buffer.size()) {
+    buffer.resize(size);
+    av_channel_layout_describe(
+        &codecpar.ch_layout, buffer.data(), buffer.size());
+  }
+  return std::string(buffer.data());
+#else
+  if (codecpar.channels == 0) {
+    return std::nullopt;
+  }
+  char buffer[256];
+  av_get_channel_layout_string(
+      buffer, sizeof(buffer), codecpar.channels, codecpar.channel_layout);
+  return std::string(buffer);
+#endif
+}
+
+const char* get_field_order_name(AVFieldOrder field_order) {
+  switch (field_order) {
+    case AV_FIELD_PROGRESSIVE:
+      return "progressive";
+    case AV_FIELD_TT:
+      return "tt";
+    case AV_FIELD_BB:
+      return "bb";
+    case AV_FIELD_TB:
+      return "tb";
+    case AV_FIELD_BT:
+      return "bt";
+    default:
+      return nullptr;
+  }
+}
+
+void set_framerate(
+    [[maybe_unused]] AVCodecParameters& codecpar,
+    [[maybe_unused]] const AVRational& framerate) {
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(60, 11, 100)
+  codecpar.framerate = framerate;
+#else
+  STD_TORCH_CHECK(false, "framerate requires FFmpeg 6.1 or above.");
+#endif
+}
+
+void set_channel_layout(AVCodecParameters& codecpar, const std::string& name) {
+#if FFMPEG_HAS_CH_LAYOUT
+  STD_TORCH_CHECK(
+      av_channel_layout_from_string(&codecpar.ch_layout, name.c_str()) == 0,
+      "Unknown channel_layout: ",
+      name);
+#else
+  uint64_t layout = av_get_channel_layout(name.c_str());
+  if (layout != 0) {
+    codecpar.channel_layout = layout;
+    codecpar.channels = av_get_channel_layout_nb_channels(layout);
+    return;
+  }
+  // What av_get_channel_layout_string() describes a layout-less channel count
+  // as, and av_get_channel_layout() doesn't parse back.
+  int num_channels = 0;
+  char trailing = '\0';
+  STD_TORCH_CHECK(
+      std::sscanf(name.c_str(), "%d channels%c", &num_channels, &trailing) ==
+              1 &&
+          num_channels > 0,
+      "Unknown channel_layout: ",
+      name);
+  codecpar.channel_layout = 0;
+  codecpar.channels = num_channels;
+#endif
+}
+
+AVFieldOrder get_field_order_from_name(const std::string& name) {
+  for (AVFieldOrder field_order :
+       {AV_FIELD_PROGRESSIVE,
+        AV_FIELD_TT,
+        AV_FIELD_BB,
+        AV_FIELD_TB,
+        AV_FIELD_BT}) {
+    if (name == get_field_order_name(field_order)) {
+      return field_order;
+    }
+  }
+  STD_TORCH_CHECK(false, "Unknown field_order: ", name);
+}
+
+AVPacketSideDataType get_packet_side_data_type_from_name(
+    const std::string& name) {
+  for (int type = 0; type < AV_PKT_DATA_NB; ++type) {
+    const char* candidate =
+        av_packet_side_data_name(static_cast<AVPacketSideDataType>(type));
+    if (candidate != nullptr && name == candidate) {
+      return static_cast<AVPacketSideDataType>(type);
+    }
+  }
+  STD_TORCH_CHECK(false, "Unknown side data type: ", name);
 }
 
 void set_display_matrix_on_frame(
@@ -897,35 +1061,46 @@ void set_display_matrix_on_frame(
   std::memcpy(side_data->data, display_matrix, kDisplayMatrixSize);
 }
 
-SwsConfig::SwsConfig(
-    int input_width,
-    int input_height,
-    AVPixelFormat input_format,
-    AVColorSpace input_colorspace,
-    int output_width,
-    int output_height,
-    AVPixelFormat output_format)
-    : input_width(input_width),
-      input_height(input_height),
-      input_format(input_format),
-      input_colorspace(input_colorspace),
-      output_width(output_width),
-      output_height(output_height),
-      output_format(output_format) {}
-
 bool SwsConfig::operator==(const SwsConfig& other) const {
   return input_width == other.input_width &&
       input_height == other.input_height &&
       input_format == other.input_format &&
       input_colorspace == other.input_colorspace &&
+      input_color_range == other.input_color_range &&
       output_width == other.output_width &&
       output_height == other.output_height &&
-      output_format == other.output_format;
+      output_format == other.output_format &&
+      output_color_range == other.output_color_range;
 }
 
 bool SwsConfig::operator!=(const SwsConfig& other) const {
   return !(*this == other);
 }
+
+namespace {
+#if FFMPEG_SWS_COLORSPACE_DETAILS_FAILS_ON_YUV_TO_YUV
+// Matches swscale's own isYUV() || isGray(): everything that isn't RGB,
+// palettised or a hardware format.
+bool is_yuv_or_gray(AVPixelFormat format) {
+  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(format);
+  return desc != nullptr &&
+      !(desc->flags &
+        (AV_PIX_FMT_FLAG_RGB | AV_PIX_FMT_FLAG_PAL | AV_PIX_FMT_FLAG_HWACCEL));
+}
+
+void validate_sws_set_colorspace_details(int ret, const SwsConfig& sws_config) {
+  bool yuv_or_gray_to_yuv_or_gray = is_yuv_or_gray(sws_config.input_format) &&
+      is_yuv_or_gray(sws_config.output_format);
+  STD_TORCH_CHECK(
+      ret != -1 || yuv_or_gray_to_yuv_or_gray,
+      "sws_setColorspaceDetails returned -1");
+}
+#else
+void validate_sws_set_colorspace_details(int ret, const SwsConfig&) {
+  STD_TORCH_CHECK(ret != -1, "sws_setColorspaceDetails returned -1");
+}
+#endif
+} // namespace
 
 UniqueSwsContext create_sws_context(
     const SwsConfig& sws_config,
@@ -957,6 +1132,14 @@ UniqueSwsContext create_sws_context(
       &saturation);
   STD_TORCH_CHECK(ret != -1, "sws_getColorspaceDetails returned -1");
 
+  // swscale spells a range as an int: 1 is full (jpeg), 0 is limited.
+  if (sws_config.input_color_range != AVCOL_RANGE_UNSPECIFIED) {
+    src_range = sws_config.input_color_range == AVCOL_RANGE_JPEG;
+  }
+  if (sws_config.output_color_range != AVCOL_RANGE_UNSPECIFIED) {
+    dst_range = sws_config.output_color_range == AVCOL_RANGE_JPEG;
+  }
+
   const int* colorspace_table =
       sws_getCoefficients(sws_config.input_colorspace);
   ret = sws_setColorspaceDetails(
@@ -968,7 +1151,7 @@ UniqueSwsContext create_sws_context(
       brightness,
       contrast,
       saturation);
-  STD_TORCH_CHECK(ret != -1, "sws_setColorspaceDetails returned -1");
+  validate_sws_set_colorspace_details(ret, sws_config);
 
   return UniqueSwsContext(sws_context);
 }

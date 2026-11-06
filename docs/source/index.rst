@@ -1,6 +1,11 @@
 Welcome to the TorchCodec documentation!
 ========================================
 
+.. image:: _static/img/torchcodec_horizontal_logo.jpg
+   :alt: TorchCodec
+   :width: 500px
+   :align: center
+
 TorchCodec is a PyTorch-native library for decoding and encoding media: videos,
 audio, and images, on CPU and CUDA GPU. It aims to be fast, easy to
 use, and well integrated into the PyTorch ecosystem. If you want to use PyTorch
@@ -106,12 +111,45 @@ Decoding
 
         How to decode HDR videos with the ``output_dtype`` parameter
 
+
+Decoding: low-level APIs (beta)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The low-level decoding APIs, which expose demuxing, decoding and conversion as
+separate stages.
+
+.. grid:: 3
+
      .. grid-item-card:: :octicon:`file-code;1em`
-        Blocks (experimental)
-        :link: generated_examples/decoding/blocks.html
+        Build your own decoding pipeline
+        :link: generated_examples/low_level/basics.html
         :link-type: url
 
-        A preview of the unreleased building-block decoding APIs
+        The three stages, video and audio, metadata, seeking, scanning, and
+        endless sources
+
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Multi-threaded pipelines
+        :link: generated_examples/low_level/pipelines.html
+        :link-type: url
+
+        How to overlap the stages on several threads, and how to demux and
+        decode in different processes
+
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Raw frames and samples
+        :link: generated_examples/low_level/raw_data.html
+        :link-type: url
+
+        How to read the decoder's own YUV planes and audio samples
+
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Decoding without a Demuxer
+        :link: generated_examples/low_level/demuxer_free.html
+        :link-type: url
+
+        How to decode packets that come from a database, the network, or your
+        own container parser
 
 
 Encoding

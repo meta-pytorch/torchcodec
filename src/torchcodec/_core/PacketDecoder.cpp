@@ -13,8 +13,10 @@
 
 namespace facebook::torchcodec {
 
-SharedAVCodecContext create_and_open_codec_context(
-    AVStream* stream,
+namespace {
+SharedAVCodecContext open_codec_context(
+    const AVCodecParameters& codecpar,
+    const AVRational& time_base,
     const AVCodec* av_codec,
     DeviceInterface* device_interface,
     std::optional<int> thread_count) {
@@ -24,12 +26,11 @@ SharedAVCodecContext create_and_open_codec_context(
   SharedAVCodecContext codec_context =
       make_shared_av_codec_context(raw_codec_context);
 
-  int ret =
-      avcodec_parameters_to_context(codec_context.get(), stream->codecpar);
+  int ret = avcodec_parameters_to_context(codec_context.get(), &codecpar);
   STD_TORCH_CHECK(ret == AVSUCCESS, "avcodec_parameters_to_context failed");
 
   codec_context->thread_count = thread_count.value_or(0);
-  codec_context->pkt_timebase = stream->time_base;
+  codec_context->pkt_timebase = time_base;
 
   // We must register the hardware device context with the codec context before
   // calling avcodec_open2(). Otherwise, decoding will happen on the CPU and not
@@ -39,32 +40,55 @@ SharedAVCodecContext create_and_open_codec_context(
   STD_TORCH_CHECK(
       ret >= AVSUCCESS, get_ffmpeg_error_string_from_error_code(ret));
 
-  codec_context->time_base = stream->time_base;
+  codec_context->time_base = time_base;
   return codec_context;
 }
 
-namespace {
 const AVCodec* find_decoder(
-    AVStream* stream,
+    const AVCodecParameters& codecpar,
     DeviceInterface* device_interface) {
-  const AVCodec* av_codec = avcodec_find_decoder(stream->codecpar->codec_id);
+  const AVCodec* av_codec = avcodec_find_decoder(codecpar.codec_id);
   STD_TORCH_CHECK(av_codec != nullptr, "Codec not found");
-  if (stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-    av_codec = device_interface->find_codec(stream->codecpar->codec_id)
-                   .value_or(av_codec);
+  if (codecpar.codec_type == AVMEDIA_TYPE_VIDEO) {
+    av_codec =
+        device_interface->find_codec(codecpar.codec_id).value_or(av_codec);
   }
   return av_codec;
 }
 } // namespace
 
+SharedAVCodecContext create_and_open_codec_context(
+    const CodecParameters& codec_parameters,
+    const AVCodec* av_codec,
+    DeviceInterface* device_interface,
+    std::optional<int> thread_count) {
+  return open_codec_context(
+      *codec_parameters.codecpar,
+      codec_parameters.time_base,
+      av_codec,
+      device_interface,
+      thread_count);
+}
+
+SharedAVCodecContext create_and_open_codec_context(
+    AVStream* stream,
+    const AVCodec* av_codec,
+    DeviceInterface* device_interface,
+    std::optional<int> thread_count) {
+  return open_codec_context(
+      *stream->codecpar,
+      stream->time_base,
+      av_codec,
+      device_interface,
+      thread_count);
+}
+
 PacketDecoder::PacketDecoder(
-    const Demuxer& demuxer,
-    std::optional<int> stream_index,
+    const CodecParameters& codec_parameters,
     const StableDevice& device,
     std::optional<int> ffmpeg_thread_count) {
-  AVStream* stream = demuxer.format_context()
-                         ->streams[demuxer.resolve_stream_index(stream_index)];
-  media_type_ = stream->codecpar->codec_type;
+  const AVCodecParameters& codecpar = *codec_parameters.codecpar;
+  media_type_ = codecpar.codec_type;
 
   bool is_audio = media_type_ == AVMEDIA_TYPE_AUDIO;
   STD_TORCH_CHECK(
@@ -76,24 +100,23 @@ PacketDecoder::PacketDecoder(
       device_interface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");
 
-  time_base_ = stream->time_base;
+  time_base_ = codec_parameters.time_base;
 
-  is_mpeg_ps_ =
-      std::string_view(demuxer.format_context()->iformat->name) == "mpeg";
+  is_mpeg_ps_ = codec_parameters.container_format != nullptr &&
+      std::string_view(codec_parameters.container_format->name) == "mpeg";
 
   if (is_audio) {
     // Audio codecs are hardcoded to a single FFmpeg thread, see
     // https://github.com/pytorch/torchcodec/issues/1253.
     ffmpeg_thread_count = 1;
-  } else if (const int32_t* matrix = get_display_matrix_from_stream(stream)) {
-    display_matrix_.emplace();
-    std::copy(
-        matrix, matrix + display_matrix_->size(), display_matrix_->begin());
+    audio_pts_extrapolator_ = AudioPtsExtrapolator(time_base_);
+  } else {
+    display_matrix_ = codec_parameters.display_matrix;
   }
 
-  const AVCodec* av_codec = find_decoder(stream, device_interface_.get());
+  const AVCodec* av_codec = find_decoder(codecpar, device_interface_.get());
   codec_context_ = create_and_open_codec_context(
-      stream, av_codec, device_interface_.get(), ffmpeg_thread_count);
+      codec_parameters, av_codec, device_interface_.get(), ffmpeg_thread_count);
   device_interface_->initialize(codec_context_);
 
   if (is_audio) {
@@ -117,21 +140,11 @@ PacketDecoder::PacketDecoder(
   options.output_dtype =
       stream_bit_depth > 8 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
 
-  device_interface_->initialize_video_decoding(
-      stream, demuxer.format_context(), options);
+  device_interface_->initialize_video_decoding(codec_parameters, options);
 }
 
-int PacketDecoder::send_packet(AVPacket* packet) {
-  // The decode seam expects a ReferenceAVPacket. Copy a reference of the
-  // caller- owned packet into a temporary one (cheap, refcount bump); the
-  // temporary is unref'd on scope exit while the caller retains ownership of
-  // `packet`.
-  AutoAVPacket auto_packet;
-  ReferenceAVPacket ref(auto_packet);
-  int status = av_packet_ref(ref.get(), packet);
-  STD_TORCH_CHECK(status >= AVSUCCESS, "av_packet_ref failed");
-
-  status = device_interface_->send_packet(ref);
+int PacketDecoder::send_packet(const AVPacket& packet) {
+  int status = device_interface_->send_packet(packet);
 
   if (status == AVERROR_INVALIDDATA && packet_data_may_be_misaligned_) {
     // Seeking in an MPEG program stream lands on a container-level byte offset,
@@ -154,6 +167,7 @@ int PacketDecoder::send_eof() {
 
 void PacketDecoder::reset() {
   device_interface_->flush();
+  audio_pts_extrapolator_.reset();
   packet_data_may_be_misaligned_ = is_mpeg_ps_;
 }
 
@@ -161,7 +175,9 @@ int PacketDecoder::receive_frame(UniqueAVFrame& av_frame) {
   int status = device_interface_->receive_frame(av_frame);
   if (status == AVSUCCESS) {
     device_interface_->make_frame_standalone(av_frame);
-    if (media_type_ == AVMEDIA_TYPE_VIDEO) {
+    if (media_type_ == AVMEDIA_TYPE_AUDIO) {
+      audio_pts_extrapolator_.process(*av_frame);
+    } else if (media_type_ == AVMEDIA_TYPE_VIDEO) {
       // Attach a copy of the display matrix to the frame, so the ColorConverter
       // can use it.
       set_display_matrix_on_frame(
@@ -186,23 +202,32 @@ std::string get_pix_fmt_name(const AVFrame& av_frame) {
 }
 } // namespace
 
-FrameMetadata frame_metadata(const AVFrame& av_frame) {
+FrameMetadata get_frame_metadata(const AVFrame& av_frame) {
   const AVPixFmtDescriptor* desc = get_pix_fmt_desc(av_frame);
-  const char* colorspace_name = av_color_space_name(av_frame.colorspace);
+
+  // These all return a static string, or nullptr for a value outside the enum.
+  const char* color_space_name = av_color_space_name(av_frame.colorspace);
   const char* color_range_name = av_color_range_name(av_frame.color_range);
+  const char* color_primaries_name =
+      av_color_primaries_name(av_frame.color_primaries);
+  const char* color_trc_name = av_color_transfer_name(av_frame.color_trc);
 
   FrameMetadata result;
-  result.pix_fmt = get_pix_fmt_name(av_frame);
-  result.colorspace = colorspace_name ? colorspace_name : "unknown";
+  result.pixel_format = get_pix_fmt_name(av_frame);
+  result.color_space = color_space_name ? color_space_name : "unknown";
   result.color_range = color_range_name ? color_range_name : "unknown";
+  result.color_primaries =
+      color_primaries_name ? color_primaries_name : "unknown";
+  result.color_transfer_characteristic =
+      color_trc_name ? color_trc_name : "unknown";
   result.bit_depth = desc->comp[0].depth;
   result.width = av_frame.width;
   result.height = av_frame.height;
-  result.rotation_degrees = get_rotation_from_frame(av_frame).value_or(0);
+  result.rotation = get_rotation_from_frame(av_frame).value_or(0);
   return result;
 }
 
-std::vector<torch::stable::Tensor> frame_planes(
+std::vector<torch::stable::Tensor> get_frame_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
     const torch::stable::Tensor& tensor_handle) {
@@ -291,7 +316,7 @@ void deinterleave(
 }
 } // namespace
 
-torch::stable::Tensor audio_samples(const AVFrame& av_frame) {
+torch::stable::Tensor get_audio_samples(const AVFrame& av_frame) {
   auto sample_format = static_cast<AVSampleFormat>(av_frame.format);
   int num_channels = get_num_channels(av_frame);
   int64_t num_samples = av_frame.nb_samples;

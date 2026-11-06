@@ -20,14 +20,15 @@ SwScale::SwScale(const SwsConfig& config, int sws_flags)
   // When no resize is needed, input and output resolutions are the same.
   // See [Transform and Format Conversion Order] for more on the output pixel
   // format.
-  SwsConfig color_conversion_frame_config(
-      config_.input_width,
-      config_.input_height,
-      config_.input_format,
-      config_.input_colorspace,
-      config_.input_width,
-      config_.input_height,
-      config_.output_format);
+  SwsConfig color_conversion_frame_config{
+      .input_width = config_.input_width,
+      .input_height = config_.input_height,
+      .input_format = config_.input_format,
+      .input_colorspace = config_.input_colorspace,
+      .input_color_range = config_.input_color_range,
+      .output_width = config_.input_width,
+      .output_height = config_.input_height,
+      .output_format = config_.output_format};
 
   color_conversion_sws_context_ = create_sws_context(
       color_conversion_frame_config,
@@ -38,16 +39,28 @@ SwScale::SwScale(const SwsConfig& config, int sws_flags)
   // Create resize context if needed (output RGB at input resolution ->
   // output RGB at output resolution).
   if (needs_resize_) {
-    SwsConfig resize_frame_config(
-        config_.input_width,
-        config_.input_height,
-        config_.output_format,
-        AVCOL_SPC_RGB,
-        config_.output_width,
-        config_.output_height,
-        config_.output_format);
+    SwsConfig resize_frame_config{
+        .input_width = config_.input_width,
+        .input_height = config_.input_height,
+        .input_format = config_.output_format,
+        .input_colorspace = AVCOL_SPC_RGB,
+        .output_width = config_.output_width,
+        .output_height = config_.output_height,
+        .output_format = config_.output_format};
 
     resize_sws_context_ = create_sws_context(resize_frame_config, sws_flags_);
+
+    color_converted_frame_.reset(av_frame_alloc());
+    STD_TORCH_CHECK(
+        color_converted_frame_ != nullptr, "Failed to allocate AVFrame");
+    color_converted_frame_->format = config_.output_format;
+    color_converted_frame_->width = config_.input_width;
+    color_converted_frame_->height = config_.input_height;
+    int status = av_frame_get_buffer(color_converted_frame_.get(), 0);
+    STD_TORCH_CHECK(
+        status == 0,
+        "Failed to allocate color conversion buffer: ",
+        get_ffmpeg_error_string_from_error_code(status));
   }
 }
 
@@ -64,24 +77,19 @@ int SwScale::convert(
   // RGB24 = 3 channels x 1 byte (uint8); RGB48 = 3 channels x 2 bytes (uint16).
   bool is_rgb48 = config_.output_format == AV_PIX_FMT_RGB48;
   int bytes_per_pixel = is_rgb48 ? 6 : 3;
-  auto output_dtype = is_rgb48 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
-  torch::stable::Tensor color_converted_tensor = needs_resize_
-      ? allocate_empty_hwc_tensor(
-            FrameDims(config_.input_height, config_.input_width),
-            kStableCPU,
-            output_dtype)
-      : output_tensor;
 
   // sws_scale always takes uint8_t* pointers regardless of actual bit depth.
-  uint8_t* color_converted_pointers[4] = {
-      static_cast<uint8_t*>(color_converted_tensor.mutable_data_ptr()),
+  uint8_t* output_pointers[4] = {
+      static_cast<uint8_t*>(output_tensor.mutable_data_ptr()),
       nullptr,
       nullptr,
       nullptr};
-  int color_converted_width =
-      static_cast<int>(color_converted_tensor.sizes()[1]);
-  int color_converted_linesizes[4] = {
-      color_converted_width * bytes_per_pixel, 0, 0, 0};
+  int output_linesizes[4] = {config_.output_width * bytes_per_pixel, 0, 0, 0};
+
+  uint8_t* const* color_converted_pointers =
+      needs_resize_ ? color_converted_frame_->data : output_pointers;
+  const int* color_converted_linesizes =
+      needs_resize_ ? color_converted_frame_->linesize : output_linesizes;
 
   int color_converted_height = sws_scale(
       color_conversion_sws_context_.get(),
@@ -100,29 +108,14 @@ int SwScale::convert(
       av_frame.height);
 
   if (needs_resize_) {
-    uint8_t* src_pointers[4] = {
-        static_cast<uint8_t*>(color_converted_tensor.mutable_data_ptr()),
-        nullptr,
-        nullptr,
-        nullptr};
-    int src_linesizes[4] = {config_.input_width * bytes_per_pixel, 0, 0, 0};
-
-    uint8_t* dst_pointers[4] = {
-        static_cast<uint8_t*>(output_tensor.mutable_data_ptr()),
-        nullptr,
-        nullptr,
-        nullptr};
-    int expected_output_width = static_cast<int>(output_tensor.sizes()[1]);
-    int dst_linesizes[4] = {expected_output_width * bytes_per_pixel, 0, 0, 0};
-
     color_converted_height = sws_scale(
         resize_sws_context_.get(),
-        src_pointers,
-        src_linesizes,
+        color_converted_frame_->data,
+        color_converted_frame_->linesize,
         0,
         config_.input_height,
-        dst_pointers,
-        dst_linesizes);
+        output_pointers,
+        output_linesizes);
   }
 
   return color_converted_height;

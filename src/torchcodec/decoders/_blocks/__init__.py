@@ -4,30 +4,18 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Private, experimental building-block decode API.
-
-Exposes the three decode stages -- :class:`Demuxer`,
-:class:`VideoPacketDecoder`, :class:`ColorConverter` -- as passive, composable,
-GIL-releasing units, so a caller can build its own (threaded) decode pipeline
-and tune how the stages overlap. The blocks do no threading themselves.
-
-A :class:`Demuxer` follows one or more streams of a container, so the video and
-the audio of a file come out of a single pass over it. Metadata is exposed in
-tiers that are never merged: :attr:`Demuxer.metadata` for the container,
-``stream.metadata`` for what the header says about a stream, and
-:meth:`VideoStream.scan` for what its packets actually say. That is the whole
-point of this layer -- it shows you the machinery instead of deciding for you.
-
-This is experimental and private; the API may change. See
-API_breakdown_claude_plan.md and multi_stream_demuxer_design.md for the design
-and rationale.
-"""
+from torchcodec._core._metadata import (
+    AudioStreamHeaderMetadata,
+    ContainerMetadata,
+    DemuxerMetadata,
+    StreamMetadata,
+    VideoStreamHeaderMetadata,
+)
 
 from ._audio_converter import AudioConverter
+from ._codec_parameters import AudioCodecParameters, VideoCodecParameters
 from ._color_converter import ColorConverter
 from ._demuxer import (
-    # TODO_API_BREAKDOWN DESIGN P1: AudioStream and VideoStream may conflict
-    # with the encoder-side classes of the same name. Maybe that's OK?
     AudioStream,
     Demuxer,
     FrameIndex,
@@ -42,6 +30,8 @@ __all__ = [
     "get_container_metadata",
     "VideoStream",
     "AudioStream",
+    "VideoCodecParameters",
+    "AudioCodecParameters",
     "VideoPacketDecoder",
     "AudioPacketDecoder",
     "ColorConverter",
@@ -50,4 +40,9 @@ __all__ = [
     "RawFrame",
     "RawAudioSamples",
     "FrameIndex",
+    "DemuxerMetadata",
+    "ContainerMetadata",
+    "StreamMetadata",
+    "VideoStreamHeaderMetadata",
+    "AudioStreamHeaderMetadata",
 ]
