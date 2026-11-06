@@ -105,7 +105,9 @@ class Packet:
 
         Args:
             data (bytes, bytearray or memoryview): The compressed data of one
-                packet. It is copied.
+                packet. It is copied. Each packet must contain exactly one
+                access unit, which is what a demuxer such as :class:`Demuxer`
+                or FFmpeg's produces.
             pts (int, optional): The :term:`pts`, in units of the stream's time
                 base (:attr:`StreamMetadata.time_base`). The decoded frames'
                 :attr:`RawFrame.pts` come from it.
@@ -156,7 +158,9 @@ class Packet:
 
         Args:
             data (torch.Tensor): The compressed data of one packet, as a
-                contiguous 1D uint8 CPU tensor. It is copied.
+                contiguous 1D uint8 CPU tensor. It is copied. Each packet
+                must contain exactly one access unit, which is what a
+                demuxer such as :class:`Demuxer` or FFmpeg's produces.
             pts (int, optional): See :meth:`from_bytes`.
             dts (int, optional): See :meth:`from_bytes`.
             duration (int, optional): See :meth:`from_bytes`.
