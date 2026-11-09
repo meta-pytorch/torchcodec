@@ -138,12 +138,6 @@ class VideoDecoder:
             Read more about this parameter in:
             :ref:`sphx_glr_generated_examples_decoding_hdr_decoding.py`
 
-            .. note::
-                The features associated with this parameter are in beta stage
-                and behavior may change in future versions. Specifically,
-                detecting whether a video is SDR or HDR is difficult, so the
-                "auto" heuristic is subject to change and improve.
-
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
             This enables accurate frame seeking without requiring a full video scan.
