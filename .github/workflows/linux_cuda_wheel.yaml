@@ -266,9 +266,7 @@ jobs:
 
   install-and-test-free-threaded:
     # Asserts that the CUDA wheel works on free-threaded Python, and that using
-    # torchcodec doesn't re-enable the GIL. Running on a CPU-only machine is
-    # fine: the CUDA torch wheel still pulls in triton, which is what we need
-    # to cover.
+    # torchcodec doesn't re-enable the GIL.
     runs-on: ubuntu-latest
     needs: build
     env:

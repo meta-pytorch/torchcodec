@@ -23,10 +23,14 @@ __all__ = sorted(FFMPEG_OP_NAMES)
 
 
 def _disallow_in_graph_when_compiling(op):
-    # Note: We use disallow_in_graph because PyTorch does constant propagation
-    # of factory functions.
-    # We only touch torch._dynamo while compiling: importing it imports triton,
-    # which re-enables the GIL on free-threaded Python.
+    # We use disallow_in_graph because PyTorch does constant propagation of
+    # factory functions.
+    # Whether it's still needed is unclear and goes back to the time where we
+    # assumed torch.compile support would be needed. It... may not be.
+    # In any case, this is protected in a wrapper because we only want to import
+    # torch._dynamo if the user explicitly asks for compile support: importing
+    # torch._dynamo imports triton, which in turns re-enables the GIL on
+    # free-threaded Python.
     def wrapper(*args, **kwargs):
         if torch.compiler.is_compiling():
             torch._dynamo.disallow_in_graph(op)
