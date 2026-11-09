@@ -454,8 +454,7 @@ def check_bundling():
     - the compressed wheel is larger than MAX_WHEEL_BYTES: the slim decode-only
       libavif should keep us under it.
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
-    - (Linux only) libtorchcodec_image.so or libtorchcodec_pybind_ops.so links
-      FFmpeg.
+    - (Linux only) libtorchcodec_image.so links FFmpeg.
     - (MacOS only) a bundled libtorchcodec_core*.dylib is missing the Homebrew
       FFmpeg rpath
     """
@@ -548,18 +547,14 @@ def check_bundling():
         """Enforce that `lib_name` does NOT link FFmpeg (no FFmpeg soname in
         DT_NEEDED; see _FFMPEG_SONAME_PREFIXES).
 
-        Both libtorchcodec_image.so (the image decoders/encoders) and
-        libtorchcodec_pybind_ops.so (the Python file-like bridge) are built
+        libtorchcodec_image.so (the image decoders/encoders) is built
         separately from the FFmpeg-dependent core{4,5,6,7,8,9}.so libraries and
-        must stay FFmpeg-free:
-        - the image lib, to avoid symbol interposition between the bundled image
-          codec libs (libjpeg/libpng/libwebp) and the user's FFmpeg, which may
-          come with its own libjpeg/libpng too;
-        - the pybind lib, so it can be loaded (and image encoding used) even when
-          FFmpeg isn't installed.
+        must stay FFmpeg-free, to avoid symbol interposition between the bundled
+        image codec libs (libjpeg/libpng/libwebp) and the user's FFmpeg, which
+        may come with its own libjpeg/libpng too.
 
-        This check ensures we didn't accidentally link FFmpeg into them, which
-        would defeat the purpose of building them separately.
+        This check ensures we didn't accidentally link FFmpeg into it, which
+        would defeat the purpose of building it separately.
         """
         from elftools.elf.elffile import ELFFile
 
@@ -726,7 +721,6 @@ def check_bundling():
             if platform.system() == "Linux":
                 _assert_linux_libjpeg_is_turbo(zf)
                 _assert_linux_lib_no_ffmpeg(zf, "libtorchcodec_image.so")
-                _assert_linux_lib_no_ffmpeg(zf, "libtorchcodec_pybind_ops.so")
             elif platform.system() == "Darwin":
                 _assert_macos_homebrew_rpath_is_present(zf)
         print("OK: only libjpeg (and allowed libs) bundled.")
