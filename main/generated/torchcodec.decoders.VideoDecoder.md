@@ -58,9 +58,7 @@ applied to the decoded frames by the decoder itself, in order. Accepts both
 [`DecoderTransform`](torchcodec.transforms.DecoderTransform.html#torchcodec.transforms.DecoderTransform) and
 [`Transform`](https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.v2.Transform.html#torchvision.transforms.v2.Transform)
 objects. Read more about this parameter in [Decoder Transforms: Applying transforms during decoding](../generated_examples/decoding/transforms.html#sphx-glr-generated-examples-decoding-transforms-py).
-- **output_dtype** (torch.dtype or `"auto"`, optional) - 
-
-The dtype of the
+- **output_dtype** (torch.dtype or `"auto"`, optional) - The dtype of the
 output frames. Supported values are `torch.uint8` with values in
 [0, 255] (default), `torch.float32` with values in [0, 1], and
 `"auto"`. When `"auto"` is specified, the output dtype is
@@ -68,13 +66,6 @@ determined automatically based on the video content: uint8 for SDR
 content, float32 for HDR content.
 Read more about this parameter in:
 [Decoding HDR videos](../generated_examples/decoding/hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py)
-
-Note
-
-The features associated with this parameter are in beta stage
-and behavior may change in future versions. Specifically,
-detecting whether a video is SDR or HDR is difficult, so the
-"auto" heuristic is subject to change and improve.
 - **custom_frame_mappings** ([*str*](https://docs.python.org/3/builtins/stdtypes.html#str)*,*[*bytes*](https://docs.python.org/3/builtins/stdtypes.html#bytes)*, or**file-like object**,**optional*) - 
 
 Mapping of frames to their metadata, typically generated via ffprobe.

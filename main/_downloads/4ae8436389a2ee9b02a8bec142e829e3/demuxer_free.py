@@ -11,12 +11,6 @@ Decoding packets that don't come from a Demuxer
 
 .. currentmodule:: torchcodec.decoders
 
-.. important::
-
-   **The low-level APIs are in beta.** Their signatures and semantics may still
-   change slightly, in response to user feedback. Please `share your feedback
-   <https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue>`__!
-
 Sometimes, you don't have a file to demux. Maybe your packets were demuxed
 ahead of time and stored in a database, maybe they arrive over the network, or
 maybe they come from a container format that TorchCodec can't read. You can

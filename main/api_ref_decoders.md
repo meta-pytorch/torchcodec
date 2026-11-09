@@ -57,11 +57,6 @@ For low-level control over the decoding process, see Low-level decoding APIs for
 
 ## Low-level decoding APIs for video and audio
 
-Important
-
-**The low-level APIs are in beta.** Their signatures and semantics may still
-change slightly, in response to user feedback. Please [share your feedback](https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue)!
-
 These APIs expose the three stages of decoding as separate objects: demuxing, decoding and conversion.
 Reach for them when you need to control a stage, skip one, or run them on
 different threads. If you just want RGB frames out of a file,

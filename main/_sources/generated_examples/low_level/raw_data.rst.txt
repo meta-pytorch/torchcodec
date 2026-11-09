@@ -16,12 +16,6 @@ Raw frames and raw audio samples
 
 .. currentmodule:: torchcodec.decoders
 
-.. important::
-
-   **The low-level APIs are in beta.** Their signatures and semantics may still
-   change slightly, in response to user feedback. Please `share your feedback
-   <https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue>`__!
-
 In this tutorial, we'll skip the conversion stage of a decoding pipeline and
 read the decoder's own YUV planes and audio samples directly, at the source's
 own precision.
@@ -41,11 +35,11 @@ integer audio samples yourself.
 This tutorial assumes you are familiar with the three stages described in
 :ref:`sphx_glr_generated_examples_low_level_basics.py`.
 
-.. GENERATED FROM PYTHON SOURCE LINES 41-42
+.. GENERATED FROM PYTHON SOURCE LINES 35-36
 
 Boilerplate: a test video, and the device we'll run on.
 
-.. GENERATED FROM PYTHON SOURCE LINES 42-72
+.. GENERATED FROM PYTHON SOURCE LINES 36-66
 
 .. code-block:: Python
 
@@ -92,7 +86,7 @@ Boilerplate: a test video, and the device we'll run on.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 74-81
+.. GENERATED FROM PYTHON SOURCE LINES 68-75
 
 Raw frames
 ----------
@@ -102,7 +96,7 @@ A :class:`VideoPacketDecoder` produces :class:`RawFrame` objects, and a
 no copy and no conversion. It also carries everything you need to interpret
 them.
 
-.. GENERATED FROM PYTHON SOURCE LINES 81-99
+.. GENERATED FROM PYTHON SOURCE LINES 75-93
 
 .. code-block:: Python
 
@@ -139,7 +133,7 @@ them.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 100-115
+.. GENERATED FROM PYTHON SOURCE LINES 94-109
 
 There is one tensor per component of :attr:`RawFrame.pixel_format`, in the order
 that format describes, and only the luma and alpha ones are full size: the
@@ -157,7 +151,7 @@ container asks for a rotation gives you the samples as they were encoded, and
 :attr:`RawFrame.rotation` tells you what to apply. A :class:`ColorConverter`
 applies it for you.
 
-.. GENERATED FROM PYTHON SOURCE LINES 117-127
+.. GENERATED FROM PYTHON SOURCE LINES 111-121
 
 .. _raw_data_custom_conversion:
 
@@ -170,7 +164,7 @@ With :attr:`RawFrame.planes` and the metadata beside it
 plain PyTorch ops - it could just as well be a Triton or CUDA kernel, fused
 with whatever your model needs next.
 
-.. GENERATED FROM PYTHON SOURCE LINES 127-157
+.. GENERATED FROM PYTHON SOURCE LINES 121-151
 
 .. code-block:: Python
 
@@ -217,7 +211,7 @@ with whatever your model needs next.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 158-170
+.. GENERATED FROM PYTHON SOURCE LINES 152-164
 
 Reading or converting the planes on CUDA
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -232,7 +226,7 @@ have to wait for the decoder's asynchronous copy before reading, and keep the
 allocator from recycling the buffer while your reads are still queued. See
 :ref:`sphx_glr_generated_examples_low_level_cuda_streams.py` to learn more.
 
-.. GENERATED FROM PYTHON SOURCE LINES 172-182
+.. GENERATED FROM PYTHON SOURCE LINES 166-176
 
 Formats that can't be viewed
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -245,7 +239,7 @@ you never have to, since NVDEC only ever produces a handful of surface
 formats (``nv12``, ``p010le``, ``p012le``, ``p016le``, ``yuv444p``,
 ``yuv444p16le``).
 
-.. GENERATED FROM PYTHON SOURCE LINES 184-192
+.. GENERATED FROM PYTHON SOURCE LINES 178-186
 
 Raw HDR frames
 --------------
@@ -256,7 +250,7 @@ tone mapping. (For the :class:`~torchcodec.decoders.VideoDecoder` route to
 HDR, through its ``output_dtype`` parameter, see
 :ref:`sphx_glr_generated_examples_decoding_hdr_decoding.py`.)
 
-.. GENERATED FROM PYTHON SOURCE LINES 192-217
+.. GENERATED FROM PYTHON SOURCE LINES 186-211
 
 .. code-block:: Python
 
@@ -299,7 +293,7 @@ HDR, through its ``output_dtype`` parameter, see
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 218-225
+.. GENERATED FROM PYTHON SOURCE LINES 212-219
 
 A plane's dtype only tells you its storage width, ``uint8`` or ``uint16``;
 :attr:`RawFrame.bit_depth` is what tells you the range of the values held in
@@ -309,7 +303,7 @@ NVDEC surfaces are 16-bit containers holding the samples msb-aligned, so the
 10 bits sit at the top and the low 6 are zero. Shift them back down to read
 the sample values.
 
-.. GENERATED FROM PYTHON SOURCE LINES 225-230
+.. GENERATED FROM PYTHON SOURCE LINES 219-224
 
 .. code-block:: Python
 
@@ -331,7 +325,7 @@ the sample values.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 231-246
+.. GENERATED FROM PYTHON SOURCE LINES 225-240
 
 Raw audio samples
 -----------------
@@ -349,7 +343,7 @@ samples come out as ``[num_channels, num_samples]``. It is still the tensor an
 :class:`AudioConverter` reads, though, so mutating it in place does change
 what the converter gives you.
 
-.. GENERATED FROM PYTHON SOURCE LINES 246-264
+.. GENERATED FROM PYTHON SOURCE LINES 240-258
 
 .. code-block:: Python
 
@@ -385,7 +379,7 @@ what the converter gives you.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 265-270
+.. GENERATED FROM PYTHON SOURCE LINES 259-264
 
 An ``s16`` source gives ``int16``, an ``s32`` source ``int32``, an ``fltp``
 source ``float32``, and so on. The integer ones are *not* normalised to
@@ -393,7 +387,7 @@ source ``float32``, and so on. The integer ones are *not* normalised to
 :class:`AudioConverter` does. If normalising is all you need, you can always
 do it manually:
 
-.. GENERATED FROM PYTHON SOURCE LINES 270-274
+.. GENERATED FROM PYTHON SOURCE LINES 264-268
 
 .. code-block:: Python
 
@@ -417,7 +411,7 @@ do it manually:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 1.246 seconds)
+   **Total running time of the script:** (0 minutes 1.251 seconds)
 
 
 .. _sphx_glr_download_generated_examples_low_level_raw_data.py:

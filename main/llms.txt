@@ -90,7 +90,7 @@
 - [Build your own decoding pipeline](https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/basics.md)
 - [Low-level APIs and CUDA streams synchronization](https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/cuda_streams.md)
 - [Decoding packets that don’t come from a Demuxer](https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/demuxer_free.md)
-- [Decoding: low-level APIs (beta)](https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/index.md)
+- [Decoding: low-level APIs](https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/index.md)
 - [Multi-threaded decoding pipelines](https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/pipelines.md)
 - [Raw frames and raw audio samples](https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/raw_data.md)
 - [Computation times](https://meta-pytorch.org/torchcodec/stable/generated_examples/low_level/sg_execution_times.md)

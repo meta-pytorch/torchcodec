@@ -11,12 +11,6 @@ Low-level APIs and CUDA streams synchronization
 
 .. currentmodule:: torchcodec.decoders
 
-.. important::
-
-   **The low-level APIs are in beta.** Their signatures and semantics may still
-   change slightly, in response to user feedback. Please `share your feedback
-   <https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue>`__!
-
 On CUDA, if you decode on one stream and consume the :class:`RawFrame`\\ s on
 another - either with a :class:`ColorConverter`, or with your own consumer as in
 :ref:`sphx_glr_generated_examples_low_level_raw_data.py` - you must take care of

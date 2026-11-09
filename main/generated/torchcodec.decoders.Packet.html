@@ -533,7 +533,7 @@ document.write(`
             
               <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="../generated_examples/low_level/index.html">
-                  Decoding: low-level APIs (beta)
+                  Decoding: low-level APIs
                 </a>
               </li>
             
@@ -826,7 +826,7 @@ document.write(`
             
               <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="../generated_examples/low_level/index.html">
-                  Decoding: low-level APIs (beta)
+                  Decoding: low-level APIs
                 </a>
               </li>
             
@@ -1213,10 +1213,10 @@ compressed data that doesn’t come from a <code class="docutils literal notrans
 <p>Packets can be pickled, e.g. to be decoded in another process. The pickles
 are only guaranteed to be readable by the same version of TorchCodec.</p>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">Packet</span></code>:</p>
-<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !"><img alt="" src="../_images/sphx_glr_basics_thumb.jpg" />
+<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this tutorial, we&#x27;ll take a tour of the low-level decoding APIs: the three decoding stages for video and audio, following several streams of a container at once, seeking, scanning, what the metadata means, and decoding a source that never ends."><img alt="" src="../_images/sphx_glr_basics_thumb.jpg" />
 <p><a class="reference internal" href="../generated_examples/low_level/basics.html"><span class="doc">Build your own decoding pipeline</span></a></p>
   <div class="sphx-glr-thumbnail-title">Build your own decoding pipeline</div>
-</div><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !"><img alt="" src="../_images/sphx_glr_demuxer_free_thumb.jpg" />
+</div><div class="sphx-glr-thumbcontainer" tooltip="Sometimes, you don&#x27;t have a file to demux. Maybe your packets were demuxed ahead of time and stored in a database, maybe they arrive over the network, or maybe they come from a container format that TorchCodec can&#x27;t read. You can still decode them: a VideoPacketDecoder doesn&#x27;t need a Demuxer. All it needs are the VideoCodecParameters of the stream, and Packet objects, which you can build from the compressed data yourself."><img alt="" src="../_images/sphx_glr_demuxer_free_thumb.jpg" />
 <p><a class="reference internal" href="../generated_examples/low_level/demuxer_free.html"><span class="doc">Decoding packets that don’t come from a Demuxer</span></a></p>
   <div class="sphx-glr-thumbnail-title">Decoding packets that don't come from a Demuxer</div>
 </div></div><dl class="py property">

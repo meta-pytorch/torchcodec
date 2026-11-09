@@ -11,12 +11,6 @@ Raw frames and raw audio samples
 
 .. currentmodule:: torchcodec.decoders
 
-.. important::
-
-   **The low-level APIs are in beta.** Their signatures and semantics may still
-   change slightly, in response to user feedback. Please `share your feedback
-   <https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue>`__!
-
 In this tutorial, we'll skip the conversion stage of a decoding pipeline and
 read the decoder's own YUV planes and audio samples directly, at the source's
 own precision.

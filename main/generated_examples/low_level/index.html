@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Decoding: low-level APIs (beta) &#8212; TorchCodec 0.18.0.dev20261109+cu132 Documentation</title>
+    <title>Decoding: low-level APIs &#8212; TorchCodec 0.18.0.dev20261109+cu132 Documentation</title>
   
   
   
@@ -72,7 +72,7 @@
 <meta name="llm:site-type" content="documentation">
 <meta name="llm:framework" content="PyTorch">
 
-<meta name="llm:description" content="Decoding: low-level APIs (beta) - Documentation for Python, part of the PyTorch ecosystem.">
+<meta name="llm:description" content="Decoding: low-level APIs - Documentation for Python, part of the PyTorch ecosystem.">
 
 
 
@@ -533,7 +533,7 @@ document.write(`
             
               <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="#">
-                  Decoding: low-level APIs (beta)
+                  Decoding: low-level APIs
                 </a>
               </li>
             
@@ -826,7 +826,7 @@ document.write(`
             
               <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="#">
-                  Decoding: low-level APIs (beta)
+                  Decoding: low-level APIs
                 </a>
               </li>
             
@@ -1033,7 +1033,7 @@ document.write(`
 <li class="toctree-l2"><a class="reference internal" href="../decoding/hdr_decoding.html">Decoding HDR videos</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">Decoding: low-level APIs (beta)</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">Decoding: low-level APIs</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="basics.html">Build your own decoding pipeline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="pipelines.html">Multi-threaded decoding pipelines</a></li>
 <li class="toctree-l2"><a class="reference internal" href="raw_data.html">Raw frames and raw audio samples</a></li>
@@ -1140,7 +1140,7 @@ document.write(`
     </div>
     
     <div itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-      <meta itemprop="name" content="Decoding: low-level APIs (beta)">
+      <meta itemprop="name" content="Decoding: low-level APIs">
       <meta itemprop="position" content="2">
     </div>
   </div>
@@ -1154,21 +1154,21 @@ document.write(`
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="decoding-low-level-apis-beta">
-<span id="sphx-glr-generated-examples-low-level"></span><h1>Decoding: low-level APIs (beta)<a class="headerlink" href="#decoding-low-level-apis-beta" title="Link to this heading">#</a></h1>
-<div id='sg-tag-list' class='sphx-glr-tag-list'></div><div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !"><img alt="" src="../../_images/sphx_glr_basics_thumb.jpg" />
+  <section id="decoding-low-level-apis">
+<span id="sphx-glr-generated-examples-low-level"></span><h1>Decoding: low-level APIs<a class="headerlink" href="#decoding-low-level-apis" title="Link to this heading">#</a></h1>
+<div id='sg-tag-list' class='sphx-glr-tag-list'></div><div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this tutorial, we&#x27;ll take a tour of the low-level decoding APIs: the three decoding stages for video and audio, following several streams of a container at once, seeking, scanning, what the metadata means, and decoding a source that never ends."><img alt="" src="../../_images/sphx_glr_basics_thumb.jpg" />
 <p><a class="reference internal" href="basics.html"><span class="doc">Build your own decoding pipeline</span></a></p>
   <div class="sphx-glr-thumbnail-title">Build your own decoding pipeline</div>
-</div><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !"><img alt="" src="../../_images/sphx_glr_pipelines_thumb.jpg" />
+</div><div class="sphx-glr-thumbcontainer" tooltip="In this tutorial, we&#x27;ll assemble the three decoding stages into pipelines of our own: running demuxing, decoding and color-conversion concurrently on several threads, choosing where to split them. Each of these steps individually release the GIL."><img alt="" src="../../_images/sphx_glr_pipelines_thumb.jpg" />
 <p><a class="reference internal" href="pipelines.html"><span class="doc">Multi-threaded decoding pipelines</span></a></p>
   <div class="sphx-glr-thumbnail-title">Multi-threaded decoding pipelines</div>
-</div><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !"><img alt="" src="../../_images/sphx_glr_raw_data_thumb.jpg" />
+</div><div class="sphx-glr-thumbcontainer" tooltip="In this tutorial, we&#x27;ll skip the conversion stage of a decoding pipeline and read the decoder&#x27;s own YUV planes and audio samples directly, at the source&#x27;s own precision."><img alt="" src="../../_images/sphx_glr_raw_data_thumb.jpg" />
 <p><a class="reference internal" href="raw_data.html"><span class="doc">Raw frames and raw audio samples</span></a></p>
   <div class="sphx-glr-thumbnail-title">Raw frames and raw audio samples</div>
-</div><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !"><img alt="" src="../../_images/sphx_glr_demuxer_free_thumb.jpg" />
+</div><div class="sphx-glr-thumbcontainer" tooltip="Sometimes, you don&#x27;t have a file to demux. Maybe your packets were demuxed ahead of time and stored in a database, maybe they arrive over the network, or maybe they come from a container format that TorchCodec can&#x27;t read. You can still decode them: a VideoPacketDecoder doesn&#x27;t need a Demuxer. All it needs are the VideoCodecParameters of the stream, and Packet objects, which you can build from the compressed data yourself."><img alt="" src="../../_images/sphx_glr_demuxer_free_thumb.jpg" />
 <p><a class="reference internal" href="demuxer_free.html"><span class="doc">Decoding packets that don’t come from a Demuxer</span></a></p>
   <div class="sphx-glr-thumbnail-title">Decoding packets that don't come from a Demuxer</div>
-</div><div class="sphx-glr-thumbcontainer" tooltip="   The low-level APIs are in beta. Their signatures and semantics may still    change slightly, in response to user feedback. Please share your feedback   !"><img alt="" src="../../_images/sphx_glr_cuda_streams_thumb.jpg" />
+</div><div class="sphx-glr-thumbcontainer" tooltip="On CUDA, if you decode on one stream and consume the RawFrame\ s on another - either with a ColorConverter, or with your own consumer as in sphx_glr_generated_examples_low_level_raw_data.py - you must take care of two things:"><img alt="" src="../../_images/sphx_glr_cuda_streams_thumb.jpg" />
 <p><a class="reference internal" href="cuda_streams.html"><span class="doc">Low-level APIs and CUDA streams synchronization</span></a></p>
   <div class="sphx-glr-thumbnail-title">Low-level APIs and CUDA streams synchronization</div>
 </div></div><div class="toctree-wrapper compound">
@@ -1502,11 +1502,11 @@ document.write(`
     {
        "@context": "https://schema.org",
        "@type": "Article",
-       "name": "Decoding: low-level APIs (beta)",
-       "headline": "Decoding: low-level APIs (beta)",
+       "name": "Decoding: low-level APIs",
+       "headline": "Decoding: low-level APIs",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated_examples/low_level/index.html",
-       "articleBody": "Decoding: low-level APIs (beta)# Build your own decoding pipeline Build your own decoding pipeline Multi-threaded decoding pipelines Multi-threaded decoding pipelines Raw frames and raw audio samples Raw frames and raw audio samples Decoding packets that don\u2019t come from a Demuxer Decoding packets that don\u0027t come from a Demuxer Low-level APIs and CUDA streams synchronization Low-level APIs and CUDA streams synchronization",
+       "articleBody": "Decoding: low-level APIs# Build your own decoding pipeline Build your own decoding pipeline Multi-threaded decoding pipelines Multi-threaded decoding pipelines Raw frames and raw audio samples Raw frames and raw audio samples Decoding packets that don\u2019t come from a Demuxer Decoding packets that don\u0027t come from a Demuxer Low-level APIs and CUDA streams synchronization Low-level APIs and CUDA streams synchronization",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

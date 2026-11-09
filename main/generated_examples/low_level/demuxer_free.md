@@ -1,10 +1,5 @@
 # Decoding packets that don't come from a Demuxer
 
-Important
-
-**The low-level APIs are in beta.** Their signatures and semantics may still
-change slightly, in response to user feedback. Please [share your feedback](https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue)!
-
 Sometimes, you don't have a file to demux. Maybe your packets were demuxed
 ahead of time and stored in a database, maybe they arrive over the network, or
 maybe they come from a container format that TorchCodec can't read. You can
@@ -44,7 +39,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-bf', '2', '/tmp/tmpo5izighu/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-bf', '2', '/tmp/tmpxlkfb8du/video.mp4'], returncode=0)
 ```
 
 ## Storing the packets
@@ -162,7 +157,7 @@ The codec parameters and the packets can also be pickled, e.g. to demux in
 one process and decode in another: see the last section of
 [Multi-threaded decoding pipelines](pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py).
 
-**Total running time of the script:** (0 minutes 0.287 seconds)
+**Total running time of the script:** (0 minutes 0.296 seconds)
 
 [`Download Jupyter notebook: demuxer_free.ipynb`](../../_downloads/f205b88185dfa081992474f3aa491086/demuxer_free.ipynb)
 

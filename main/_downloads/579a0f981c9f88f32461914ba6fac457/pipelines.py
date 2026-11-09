@@ -11,12 +11,6 @@ Multi-threaded decoding pipelines
 
 .. currentmodule:: torchcodec.decoders
 
-.. important::
-
-   **The low-level APIs are in beta.** Their signatures and semantics may still
-   change slightly, in response to user feedback. Please `share your feedback
-   <https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue>`__!
-
 In this tutorial, we'll assemble the three decoding stages into pipelines of our
 own: running demuxing, decoding and color-conversion concurrently on several
 threads, choosing where to split them. Each of these steps individually release

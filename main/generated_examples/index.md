@@ -63,7 +63,7 @@ Decoder Transforms: Applying transforms during decoding
 
 Decoding HDR videos
 
-## Decoding: low-level APIs (beta)
+## Decoding: low-level APIs
 
 ![](../_images/sphx_glr_basics_thumb.jpg)
 

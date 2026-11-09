@@ -16,12 +16,6 @@ Decoding packets that don't come from a Demuxer
 
 .. currentmodule:: torchcodec.decoders
 
-.. important::
-
-   **The low-level APIs are in beta.** Their signatures and semantics may still
-   change slightly, in response to user feedback. Please `share your feedback
-   <https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue>`__!
-
 Sometimes, you don't have a file to demux. Maybe your packets were demuxed
 ahead of time and stored in a database, maybe they arrive over the network, or
 maybe they come from a container format that TorchCodec can't read. You can
@@ -33,11 +27,11 @@ data yourself.
 In this tutorial, we'll decode packets that an earlier job demuxed and stored,
 without the original file.
 
-.. GENERATED FROM PYTHON SOURCE LINES 33-34
+.. GENERATED FROM PYTHON SOURCE LINES 27-28
 
 Some boilerplate first: a test video, and the device we'll run on.
 
-.. GENERATED FROM PYTHON SOURCE LINES 34-56
+.. GENERATED FROM PYTHON SOURCE LINES 28-50
 
 .. code-block:: Python
 
@@ -73,11 +67,11 @@ Some boilerplate first: a test video, and the device we'll run on.
 
     device = 'cuda'
 
-    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-bf', '2', '/tmp/tmpo5izighu/video.mp4'], returncode=0)
+    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-bf', '2', '/tmp/tmpxlkfb8du/video.mp4'], returncode=0)
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 58-65
+.. GENERATED FROM PYTHON SOURCE LINES 52-59
 
 Storing the packets
 -------------------
@@ -87,7 +81,7 @@ its data, its :term:`pts` and its flags, which is the data we'll later need to
 reconstruct such Packets. It also stores the values a decoder needs about the
 stream, which we'll look at below.
 
-.. GENERATED FROM PYTHON SOURCE LINES 65-81
+.. GENERATED FROM PYTHON SOURCE LINES 59-75
 
 .. code-block:: Python
 
@@ -120,12 +114,12 @@ stream, which we'll look at below.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 82-84
+.. GENERATED FROM PYTHON SOURCE LINES 76-78
 
 From here on, there's no :class:`Demuxer` and no file: only ``rows`` and
 ``stream_info``, which play the role of our database.
 
-.. GENERATED FROM PYTHON SOURCE LINES 84-86
+.. GENERATED FROM PYTHON SOURCE LINES 78-80
 
 .. code-block:: Python
 
@@ -138,7 +132,7 @@ From here on, there's no :class:`Demuxer` and no file: only ``rows`` and
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 87-94
+.. GENERATED FROM PYTHON SOURCE LINES 81-88
 
 Codec parameters
 ----------------
@@ -148,7 +142,7 @@ the packets' timestamps, and some codec-specific values. That's what
 :class:`VideoCodecParameters` holds. Here, we build them from the stored
 values:
 
-.. GENERATED FROM PYTHON SOURCE LINES 94-107
+.. GENERATED FROM PYTHON SOURCE LINES 88-101
 
 .. code-block:: Python
 
@@ -178,7 +172,7 @@ values:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 108-122
+.. GENERATED FROM PYTHON SOURCE LINES 102-116
 
 Which fields you need depends on the codec. For H.264 in MP4, the decoder
 needs the ``extradata``: it's where MP4 stores the codec's setup data,
@@ -195,7 +189,7 @@ parameters a :class:`Demuxer` reports for a similar file:
    object, e.g. pickled, rather than a few of its fields: it holds everything
    the decoder may need, including fields you wouldn't think of.
 
-.. GENERATED FROM PYTHON SOURCE LINES 124-132
+.. GENERATED FROM PYTHON SOURCE LINES 118-126
 
 Decoding the packets
 --------------------
@@ -206,7 +200,7 @@ is required, but the pts is what gives the decoded frames their timestamps.
 **Unlike in most TorchCodec APIs, timestamps are integers**, in units of the
 stream's time base. The rest is the usual decoding loop:
 
-.. GENERATED FROM PYTHON SOURCE LINES 132-145
+.. GENERATED FROM PYTHON SOURCE LINES 126-139
 
 .. code-block:: Python
 
@@ -236,7 +230,7 @@ stream's time base. The rest is the usual decoding loop:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 146-153
+.. GENERATED FROM PYTHON SOURCE LINES 140-147
 
 Matching frames to packets
 --------------------------
@@ -246,7 +240,7 @@ But :attr:`RawFrame.pts` is the pts of the packet the frame was decoded from,
 and both are integers: a frame can be matched exactly to its packet, e.g. to
 look up what you stored along with it.
 
-.. GENERATED FROM PYTHON SOURCE LINES 155-158
+.. GENERATED FROM PYTHON SOURCE LINES 149-152
 
 The codec parameters and the packets can also be pickled, e.g. to demux in
 one process and decode in another: see the last section of
@@ -255,7 +249,7 @@ one process and decode in another: see the last section of
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 0.287 seconds)
+   **Total running time of the script:** (0 minutes 0.296 seconds)
 
 
 .. _sphx_glr_download_generated_examples_low_level_demuxer_free.py:
