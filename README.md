@@ -214,7 +214,7 @@ The following table indicates the compatibility between versions of
 
 | `torchcodec`       | `torch`            | Python              |
 | ------------------ | ------------------ | ------------------- |
-| `main` / `nightly` | `main` / `nightly` | `>=3.10`, `<=3.14`   |
+| `main` / `nightly` | `main` / `nightly` | `>=3.11`, `<=3.15`   |
 | `0.17`             | `>=2.11`             | `>=3.10`, `<=3.14`   |
 | `0.16`             | `>=2.11`             | `>=3.10`, `<=3.14`   |
 | `0.15`             | `>=2.11`             | `>=3.10`, `<=3.14`   |
