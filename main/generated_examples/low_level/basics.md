@@ -75,7 +75,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpmwjg30o3/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp1o430a8m/video.mp4'], returncode=0)
 ```
 
 ## The three stages
@@ -205,7 +205,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpmwjg30o3/video.mp4', '-i', '/tmp/tmpmwjg30o3/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpmwjg30o3/av.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmp1o430a8m/video.mp4', '-i', '/tmp/tmp1o430a8m/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmp1o430a8m/av.mp4'], returncode=0)
 ```
 
 Which streams to follow is specified at construction time of the
