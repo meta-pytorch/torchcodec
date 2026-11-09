@@ -11,12 +11,6 @@ Build your own decoding pipeline
 
 .. currentmodule:: torchcodec.decoders
 
-.. important::
-
-   **The low-level APIs are in beta.** Their signatures and semantics may still
-   change slightly, in response to user feedback. Please `share your feedback
-   <https://github.com/meta-pytorch/torchcodec/issues?q=is:open+is:issue>`__!
-
 In this tutorial, we'll take a tour of the low-level decoding APIs: the three
 decoding stages for video and audio, following several streams of a container at
 once, seeking, scanning, what the metadata means, and decoding a source that

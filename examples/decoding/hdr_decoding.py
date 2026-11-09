@@ -13,11 +13,6 @@ In this example, we'll learn how to decode HDR (High Dynamic Range) videos
 using the ``output_dtype`` parameter of the
 :class:`~torchcodec.decoders.VideoDecoder` class.
 
-.. note::
-
-   The ``output_dtype`` parameter is in beta. Its behavior may change in future
-   versions.
-
 HDR videos typically encode pixel data with more than 8 bits per channel (e.g.
 10 or 12 bits). This allows them to represent a wider range of colors and
 brightness levels. When decoding such content, it is generally desirable to

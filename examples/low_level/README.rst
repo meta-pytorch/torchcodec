@@ -1,2 +1,2 @@
-Decoding: low-level APIs (beta)
--------------------------------
+Decoding: low-level APIs
+------------------------

@@ -112,8 +112,8 @@ Decoding
         How to decode HDR videos with the ``output_dtype`` parameter
 
 
-Decoding: low-level APIs (beta)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Decoding: low-level APIs
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 The low-level decoding APIs, which expose demuxing, decoding and conversion as
 separate stages.
