@@ -21,9 +21,9 @@ build-backend = "scikit_build_core.build"
 minimum-version = "build-system.requires"
 build-dir = "build/{wheel_tag}"
 wheel.packages = ["src/torchcodec"]
-# Tag wheels as py3-none-<platform>: none of our compiled libraries use the
-# CPython C API (they're loaded with torch.ops.load_library), so a single wheel
-# works on every Python version, free-threaded builds included.
+# Tag wheels as py3-none-<platform>: We only need to build one wheel per `arch x
+# accelerator` configuration, on the minimum Python version we support, and that
+# wheel works on other Python versions (free-threaded included).
 wheel.py-api = "py3"
 # Required to use our own dynamic-metadata plugin (packaging/torchcodec_version.py)
 # for the version field below.
