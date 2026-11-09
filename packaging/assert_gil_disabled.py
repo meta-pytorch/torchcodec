@@ -7,23 +7,20 @@
 """Assert that using torchcodec on a free-threaded Python keeps the GIL disabled.
 
 Importing any C extension that doesn't declare free-threading support silently
-re-enables the GIL for the whole process (with only a RuntimeWarning). This
-imports torchcodec and exercises its main entry points, then checks the GIL is
-still off.
+re-enables the GIL for the whole process (with only a RuntimeWarning). This runs
+the smoke tests in-process, then checks the GIL is still off.
 
 Must be run from the repo root, on a free-threaded Python, with FFmpeg
-installed.
+installed. Extra arguments are forwarded to pytest.
 
 Usage:
-    python packaging/assert_gil_disabled.py
+    python packaging/assert_gil_disabled.py [PYTEST_ARGS...]
 """
 
-import io
 import sys
 import sysconfig
-from pathlib import Path
 
-RESOURCES = Path("test/resources")
+import pytest
 
 
 def main() -> None:
@@ -32,21 +29,14 @@ def main() -> None:
     if sys.flags.gil is not None:
         sys.exit("The GIL is forced on or off by PYTHON_GIL or -X gil, unset it.")
 
-    import torchcodec
     from torchcodec._core import ops
-    from torchcodec.decoders import AudioDecoder, decode_jpeg, VideoDecoder
-    from torchcodec.encoders import AudioEncoder
 
     # The FFmpeg-dependent modules are only imported when FFmpeg is found.
     assert ops._FFMPEG_AVAILABLE, "FFmpeg wasn't loaded, this check is vacuous"
-    print(f"{torchcodec.__version__ = }, {torchcodec.ffmpeg_major_version = }")
 
-    video_path = RESOURCES / "nasa_13013.mp4"
-    VideoDecoder(video_path)[0]
-    VideoDecoder(io.BytesIO(video_path.read_bytes()))[0]
-    samples = AudioDecoder(RESOURCES / "sine_mono_s32.wav").get_all_samples()
-    AudioEncoder(samples.data, sample_rate=samples.sample_rate).to_tensor("mp3")
-    decode_jpeg(RESOURCES / "gradient.jpg")
+    exit_code = pytest.main(["test/smoke_test.py", *sys.argv[1:]])
+    if exit_code != 0:
+        sys.exit(f"Smoke tests failed with exit code {exit_code}")
 
     if sys._is_gil_enabled():
         sys.exit(

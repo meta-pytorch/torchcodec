@@ -22,15 +22,26 @@ from torchcodec._core._file_like import create_file_like_context
 __all__ = sorted(FFMPEG_OP_NAMES)
 
 
-# Note: We use disallow_in_graph because PyTorch does constant propagation of
-# factory functions.
-create_from_file = torch._dynamo.disallow_in_graph(
+def _disallow_in_graph_when_compiling(op):
+    # Note: We use disallow_in_graph because PyTorch does constant propagation
+    # of factory functions.
+    # We only touch torch._dynamo while compiling: importing it imports triton,
+    # which re-enables the GIL on free-threaded Python.
+    def wrapper(*args, **kwargs):
+        if torch.compiler.is_compiling():
+            torch._dynamo.disallow_in_graph(op)
+        return op(*args, **kwargs)
+
+    return wrapper
+
+
+create_from_file = _disallow_in_graph_when_compiling(
     torch.ops.torchcodec_ns.create_from_file.default
 )
-create_from_tensor = torch._dynamo.disallow_in_graph(
+create_from_tensor = _disallow_in_graph_when_compiling(
     torch.ops.torchcodec_ns.create_from_tensor.default
 )
-_create_from_file_like = torch._dynamo.disallow_in_graph(
+_create_from_file_like = _disallow_in_graph_when_compiling(
     torch.ops.torchcodec_ns._create_from_file_like.default
 )
 _add_video_stream_raw = torch.ops.torchcodec_ns.add_video_stream.default
@@ -163,7 +174,7 @@ _get_json_ffmpeg_library_versions = (
     torch.ops.torchcodec_ns._get_json_ffmpeg_library_versions.default
 )
 _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
-create_streaming_encoder = torch._dynamo.disallow_in_graph(
+create_streaming_encoder = _disallow_in_graph_when_compiling(
     torch.ops.torchcodec_ns.create_streaming_encoder.default
 )
 streaming_encoder_close = torch.ops.torchcodec_ns.streaming_encoder_close.default
