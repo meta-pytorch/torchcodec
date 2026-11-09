@@ -80,7 +80,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpaahv1r27/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp6rp5tow1/video.mp4'], returncode=0)
 ```
 
 ## The three stages
@@ -210,7 +210,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpaahv1r27/video.mp4', '-i', '/tmp/tmpaahv1r27/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpaahv1r27/av.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmp6rp5tow1/video.mp4', '-i', '/tmp/tmp6rp5tow1/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmp6rp5tow1/av.mp4'], returncode=0)
 ```
 
 Which streams to follow is specified at construction time of the
@@ -590,7 +590,7 @@ own precision.
 manage CUDA streams when you consume a [`RawFrame`](../../generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame) on a different CUDA
 stream than the one it was decoded on.
 
-**Total running time of the script:** (0 minutes 1.552 seconds)
+**Total running time of the script:** (0 minutes 1.536 seconds)
 
 [`Download Jupyter notebook: basics.ipynb`](../../_downloads/6982b776b242e8d98bf3991f1eabc245/basics.ipynb)
 
