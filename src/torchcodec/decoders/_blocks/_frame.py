@@ -83,6 +83,9 @@ class Packet:
         # it exists so a decoder can catch a missing reset(), not for callers to
         # reason about. See _BasePacketDecoder.decode().
         self._generation = generation
+        # Load fields only once, on demand (it matters for perf on
+        # multi-threaded pipelines)
+        self._fields_loaded = False
 
     @classmethod
     def from_bytes(
@@ -183,10 +186,17 @@ class Packet:
         )
         return cls(handle, stream_index)
 
-    def _get_fields(self) -> dict:
-        outputs = _blocks_packet_get_fields(self._handle)
-        names = [r.name for r in _blocks_packet_get_fields._schema.returns]
-        return dict(zip(names, outputs))
+    def _load_fields(self) -> None:
+        (
+            self._data,
+            self._pts,
+            self._dts,
+            self._duration,
+            self._flags,
+            self._side_data_types,
+            self._side_data_values,
+        ) = _blocks_packet_get_fields(self._handle)
+        self._fields_loaded = True
 
     def __reduce__(self):
         kwargs = {
@@ -220,44 +230,53 @@ class Packet:
         It is a view on the packet's data: writing to it modifies the packet,
         so ``.clone()`` it first.
         """
-        return self._get_fields()["data"]
+        if not self._fields_loaded:
+            self._load_fields()
+        return self._data
 
     @property
     def pts(self) -> int | None:
         """The :term:`pts`, in units of the stream's time base
         (:attr:`StreamMetadata.time_base`). ``None`` if unknown."""
-        return self._get_fields()["pts"]
+        if not self._fields_loaded:
+            self._load_fields()
+        return self._pts
 
     @property
     def dts(self) -> int | None:
         """The decoding timestamp, in units of the stream's time base. ``None``
         if unknown."""
-        return self._get_fields()["dts"]
+        if not self._fields_loaded:
+            self._load_fields()
+        return self._dts
 
     @property
     def duration(self) -> int:
         """How long the packet lasts, in units of the stream's time base. 0 if
         unknown."""
-        return self._get_fields()["duration"]
+        if not self._fields_loaded:
+            self._load_fields()
+        return self._duration
 
     @property
     def flags(self) -> int:
         """FFmpeg's ``AV_PKT_FLAG_*`` bits, e.g. ``flags & 1`` is set for
         keyframes."""
-        return self._get_fields()["flags"]
+        if not self._fields_loaded:
+            self._load_fields()
+        return self._flags
 
     @property
     def side_data(self) -> dict[str, bytes]:
         """Extra data about the packet, keyed by FFmpeg's names for its types,
         e.g. ``"Skip Samples"``."""
-        fields = self._get_fields()
+        if not self._fields_loaded:
+            self._load_fields()
         return {
             _get_ffmpeg_enum_name(
                 kind=_FFmpegEnum.PACKET_SIDE_DATA_TYPE, value=type_
             ): (_tensor_to_bytes(value))
-            for type_, value in zip(
-                fields["side_data_types"], fields["side_data_values"]
-            )
+            for type_, value in zip(self._side_data_types, self._side_data_values)
         }
 
 
