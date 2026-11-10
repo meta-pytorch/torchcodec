@@ -29,7 +29,6 @@ jobs:
     uses: pytorch/test-infra/.github/workflows/generate_binary_build_matrix.yml@main
     with:
       package-type: wheel
-      channel: nightly
       os: linux
       test-infra-repository: pytorch/test-infra
       test-infra-ref: main
@@ -45,16 +44,26 @@ jobs:
     # TEMPORARY: drop ROCm < 10.1 (rocJPEG needs 10.1+). Remove this filter
     # once the nightly matrix no longer includes ROCm 10.0 or earlier.
     # Python limiting is handled by generate-matrix (build-python-only).
+    # If the channel matrix has no ROCm >= 10.1 (e.g. today's test/release
+    # arches are only 7.14/10.0), skip build/test instead of failing on an
+    # empty matrix.
     needs: generate-matrix
     runs-on: ubuntu-latest
     outputs:
       build-matrix: ${{ steps.filter.outputs.build-matrix }}
       test-matrix: ${{ steps.filter.outputs.test-matrix }}
+      should-run: ${{ steps.filter.outputs.should-run }}
     steps:
       - id: filter
         run: |
+          # Compare version components, not floats: tonumber("10.10") == 10.1.
           build_matrix=$(echo '${{ needs.generate-matrix.outputs.matrix }}' \
-            | jq -c '.include |= map(select((.gpu_arch_version | tonumber) >= 10.1))')
+            | jq -c '
+              .include |= map(select(
+                (.gpu_arch_version | split(".") | map(tonumber)) as $v
+                | $v >= [10, 1]
+              ))
+            ')
           echo "build-matrix=$build_matrix" >> "$GITHUB_OUTPUT"
           echo "::group::Filtered build matrix"
           echo "$build_matrix" | jq .
@@ -72,8 +81,17 @@ jobs:
           echo "::group::Filtered test matrix"
           echo "$test_matrix" | jq .
           echo "::endgroup::"
+          count=$(echo "$build_matrix" | jq '.include | length')
+          if [ "$count" -eq 0 ]; then
+            echo "No ROCm >= 10.1 entries in the channel matrix; skipping build/test."
+            echo "should-run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should-run=true" >> "$GITHUB_OUTPUT"
+          fi
 
   build:
+    # Skip cleanly when filter-matrix dropped every entry (no ROCm >= 10.1).
+    if: needs.filter-matrix.outputs.should-run == 'true'
     needs: filter-matrix
     strategy:
       fail-fast: false
@@ -101,7 +119,10 @@ jobs:
     # Fork PRs don't get an OIDC id-token from GitHub, so the job can't pull the
     # docker image and always fails. Skip it for fork PRs; it still runs on
     # same-repo PRs, push, and workflow_dispatch.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # Also skip when filter-matrix found no ROCm >= 10.1 (build is skipped too).
+    if: |
+      needs.filter-matrix.outputs.should-run == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     needs: [build, filter-matrix]
     strategy:
       fail-fast: false
@@ -152,8 +173,11 @@ jobs:
         python -m pip install --upgrade pip
 
         echo '::group::Install PyTorch (ROCm)'
-        pip install --progress-bar=off --pre torch "rocm[devel]" \
-          --index-url https://download.pytorch.org/whl/nightly/rocm${{ matrix.rocm-version }}
+        # Channel (nightly vs test) follows the ref via install_pytorch.sh, same
+        # as the CUDA workflows. Include torchvision and rocm[devel] (devel is
+        # needed for rocm-sdk init / ROCM_PATH for rocJPEG VA-API on 10.1).
+        bash packaging/install_pytorch.sh rocm${{ matrix.rocm-version }} \
+          "torch torchvision rocm[devel]"
         echo '::endgroup::'
 
         # Prevent the checked-out src/ tree from shadowing the installed wheel.
