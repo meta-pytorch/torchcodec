@@ -3544,6 +3544,14 @@ class TestImageDecoder:
 
     # ===== cross-codec tests: basics & API =====
 
+    # TODO: Confirm whether torch.jit.script is being retired upstream (PyTorch).
+    # ROCm nightlies as of ~2026-11-10 no longer expose torch.jit.script
+    # (AttributeError), while CUDA nightlies still do. Skip on ROCm for now;
+    # delete this test entirely once upstream removal is confirmed across
+    # builds, or re-enable on ROCm if script returns.
+    @pytest.mark.skipif(
+        IS_ROCM, reason="torch.jit.script missing on current ROCm nightlies"
+    )
     @pytest.mark.filterwarnings(
         "ignore:`torch.jit.script` is deprecated:DeprecationWarning"
     )
