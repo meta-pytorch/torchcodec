@@ -47,11 +47,12 @@ jobs:
     # If the channel matrix has no ROCm >= 10.1 (e.g. today's test/release
     # arches are only 7.14/10.0), skip build/test instead of failing on an
     # empty matrix.
+    # Test matrix is hard-coded on install-and-test (like the CUDA workflow),
+    # not derived from this filter.
     needs: generate-matrix
     runs-on: ubuntu-latest
     outputs:
       build-matrix: ${{ steps.filter.outputs.build-matrix }}
-      test-matrix: ${{ steps.filter.outputs.test-matrix }}
       should-run: ${{ steps.filter.outputs.should-run }}
     steps:
       - id: filter
@@ -67,19 +68,6 @@ jobs:
           echo "build-matrix=$build_matrix" >> "$GITHUB_OUTPUT"
           echo "::group::Filtered build matrix"
           echo "$build_matrix" | jq .
-          echo "::endgroup::"
-          # Remap to hyphenated keys (python-version / rocm-version) to match
-          # the rest of torchcodec's workflows. build-python-only already left
-          # a single Python, so there is at most one entry per ROCm version.
-          test_matrix=$(echo "$build_matrix" | jq -c '{
-            include: [
-              .include[]
-              | {"python-version": .python_version, "rocm-version": .gpu_arch_version}
-            ]
-          }')
-          echo "test-matrix=$test_matrix" >> "$GITHUB_OUTPUT"
-          echo "::group::Filtered test matrix"
-          echo "$test_matrix" | jq .
           echo "::endgroup::"
           count=$(echo "$build_matrix" | jq '.include | length')
           if [ "$count" -eq 0 ]; then
@@ -126,7 +114,12 @@ jobs:
     needs: [build, filter-matrix]
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.filter-matrix.outputs.test-matrix) }}
+      matrix:
+        # Hard-coded like linux_cuda_wheel.yaml (not derived from build-matrix).
+        # 3.11 matches generate-matrix build-python-only (single Python today).
+        # 10.1 is the minimum ROCm with rocJPEG; expand when we want more arches.
+        python-version: ['3.11']
+        rocm-version: ['10.1']
     uses: pytorch/test-infra/.github/workflows/linux_job_v2.yml@main
     permissions:
       id-token: write
