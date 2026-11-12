@@ -3504,20 +3504,6 @@ class TestImageDecoder:
         return t.permute(2, 0, 1) if t.ndim == 3 else t.unsqueeze(0)
 
     @staticmethod
-    def _scriptable_decode(kind: str, data: torch.Tensor, mode: int) -> torch.Tensor:
-        if kind == "jpeg":
-            return torch.ops.torchcodec_ns.decode_jpeg(data, mode)
-        elif kind == "png":
-            return torch.ops.torchcodec_ns.decode_png(data, mode)
-        elif kind == "webp":
-            return torch.ops.torchcodec_ns.decode_webp(data, mode)
-        elif kind == "gif":
-            return torch.ops.torchcodec_ns.decode_gif(data, mode)
-        else:
-            assert kind == "avif"
-            return torch.ops.torchcodec_ns.decode_avif(data, mode)
-
-    @staticmethod
     def _make_transparent_png(path, kind):
         # A PNG can encode transparency via a tRNS chunk instead of a full alpha
         # channel: a transparent colorkey for gray/RGB images, or per-palette-
@@ -3544,17 +3530,6 @@ class TestImageDecoder:
 
     # ===== cross-codec tests: basics & API =====
 
-    # TODO: Confirm whether torch.jit.script is being retired upstream (PyTorch).
-    # ROCm nightlies as of ~2026-11-10 no longer expose torch.jit.script
-    # (AttributeError), while CUDA nightlies still do. Skip on ROCm for now;
-    # delete this test entirely once upstream removal is confirmed across
-    # builds, or re-enable on ROCm if script returns.
-    @pytest.mark.skipif(
-        IS_ROCM, reason="torch.jit.script missing on current ROCm nightlies"
-    )
-    @pytest.mark.filterwarnings(
-        "ignore:`torch.jit.script` is deprecated:DeprecationWarning"
-    )
     @pytest.mark.parametrize(
         "kind, asset",
         (
@@ -3571,15 +3546,19 @@ class TestImageDecoder:
             ),
         ),
     )
-    def test_torchscript(self, kind, asset):
-        # This is just to ensure some sort of BC from torchvision. Zero
-        # guarantee we'll keep supporting torchscript.
+    def test_export(self, kind, asset):
+        # BC check that decode ops remain torch.export-able (torch.jit.script
+        # is deprecated / removed on nightlies).
         data = _source_to_tensor(asset.path)
-        scripted = torch.jit.script(self._scriptable_decode)
         eager = getattr(torch.ops.torchcodec_ns, f"decode_{kind}")
         rgb = 3  # the raw ops take an int mode; 3 is RGB
+
+        def decode(data: torch.Tensor, mode: int) -> torch.Tensor:
+            return eager(data, mode)
+
+        exported = torch.export.export(decode, (data, rgb))
         torch.testing.assert_close(
-            scripted(kind, data, rgb),
+            exported.module()(data, rgb),
             eager(data, rgb),
             atol=0,
             rtol=0,
