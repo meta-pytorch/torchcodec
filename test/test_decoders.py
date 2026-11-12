@@ -3553,10 +3553,11 @@ class TestImageDecoder:
         eager = getattr(torch.ops.torchcodec_ns, f"decode_{kind}")
         rgb = 3  # the raw ops take an int mode; 3 is RGB
 
-        def decode(data: torch.Tensor, mode: int) -> torch.Tensor:
-            return eager(data, mode)
+        class Decode(torch.nn.Module):
+            def forward(self, data: torch.Tensor, mode: int) -> torch.Tensor:
+                return eager(data, mode)
 
-        exported = torch.export.export(decode, (data, rgb))
+        exported = torch.export.export(Decode(), (data, rgb))
         torch.testing.assert_close(
             exported.module()(data, rgb),
             eager(data, rgb),
