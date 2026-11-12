@@ -36,8 +36,7 @@ jobs:
       os: linux
       test-infra-repository: pytorch/test-infra
       test-infra-ref: main
-      # OSDC (ARC) runners: regular on pull requests, release-isolated on
-      # main, nightly, release/* and v* tags.
+      # OSDC (ARC) runners. meta-pytorch uses the regular ones on every ref.
       runner-fleet: osdc
       with-cpu: disable
       with-xpu: disable
