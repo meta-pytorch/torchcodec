@@ -182,10 +182,14 @@ void WavDecoder::parse_header() {
   header_.data_size = data_chunk.size;
 }
 
+// For WAVE_FORMAT_EXTENSIBLE, the actual format is given by the SubFormat.
+uint16_t WavDecoder::get_effective_format() const {
+  return (header_.audio_format == WAV_FORMAT_EXTENSIBLE) ? header_.sub_format
+                                                         : header_.audio_format;
+}
+
 void WavDecoder::validate_header() {
-  uint16_t effective_format = (header_.audio_format == WAV_FORMAT_EXTENSIBLE)
-      ? header_.sub_format
-      : header_.audio_format;
+  uint16_t effective_format = get_effective_format();
   STD_TORCH_CHECK(
       effective_format == WAV_FORMAT_PCM ||
           effective_format == WAV_FORMAT_IEEE_FLOAT,
@@ -422,7 +426,7 @@ AudioFramesOutput WavDecoder::get_samples_in_range(
   auto samples =
       torch::stable::empty({num_samples, header_.num_channels}, kStableFloat32);
 
-  if (header_.audio_format == WAV_FORMAT_IEEE_FLOAT &&
+  if (get_effective_format() == WAV_FORMAT_IEEE_FLOAT &&
       header_.bits_per_sample == 32) {
     // Float32 samples can be read directly into the output tensor.
     int64_t total_bytes = num_samples * header_.num_bytes_per_sample;

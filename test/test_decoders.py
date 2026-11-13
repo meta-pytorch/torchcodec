@@ -3814,6 +3814,34 @@ class TestWavDecoder:
         if file_handle is not None:
             file_handle.close()
 
+    # FFmpeg writes float32 WAV files with the WAVE_FORMAT_EXTENSIBLE header
+    # above 48kHz or with more than 2 channels.
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize("sample_rate, num_channels", ((96_000, 1), (48_000, 4)))
+    def test_extensible_float32(self, tmp_path, sample_rate, num_channels):
+        path = tmp_path / "extensible_f32.wav"
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-f", "lavfi", "-i", "sine=frequency=440:duration=0.5",
+                "-ar", str(sample_rate), "-ac", str(num_channels),
+                "-c:a", "pcm_f32le", str(path),
+            ],
+            check=True,
+        )  # fmt: skip
+        # Make sure the audio format in the fmt chunk is WAVE_FORMAT_EXTENSIBLE
+        assert path.read_bytes()[20:22] == b"\xfe\xff"
+
+        wav_dec = WavDecoder(path)
+        audio_dec = AudioDecoder(path)
+        assert wav_dec.metadata == audio_dec.metadata
+        torch.testing.assert_close(
+            wav_dec.get_all_samples().data,
+            audio_dec.get_all_samples().data,
+            rtol=0,
+            atol=0,
+        )
+
     def test_get_samples_played_in_range_errors(self):
         wav_dec = WavDecoder(SINE_MONO_S32.path)
         with pytest.raises(

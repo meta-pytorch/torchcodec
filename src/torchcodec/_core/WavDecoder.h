@@ -59,6 +59,7 @@ class FORCE_PUBLIC_VISIBILITY WavDecoder {
   ChunkInfo find_chunk(std::string_view chunk_id, uint64_t start_pos);
   void parse_header();
   void validate_header();
+  uint16_t get_effective_format() const;
   void convert_samples_to_float(
       const std::vector<uint8_t>& buffer_data,
       int64_t samples_in_buffer,
