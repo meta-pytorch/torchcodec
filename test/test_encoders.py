@@ -2055,7 +2055,9 @@ class TestEncoder:
         enc.close()
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    @pytest.mark.parametrize("format", ["wav", "mp3", "flac"])
+    # asf uses wmav2, which fails to open with bit_rate=0: we must keep its
+    # default bit rate when bit_rate=None.
+    @pytest.mark.parametrize("format", ["wav", "mp3", "flac", "asf"])
     def test_multiple_audio_formats(self, method, format, tmp_path):
         if IS_WINDOWS and format == "mp3":
             pytest.skip("mp3 encoding not supported on Windows")
