@@ -857,6 +857,26 @@ class TestVideoDecoder:
 
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_get_frame_at_after_get_frame_played_at(self, device, seek_mode):
+        # get_frame_played_at() moves the decoder, so the next index-based call
+        # must not assume it is decoding sequentially from the previous index.
+        reference_decoder, _ = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
+        decoder, _ = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
+        expected_frame1 = reference_decoder.get_frame_at(1)
+
+        decoder.get_frame_at(0)
+        decoder.get_frame_played_at(NASA_VIDEO.get_frame_info(10).pts_seconds)
+        frame1 = decoder.get_frame_at(1)
+
+        assert frame1.pts_seconds == expected_frame1.pts_seconds
+        assert_frames_equal(frame1.data, expected_frame1.data)
+
+    @pytest.mark.parametrize("device", all_supported_devices())
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frames_at_backward_seek_after_eof(self, seek_mode, device):
         # Regression test for https://github.com/meta-pytorch/torchcodec/issues/1339.
         # For HEVC codecs (e.g. libx265), decoding a frame near EOF and recieving EOF,
