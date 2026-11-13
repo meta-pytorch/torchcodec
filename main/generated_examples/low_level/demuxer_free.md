@@ -39,7 +39,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-bf', '2', '/tmp/tmpiloj30d0/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-bf', '2', '/tmp/tmp1b5dzmz8/video.mp4'], returncode=0)
 ```
 
 ## Storing the packets
@@ -157,7 +157,7 @@ The codec parameters and the packets can also be pickled, e.g. to demux in
 one process and decode in another: see the last section of
 [Multi-threaded decoding pipelines](pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py).
 
-**Total running time of the script:** (0 minutes 0.289 seconds)
+**Total running time of the script:** (0 minutes 0.288 seconds)
 
 [`Download Jupyter notebook: demuxer_free.ipynb`](../../_downloads/f205b88185dfa081992474f3aa491086/demuxer_free.ipynb)
 
