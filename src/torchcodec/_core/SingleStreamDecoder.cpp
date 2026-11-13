@@ -1074,7 +1074,8 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
   if (stop_seconds_optional.has_value() &&
       start_seconds == *stop_seconds_optional) {
     // For consistency with video
-    int num_channels = get_num_channels(stream_info.codec_context);
+    int num_channels = stream_info.audio_stream_options.num_channels.value_or(
+        get_num_channels(stream_info.codec_context));
     return AudioFramesOutput{torch::stable::empty({num_channels, 0}), 0.0};
   }
 

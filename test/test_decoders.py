@@ -3360,10 +3360,12 @@ class TestAudioDecoder:
         assert samples.sample_rate == asset.sample_rate
 
     @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3))
-    def test_start_equals_stop(self, asset):
-        decoder = AudioDecoder(asset.path)
+    @pytest.mark.parametrize("num_channels", (None, 1, 3))
+    def test_start_equals_stop(self, asset, num_channels):
+        decoder = AudioDecoder(asset.path, num_channels=num_channels)
         samples = decoder.get_samples_played_in_range(start_seconds=3, stop_seconds=3)
-        assert samples.data.shape == (asset.num_channels, 0)
+        expected_num_channels = num_channels or asset.num_channels
+        assert samples.data.shape == (expected_num_channels, 0)
 
     def test_frame_start_is_not_zero(self):
         # For NASA_AUDIO_MP3, the first frame is not at 0, it's at 0.138125.
