@@ -730,6 +730,9 @@ FrameBatchOutput SingleStreamDecoder::get_frames_in_range(
 
 FrameOutput SingleStreamDecoder::get_frame_played_at(double seconds) {
   validate_active_stream(AVMEDIA_TYPE_VIDEO);
+  // We don't track the index of the frame decoded here, so the next
+  // get_frame_at_index_internal() call must not assume it is sequential.
+  last_decoded_frame_index_ = INT64_MIN;
   StreamInfo& stream_info = stream_infos_[active_stream_index_];
   double last_decoded_start_time =
       pts_to_seconds(last_decoded_av_frame_pts_, stream_info.time_base);
