@@ -37,6 +37,7 @@ class FORCE_PUBLIC_VISIBILITY WavDecoder {
 
  private:
   struct WavHeader {
+    // For WAVE_FORMAT_EXTENSIBLE files, this is the format from SubFormat.
     uint16_t audio_format = 0;
     uint16_t num_channels = 0;
     uint32_t sample_rate = 0;
@@ -44,8 +45,6 @@ class FORCE_PUBLIC_VISIBILITY WavDecoder {
         0; // Bytes per sample across all channels (renamed from blockAlign)
     uint16_t bits_per_sample = 0;
     uint64_t data_offset = 0;
-    // Extended format fields (WAVE_FORMAT_EXTENSIBLE)
-    uint16_t sub_format = 0; // Extracted from SubFormat GUID (first 2 bytes)
     uint32_t data_size = 0; // Size of audio data in bytes
   };
 
