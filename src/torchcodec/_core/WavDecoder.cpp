@@ -173,7 +173,8 @@ void WavDecoder::parse_header() {
     STD_TORCH_CHECK(
         fmt_chunk.size >= MIN_WAVEX_FMT_CHUNK_SIZE,
         "WAVE_FORMAT_EXTENSIBLE fmt chunk too small");
-    header_.sub_format = safe_read_value<uint16_t>(fmt_data, 24);
+    // The actual format is in the first 2 bytes of the SubFormat GUID.
+    header_.audio_format = safe_read_value<uint16_t>(fmt_data, 24);
   }
 
   ChunkInfo data_chunk =
@@ -183,17 +184,14 @@ void WavDecoder::parse_header() {
 }
 
 void WavDecoder::validate_header() {
-  uint16_t effective_format = (header_.audio_format == WAV_FORMAT_EXTENSIBLE)
-      ? header_.sub_format
-      : header_.audio_format;
   STD_TORCH_CHECK(
-      effective_format == WAV_FORMAT_PCM ||
-          effective_format == WAV_FORMAT_IEEE_FLOAT,
+      header_.audio_format == WAV_FORMAT_PCM ||
+          header_.audio_format == WAV_FORMAT_IEEE_FLOAT,
       "Unsupported WAV format: ",
-      effective_format,
+      header_.audio_format,
       ". Only PCM and IEEE float formats are supported.");
 
-  if (effective_format == WAV_FORMAT_PCM) {
+  if (header_.audio_format == WAV_FORMAT_PCM) {
     STD_TORCH_CHECK(
         header_.bits_per_sample == 8 || header_.bits_per_sample == 16 ||
             header_.bits_per_sample == 24 || header_.bits_per_sample == 32,
@@ -230,29 +228,29 @@ void WavDecoder::validate_header() {
       header_.num_channels * (header_.bits_per_sample / 8),
       ")");
 
-  if (effective_format == WAV_FORMAT_PCM && header_.bits_per_sample == 32) {
+  if (header_.audio_format == WAV_FORMAT_PCM && header_.bits_per_sample == 32) {
     sample_format_ = "s32";
     codec_name_ = "pcm_s32le";
   } else if (
-      effective_format == WAV_FORMAT_PCM && header_.bits_per_sample == 24) {
+      header_.audio_format == WAV_FORMAT_PCM && header_.bits_per_sample == 24) {
     // FFmpeg decodes s24 into s32 samples (no native 24-bit type).
     sample_format_ = "s32";
     codec_name_ = "pcm_s24le";
   } else if (
-      effective_format == WAV_FORMAT_PCM && header_.bits_per_sample == 16) {
+      header_.audio_format == WAV_FORMAT_PCM && header_.bits_per_sample == 16) {
     sample_format_ = "s16";
     codec_name_ = "pcm_s16le";
   } else if (
-      effective_format == WAV_FORMAT_PCM && header_.bits_per_sample == 8) {
+      header_.audio_format == WAV_FORMAT_PCM && header_.bits_per_sample == 8) {
     sample_format_ = "u8";
     codec_name_ = "pcm_u8";
   } else if (
-      effective_format == WAV_FORMAT_IEEE_FLOAT &&
+      header_.audio_format == WAV_FORMAT_IEEE_FLOAT &&
       header_.bits_per_sample == 32) {
     sample_format_ = "flt";
     codec_name_ = "pcm_f32le";
   } else if (
-      effective_format == WAV_FORMAT_IEEE_FLOAT &&
+      header_.audio_format == WAV_FORMAT_IEEE_FLOAT &&
       header_.bits_per_sample == 64) {
     sample_format_ = "dbl";
     codec_name_ = "pcm_f64le";

@@ -141,6 +141,7 @@ from .utils import (
     RGBA_WEBP,
     SIGSEGV_PNG,
     SINE_16_CHANNEL_S16,
+    SINE_4_CHANNEL_F32,
     SINE_MONO_F32,
     SINE_MONO_F64,
     SINE_MONO_S16,
@@ -3771,6 +3772,7 @@ class TestWavDecoder:
             SINE_MONO_F32,
             SINE_MONO_F64,
             SINE_16_CHANNEL_S16,
+            SINE_4_CHANNEL_F32,
         ),
     )
     @pytest.mark.parametrize(
