@@ -29,6 +29,7 @@ import shutil
 import site
 import subprocess
 import sys
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -39,6 +40,11 @@ REPAIRED_DIR = Path("dist_repaired")
 def _is_cuda_wheel(wheel):
     # Detect a CUDA wheel from its local-version tag (e.g. "+cu126") in the filename.
     return re.search(r"[+_]cu\d", Path(wheel).name) is not None
+
+
+def _is_rocm_wheel(wheel):
+    # Detect a ROCm wheel from its local-version tag (e.g. "+rocm10.1") in the filename.
+    return re.search(r"[+_]rocm", Path(wheel).name) is not None
 
 
 def run(cmd, **kwargs):
@@ -134,6 +140,8 @@ def repair_linux(wheels):
     # for auditwheel to graft libs, it must be able to find them, so we set
     # LD_LIBRARY_PATH: jpeg/png/webp are from conda, libavif is from the S3
     # build dir, and (for CUDA wheels) libnvjpeg is from the CUDA toolkit.
+    # librocjpeg is excluded (not bundled); Python preloads it at runtime from
+    # _rocm_sdk_core, so auditwheel does not need it on LD_LIBRARY_PATH.
     lib_dirs = [str(_avif_lib_dir())]
     if conda_prefix := env.get("CONDA_PREFIX"):
         lib_dirs.append(str(Path(conda_prefix) / "lib"))
@@ -168,17 +176,14 @@ def repair_linux(wheels):
         "libnvshmem*",
         "libnvfatbin*",
         "libnvcuvid*",
-        # rocJPEG: the GPU JPEG decoder our image lib links on ROCm. Unlike
-        # nvJPEG (which we bundle), rocJPEG is not shipped by the torch-ROCm
-        # wheel, and bundling it would drag in torch's ROCm libs under mismatched
-        # (hashed) sonames. So we treat it as a runtime dependency provided by the
-        # ROCm install, like FFmpeg. decode_jpeg(device='cuda') therefore needs
-        # ROCm (with rocJPEG) present at runtime.
-        # TODO_ROCM: Should we still try to ship librocjpeg?
+        # librocjpeg is NOT bundled. At runtime Python preloads it from
+        # _rocm_sdk_core (rocm[libraries]) before load_library(libtorchcodec_image).
+        # Bundling would break AMD's own RPATHs inside librocjpeg for transitive deps.
         "librocjpeg*",
         # ROCm/HIP runtime and its system deps: provided by the torch-ROCm wheel
-        # (torch/lib/) at runtime, exactly like the CUDA libs above. Never bundle
-        # them, they'd duplicate torch's copies and bloat the wheel.
+        # or the system ROCm install at runtime. Never bundle them — they would
+        # duplicate torch's copies and bloat the wheel significantly (libLLVM
+        # alone is ~200 MB).
         "libamdhip64*",
         "libamd_comgr*",
         "libhsa-runtime64*",
@@ -201,9 +206,17 @@ def repair_linux(wheels):
         "librccl*",
         "libnuma*",
         "libdrm*",
+        "libva*",  # VA-API libs; live in _rocm_sdk_core alongside libdrm
         "libelf*",
         "libbz2*",
         "liblzma*",
+        # rocm_sysdeps_* are vendored system libs bundled inside rocm-sdk-core;
+        # librocm_kpack, libLLVM, libclang-cpp are pulled in transitively by
+        # libamd_comgr. All resolved at runtime via _rocm_sdk_core.
+        "librocm_sysdeps_*",
+        "librocm_kpack*",
+        "libLLVM*",
+        "libclang-cpp*",
     ):
         excludes += ["--exclude", pattern]
     for wheel in wheels:
@@ -211,7 +224,6 @@ def repair_linux(wheels):
             ["auditwheel", "repair", *excludes, "--wheel-dir", REPAIRED_DIR, wheel],
             env=env,
         )
-
 
 def repair_macos(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "delocate"])
@@ -515,6 +527,9 @@ def check_bundling():
             stem.startswith("avif") and stem.endswith(".dll")
         )
 
+    def _is_rocjpeg(lib):
+        return lib.startswith("librocjpeg")
+
     def _is_nvjpeg(lib):
         return lib.startswith("libnvjpeg") or (
             lib.startswith("nvjpeg") and lib.endswith(".dll")
@@ -641,6 +656,8 @@ def check_bundling():
         ]
         # keyword each bundled lib's license file must be identifiable by. CUDA
         # wheels also bundle libnvjpeg, whose NVIDIA CUDA EULA must ship too.
+        # ROCm: librocjpeg is not bundled (Python-preloaded from rocm[libraries]),
+        # so no rocjpeg license is required — same as FFmpeg.
         keywords = ["jpeg", "png", "zlib", "webp", "avif", "dav1d", "yuv"]
         if is_cuda:
             keywords.append("nvjpeg")
@@ -654,7 +671,8 @@ def check_bundling():
     for wheel in DIST_DIR.glob("*.whl"):
         print(f"Checking bundled libraries in {wheel.name}")
         with zipfile.ZipFile(wheel) as zf:
-            _assert_third_party_licenses(zf, _is_cuda_wheel(wheel))
+            is_cuda = _is_cuda_wheel(wheel)
+            _assert_third_party_licenses(zf, is_cuda)
             names = zf.namelist()
             libs = sorted({n.rsplit("/", 1)[-1] for n in names if _is_shared_lib(n)})
             if unexpected := [lib for lib in libs if not _is_allowed(lib)]:
@@ -676,7 +694,9 @@ def check_bundling():
                     "animated webp decoding)."
                 )
             is_cuda = _is_cuda_wheel(wheel)
+            is_rocm = _is_rocm_wheel(wheel)
             bundles_nvjpeg = any(_is_nvjpeg(lib) for lib in libs)
+            bundles_rocjpeg = any(_is_rocjpeg(lib) for lib in libs)
             if is_cuda and not bundles_nvjpeg:
                 raise RuntimeError(
                     f"{wheel.name} is a CUDA wheel but does not bundle libnvjpeg. "
@@ -687,6 +707,21 @@ def check_bundling():
             if not is_cuda and bundles_nvjpeg:
                 raise RuntimeError(
                     f"{wheel.name} is not a CUDA wheel but bundles libnvjpeg."
+                )
+            if is_rocm and not bundles_rocjpeg:
+                # Good: librocjpeg is intentionally NOT bundled. Python preloads
+                # it from _rocm_sdk_core (rocm[libraries]) before load_library.
+                print(
+                    f"  {wheel.name}: librocjpeg not bundled "
+                    "(expected; preloaded at runtime from rocm[libraries])"
+                )
+            if bundles_rocjpeg:
+                raise RuntimeError(
+                    f"{wheel.name} bundles librocjpeg — this is intentionally "
+                    "avoided. librocjpeg stays in the user's ROCm install "
+                    "(preloaded from rocm[libraries] at runtime). "
+                    "Remove librocjpeg from the wheel or add it back to the "
+                    "--exclude list."
                 )
             if encoders := [lib for lib in libs if _is_avif_encoder(lib)]:
                 raise RuntimeError(
@@ -700,7 +735,7 @@ def check_bundling():
                     "ship (libheif is a user-supplied runtime dependency, like "
                     "FFmpeg): " + " ".join(lgpl)
                 )
-            MAX_WHEEL_BYTES = (14 if is_cuda else 6) * 1024 * 1024
+            MAX_WHEEL_BYTES = (14 if is_cuda else 7 if is_rocm else 6) * 1024 * 1024
             wheel_bytes = wheel.stat().st_size
             if wheel_bytes > MAX_WHEEL_BYTES:
                 raise RuntimeError(

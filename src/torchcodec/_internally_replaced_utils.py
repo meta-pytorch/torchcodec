@@ -65,9 +65,61 @@ def _load_pybind11_module(module_name: str, library_path: str) -> ModuleType:
     return mod
 
 
+def _so_needs_librocjpeg(library_path: str) -> bool:
+    """Return True if the ELF .so has a DT_NEEDED entry for librocjpeg."""
+    # Soname string is enough: present only when the ROCm image lib was linked
+    # against rocJPEG. Avoids requiring readelf/ldd at import time.
+    try:
+        return b"librocjpeg.so" in Path(library_path).read_bytes()
+    except OSError:
+        return False
+
+
+def _preload_librocjpeg() -> None:
+    """Load librocjpeg into the process before libtorchcodec_image.
+
+    ROCm wheels do not bundle librocjpeg (it stays in rocm[libraries] /
+    _rocm_sdk_core). We preload it via ctypes so the dynamic linker can
+    satisfy libtorchcodec_image's DT_NEEDED without relying on a fragile
+    $ORIGIN RPATH (which also gets turned into DT_RUNPATH by patchelf and
+    can then be overridden by LD_LIBRARY_PATH).
+    """
+    import ctypes
+    import glob
+
+    spec = importlib.util.find_spec("_rocm_sdk_core")
+    if spec is None or spec.origin is None:
+        raise RuntimeError(
+            "libtorchcodec_image was built with rocJPEG support but "
+            "_rocm_sdk_core was not found. Install the ROCm libraries package, "
+            "e.g. pip install 'rocm[libraries]'."
+        )
+
+    lib_dir = Path(spec.origin).resolve().parent / "lib"
+    candidates = sorted(glob.glob(str(lib_dir / "librocjpeg.so*")))
+    if not candidates:
+        raise RuntimeError(
+            f"libtorchcodec_image was built with rocJPEG support but "
+            f"librocjpeg was not found under {lib_dir}. "
+            f"Install the ROCm libraries package, e.g. pip install 'rocm[libraries]' "
+            f"(librocjpeg ships in rocm[libraries], not only rocm[devel])."
+        )
+
+    # Prefer the unversioned soname symlink when present.
+    lib_path = next(
+        (c for c in candidates if Path(c).name == "librocjpeg.so"),
+        candidates[0],
+    )
+    # RTLD_GLOBAL: keep the mapping visible so a subsequent RTLD_LOCAL
+    # load_library of libtorchcodec_image can resolve DT_NEEDED.
+    ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL)
+
+
 def load_image_library() -> None:
     """Load the FFmpeg-free image library"""
     image_library_path = _get_extension_path("libtorchcodec_image")
+    if _so_needs_librocjpeg(image_library_path):
+        _preload_librocjpeg()
     torch.ops.load_library(image_library_path)
 
 
