@@ -47,7 +47,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpqq761ve0/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=10', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpn8a1czzb/video.mp4'], returncode=0)
 ```
 
 ## One stage, one generator
@@ -209,8 +209,8 @@ for pipeline in (sequential, convert_on_own_thread):
 ```
 
 ```
-VideoDecoder : 1.85s
-sequential : 1.87s (0.99x vs VideoDecoder)
+VideoDecoder : 1.86s
+sequential : 1.88s (0.99x vs VideoDecoder)
 convert_on_own_thread : 1.61s (1.15x vs VideoDecoder)
 ```
 
@@ -219,6 +219,11 @@ expected: they do the same work on one thread.
 `convert_on_own_thread` should be faster, because it can overlap the
 two most expensive steps: decoding and color-conversion. Note: actual speedup
 will depend on the capabilities of the machine building these docs!
+
+Where to split, how many threads each stage gets, and what flows between
+them are all knobs worth tuning for your own workload and hardware. See
+[Auto-tuning decoding performance: hill-climbing with an agent](hill_climbing.html#sphx-glr-generated-examples-low-level-hill-climbing-py) for how an
+agent auto-tuned them by hill-climbing.
 
 ## Across processes
 
@@ -262,7 +267,7 @@ hundreds of microseconds per packet, depending on its size. An API that
 pickles a group of packets at once, and decodes it at once, could reduce that
 cost. If it would help your use-case, please [open an issue](https://github.com/meta-pytorch/torchcodec/issues)!
 
-**Total running time of the script:** (0 minutes 26.397 seconds)
+**Total running time of the script:** (0 minutes 26.429 seconds)
 
 [`Download Jupyter notebook: pipelines.ipynb`](../../_downloads/b6cf9084a4d02eed0052adaf54947e49/pipelines.ipynb)
 

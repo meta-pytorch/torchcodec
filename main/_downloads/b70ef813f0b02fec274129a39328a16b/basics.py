@@ -36,7 +36,9 @@ This unlocks features that the high-level decoders don't offer:
 
 * **Performance gains via multi-threaded pipelines**: demux, decode and color-convert on separate
   threads. Each stage releases the GIL. (:ref:`tutorial
-  <sphx_glr_generated_examples_low_level_pipelines.py>`).
+  <sphx_glr_generated_examples_low_level_pipelines.py>`). The many knobs these
+  pipelines expose also make them a good fit for auto-tuning by an agent
+  (:ref:`tutorial <sphx_glr_generated_examples_low_level_hill_climbing.py>`).
 * **Multi-process pipelines**: packets and codec parameters can be pickled, so
   the demuxing and the decoding can happen in different processes
   (:ref:`tutorial <low_level_across_processes>`).
@@ -579,3 +581,6 @@ ffmpeg.wait()
 # * :ref:`sphx_glr_generated_examples_low_level_cuda_streams.py` explains how to
 #   manage CUDA streams when you consume a :class:`RawFrame` on a different CUDA
 #   stream than the one it was decoded on.
+# * :ref:`sphx_glr_generated_examples_low_level_hill_climbing.py` shows how an
+#   agent auto-tuned a low-level decoding pipeline by hill-climbing, which knobs
+#   mattered, and how it compared to an equally tuned ``VideoDecoder``.

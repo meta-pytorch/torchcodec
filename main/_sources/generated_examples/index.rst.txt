@@ -348,6 +348,23 @@ Decoding: low-level APIs
     </div>
 
 
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="You can hill-climb (or auto-tune) video decoding tasks with the TorchCodec low-level APIs!">
+
+.. only:: html
+
+  .. image:: /generated_examples/low_level/images/thumb/sphx_glr_hill_climbing_thumb.png
+    :alt:
+
+  :doc:`/generated_examples/low_level/hill_climbing`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Auto-tuning decoding performance: hill-climbing with an agent</div>
+    </div>
+
+
 .. thumbnail-parent-div-close
 
 .. raw:: html

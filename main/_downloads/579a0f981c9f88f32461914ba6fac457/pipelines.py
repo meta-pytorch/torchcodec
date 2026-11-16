@@ -223,6 +223,11 @@ for pipeline in (sequential, convert_on_own_thread):
 # ``convert_on_own_thread`` should be faster, because it can overlap the
 # two most expensive steps: decoding and color-conversion. Note: actual speedup
 # will depend on the capabilities of the machine building these docs!
+#
+# Where to split, how many threads each stage gets, and what flows between
+# them are all knobs worth tuning for your own workload and hardware. See
+# :ref:`sphx_glr_generated_examples_low_level_hill_climbing.py` for how an
+# agent auto-tuned them by hill-climbing.
 
 # %%
 # .. _low_level_across_processes:

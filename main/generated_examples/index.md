@@ -90,6 +90,11 @@ Decoding packets that don't come from a Demuxer
 [Low-level APIs and CUDA streams synchronization](low_level/cuda_streams.html)
 
 Low-level APIs and CUDA streams synchronization
+![](../_images/sphx_glr_hill_climbing_thumb.png)
+
+[Auto-tuning decoding performance: hill-climbing with an agent](low_level/hill_climbing.html)
+
+Auto-tuning decoding performance: hill-climbing with an agent
 
 ## Encoding
 

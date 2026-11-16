@@ -19,3 +19,8 @@ Examples using `Resize`:
 [Decoder Transforms: Applying transforms during decoding](../generated_examples/decoding/transforms.html)
 
 Decoder Transforms: Applying transforms during decoding
+![](../_images/sphx_glr_hill_climbing_thumb.png)
+
+[Auto-tuning decoding performance: hill-climbing with an agent](../generated_examples/low_level/hill_climbing.html)
+
+Auto-tuning decoding performance: hill-climbing with an agent

@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Decoding: low-level APIs &#8212; TorchCodec 0.18.0.dev20261113+cu132 Documentation</title>
+    <title>Decoding: low-level APIs &#8212; TorchCodec 0.18.0.dev20261116+cu132 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../../_static/documentation_options.js?v=af9aca01"></script>
+    <script src="../../_static/documentation_options.js?v=fecb11f7"></script>
     <script src="../../_static/doctools.js?v=888ff710"></script>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -1039,6 +1039,7 @@ document.write(`
 <li class="toctree-l2"><a class="reference internal" href="raw_data.html">Raw frames and raw audio samples</a></li>
 <li class="toctree-l2"><a class="reference internal" href="demuxer_free.html">Decoding packets that don’t come from a Demuxer</a></li>
 <li class="toctree-l2"><a class="reference internal" href="cuda_streams.html">Low-level APIs and CUDA streams synchronization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="hill_climbing.html">Auto-tuning decoding performance: hill-climbing with an agent</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../encoding/index.html">Encoding</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -1171,6 +1172,9 @@ document.write(`
 </div><div class="sphx-glr-thumbcontainer" tooltip="On CUDA, if you decode on one stream and consume the RawFrame\ s on another - either with a ColorConverter, or with your own consumer as in sphx_glr_generated_examples_low_level_raw_data.py - you must take care of two things:"><img alt="" src="../../_images/sphx_glr_cuda_streams_thumb.jpg" />
 <p><a class="reference internal" href="cuda_streams.html"><span class="doc">Low-level APIs and CUDA streams synchronization</span></a></p>
   <div class="sphx-glr-thumbnail-title">Low-level APIs and CUDA streams synchronization</div>
+</div><div class="sphx-glr-thumbcontainer" tooltip="You can hill-climb (or auto-tune) video decoding tasks with the TorchCodec low-level APIs!"><img alt="" src="../../_images/sphx_glr_hill_climbing_thumb.png" />
+<p><a class="reference internal" href="hill_climbing.html"><span class="doc">Auto-tuning decoding performance: hill-climbing with an agent</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Auto-tuning decoding performance: hill-climbing with an agent</div>
 </div></div><div class="toctree-wrapper compound">
 </div>
 </section>
@@ -1506,7 +1510,7 @@ document.write(`
        "headline": "Decoding: low-level APIs",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated_examples/low_level/index.html",
-       "articleBody": "Decoding: low-level APIs# Build your own decoding pipeline Build your own decoding pipeline Multi-threaded decoding pipelines Multi-threaded decoding pipelines Raw frames and raw audio samples Raw frames and raw audio samples Decoding packets that don\u2019t come from a Demuxer Decoding packets that don\u0027t come from a Demuxer Low-level APIs and CUDA streams synchronization Low-level APIs and CUDA streams synchronization",
+       "articleBody": "Decoding: low-level APIs# Build your own decoding pipeline Build your own decoding pipeline Multi-threaded decoding pipelines Multi-threaded decoding pipelines Raw frames and raw audio samples Raw frames and raw audio samples Decoding packets that don\u2019t come from a Demuxer Decoding packets that don\u0027t come from a Demuxer Low-level APIs and CUDA streams synchronization Low-level APIs and CUDA streams synchronization Auto-tuning decoding performance: hill-climbing with an agent Auto-tuning decoding performance: hill-climbing with an agent",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

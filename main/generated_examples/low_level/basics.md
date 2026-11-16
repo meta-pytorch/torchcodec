@@ -24,7 +24,9 @@ Demuxer -> AudioPacketDecoder -> AudioConverter
 This unlocks features that the high-level decoders don't offer:
 
 - **Performance gains via multi-threaded pipelines**: demux, decode and color-convert on separate
-threads. Each stage releases the GIL. ([tutorial](pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py)).
+threads. Each stage releases the GIL. ([tutorial](pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py)). The many knobs these
+pipelines expose also make them a good fit for auto-tuning by an agent
+([tutorial](hill_climbing.html#sphx-glr-generated-examples-low-level-hill-climbing-py)).
 - **Multi-process pipelines**: packets and codec parameters can be pickled, so
 the demuxing and the decoding can happen in different processes
 ([tutorial](pipelines.html#low-level-across-processes)).
@@ -75,7 +77,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpvz1m1ki9/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmplw38hbq5/video.mp4'], returncode=0)
 ```
 
 ## The three stages
@@ -205,7 +207,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpvz1m1ki9/video.mp4', '-i', '/tmp/tmpvz1m1ki9/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpvz1m1ki9/av.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmplw38hbq5/video.mp4', '-i', '/tmp/tmplw38hbq5/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmplw38hbq5/av.mp4'], returncode=0)
 ```
 
 Which streams to follow is specified at construction time of the
@@ -584,8 +586,11 @@ own precision.
 - [Low-level APIs and CUDA streams synchronization](cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py) explains how to
 manage CUDA streams when you consume a [`RawFrame`](../../generated/torchcodec.decoders.RawFrame.html#torchcodec.decoders.RawFrame) on a different CUDA
 stream than the one it was decoded on.
+- [Auto-tuning decoding performance: hill-climbing with an agent](hill_climbing.html#sphx-glr-generated-examples-low-level-hill-climbing-py) shows how an
+agent auto-tuned a low-level decoding pipeline by hill-climbing, which knobs
+mattered, and how it compared to an equally tuned `VideoDecoder`.
 
-**Total running time of the script:** (0 minutes 1.576 seconds)
+**Total running time of the script:** (0 minutes 1.547 seconds)
 
 [`Download Jupyter notebook: basics.ipynb`](../../_downloads/6982b776b242e8d98bf3991f1eabc245/basics.ipynb)
 

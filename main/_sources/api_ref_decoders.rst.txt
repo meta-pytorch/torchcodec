@@ -121,6 +121,7 @@ For tutorials, see:
 - :ref:`sphx_glr_generated_examples_low_level_pipelines.py`
 - :ref:`sphx_glr_generated_examples_low_level_raw_data.py`
 - :ref:`sphx_glr_generated_examples_low_level_cuda_streams.py`
+- :ref:`sphx_glr_generated_examples_low_level_hill_climbing.py`
 
 Demuxing
 ^^^^^^^^

@@ -230,6 +230,7 @@ For more information, see:
 - [Parallel video decoding: multi-processing and multi-threading](parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) - Parallel decoding strategies
 - [Accelerated video decoding on GPUs with CUDA and NVDEC](basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) - CUDA acceleration guide
 - [Decoder Transforms: Applying transforms during decoding](transforms.html#sphx-glr-generated-examples-decoding-transforms-py) - Decoder transforms guide
+- [Auto-tuning decoding performance: hill-climbing with an agent](../low_level/hill_climbing.html#sphx-glr-generated-examples-low-level-hill-climbing-py) - Auto-tuning a low-level decoding pipeline
 - [`torchcodec.decoders.VideoDecoder`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) - Full API reference
 
 **Total running time of the script:** (0 minutes 0.000 seconds)

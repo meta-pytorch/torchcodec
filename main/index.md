@@ -122,6 +122,13 @@ own container parser
 
 [generated_examples/low_level/demuxer_free.html](generated_examples/low_level/demuxer_free.html)
 
+Auto-tuning decoding performance
+
+Which knobs an agent turned to make a decoding pipeline faster, and
+how much each one helped
+
+[generated_examples/low_level/hill_climbing.html](generated_examples/low_level/hill_climbing.html)
+
 ## Encoding
 
 Video and Audio Encoding

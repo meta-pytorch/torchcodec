@@ -68,6 +68,7 @@ For tutorials, see:
 - [Multi-threaded decoding pipelines](generated_examples/low_level/pipelines.html#sphx-glr-generated-examples-low-level-pipelines-py)
 - [Raw frames and raw audio samples](generated_examples/low_level/raw_data.html#sphx-glr-generated-examples-low-level-raw-data-py)
 - [Low-level APIs and CUDA streams synchronization](generated_examples/low_level/cuda_streams.html#sphx-glr-generated-examples-low-level-cuda-streams-py)
+- [Auto-tuning decoding performance: hill-climbing with an agent](generated_examples/low_level/hill_climbing.html#sphx-glr-generated-examples-low-level-hill-climbing-py)
 
 ### Demuxing
 
