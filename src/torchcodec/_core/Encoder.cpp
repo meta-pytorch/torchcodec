@@ -541,10 +541,11 @@ void MultiStreamEncoder::initialize_audio_stream(AudioStream& audio_stream) {
         "bit_rate=",
         *desired_bit_rate,
         " must be >= 0.");
+    // We set the codec_context bit rate only if the user explicitly asks for
+    // one. Leaving it unset lets FFmpeg choose the default, like the FFmpeg CLI
+    // does when "-b:a" isn't specified.
+    audio_stream.av_codec_context->bit_rate = *desired_bit_rate;
   }
-  // bit_rate=None defaults to 0, which is what the FFmpeg CLI seems to use as
-  // well when "-b:a" isn't specified.
-  audio_stream.av_codec_context->bit_rate = desired_bit_rate.value_or(0);
 
   int out_num_channels =
       audio_stream.options.num_channels.value_or(audio_stream.in_num_channels);
