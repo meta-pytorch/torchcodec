@@ -586,17 +586,9 @@ FrameOutput SingleStreamDecoder::get_frame_at_index_internal(
   }
   validate_frame_index(stream_metadata, frame_index);
 
-  // Only set cursor if we're not decoding sequentially: when decoding
-  // sequentially, we don't need to seek anywhere, so by *not* setting the
-  // cursor we allow canWeAvoidSeeking() to return true early.
-  if (frame_index != last_decoded_frame_index_ + 1) {
-    int64_t pts = get_pts(frame_index);
-    set_cursor_pts_in_seconds(pts_to_seconds(pts, stream_info.time_base));
-  }
-
-  auto result = get_next_frame_internal(pre_allocated_output_tensor);
-  last_decoded_frame_index_ = frame_index;
-  return result;
+  int64_t pts = get_pts(frame_index);
+  set_cursor_pts_in_seconds(pts_to_seconds(pts, stream_info.time_base));
+  return get_next_frame_internal(pre_allocated_output_tensor);
 }
 
 FrameBatchOutput SingleStreamDecoder::get_frames_at_indices(
@@ -733,9 +725,8 @@ FrameOutput SingleStreamDecoder::get_frame_played_at(double seconds) {
   StreamInfo& stream_info = stream_infos_[active_stream_index_];
   double last_decoded_start_time =
       pts_to_seconds(last_decoded_av_frame_pts_, stream_info.time_base);
-  double last_decoded_end_time = pts_to_seconds(
-      last_decoded_av_frame_pts_ + last_decoded_av_frame_duration_,
-      stream_info.time_base);
+  double last_decoded_end_time =
+      pts_to_seconds(last_decoded_av_frame_end_pts(), stream_info.time_base);
   if (seconds >= last_decoded_start_time && seconds < last_decoded_end_time) {
     // We are in the same frame as the one we just returned. However, since we
     // don't cache it locally, we have to rewind back.
@@ -1151,8 +1142,7 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
     // FLAC, see test_fresh_decoder_seek
     needs_seek = target_seek_pts > min_pts;
   } else {
-    auto current_end =
-        last_decoded_av_frame_pts_ + last_decoded_av_frame_duration_;
+    auto current_end = last_decoded_av_frame_end_pts();
     // We seek if we need to go backwards, or if the target is far enough
     // forward that decoding every intermediate frame would be wasteful.
     needs_seek = start_seconds < pts_to_seconds(current_end, time_base) ||
@@ -1214,12 +1204,10 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
     // the frame starting there is rejected by the pts filter above, as is
     // every frame after it, so we'd decode to EOF for the same output.
 
-    auto last_decoded_av_frame_end =
-        last_decoded_av_frame_pts_ + last_decoded_av_frame_duration_;
     finished |= pts_to_seconds(last_decoded_av_frame_pts_, time_base) <=
             output_stop_seconds &&
         output_stop_seconds <=
-            pts_to_seconds(last_decoded_av_frame_end, time_base);
+            pts_to_seconds(last_decoded_av_frame_end_pts(), time_base);
   }
 
   auto last_samples = device_interface_->maybe_flush_audio_buffers();
@@ -1258,6 +1246,10 @@ void SingleStreamDecoder::set_cursor(int64_t pts) {
   cursor_ = pts;
 }
 
+int64_t SingleStreamDecoder::last_decoded_av_frame_end_pts() const {
+  return last_decoded_av_frame_pts_ + last_decoded_av_frame_duration_;
+}
+
 bool SingleStreamDecoder::can_we_avoid_seeking() const {
   // Returns true if we can avoid seeking in the AVFormatContext based on
   // heuristics that rely on the target cursor_ and the last decoded frame.
@@ -1280,6 +1272,11 @@ bool SingleStreamDecoder::can_we_avoid_seeking() const {
     // We are seeking to the exact same frame as we are currently at. Without
     // caching we have to rewind back and decode the frame again.
     return false;
+  }
+  if (cursor_ <= last_decoded_av_frame_end_pts()) {
+    // The target is the frame right after the last decoded one, i.e. the next
+    // frame the decoder will output.
+    return true;
   }
   // We are seeking forward, from the current frame x (lastDecodedAvFramePts_)
   // to a target frame y (cursor_). Seeking means jumping to the last keyframe

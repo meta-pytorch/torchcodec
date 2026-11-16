@@ -265,6 +265,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
 
   void set_cursor(int64_t pts);
   void set_cursor(double) = delete; // prevent calls with doubles and floats
+  int64_t last_decoded_av_frame_end_pts() const;
   bool can_we_avoid_seeking() const;
 
   bool maybe_seek_to_before_desired_pts();
@@ -375,7 +376,6 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   // See: https://github.com/meta-pytorch/torchcodec/pull/1259
   int64_t last_decoded_av_frame_pts_ = INT64_MIN;
   int64_t last_decoded_av_frame_duration_ = 0;
-  int64_t last_decoded_frame_index_ = INT64_MIN;
   AudioPtsExtrapolator audio_pts_extrapolator_;
 
   // Stores various internal decoding stats.
