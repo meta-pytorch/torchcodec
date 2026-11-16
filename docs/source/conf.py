@@ -98,6 +98,7 @@ class CustomGalleryExampleSortKey:
                 "raw_data.py",
                 "demuxer_free.py",
                 "cuda_streams.py",
+                "hill_climbing.py",
             ]
         else:
             assert "examples/migration" in self.src_dir
