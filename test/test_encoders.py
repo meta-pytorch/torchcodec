@@ -2055,8 +2055,9 @@ class TestEncoder:
         enc.close()
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    # asf uses wmav2, which fails to open with bit_rate=0: we must keep its
-    # default bit rate when bit_rate=None.
+    # asf uses wmav2, which fails to open with bit_rate=0 which used to be the
+    # default with bit_rate=None. This is a non-regrtession test for
+    # https://github.com/meta-pytorch/torchcodec/issues/1862
     @pytest.mark.parametrize("format", ["wav", "mp3", "flac", "asf"])
     def test_multiple_audio_formats(self, method, format, tmp_path):
         if IS_WINDOWS and format == "mp3":
