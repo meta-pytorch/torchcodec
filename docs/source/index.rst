@@ -151,6 +151,14 @@ separate stages.
         How to decode packets that come from a database, the network, or your
         own container parser
 
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Auto-tuning decoding performance
+        :link: generated_examples/low_level/hill_climbing.html
+        :link-type: url
+
+        Which knobs an agent turned to make a decoding pipeline faster, and
+        how much each one helped
+
 
 Encoding
 ^^^^^^^^

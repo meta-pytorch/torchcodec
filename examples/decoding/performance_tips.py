@@ -271,6 +271,7 @@ to increase performance.
 # - :ref:`sphx_glr_generated_examples_decoding_parallel_decoding.py` - Parallel decoding strategies
 # - :ref:`sphx_glr_generated_examples_decoding_basic_cuda_example.py` - CUDA acceleration guide
 # - :ref:`sphx_glr_generated_examples_decoding_transforms.py` - Decoder transforms guide
+# - :ref:`sphx_glr_generated_examples_low_level_hill_climbing.py` - Auto-tuning a low-level decoding pipeline
 # - :class:`torchcodec.decoders.VideoDecoder` - Full API reference
 
 # sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_brrrr.jpg'
