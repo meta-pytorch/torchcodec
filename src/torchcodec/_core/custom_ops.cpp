@@ -55,9 +55,9 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "_create_from_file_like(int file_like_context, str? seek_mode=None) -> Tensor");
   m.def(
-      "_add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str? color_conversion_library=None, str output_dtype=\"uint8\") -> ()");
+      "_add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str? color_conversion_library=None, str output_dtype=\"uint8\", str output_mode=\"rgb\") -> ()");
   m.def(
-      "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str output_dtype=\"uint8\") -> ()");
+      "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str output_dtype=\"uint8\", str output_mode=\"rgb\") -> ()");
   m.def(
       "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> ()");
   m.def("seek_to_pts(Tensor(a!) decoder, float seconds) -> ()");
@@ -648,6 +648,19 @@ OutputDtypeConfig parse_output_dtype_config(const std::string& output_dtype) {
       ". Supported values are: uint8, float32, auto.");
 }
 
+OutputMode parse_output_mode(const std::string& output_mode) {
+  if (output_mode == "rgb") {
+    return OutputMode::RGB;
+  } else if (output_mode == "gray") {
+    return OutputMode::GRAY;
+  }
+  STD_TORCH_CHECK(
+      false,
+      "Invalid mode=",
+      output_mode,
+      ". Supported values are: rgb, gray.");
+}
+
 void _add_video_stream(
     torch::stable::Tensor& decoder,
     std::optional<int64_t> num_threads = std::nullopt,
@@ -663,9 +676,11 @@ void _add_video_stream(
     std::optional<torch::stable::Tensor>
         custom_frame_mappings_keyframe_indices = std::nullopt,
     std::optional<std::string> color_conversion_library = std::nullopt,
-    std::string output_dtype = "uint8") {
+    std::string output_dtype = "uint8",
+    std::string output_mode = "rgb") {
   VideoStreamOptions video_stream_options;
   video_stream_options.ffmpeg_thread_count = num_threads;
+  video_stream_options.output_mode = parse_output_mode(output_mode);
 
   video_stream_options.output_dtype_config =
       parse_output_dtype_config(output_dtype);
@@ -741,7 +756,8 @@ void add_video_stream(
         std::nullopt,
     std::optional<torch::stable::Tensor>
         custom_frame_mappings_keyframe_indices = std::nullopt,
-    std::string output_dtype = "uint8") {
+    std::string output_dtype = "uint8",
+    std::string output_mode = "rgb") {
   _add_video_stream(
       decoder,
       num_threads,
@@ -754,7 +770,8 @@ void add_video_stream(
       std::move(custom_frame_mappings_duration),
       std::move(custom_frame_mappings_keyframe_indices),
       /*color_conversion_library=*/std::nullopt,
-      std::move(output_dtype));
+      std::move(output_dtype),
+      std::move(output_mode));
 }
 
 void add_audio_stream(

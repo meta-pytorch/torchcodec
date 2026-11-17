@@ -45,15 +45,19 @@ AVPixelFormat validate_pixel_format(
   STD_TORCH_CHECK(false, error_msg.str());
 }
 
-AVPixelFormat get_output_pixel_format(OutputDtype output_dtype) {
-  return output_dtype == OutputDtype::FLOAT32 ? AV_PIX_FMT_RGB48
-                                              : AV_PIX_FMT_RGB24;
+AVPixelFormat get_output_pixel_format(
+    OutputDtype output_dtype,
+    OutputMode output_mode) {
+  bool is_float32 = output_dtype == OutputDtype::FLOAT32;
+  if (output_mode == OutputMode::GRAY) {
+    return is_float32 ? AV_PIX_FMT_GRAY16 : AV_PIX_FMT_GRAY8;
+  }
+  return is_float32 ? AV_PIX_FMT_RGB48 : AV_PIX_FMT_RGB24;
 }
 
 // Returns the format filter string for the given output pixel format.
 std::string get_format_filter_string(AVPixelFormat output_format) {
-  return (output_format == AV_PIX_FMT_RGB48) ? "format=rgb48,"
-                                             : "format=rgb24,";
+  return std::string("format=") + av_get_pix_fmt_name(output_format) + ",";
 }
 
 static bool g_cpu = register_device_interface(
@@ -98,8 +102,8 @@ void CpuDeviceInterface::initialize_color_conversion(
   av_media_type_ = AVMEDIA_TYPE_VIDEO;
   video_stream_options_ = video_stream_options;
   resized_output_dims_ = resized_output_dims;
-  output_pixel_format_ =
-      get_output_pixel_format(video_stream_options_.output_dtype);
+  output_pixel_format_ = get_output_pixel_format(
+      video_stream_options_.output_dtype, video_stream_options_.output_mode);
   num_output_channels_ =
       av_pix_fmt_desc_get(output_pixel_format_)->nb_components;
 

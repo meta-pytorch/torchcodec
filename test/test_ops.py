@@ -44,18 +44,24 @@ from torchcodec._core.ops import (
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
+    assert_tensor_close_on_at_least,
     BT601_FULL_RANGE_10BIT,
     BT601_FULL_RANGE_10BIT_RGB,
+    BT601_LIMITED_RANGE,
+    BT709_FULL_RANGE,
     DISCARD_FIRST_KEYFRAME_VIDEO,
     get_python_version,
+    H265_10BITS,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_VIDEO,
+    NASA_VIDEO_ROTATED,
     needs_cuda,
     needs_ffmpeg_cli,
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
+    TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
     unsplit_device_str,
 )
 
@@ -633,6 +639,118 @@ class TestVideoDecoderOps:
         frame, *_ = get_next_frame(decoder)
         expected = torch.tensor(BT601_FULL_RANGE_10BIT_RGB, dtype=torch.float32)
         assert (frame.float() - expected[:, None, None]).abs().max() <= 3
+
+    def _frame0(self, video, **kwargs):
+        decoder = create_from_file(str(video.path))
+        _add_video_stream(decoder, **kwargs)
+        frame, *_ = get_frame_at_index(decoder, frame_index=0)
+        return frame
+
+    @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))
+    @pytest.mark.parametrize(
+        "video, weights, other_weights",
+        (
+            (BT601_LIMITED_RANGE, (0.299, 0.587, 0.114), (0.2126, 0.7152, 0.0722)),
+            (BT709_FULL_RANGE, (0.2126, 0.7152, 0.0722), (0.299, 0.587, 0.114)),
+        ),
+    )
+    def test_gray_output_is_the_luma_in_the_video_matrix(
+        self, video, weights, other_weights, color_conversion_library
+    ):
+        # GRAY is the frame's luma: the weighted sum of the RGB frame's
+        # channels, with the weights of the video's own color matrix.
+        rgb = self._frame0(video, color_conversion_library=color_conversion_library)
+        gray = self._frame0(
+            video,
+            color_conversion_library=color_conversion_library,
+            output_mode="gray",
+        )
+        assert gray.shape == (1, *rgb.shape[1:])
+        assert gray.dtype == torch.uint8
+
+        def fraction_within_2_levels_of_luma(w):
+            luma = (rgb.float() * torch.tensor(w)[:, None, None]).sum(
+                dim=0, keepdim=True
+            )
+            return ((gray.float() - luma).abs() <= 2).float().mean().item()
+
+        assert fraction_within_2_levels_of_luma(weights) >= 0.9
+        assert fraction_within_2_levels_of_luma(other_weights) < 0.9
+
+    @pytest.mark.parametrize("output_dtype", ("uint8", "float32"))
+    @pytest.mark.parametrize(
+        "video",
+        (
+            NASA_VIDEO,
+            NASA_VIDEO_ROTATED,
+            TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
+            BT709_FULL_RANGE,
+            H265_10BITS,
+        ),
+    )
+    def test_gray_output_library_parity(self, video, output_dtype):
+        filtergraph, swscale = (
+            self._frame0(
+                video,
+                color_conversion_library=library,
+                output_mode="gray",
+                output_dtype=output_dtype,
+            )
+            for library in ("filtergraph", "swscale")
+        )
+        assert filtergraph.shape == (1, video.get_height(), video.get_width())
+        assert filtergraph.dtype == getattr(torch, output_dtype)
+        # Bit-exact on FFmpeg 7.1. The tolerance is for other FFmpeg versions,
+        # where filtergraph may go through a different swscale entry point and
+        # 10-bit to 8-bit dithering may differ.
+        atol = 1 if output_dtype == "uint8" else 1 / 255
+        assert_tensor_close_on_at_least(filtergraph, swscale, percentage=99, atol=atol)
+
+    @pytest.mark.parametrize("dimension_order", ("NHWC", "NCHW"))
+    @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))
+    def test_gray_output_batches(self, dimension_order, color_conversion_library):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        _add_video_stream(
+            decoder,
+            output_mode="gray",
+            dimension_order=dimension_order,
+            color_conversion_library=color_conversion_library,
+        )
+        frames, *_ = get_frames_in_range(decoder, start=0, stop=4)
+        height, width = NASA_VIDEO.get_height(), NASA_VIDEO.get_width()
+        if dimension_order == "NHWC":
+            assert frames.shape == (4, height, width, 1)
+        else:
+            assert frames.shape == (4, 1, height, width)
+        frames, *_ = get_frames_at_indices(decoder, frame_indices=[0, 3])
+        assert frames.shape[0] == 2
+
+    def test_gray_output_10bit_float32(self):
+        gray = self._frame0(H265_10BITS, output_mode="gray")
+        gray_float = self._frame0(
+            H265_10BITS, output_mode="gray", output_dtype="float32"
+        )
+        assert gray.shape == gray_float.shape == (1, 200, 200)
+        assert gray_float.dtype == torch.float32
+        # The uint8 output is rounded (and dithered) from 10 bits.
+        assert_tensor_close_on_at_least(gray_float * 255, gray, percentage=80, atol=1)
+
+    def test_gray_output_with_resize(self):
+        gray = self._frame0(
+            NASA_VIDEO, output_mode="gray", transform_specs="resize, 135, 240"
+        )
+        assert gray.shape == (1, 135, 240)
+
+    def test_gray_output_invalid(self):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        with pytest.raises(RuntimeError, match="Invalid mode=grey"):
+            _add_video_stream(decoder, output_mode="grey")
+
+    @needs_cuda
+    def test_gray_output_cuda_raises(self):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        with pytest.raises(RuntimeError, match="only supported for CPU decoding"):
+            _add_video_stream(decoder, device="cuda", output_mode="gray")
 
     @pytest.mark.parametrize("dimension_order", ("NHWC", "NCHW"))
     @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))

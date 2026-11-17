@@ -68,6 +68,7 @@ from torchcodec.decoders import (
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.encoders import VideoEncoder
+from torchcodec.samplers import clips_at_regular_indices
 from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
 from .utils import (
@@ -115,6 +116,7 @@ from .utils import (
     GRAYSCALE_JPEG,
     GRAYSCALE_PNG,
     H264_10BITS,
+    H265_10BITS,
     H265_VIDEO,
     HEAPBOF_PNG,
     in_fbcode,
@@ -3065,6 +3067,81 @@ class TestVideoDecoder:
             assert_tensor_close_on_at_least(
                 cuda_frame.data.cpu(), cpu_frame.data, atol=3 / 255, percentage=85
             )
+
+    @pytest.mark.parametrize("dimension_order", ("NCHW", "NHWC"))
+    @pytest.mark.parametrize("mode", ("GRAY", "gray", "Gray", ImageReadMode.GRAY))
+    def test_mode_gray(self, mode, dimension_order):
+        decoder = VideoDecoder(
+            NASA_VIDEO.path, mode=mode, dimension_order=dimension_order
+        )
+        height, width = NASA_VIDEO.get_height(), NASA_VIDEO.get_width()
+        frame = decoder[0]
+        if dimension_order == "NCHW":
+            assert frame.shape == (1, height, width)
+        else:
+            assert frame.shape == (height, width, 1)
+        assert frame.dtype == torch.uint8
+        reference = VideoDecoder(NASA_VIDEO.path, mode="GRAY")[0]
+        if dimension_order == "NHWC":
+            reference = reference.permute(1, 2, 0)
+        assert_frames_equal(frame, reference)
+
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.float32, "auto"))
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            NASA_VIDEO_ROTATED,
+            TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
+            BT709_FULL_RANGE,
+            H265_10BITS,
+        ),
+    )
+    def test_mode_gray_assets(self, asset, output_dtype):
+        rgb = VideoDecoder(asset.path, output_dtype=output_dtype)[0]
+        gray = VideoDecoder(asset.path, output_dtype=output_dtype, mode="GRAY")[0]
+        assert gray.shape == (1, *rgb.shape[1:])
+        assert gray.dtype == rgb.dtype
+
+    def test_mode_gray_batch_apis(self):
+        decoder = VideoDecoder(NASA_VIDEO.path, mode="GRAY")
+        indices = [0, 5, 10]
+        expected = torch.stack([decoder[i] for i in indices])
+        assert expected.shape == (3, 1, NASA_VIDEO.get_height(), NASA_VIDEO.get_width())
+        assert_frames_equal(decoder.get_frames_at(indices).data, expected)
+        assert_frames_equal(decoder[0:11:5], expected)
+
+        pts_seconds = [decoder.get_frame_at(i).pts_seconds for i in indices]
+        assert_frames_equal(decoder.get_frames_played_at(pts_seconds).data, expected)
+
+        clips = clips_at_regular_indices(decoder, num_clips=2, num_frames_per_clip=3)
+        assert clips.data.shape == (
+            2,
+            3,
+            1,
+            NASA_VIDEO.get_height(),
+            NASA_VIDEO.get_width(),
+        )
+
+    @pytest.mark.parametrize(
+        "bad_mode, error",
+        (
+            ("RGBA", ValueError),
+            ("grey", ValueError),
+            (ImageReadMode.GRAY_ALPHA, ValueError),
+            (None, TypeError),
+            (1, TypeError),
+        ),
+    )
+    def test_mode_invalid(self, bad_mode, error):
+        with pytest.raises(error, match="mode"):
+            VideoDecoder(NASA_VIDEO.path, mode=bad_mode)
+
+    @needs_cuda
+    @pytest.mark.parametrize("backend", ("nvdec", "ffmpeg"))
+    def test_mode_gray_cuda_raises(self, backend):
+        with set_cuda_backend(backend):
+            with pytest.raises(ValueError, match="only supported for CPU decoding"):
+                VideoDecoder(NASA_VIDEO.path, device="cuda", mode="GRAY")
 
 
 def _make_adpcm_file(tmp_path, codec, container="wav"):

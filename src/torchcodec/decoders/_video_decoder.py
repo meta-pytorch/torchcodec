@@ -23,6 +23,7 @@ from torchcodec.decoders._decoder_utils import (
     convert_device_to_str,
     convert_output_dtype_to_str,
 )
+from torchcodec.decoders._image_decoders import _normalize_mode, ImageReadMode
 from torchcodec.transforms import DecoderTransform
 
 
@@ -74,6 +75,21 @@ class CpuFallbackStatus:
                 + ", ".join(reasons)
             )
         return f"[{self._backend}] Fallback status: No fallback required"
+
+
+def _normalize_video_mode(
+    mode: Literal["RGB", "GRAY"] | ImageReadMode,
+) -> ImageReadMode:
+    # Same normalization as the image decoders' `mode`, restricted to the modes
+    # that VideoDecoder supports.
+    supported = "Supported modes are 'RGB' and 'GRAY' (case-insensitive)."
+    try:
+        normalized_mode = _normalize_mode(mode)
+    except ValueError:
+        raise ValueError(f"Invalid mode {mode!r}. {supported}") from None
+    if normalized_mode not in (ImageReadMode.RGB, ImageReadMode.GRAY):
+        raise ValueError(f"Invalid mode {mode!r}. {supported}")
+    return normalized_mode
 
 
 class VideoDecoder:
@@ -159,6 +175,21 @@ class VideoDecoder:
             Alternative field names "pkt_pts" and "pkt_duration" are also supported.
             Read more about this parameter in:
             :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py`
+        mode (str or ImageReadMode, optional): The color mode of the decoded
+            frames, like the ``mode`` of the image decoders: ``"RGB"``
+            (default, 3 channels) or ``"GRAY"`` (1 channel), case-insensitive.
+            ``"GRAY"`` frames are the luma (Y') of the decoded frames, in the
+            video's own color matrix (e.g. BT.709 for most HD video), expanded
+            to the full [0, 255] range (or [0, 1] for float32). They are
+            converted directly from the decoded frame without going through
+            RGB, which is cheaper for formats without a fast RGB conversion,
+            such as 10-bit video. For 8-bit yuv420p video, which has one, there
+            is little to no speed-up. TorchVision's
+            :func:`~torchvision.transforms.v2.functional.rgb_to_grayscale`
+            always uses BT.601 weights, so ``"GRAY"`` frames match it, up to
+            rounding and clipping, only for BT.601 video. Frames are of shape
+            ``(1, H, W)``, or ``(H, W, 1)`` with ``dimension_order="NHWC"``.
+            Only supported for CPU decoding.
 
     Attributes:
         metadata (VideoStreamMetadata): Metadata of the video stream.
@@ -185,8 +216,10 @@ class VideoDecoder:
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
         ) = None,
+        mode: Literal["RGB", "GRAY"] | ImageReadMode = "RGB",
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
+        mode = _normalize_video_mode(mode)
         allowed_seek_modes = ("exact", "approximate")
         if seek_mode not in allowed_seek_modes:
             raise ValueError(
@@ -235,6 +268,11 @@ class VideoDecoder:
                 f"'nvdec' CUDA backend for non-uint8 output dtypes."
             )
 
+        if mode is ImageReadMode.GRAY and torch.device(device).type != "cpu":
+            raise ValueError(
+                f'mode="GRAY" is only supported for CPU decoding, got device={device}.'
+            )
+
         (
             self._decoder,
             self.stream_index,
@@ -250,6 +288,7 @@ class VideoDecoder:
             transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
             output_dtype=output_dtype,
+            output_mode=mode.name.lower(),
         )
 
         assert self.metadata.begin_stream_seconds is not None  # mypy.

@@ -21,6 +21,12 @@ enum ColorConversionLibrary {
   SWSCALE
 };
 
+// The color mode of decoded video frames. GRAY is one channel: the frame's
+// luma (Y'), in the stream's own color matrix, expanded to full range. It is
+// converted from the decoded frame directly, without going through RGB. CPU
+// decoding only.
+enum class OutputMode { RGB, GRAY };
+
 // The resolved output dtype. Only UINT8 or FLOAT32 — no AUTO.
 // All code downstream of addVideoStream() should use this.
 enum class OutputDtype { UINT8, FLOAT32 };
@@ -54,6 +60,8 @@ struct VideoStreamOptions {
   // CpuDeviceInterface::initialze() for the logic.
   ColorConversionLibrary color_conversion_library =
       ColorConversionLibrary::FILTERGRAPH;
+
+  OutputMode output_mode = OutputMode::RGB;
 
   // By default we use CPU for decoding for both C++ and python users.
   // Note: This is not used for video encoding, because device is determined by

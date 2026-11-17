@@ -65,6 +65,7 @@ def add_video_stream(
         tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
     ) = None,
     output_dtype: str = "uint8",
+    output_mode: str = "rgb",
 ) -> None:
     custom_frame_mappings_pts: torch.Tensor | None = None
     custom_frame_mappings_keyframe_indices: torch.Tensor | None = None
@@ -87,6 +88,7 @@ def add_video_stream(
         custom_frame_mappings_duration=custom_frame_mappings_duration,
         custom_frame_mappings_keyframe_indices=custom_frame_mappings_keyframe_indices,
         output_dtype=output_dtype,
+        output_mode=output_mode,
     )
 
 
@@ -379,6 +381,7 @@ def _add_video_stream_abstract(
     custom_frame_mappings_keyframe_indices: torch.Tensor | None = None,
     color_conversion_library: str | None = None,
     output_dtype: str = "uint8",
+    output_mode: str = "rgb",
 ) -> None:
     return
 
@@ -397,6 +400,7 @@ def add_video_stream_abstract(
     custom_frame_mappings_duration: torch.Tensor | None = None,
     custom_frame_mappings_keyframe_indices: torch.Tensor | None = None,
     output_dtype: str = "uint8",
+    output_mode: str = "rgb",
 ) -> None:
     return
 

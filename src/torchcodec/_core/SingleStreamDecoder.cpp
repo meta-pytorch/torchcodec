@@ -414,6 +414,10 @@ void SingleStreamDecoder::add_video_stream(
   STD_TORCH_CHECK(
       transforms.empty() || video_stream_options.device == kStableCPU,
       " Transforms are only supported for CPU devices.");
+  STD_TORCH_CHECK(
+      video_stream_options.output_mode == OutputMode::RGB ||
+          video_stream_options.device == kStableCPU,
+      "mode=\"GRAY\" is only supported for CPU decoding.");
 
   add_stream(
       stream_index,
@@ -1572,8 +1576,9 @@ FrameOutput SingleStreamDecoder::convert_av_frame_to_frame_output(
 // --------------------------------------------------------------------------
 
 int SingleStreamDecoder::get_num_output_channels() const {
-  // Decoded video frames are RGB.
-  return 3;
+  OutputMode output_mode =
+      stream_infos_.at(active_stream_index_).video_stream_options.output_mode;
+  return output_mode == OutputMode::GRAY ? 1 : 3;
 }
 
 torch::stable::Tensor SingleStreamDecoder::maybe_permute_and_convert_dtype(
