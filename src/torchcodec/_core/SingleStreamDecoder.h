@@ -277,6 +277,9 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       std::optional<torch::stable::Tensor> pre_allocated_output_tensor =
           std::nullopt);
 
+  // The number of channels of the active stream's decoded frames.
+  int get_num_output_channels() const;
+
   // Permutes HWC to CHW if needed, then converts to float32 and normalizes to
   // [0, 1] if the active stream's outputDtype is FLOAT32.
   torch::stable::Tensor maybe_permute_and_convert_dtype(

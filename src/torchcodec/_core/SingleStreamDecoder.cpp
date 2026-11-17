@@ -628,6 +628,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_at_indices(
   FrameBatchOutput frame_batch_output(
       frame_indices.numel(),
       get_output_dims(),
+      get_num_output_channels(),
       video_stream_options.device,
       device_interface_->get_pre_allocation_dtype(
           video_stream_options.output_dtype));
@@ -701,6 +702,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_in_range(
   FrameBatchOutput frame_batch_output(
       num_output_frames,
       get_output_dims(),
+      get_num_output_channels(),
       video_stream_options.device,
       device_interface_->get_pre_allocation_dtype(
           video_stream_options.output_dtype));
@@ -843,6 +845,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
     FrameBatchOutput frame_batch_output(
         0,
         get_output_dims(),
+        get_num_output_channels(),
         video_stream_options.device,
         device_interface_->get_pre_allocation_dtype(
             video_stream_options.output_dtype));
@@ -891,6 +894,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
     FrameBatchOutput frame_batch_output(
         num_output_frames,
         get_output_dims(),
+        get_num_output_channels(),
         video_stream_options.device,
         device_interface_->get_pre_allocation_dtype(
             video_stream_options.output_dtype));
@@ -944,6 +948,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
     FrameBatchOutput frame_batch_output(
         num_frames,
         get_output_dims(),
+        get_num_output_channels(),
         video_stream_options.device,
         device_interface_->get_pre_allocation_dtype(
             video_stream_options.output_dtype));
@@ -1566,6 +1571,11 @@ FrameOutput SingleStreamDecoder::convert_av_frame_to_frame_output(
 // OUTPUT ALLOCATION AND SHAPE CONVERSION
 // --------------------------------------------------------------------------
 
+int SingleStreamDecoder::get_num_output_channels() const {
+  // Decoded video frames are RGB.
+  return 3;
+}
+
 torch::stable::Tensor SingleStreamDecoder::maybe_permute_and_convert_dtype(
     torch::stable::Tensor& hwc_tensor) {
   // Permute HWC to CHW if needed. Returns a view of the input tensor, the
@@ -1576,13 +1586,18 @@ torch::stable::Tensor SingleStreamDecoder::maybe_permute_and_convert_dtype(
           .video_stream_options.dimension_order != "NHWC") {
     auto num_dimensions = hwc_tensor.dim();
     auto shape = hwc_tensor.sizes();
+    int num_channels = get_num_output_channels();
     if (num_dimensions == 3) {
       STD_TORCH_CHECK(
-          shape[2] == 3, "Not a HWC tensor: ", int_array_ref_to_string(shape));
+          shape[2] == num_channels,
+          "Not a HWC tensor: ",
+          int_array_ref_to_string(shape));
       tensor = stable_permute(hwc_tensor, {2, 0, 1});
     } else if (num_dimensions == 4) {
       STD_TORCH_CHECK(
-          shape[3] == 3, "Not a NHWC tensor: ", int_array_ref_to_string(shape));
+          shape[3] == num_channels,
+          "Not a NHWC tensor: ",
+          int_array_ref_to_string(shape));
       tensor = stable_permute(hwc_tensor, {0, 3, 1, 2});
     } else {
       STD_TORCH_CHECK(

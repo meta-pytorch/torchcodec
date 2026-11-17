@@ -7,6 +7,10 @@
 #include "SwScale.h"
 #include "Frame.h"
 
+extern "C" {
+#include <libavutil/imgutils.h>
+}
+
 namespace facebook::torchcodec {
 
 SwScale::SwScale(const SwsConfig& config, int sws_flags)
@@ -74,17 +78,17 @@ int SwScale::convert(
   //
   // When no resize is needed, we do color conversion directly into the output
   // tensor.
-  // RGB24 = 3 channels x 1 byte (uint8); RGB48 = 3 channels x 2 bytes (uint16).
-  bool is_rgb48 = config_.output_format == AV_PIX_FMT_RGB48;
-  int bytes_per_pixel = is_rgb48 ? 6 : 3;
-
   // sws_scale always takes uint8_t* pointers regardless of actual bit depth.
   uint8_t* output_pointers[4] = {
       static_cast<uint8_t*>(output_tensor.mutable_data_ptr()),
       nullptr,
       nullptr,
       nullptr};
-  int output_linesizes[4] = {config_.output_width * bytes_per_pixel, 0, 0, 0};
+  int output_linesizes[4] = {
+      av_image_get_linesize(config_.output_format, config_.output_width, 0),
+      0,
+      0,
+      0};
 
   uint8_t* const* color_converted_pointers =
       needs_resize_ ? color_converted_frame_->data : output_pointers;

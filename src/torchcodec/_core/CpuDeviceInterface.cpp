@@ -100,6 +100,8 @@ void CpuDeviceInterface::initialize_color_conversion(
   resized_output_dims_ = resized_output_dims;
   output_pixel_format_ =
       get_output_pixel_format(video_stream_options_.output_dtype);
+  num_output_channels_ =
+      av_pix_fmt_desc_get(output_pixel_format_)->nb_components;
 
   // We can use swscale when we have a single resize transform.
   // With a single resize, we use swscale twice:
@@ -249,12 +251,15 @@ void CpuDeviceInterface::convert_video_av_frame_to_frame_output(
     auto shape = pre_allocated_output_tensor.value().sizes();
     STD_TORCH_CHECK(
         (shape.size() == 3) && (shape[0] == output_dims.height) &&
-            (shape[1] == output_dims.width) && (shape[2] == 3),
+            (shape[1] == output_dims.width) &&
+            (shape[2] == num_output_channels_),
         "Expected pre-allocated tensor of shape ",
         output_dims.height,
         "x",
         output_dims.width,
-        "x3, got ",
+        "x",
+        num_output_channels_,
+        ", got ",
         int_array_ref_to_string(shape));
   }
 
@@ -265,7 +270,10 @@ void CpuDeviceInterface::convert_video_av_frame_to_frame_output(
   if (color_conversion_library == ColorConversionLibrary::SWSCALE) {
     output_tensor =
         pre_allocated_output_tensor.value_or(allocate_empty_hwc_tensor(
-            output_dims, kStableCPU, video_stream_options_.output_dtype));
+            output_dims,
+            num_output_channels_,
+            kStableCPU,
+            video_stream_options_.output_dtype));
 
     auto av_frame_format = static_cast<AVPixelFormat>(av_frame.format);
     SwsConfig sws_config{
@@ -304,12 +312,15 @@ void CpuDeviceInterface::convert_video_av_frame_to_frame_output(
     auto shape = output_tensor.sizes();
     STD_TORCH_CHECK(
         (shape.size() == 3) && (shape[0] == output_dims.height) &&
-            (shape[1] == output_dims.width) && (shape[2] == 3),
+            (shape[1] == output_dims.width) &&
+            (shape[2] == num_output_channels_),
         "Expected output tensor of shape ",
         output_dims.height,
         "x",
         output_dims.width,
-        "x3, got ",
+        "x",
+        num_output_channels_,
+        ", got ",
         int_array_ref_to_string(shape));
 
     if (pre_allocated_output_tensor.has_value()) {
@@ -350,7 +361,7 @@ CpuDeviceInterface::convert_av_frame_to_tensor_using_filter_graph(
         std::make_unique<FilterGraph>(filters_config, video_stream_options_);
     prev_filters_config_ = std::move(filters_config);
   }
-  return rgb_av_frame_to_tensor(*filter_graph_->convert(av_frame));
+  return av_frame_to_hwc_tensor(*filter_graph_->convert(av_frame));
 }
 
 // clang-format off

@@ -88,6 +88,8 @@ class CpuDeviceInterface : public DeviceInterface {
   // color-conversion-only mode, but filtergraph still expects it.
   AVRational time_base_ = {1, AV_TIME_BASE};
   AVPixelFormat output_pixel_format_;
+  // The number of channels of output_pixel_format_.
+  int num_output_channels_ = 3;
 
   // If the resized output dimensions are present, then we always use those as
   // the output frame's dimensions. If they are not present, then we use the

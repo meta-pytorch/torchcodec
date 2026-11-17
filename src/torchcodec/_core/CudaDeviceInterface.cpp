@@ -274,7 +274,7 @@ void CudaDeviceInterface::convert_av_frame_to_frame_output(
     if (frame_format == AV_PIX_FMT_RGB24) {
       // Reason 1 above. The frame is already in RGB24, we just need to convert
       // it to a tensor.
-      cpu_frame_output.data = rgb_av_frame_to_tensor(av_frame);
+      cpu_frame_output.data = av_frame_to_hwc_tensor(av_frame);
     } else {
       // Reason 2 above. We need to do a full conversion which requires an
       // actual CPU device.

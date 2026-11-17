@@ -250,6 +250,10 @@ create_device_interface(
     const StableDevice& device,
     const std::string_view variant = "default");
 
-torch::stable::Tensor rgb_av_frame_to_tensor(const AVFrame& av_frame);
+// Wraps a frame in a packed, native-endian pixel format, with all its 8-bit or
+// 16-bit components in one plane, into an HWC tensor of uint8 or uint16,
+// without copying. The channels are in the order the format stores them: RGB
+// for RGB24 and RGB48, but e.g. BGR for BGR24 and RGBA for RGBA.
+torch::stable::Tensor av_frame_to_hwc_tensor(const AVFrame& av_frame);
 
 } // namespace facebook::torchcodec

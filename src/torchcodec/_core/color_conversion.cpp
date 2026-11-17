@@ -222,12 +222,18 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
   torch::stable::Tensor dst;
   if (needs_crop) {
     dst = allocate_empty_hwc_tensor(
-        FrameDims(kernel_height, kernel_width), device, out_dtype);
+        FrameDims(kernel_height, kernel_width),
+        /*num_channels=*/3,
+        device,
+        out_dtype);
   } else if (pre_allocated_output_tensor.has_value()) {
     dst = pre_allocated_output_tensor.value();
   } else {
     dst = allocate_empty_hwc_tensor(
-        FrameDims(out_height, out_width), device, out_dtype);
+        FrameDims(out_height, out_width),
+        /*num_channels=*/3,
+        device,
+        out_dtype);
   }
 
   maybe_update_color_matrix(

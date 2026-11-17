@@ -44,6 +44,7 @@ struct FrameBatchOutput {
   FrameBatchOutput(
       int64_t num_frames,
       const FrameDims& output_dims,
+      int num_channels,
       const StableDevice& device,
       OutputDtype output_dtype);
 };
@@ -65,6 +66,7 @@ struct AudioFramesOutput {
 // maybePermuteHWC2CHW().
 torch::stable::Tensor allocate_empty_hwc_tensor(
     const FrameDims& frame_dims,
+    int num_channels,
     const StableDevice& device,
     OutputDtype output_dtype,
     std::optional<int> num_frames = std::nullopt);

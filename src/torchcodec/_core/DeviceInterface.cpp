@@ -116,12 +116,29 @@ std::unique_ptr<DeviceInterface> create_device_interface(
       "'");
 }
 
-torch::stable::Tensor rgb_av_frame_to_tensor(const AVFrame& av_frame) {
+torch::stable::Tensor av_frame_to_hwc_tensor(const AVFrame& av_frame) {
   auto format = static_cast<AVPixelFormat>(av_frame.format);
+  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(format);
   STD_TORCH_CHECK(
-      format == AV_PIX_FMT_RGB24 || format == AV_PIX_FMT_RGB48,
-      "Expected RGB24 or RGB48 format, got ",
-      (av_get_pix_fmt_name(format) ? av_get_pix_fmt_name(format) : "unknown"));
+      desc != nullptr, "Unknown pixel format: ", static_cast<int>(format));
+  int64_t num_channels = desc->nb_components;
+  int depth = desc->comp[0].depth;
+  int bytes_per_element = depth > 8 ? 2 : 1;
+  // Tensors hold 16-bit values in the host's byte order.
+  bool is_big_endian = (desc->flags & AV_PIX_FMT_FLAG_BE) != 0;
+  bool is_native_endian =
+      bytes_per_element == 1 || is_big_endian == (AV_HAVE_BIGENDIAN != 0);
+  STD_TORCH_CHECK(
+      av_pix_fmt_count_planes(format) == 1 &&
+          !(desc->flags &
+            (AV_PIX_FMT_FLAG_PAL | AV_PIX_FMT_FLAG_BITSTREAM |
+             AV_PIX_FMT_FLAG_HWACCEL)) &&
+          (depth == 8 || depth == 16) &&
+          desc->comp[0].step == num_channels * bytes_per_element &&
+          is_native_endian,
+      "Expected a packed, native-endian pixel format with 8-bit or 16-bit "
+      "components, got ",
+      desc->name);
 
   int height = av_frame.height;
   int width = av_frame.width;
@@ -131,14 +148,12 @@ torch::stable::Tensor rgb_av_frame_to_tensor(const AVFrame& av_frame) {
     UniqueAVFrame av_frame_to_delete(cloned_av_frame);
   };
 
-  std::vector<int64_t> shape = {height, width, 3};
+  std::vector<int64_t> shape = {height, width, num_channels};
 
-  // RGB48 stores 2 bytes per channel (uint16); RGB24 stores 1 byte (uint8).
   // linesize is in bytes, but torch strides are in elements, so divide.
-  int bytes_per_element = (format == AV_PIX_FMT_RGB48) ? 2 : 1;
-  auto dtype = (format == AV_PIX_FMT_RGB48) ? kStableUInt16 : kStableUInt8;
+  auto dtype = bytes_per_element == 2 ? kStableUInt16 : kStableUInt8;
   std::vector<int64_t> strides = {
-      cloned_av_frame->linesize[0] / bytes_per_element, 3, 1};
+      cloned_av_frame->linesize[0] / bytes_per_element, num_channels, 1};
 
   return torch::stable::from_blob(
       cloned_av_frame->data[0],
