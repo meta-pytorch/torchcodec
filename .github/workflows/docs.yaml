@@ -7,7 +7,8 @@ on:
     tags:
       - v[0-9]+.[0-9]+.[0-9]+
       # Pushed by pytorch-bot for the ciflow/docs label, which the labeler adds to
-      # every PR. This runs in this repo, so fork PRs can upload a preview too.
+      # PRs touching docs/ or src/. This runs in this repo, so fork PRs can upload
+      # a preview too.
       - ciflow/docs/*
   workflow_dispatch:
 

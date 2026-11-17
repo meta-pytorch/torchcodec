@@ -1,5 +1,3 @@
 "ciflow/docs":
-- "**"
-# "**" skips dot paths like .github/
-- ".*"
-- ".*/**"
+- docs/**
+- src/**
