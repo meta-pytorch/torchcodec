@@ -32,7 +32,7 @@ print(f"{torch.cuda.get_device_properties(0)=}")
 ```
 torch.__version__='2.16.0.dev20261116+cu132'
 torch.cuda.is_available()=True
-torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=fe92aceb-c9f1-5eaa-001e-24020dc186f2, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)
+torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=42460b2a-b5a9-5e31-40f7-0e474af84feb, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)
 ```
 
 ## Downloading the video
@@ -55,7 +55,7 @@ urllib.request.urlretrieve(
 ```
 
 ```
-('video.mp4', <http.client.HTTPMessage object at 0x7fe888039010>)
+('video.mp4', <http.client.HTTPMessage object at 0x7f06413c53d0>)
 ```
 
 ## CUDA Decoding using VideoDecoder
@@ -165,7 +165,7 @@ mean_abs_diff=tensor(0.6004, device='cuda:0')
 max_abs_diff=tensor(2., device='cuda:0')
 ```
 
-**Total running time of the script:** (0 minutes 4.726 seconds)
+**Total running time of the script:** (0 minutes 4.768 seconds)
 
 [`Download Jupyter notebook: basic_cuda_example.ipynb`](../../_downloads/0d9d7e92cb34559510d86a36f73e1e53/basic_cuda_example.ipynb)
 
