@@ -36,7 +36,6 @@ jobs:
       os: linux-aarch64
       test-infra-repository: pytorch/test-infra
       test-infra-ref: main
-      # OSDC (ARC) runners. meta-pytorch uses the regular ones on every ref.
       runner-fleet: osdc
       with-xpu: disable
       with-rocm: disable
@@ -76,8 +75,6 @@ jobs:
       matrix:
         python-version: ['3.11']
         ffmpeg-version-for-tests: ['7']
-    # OSDC runners have no host toolchain; the job runs in this image, as the
-    # CUDA aarch64 workflow already does with its builder image.
     container:
       image: "pytorch/manylinux2_28_aarch64-builder:cpu-aarch64"
     needs: build
@@ -115,8 +112,6 @@ jobs:
         run: bash packaging/install_torchcodec_wheel.sh
 
       - name: Install ffmpeg, post build
-        # In the container, conda's FFmpeg libs need to be on LD_LIBRARY_PATH, as in
-        # the CUDA aarch64 workflow.
         run: |
           bash packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
           echo LD_LIBRARY_PATH=$CONDA_PREFIX/lib:${LD_LIBRARY_PATH} >> $GITHUB_ENV
