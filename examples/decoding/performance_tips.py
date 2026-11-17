@@ -212,6 +212,19 @@ to increase performance.
 # - If you are using multiple FFmpeg threads, decoder transforms may be faster.
 #   Experiment with your setup to verify.
 #
+# **Resizing before color conversion:** by default, a resize is applied to the
+# RGB frame, so that it matches TorchVision's
+# :class:`~torchvision.transforms.v2.Resize`. On CPU, that means the whole
+# full-resolution frame is first converted to RGB. When the first transform is
+# a :class:`~torchcodec.transforms.Resize`, passing
+# ``resize_before_color_conversion=True`` to
+# :class:`~torchcodec.decoders.VideoDecoder` resizes the frame in its decoded
+# pixel format (e.g. YUV) and converts only the output pixels to RGB, in a
+# single pass. That makes shrinking high-resolution or 10-bit videos much
+# cheaper, but it trades accuracy for speed: the frames are no longer the
+# same as resizing in RGB. Most values differ by at most 1 or 2 levels (out of
+# 255), but sharp color edges can differ much more.
+#
 
 # %%
 # .. note::

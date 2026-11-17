@@ -9,32 +9,35 @@
 
 namespace facebook::torchcodec {
 
-SwScale::SwScale(const SwsConfig& config, int sws_flags)
-    : config_(config), sws_flags_(sws_flags) {
-  needs_resize_ =
+SwScale::SwScale(const SwsConfig& config, const SwScaleOptions& options)
+    : config_(config) {
+  bool resizes =
       (config_.input_height != config_.output_height ||
        config_.input_width != config_.output_width);
+  bool single_pass = resizes && options.resize_before_color_conversion;
+  needs_resize_ = resizes && !single_pass;
 
   // Create color conversion context (input format -> output RGB format).
-  // Color conversion always outputs at the input resolution.
-  // When no resize is needed, input and output resolutions are the same.
-  // See [Transform and Format Conversion Order] for more on the output pixel
-  // format.
+  // Color conversion outputs at the input resolution, unless the resize
+  // happens in the same pass. When no resize is needed, input and output
+  // resolutions are the same. See [Transform and Format Conversion Order] for
+  // more on the output pixel format.
   SwsConfig color_conversion_frame_config{
       .input_width = config_.input_width,
       .input_height = config_.input_height,
       .input_format = config_.input_format,
       .input_colorspace = config_.input_colorspace,
       .input_color_range = config_.input_color_range,
-      .output_width = config_.input_width,
-      .output_height = config_.input_height,
+      .output_width = single_pass ? config_.output_width : config_.input_width,
+      .output_height =
+          single_pass ? config_.output_height : config_.input_height,
       .output_format = config_.output_format};
 
+  // Without a resize in this pass, no flags: when resizing is needed, we use a
+  // separate swscale context with the resize flags.
   color_conversion_sws_context_ = create_sws_context(
       color_conversion_frame_config,
-      // No flags for color conversion. When resizing is needed, we use a
-      // separate swscale context with the appropriate resize flags.
-      /*swsFlags=*/0);
+      single_pass ? options.resize_sws_flags : 0);
 
   // Create resize context if needed (output RGB at input resolution ->
   // output RGB at output resolution).
@@ -48,7 +51,8 @@ SwScale::SwScale(const SwsConfig& config, int sws_flags)
         .output_height = config_.output_height,
         .output_format = config_.output_format};
 
-    resize_sws_context_ = create_sws_context(resize_frame_config, sws_flags_);
+    resize_sws_context_ =
+        create_sws_context(resize_frame_config, options.resize_sws_flags);
 
     color_converted_frame_.reset(av_frame_alloc());
     STD_TORCH_CHECK(
@@ -72,8 +76,8 @@ int SwScale::convert(
   // transforms happen in the output color space (RGB) rather than the input
   // color space (YUV).
   //
-  // When no resize is needed, we do color conversion directly into the output
-  // tensor.
+  // When no separate resize is needed (no resize, or a resize in the color
+  // conversion pass), we do color conversion directly into the output tensor.
   // RGB24 = 3 channels x 1 byte (uint8); RGB48 = 3 channels x 2 bytes (uint16).
   bool is_rgb48 = config_.output_format == AV_PIX_FMT_RGB48;
   int bytes_per_pixel = is_rgb48 ? 6 : 3;
@@ -100,12 +104,13 @@ int SwScale::convert(
       color_converted_pointers,
       color_converted_linesizes);
 
+  int expected_height = needs_resize_ ? av_frame.height : config_.output_height;
   STD_TORCH_CHECK(
-      color_converted_height == av_frame.height,
-      "Color conversion swscale pass failed: colorConvertedHeight != avFrame->height: ",
+      color_converted_height == expected_height,
+      "Color conversion swscale pass failed: colorConvertedHeight != expected height: ",
       color_converted_height,
       " != ",
-      av_frame.height);
+      expected_height);
 
   if (needs_resize_) {
     color_converted_height = sws_scale(

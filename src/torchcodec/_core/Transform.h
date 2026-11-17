@@ -49,8 +49,15 @@ class ResizeTransform : public Transform {
  public:
   enum class InterpolationMode { BILINEAR };
 
-  explicit ResizeTransform(const FrameDims& dims)
-      : output_dims_(dims), interpolation_mode_(InterpolationMode::BILINEAR) {}
+  // With before_color_conversion, the frame is resized in its decoded pixel
+  // format and converted to RGB at the output size, in one pass. See Note
+  // [Transform and Format Conversion Order].
+  explicit ResizeTransform(
+      const FrameDims& dims,
+      bool before_color_conversion = false)
+      : output_dims_(dims),
+        interpolation_mode_(InterpolationMode::BILINEAR),
+        before_color_conversion_(before_color_conversion) {}
 
   ResizeTransform(const FrameDims& dims, InterpolationMode interpolation_mode)
       : output_dims_(dims), interpolation_mode_(interpolation_mode) {}
@@ -61,9 +68,14 @@ class ResizeTransform : public Transform {
 
   int get_sws_flags() const;
 
+  bool is_before_color_conversion() const {
+    return before_color_conversion_;
+  }
+
  private:
   FrameDims output_dims_;
   InterpolationMode interpolation_mode_;
+  bool before_color_conversion_ = false;
 };
 
 class CropTransform : public Transform {

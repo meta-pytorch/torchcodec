@@ -107,8 +107,16 @@ class Resize(DecoderTransform):
             )
         self.size = size
 
-    def _make_transform_spec(self, input_dims: tuple[int | None, int | None]) -> str:
-        return f"resize, {self.size[0]}, {self.size[1]}"
+    def _make_transform_spec(
+        self,
+        input_dims: tuple[int | None, int | None],
+        *,
+        before_color_conversion: bool = False,
+    ) -> str:
+        # With before_color_conversion, the decoder resizes the frame in its
+        # decoded pixel format, before converting it to RGB.
+        name = "resize_before_color_conversion" if before_color_conversion else "resize"
+        return f"{name}, {self.size[0]}, {self.size[1]}"
 
     def _get_output_dims(self) -> tuple[int | None, int | None] | None:
         return (self.size[0], self.size[1])
@@ -280,6 +288,8 @@ class RandomCrop(DecoderTransform):
 def _make_transform_specs(
     transforms: Sequence[DecoderTransform | nn.Module] | None,
     input_dims: tuple[int | None, int | None],
+    *,
+    resize_before_color_conversion: bool = False,
 ) -> str:
     """Given a sequence of transforms, turn those into the specification string
        the core API expects.
@@ -296,12 +306,19 @@ def _make_transform_specs(
             transforms that don't need to know the dimensions, and that metadata
             is missing, everything should still work. That means we assert their
             existence as late as possible.
+        resize_before_color_conversion: If True, the first transform must be a
+            Resize, and the decoder applies it before the color conversion.
 
     Returns:
         String of transforms in the format the core API expects: transform
         specifications separate by semicolons.
     """
-    if transforms is None:
+    if transforms is None or len(transforms) == 0:
+        if resize_before_color_conversion:
+            raise ValueError(
+                "resize_before_color_conversion=True requires the first of the "
+                "transforms to be a Resize, but no transforms were passed."
+            )
         return ""
 
     try:
@@ -372,4 +389,15 @@ def _make_transform_specs(
         output_dims = transform._get_output_dims()
         curr_input_dims = output_dims if output_dims is not None else curr_input_dims
 
-    return ";".join([t._make_transform_spec(dims) for t, dims in converted_transforms])
+    specs = [t._make_transform_spec(dims) for t, dims in converted_transforms]
+    if resize_before_color_conversion:
+        first_transform, first_input_dims = converted_transforms[0]
+        if not isinstance(first_transform, Resize):
+            raise ValueError(
+                "resize_before_color_conversion=True requires the first of the "
+                f"transforms to be a Resize, got {transforms[0]}."
+            )
+        specs[0] = first_transform._make_transform_spec(
+            first_input_dims, before_color_conversion=True
+        )
+    return ";".join(specs)

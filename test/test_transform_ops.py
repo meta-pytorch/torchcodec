@@ -22,8 +22,11 @@ from .utils import (
     assert_tensor_close_on_at_least,
     AV1_VIDEO,
     get_ffmpeg_minor_version,
+    H265_10BITS,
     H265_VIDEO,
     NASA_VIDEO,
+    NASA_VIDEO_HDR,
+    NASA_VIDEO_ROTATED,
     needs_cuda,
     TEST_NON_ZERO_START as NON_32_ALIGNED_WIDTH_VIDEO,
     TEST_SRC_2_720P,
@@ -378,6 +381,103 @@ class TestPublicVideoDecoderTransformOps:
         ):
             VideoDecoder(NASA_VIDEO.path, transforms=[v2.RandomHorizontalFlip(p=1.0)])
 
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.float32))
+    # An output width that is a multiple of 32 lets the decoder use swscale for
+    # NASA_VIDEO and NASA_VIDEO_HDR. Other widths use filtergraph.
+    @pytest.mark.parametrize("aligned_width", (True, False))
+    # NASA_VIDEO_HDR is 10-bit. NASA_VIDEO_ROTATED has rotation metadata, so
+    # the decoder rotates the frame before the resize.
+    @pytest.mark.parametrize("video", (NASA_VIDEO, NASA_VIDEO_HDR, NASA_VIDEO_ROTATED))
+    def test_resize_before_color_conversion(self, video, aligned_width, output_dtype):
+        height = video.get_height() // 2
+        width = video.get_width() // 2 // 32 * 32 + (0 if aligned_width else 8)
+        decoder = VideoDecoder(
+            video.path,
+            transforms=[torchcodec.transforms.Resize(size=(height, width))],
+            output_dtype=output_dtype,
+            resize_before_color_conversion=True,
+        )
+        decoder_full = VideoDecoder(video.path, output_dtype=output_dtype)
+
+        for frame_index in (0, len(decoder) // 2, len(decoder) - 1):
+            frame = decoder[frame_index]
+            assert frame.shape == (3, height, width)
+            assert frame.dtype == output_dtype
+
+            # Resizing in the decoded pixel format, then converting to RGB, is
+            # close to resizing the RGB frame, but not the same.
+            frame_tv = v2.functional.resize(
+                decoder_full[frame_index], size=(height, width)
+            )
+            atol = 3 if output_dtype == torch.uint8 else 3 / 255
+            assert_tensor_close_on_at_least(frame, frame_tv, percentage=85, atol=atol)
+
+    def test_resize_before_color_conversion_nhwc_and_batch_apis(self):
+        def make_decoder(dimension_order):
+            return VideoDecoder(
+                NASA_VIDEO.path,
+                transforms=[torchcodec.transforms.Resize(size=(135, 240))],
+                dimension_order=dimension_order,
+                resize_before_color_conversion=True,
+            )
+
+        nchw, nhwc = make_decoder("NCHW"), make_decoder("NHWC")
+        indices = [0, 5, 10]
+        expected = torch.stack([nchw[i] for i in indices])
+        assert expected.shape == (3, 3, 135, 240)
+        assert_frames_equal(nchw.get_frames_at(indices).data, expected)
+        assert_frames_equal(nchw[0:11:5], expected)
+        assert_frames_equal(
+            nhwc.get_frames_at(indices).data, expected.permute(0, 2, 3, 1)
+        )
+
+    def test_resize_before_color_conversion_with_other_transforms(self):
+        # The resize happens before the color conversion; the following
+        # transforms are applied to the RGB frame, as usual.
+        decoder = VideoDecoder(
+            NASA_VIDEO.path,
+            transforms=[v2.Resize(size=(135, 240)), v2.CenterCrop(size=(100, 100))],
+            resize_before_color_conversion=True,
+        )
+        resized = VideoDecoder(
+            NASA_VIDEO.path,
+            transforms=[torchcodec.transforms.Resize(size=(135, 240))],
+            resize_before_color_conversion=True,
+        )
+        assert_frames_equal(
+            decoder[0], v2.functional.center_crop(resized[0], output_size=(100, 100))
+        )
+
+    @pytest.mark.parametrize(
+        "transforms",
+        (
+            None,
+            [],
+            [torchcodec.transforms.CenterCrop(size=(100, 100))],
+            [
+                torchcodec.transforms.CenterCrop(size=(100, 100)),
+                torchcodec.transforms.Resize(size=(50, 50)),
+            ],
+            [v2.CenterCrop(size=(100, 100))],
+        ),
+    )
+    def test_resize_before_color_conversion_fails(self, transforms):
+        with pytest.raises(ValueError, match="requires the first of the transforms"):
+            VideoDecoder(
+                NASA_VIDEO.path,
+                transforms=transforms,
+                resize_before_color_conversion=True,
+            )
+
+    @pytest.mark.parametrize("value", (1, "True", None))
+    def test_resize_before_color_conversion_not_a_bool(self, value):
+        with pytest.raises(TypeError, match="must be a bool"):
+            VideoDecoder(
+                NASA_VIDEO.path,
+                transforms=[torchcodec.transforms.Resize(size=(100, 100))],
+                resize_before_color_conversion=value,
+            )
+
 
 class TestCoreVideoDecoderTransformOps:
     def get_num_frames_core_ops(self, video):
@@ -491,6 +591,39 @@ class TestCoreVideoDecoderTransformOps:
         auto_frame0, *_ = get_frame_at_index(auto_decoder, frame_index=0)
         assert_frames_equal(filtergraph_frame0, auto_frame0)
 
+    def _resized_frame0(self, video, transform_specs, color_conversion_library):
+        decoder = create_from_file(str(video.path))
+        _add_video_stream(
+            decoder,
+            transform_specs=transform_specs,
+            color_conversion_library=color_conversion_library,
+        )
+        frame, *_ = get_frame_at_index(decoder, frame_index=0)
+        return frame
+
+    # 96 is a multiple of 32, 100 is not. The core uses the requested library
+    # either way.
+    @pytest.mark.parametrize("width", (96, 100))
+    @pytest.mark.parametrize("video", (NASA_VIDEO, H265_10BITS))
+    def test_resize_before_color_conversion_library_parity(self, video, width):
+        spec = f"resize_before_color_conversion, 100, {width}"
+        filtergraph, swscale = (
+            self._resized_frame0(video, spec, library)
+            for library in ("filtergraph", "swscale")
+        )
+        assert filtergraph.shape == (3, 100, width)
+        # Bit-exact on FFmpeg 7.1. The tolerance is for other FFmpeg versions,
+        # where filtergraph may go through a different swscale entry point.
+        assert_tensor_close_on_at_least(filtergraph, swscale, percentage=99, atol=1)
+
+    def test_resize_before_color_conversion_must_be_first(self):
+        with pytest.raises(RuntimeError, match="must be the first transform"):
+            self._resized_frame0(
+                NASA_VIDEO,
+                "crop, 100, 100, 0, 0;resize_before_color_conversion, 50, 50",
+                None,
+            )
+
     @needs_cuda
     def test_scaling_on_cuda_fails(self):
         decoder = create_from_file(str(NASA_VIDEO.path))
@@ -549,6 +682,14 @@ class TestCoreVideoDecoderTransformOps:
             match="must have 3 elements",
         ):
             add_video_stream(decoder, transform_specs="resize, 100, 100, 100")
+
+        with pytest.raises(
+            RuntimeError,
+            match="must have 3 elements",
+        ):
+            add_video_stream(
+                decoder, transform_specs="resize_before_color_conversion, 100"
+            )
 
         with pytest.raises(
             RuntimeError,

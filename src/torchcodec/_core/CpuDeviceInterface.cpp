@@ -52,8 +52,41 @@ AVPixelFormat get_output_pixel_format(OutputDtype output_dtype) {
 
 // Returns the format filter string for the given output pixel format.
 std::string get_format_filter_string(AVPixelFormat output_format) {
-  return (output_format == AV_PIX_FMT_RGB48) ? "format=rgb48,"
-                                             : "format=rgb24,";
+  return (output_format == AV_PIX_FMT_RGB48) ? "format=rgb48" : "format=rgb24";
+}
+
+std::string join(const std::vector<std::string>& strings, const char* sep) {
+  std::string joined;
+  for (const auto& str : strings) {
+    if (!joined.empty()) {
+      joined += sep;
+    }
+    joined += str;
+  }
+  return joined;
+}
+
+// Returns how many leading transforms run before the color conversion: a
+// resize before color conversion, and the RotationTransform the decoder puts
+// ahead of the user's transforms, if any. See Note [Transform and Format
+// Conversion Order].
+size_t num_transforms_before_color_conversion(
+    const std::vector<std::unique_ptr<Transform>>& transforms) {
+  size_t first_user_transform =
+      (!transforms.empty() &&
+       dynamic_cast<RotationTransform*>(transforms[0].get()) != nullptr)
+      ? 1
+      : 0;
+  for (size_t i = 0; i < transforms.size(); ++i) {
+    auto resize = dynamic_cast<ResizeTransform*>(transforms[i].get());
+    if (resize != nullptr && resize->is_before_color_conversion()) {
+      STD_TORCH_CHECK(
+          i == first_user_transform,
+          "A resize before color conversion must be the first transform.");
+      return first_user_transform + 1;
+    }
+  }
+  return 0;
 }
 
 static bool g_cpu = register_device_interface(
@@ -104,6 +137,7 @@ void CpuDeviceInterface::initialize_color_conversion(
   // We can use swscale when we have a single resize transform.
   // With a single resize, we use swscale twice:
   // first for color conversion (YUV->RGB24), then for resize in RGB24 space.
+  // A resize before color conversion is a single swscale pass instead.
   //
   // Note that this means swscale will not support the case of having several,
   // back-to-back resizes or other transforms.
@@ -131,20 +165,12 @@ void CpuDeviceInterface::initialize_color_conversion(
     STD_TORCH_CHECK(
         resize != nullptr, "ResizeTransform expected but not found!");
     sws_flags_ = resize->get_sws_flags();
+    resize_before_color_conversion_ = resize->is_before_color_conversion();
   }
 
   // If we have any transforms, replace filters_ with the filter strings from
   // the transforms. As noted above, we decide between swscale and filtergraph
   // when we actually decode a frame.
-  std::stringstream filters;
-  bool first = true;
-  for (const auto& transform : transforms) {
-    if (!first) {
-      filters << ",";
-    }
-    filters << transform->get_filter_graph_cpu();
-    first = false;
-  }
   if (!transforms.empty()) {
     // Note [Transform and Format Conversion Order]
     // We have to ensure that all user filters happen AFTER the explicit format
@@ -157,7 +183,25 @@ void CpuDeviceInterface::initialize_color_conversion(
     // output frame matches the pixel format specified in the sink. But by
     // default, it will insert it after the user filters. We need an explicit
     // format conversion to get the behavior we want.
-    filters_ = get_format_filter_string(output_pixel_format_) + filters.str();
+    //
+    // The exception is a resize before color conversion, which the user opts
+    // into to resize in the decoded pixel format: it goes ahead of the format
+    // conversion, so that scale converts to RGB at the output size, in one
+    // swscale pass. A rotation the decoder inserts ahead of it goes there too.
+    // Rotations only move pixels, so they work on any pixel format.
+    size_t num_before_conversion =
+        num_transforms_before_color_conversion(transforms);
+    std::vector<std::string> filters;
+    for (size_t i = 0; i < transforms.size(); ++i) {
+      if (i == num_before_conversion) {
+        filters.push_back(get_format_filter_string(output_pixel_format_));
+      }
+      filters.push_back(transforms[i]->get_filter_graph_cpu());
+    }
+    if (num_before_conversion == transforms.size()) {
+      filters.push_back(get_format_filter_string(output_pixel_format_));
+    }
+    filters_ = join(filters, ",");
   }
 
   initialized_ = true;
@@ -279,7 +323,12 @@ void CpuDeviceInterface::convert_video_av_frame_to_frame_output(
         .output_format = output_pixel_format_};
 
     if (!sw_scale_ || sw_scale_->get_config() != sws_config) {
-      sw_scale_ = std::make_unique<SwScale>(sws_config, sws_flags_);
+      sw_scale_ = std::make_unique<SwScale>(
+          sws_config,
+          SwScaleOptions{
+              .resize_sws_flags = sws_flags_,
+              .resize_before_color_conversion =
+                  resize_before_color_conversion_});
     }
 
     int result_height = sw_scale_->convert(av_frame, output_tensor);

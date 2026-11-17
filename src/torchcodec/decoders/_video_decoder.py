@@ -159,6 +159,17 @@ class VideoDecoder:
             Alternative field names "pkt_pts" and "pkt_duration" are also supported.
             Read more about this parameter in:
             :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py`
+        resize_before_color_conversion (bool, optional): If ``True``, the first
+            of the ``transforms``, which must be a
+            :class:`~torchcodec.transforms.Resize`, is applied to the frame in
+            its decoded pixel format (e.g. YUV), and the resized frame is
+            converted to RGB, in a single pass. When shrinking frames, that is
+            much cheaper than the default, which converts the full-resolution
+            frame to RGB and then resizes it, because only the output pixels
+            are converted. The output is close to, but not the same as,
+            resizing the RGB frame, which is what TorchVision's
+            :class:`~torchvision.transforms.v2.Resize` does. CPU decoding only.
+            Default: ``False``.
 
     Attributes:
         metadata (VideoStreamMetadata): Metadata of the video stream.
@@ -185,6 +196,7 @@ class VideoDecoder:
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
         ) = None,
+        resize_before_color_conversion: bool = False,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
         allowed_seek_modes = ("exact", "approximate")
@@ -214,6 +226,12 @@ class VideoDecoder:
             raise ValueError(
                 f"Invalid dimension order ({dimension_order}). "
                 f"Supported values are {', '.join(allowed_dimension_orders)}."
+            )
+
+        if not isinstance(resize_before_color_conversion, bool):
+            raise TypeError(
+                "resize_before_color_conversion must be a bool, got "
+                f"{type(resize_before_color_conversion)}."
             )
 
         if num_ffmpeg_threads is None:
@@ -250,6 +268,7 @@ class VideoDecoder:
             transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
             output_dtype=output_dtype,
+            resize_before_color_conversion=resize_before_color_conversion,
         )
 
         assert self.metadata.begin_stream_seconds is not None  # mypy.

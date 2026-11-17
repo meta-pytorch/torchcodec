@@ -140,6 +140,9 @@ class CpuDeviceInterface : public DeviceInterface {
   // resizing algorithm. We default to bilinear. Users can override this with a
   // ResizeTransform that specifies a different interpolation mode.
   int sws_flags_ = SWS_BILINEAR;
+  // Whether that single resize happens in the decoded pixel format, in the
+  // color conversion pass.
+  bool resize_before_color_conversion_ = false;
 
   bool initialized_ = false;
 

@@ -13,7 +13,14 @@ namespace facebook::torchcodec {
 
 struct FrameDims;
 
-// SwScale uses a double swscale path:
+struct SwScaleOptions {
+  // Flags of the resize.
+  int resize_sws_flags = SWS_BILINEAR;
+  // Resize in the input pixel format, in the color conversion pass.
+  bool resize_before_color_conversion = false;
+};
+
+// By default, SwScale uses a double swscale path:
 // 1. Color conversion (e.g., YUV -> RGB24/RGB48) at the original frame
 //    resolution
 // 2. Resize in output RGB space (if resizing is needed)
@@ -21,13 +28,18 @@ struct FrameDims;
 // This approach ensures that transforms happen in the output color space
 // (RGB) rather than the input color space (YUV).
 //
+// With resize_before_color_conversion, a needed resize happens in a single
+// pass instead: the frame is resized in its input pixel format and converted
+// to RGB at the output size. That is cheaper when shrinking frames, but the
+// output differs slightly from resizing in RGB.
+//
 // The caller is responsible for caching SwScale instances and recreating them
 // when the context changes, similar to how FilterGraph is managed.
 class SwScale {
  public:
   // config.outputFormat is AV_PIX_FMT_RGB24 for 8-bit, AV_PIX_FMT_RGB48 for
   // >8-bit.
-  SwScale(const SwsConfig& config, int sws_flags = SWS_BILINEAR);
+  SwScale(const SwsConfig& config, const SwScaleOptions& options = {});
 
   int convert(const AVFrame& av_frame, torch::stable::Tensor& output_tensor);
 
@@ -37,11 +49,11 @@ class SwScale {
 
  private:
   SwsConfig config_;
-  int sws_flags_;
+  // Whether a separate resize pass is needed.
   bool needs_resize_;
 
   // Color conversion context (input format -> output RGB at original
-  // resolution).
+  // resolution, or at the output resolution in the single-pass case).
   UniqueSwsContext color_conversion_sws_context_;
 
   // Resize context (output RGB at input res -> output RGB at output res).

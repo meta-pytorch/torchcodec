@@ -479,17 +479,20 @@ int checked_to_non_negative_int(const std::string& str) {
 // Resize transform specs take the form:
 //
 //   "resize, <height>, <width>"
+//   "resize_before_color_conversion, <height>, <width>"
 //
-// Where "resize" is the string literal and <height> and <width> are positive
-// integers.
+// Where "resize" and "resize_before_color_conversion" are string literals and
+// <height> and <width> are positive integers. The second form resizes the frame
+// in its decoded pixel format, before converting it to RGB.
 Transform* make_resize_transform(
-    const std::vector<std::string>& resize_transform_spec) {
+    const std::vector<std::string>& resize_transform_spec,
+    bool before_color_conversion) {
   STD_TORCH_CHECK(
       resize_transform_spec.size() == 3,
       "resizeTransformSpec must have 3 elements including its name");
   int height = checked_to_positive_int(resize_transform_spec[1]);
   int width = checked_to_positive_int(resize_transform_spec[2]);
-  return new ResizeTransform(FrameDims(height, width));
+  return new ResizeTransform(FrameDims(height, width), before_color_conversion);
 }
 
 // Crop transform specs take the form:
@@ -556,7 +559,11 @@ std::vector<Transform*> make_transforms(
 
     auto name = transform_spec[0];
     if (name == "resize") {
-      transforms.push_back(make_resize_transform(transform_spec));
+      transforms.push_back(make_resize_transform(
+          transform_spec, /*before_color_conversion=*/false));
+    } else if (name == "resize_before_color_conversion") {
+      transforms.push_back(make_resize_transform(
+          transform_spec, /*before_color_conversion=*/true));
     } else if (name == "crop") {
       transforms.push_back(make_crop_transform(transform_spec));
     } else if (name == "center_crop") {
