@@ -13,6 +13,14 @@ namespace facebook::torchcodec {
 
 struct FrameDims;
 
+struct SwScaleOptions {
+  // Flags of the resize pass, when one is needed.
+  int resize_sws_flags = SWS_BILINEAR;
+  // Flags of the color conversion pass, which control the chroma upsampling.
+  // 0 leaves the choice to swscale (bicubic).
+  int color_conversion_sws_flags = 0;
+};
+
 // SwScale uses a double swscale path:
 // 1. Color conversion (e.g., YUV -> RGB24/RGB48) at the original frame
 //    resolution
@@ -27,7 +35,7 @@ class SwScale {
  public:
   // config.outputFormat is AV_PIX_FMT_RGB24 for 8-bit, AV_PIX_FMT_RGB48 for
   // >8-bit.
-  SwScale(const SwsConfig& config, int sws_flags = SWS_BILINEAR);
+  SwScale(const SwsConfig& config, const SwScaleOptions& options = {});
 
   int convert(const AVFrame& av_frame, torch::stable::Tensor& output_tensor);
 
@@ -37,7 +45,6 @@ class SwScale {
 
  private:
   SwsConfig config_;
-  int sws_flags_;
   bool needs_resize_;
 
   // Color conversion context (input format -> output RGB at original

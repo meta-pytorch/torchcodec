@@ -50,7 +50,8 @@ bool FiltersConfig::operator==(const FiltersConfig& other) const {
       output_format == other.output_format &&
       filtergraph_str == other.filtergraph_str &&
       time_base == other.time_base &&
-      hw_frames_ctx.get() == other.hw_frames_ctx.get();
+      hw_frames_ctx.get() == other.hw_frames_ctx.get() &&
+      color_conversion_sws_flags == other.color_conversion_sws_flags;
 }
 
 bool FiltersConfig::operator!=(const FiltersConfig& other) const {
@@ -67,6 +68,16 @@ FilterGraph::FilterGraph(
   if (video_stream_options.ffmpeg_thread_count.has_value()) {
     filter_graph_->nb_threads =
         video_stream_options.ffmpeg_thread_count.value();
+  }
+
+  if (!filters_config.color_conversion_sws_flags.empty()) {
+    std::string sws_opts = "flags=" + filters_config.color_conversion_sws_flags;
+    int status =
+        av_opt_set(filter_graph_.get(), "scale_sws_opts", sws_opts.c_str(), 0);
+    STD_TORCH_CHECK(
+        status >= 0,
+        "Failed to set scale_sws_opts on the filter graph: ",
+        get_ffmpeg_error_string_from_error_code(status));
   }
 
   // Configure the source context.

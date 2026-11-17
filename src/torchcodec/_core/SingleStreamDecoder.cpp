@@ -414,6 +414,10 @@ void SingleStreamDecoder::add_video_stream(
   STD_TORCH_CHECK(
       transforms.empty() || video_stream_options.device == kStableCPU,
       " Transforms are only supported for CPU devices.");
+  STD_TORCH_CHECK(
+      !video_stream_options.color_conversion_interpolation.has_value() ||
+          video_stream_options.device == kStableCPU,
+      "color_conversion_interpolation is only supported for CPU devices.");
 
   add_stream(
       stream_index,

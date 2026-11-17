@@ -44,10 +44,12 @@ from torchcodec._core.ops import (
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
+    assert_tensor_close_on_at_least,
     BT601_FULL_RANGE_10BIT,
     BT601_FULL_RANGE_10BIT_RGB,
     DISCARD_FIRST_KEYFRAME_VIDEO,
     get_python_version,
+    H265_10BITS,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_VIDEO,
@@ -633,6 +635,67 @@ class TestVideoDecoderOps:
         frame, *_ = get_next_frame(decoder)
         expected = torch.tensor(BT601_FULL_RANGE_10BIT_RGB, dtype=torch.float32)
         assert (frame.float() - expected[:, None, None]).abs().max() <= 3
+
+    def _interpolated_frame0(self, library, interpolation, output_dtype="uint8"):
+        decoder = create_from_file(str(H265_10BITS.path))
+        _add_video_stream(
+            decoder,
+            color_conversion_library=library,
+            color_conversion_interpolation=interpolation,
+            output_dtype=output_dtype,
+        )
+        frame, *_ = get_frame_at_index(decoder, frame_index=0)
+        return frame
+
+    @pytest.mark.parametrize("output_dtype", ("uint8", "float32"))
+    @pytest.mark.parametrize("interpolation", ("bilinear", "bicubic", "nearest"))
+    def test_color_conversion_interpolation_library_parity(
+        self, interpolation, output_dtype
+    ):
+        # 10-bit frames take swscale's generic path, which upsamples chroma with
+        # the requested filter. Both libraries must apply the same one. They are
+        # bit-exact on FFmpeg 7.1; the tolerance is for other FFmpeg versions,
+        # where filtergraph may go through a different swscale entry point.
+        filtergraph, swscale = (
+            self._interpolated_frame0(library, interpolation, output_dtype)
+            for library in ("filtergraph", "swscale")
+        )
+        atol = 1 if output_dtype == "uint8" else 1 / 255
+        assert_tensor_close_on_at_least(filtergraph, swscale, percentage=99, atol=atol)
+
+    @pytest.mark.parametrize("output_dtype", ("uint8", "float32"))
+    @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))
+    def test_color_conversion_interpolation_changes_10bit_output(
+        self, color_conversion_library, output_dtype
+    ):
+        frames = {
+            interpolation: self._interpolated_frame0(
+                color_conversion_library, interpolation, output_dtype
+            ).float()
+            for interpolation in ("bilinear", "bicubic", "nearest")
+        }
+        if output_dtype == "float32":
+            frames = {k: v * 255 for k, v in frames.items()}
+        for interpolation in ("bilinear", "nearest"):
+            diff = (frames[interpolation] - frames["bicubic"]).abs()
+            assert diff.max() > 0
+            # Only the chroma edges differ, so the frames stay close on average.
+            assert diff.mean() < 2
+
+    def test_color_conversion_interpolation_invalid(self):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        with pytest.raises(
+            RuntimeError, match="Invalid color_conversion_interpolation=lanczos"
+        ):
+            _add_video_stream(decoder, color_conversion_interpolation="lanczos")
+
+    @needs_cuda
+    def test_color_conversion_interpolation_cuda_raises(self):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        with pytest.raises(RuntimeError, match="only supported for CPU devices"):
+            _add_video_stream(
+                decoder, device="cuda", color_conversion_interpolation="bilinear"
+            )
 
     @pytest.mark.parametrize("dimension_order", ("NHWC", "NCHW"))
     @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))

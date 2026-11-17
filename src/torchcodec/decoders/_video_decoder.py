@@ -159,6 +159,17 @@ class VideoDecoder:
             Alternative field names "pkt_pts" and "pkt_duration" are also supported.
             Read more about this parameter in:
             :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py`
+        color_conversion_interpolation (str, optional): The filter used to
+            upsample the chroma planes when converting decoded frames to RGB:
+            ``"bilinear"``, ``"bicubic"`` or ``"nearest"``, named after
+            TorchVision's ``InterpolationMode``. ``"bilinear"`` and
+            ``"nearest"`` are cheaper than ``"bicubic"``. It only affects
+            formats that FFmpeg cannot convert with a dedicated routine, such
+            as 10-bit video, NV12, or 4:2:0 video with an odd height. Common
+            8-bit yuv420p and yuv422p video with an even height is unaffected.
+            If ``None`` (default), FFmpeg's default is used: bicubic, except
+            with FFmpeg 4, where it can be bilinear depending on the frame
+            width and the transforms. Only supported for CPU decoding.
 
     Attributes:
         metadata (VideoStreamMetadata): Metadata of the video stream.
@@ -184,6 +195,9 @@ class VideoDecoder:
         output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
+        ) = None,
+        color_conversion_interpolation: (
+            Literal["bilinear", "bicubic", "nearest"] | None
         ) = None,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
@@ -216,6 +230,17 @@ class VideoDecoder:
                 f"Supported values are {', '.join(allowed_dimension_orders)}."
             )
 
+        allowed_interpolations = ("bilinear", "bicubic", "nearest")
+        if (
+            color_conversion_interpolation is not None
+            and color_conversion_interpolation not in allowed_interpolations
+        ):
+            raise ValueError(
+                "Invalid color_conversion_interpolation "
+                f"({color_conversion_interpolation}). Supported values are "
+                f"{', '.join(allowed_interpolations)}, and None."
+            )
+
         if num_ffmpeg_threads is None:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
@@ -235,6 +260,15 @@ class VideoDecoder:
                 f"'nvdec' CUDA backend for non-uint8 output dtypes."
             )
 
+        if (
+            color_conversion_interpolation is not None
+            and torch.device(device).type != "cpu"
+        ):
+            raise ValueError(
+                "color_conversion_interpolation is only supported for CPU "
+                f"decoding, got device={device}."
+            )
+
         (
             self._decoder,
             self.stream_index,
@@ -250,6 +284,7 @@ class VideoDecoder:
             transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
             output_dtype=output_dtype,
+            color_conversion_interpolation=color_conversion_interpolation,
         )
 
         assert self.metadata.begin_stream_seconds is not None  # mypy.

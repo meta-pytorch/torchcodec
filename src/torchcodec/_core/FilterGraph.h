@@ -22,6 +22,10 @@ struct FiltersConfig {
   std::string filtergraph_str;
   AVRational time_base = {0, 0};
   UniqueAVBufferRef hw_frames_ctx;
+  // The swscale flags of the format conversions that the graph inserts (the
+  // graph's scale_sws_opts), e.g. "bilinear". Empty leaves them to FFmpeg's
+  // default.
+  std::string color_conversion_sws_flags;
 
   FiltersConfig() = default;
   FiltersConfig(FiltersConfig&&) = default;

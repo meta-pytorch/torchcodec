@@ -9,8 +9,8 @@
 
 namespace facebook::torchcodec {
 
-SwScale::SwScale(const SwsConfig& config, int sws_flags)
-    : config_(config), sws_flags_(sws_flags) {
+SwScale::SwScale(const SwsConfig& config, const SwScaleOptions& options)
+    : config_(config) {
   needs_resize_ =
       (config_.input_height != config_.output_height ||
        config_.input_width != config_.output_width);
@@ -30,11 +30,10 @@ SwScale::SwScale(const SwsConfig& config, int sws_flags)
       .output_height = config_.input_height,
       .output_format = config_.output_format};
 
+  // When resizing is needed, we use a separate swscale context with the
+  // resize flags.
   color_conversion_sws_context_ = create_sws_context(
-      color_conversion_frame_config,
-      // No flags for color conversion. When resizing is needed, we use a
-      // separate swscale context with the appropriate resize flags.
-      /*swsFlags=*/0);
+      color_conversion_frame_config, options.color_conversion_sws_flags);
 
   // Create resize context if needed (output RGB at input resolution ->
   // output RGB at output resolution).
@@ -48,7 +47,8 @@ SwScale::SwScale(const SwsConfig& config, int sws_flags)
         .output_height = config_.output_height,
         .output_format = config_.output_format};
 
-    resize_sws_context_ = create_sws_context(resize_frame_config, sws_flags_);
+    resize_sws_context_ =
+        create_sws_context(resize_frame_config, options.resize_sws_flags);
 
     color_converted_frame_.reset(av_frame_alloc());
     STD_TORCH_CHECK(

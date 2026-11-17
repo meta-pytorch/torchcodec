@@ -227,6 +227,7 @@ def create_video_decoder(
     transforms: Sequence[DecoderTransform | nn.Module] | None = None,
     custom_frame_mappings: tuple[Tensor, Tensor, Tensor] | None = None,
     output_dtype: str = "uint8",
+    color_conversion_interpolation: str | None = None,
 ) -> tuple[Tensor, int, VideoStreamMetadata]:
 
     decoder = create_decoder(source=source, seek_mode=seek_mode)
@@ -253,6 +254,7 @@ def create_video_decoder(
         transform_specs=transform_specs,
         custom_frame_mappings=custom_frame_mappings,
         output_dtype=output_dtype,
+        color_conversion_interpolation=color_conversion_interpolation,
     )
 
     return (decoder, stream_index, metadata)

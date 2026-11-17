@@ -115,6 +115,7 @@ from .utils import (
     GRAYSCALE_JPEG,
     GRAYSCALE_PNG,
     H264_10BITS,
+    H265_10BITS,
     H265_VIDEO,
     HEAPBOF_PNG,
     in_fbcode,
@@ -3065,6 +3066,60 @@ class TestVideoDecoder:
             assert_tensor_close_on_at_least(
                 cuda_frame.data.cpu(), cpu_frame.data, atol=3 / 255, percentage=85
             )
+
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.float32))
+    def test_color_conversion_interpolation(self, output_dtype):
+        # 10-bit frames have no dedicated RGB converter, so the chroma
+        # upsampling filter changes them. The float32 output takes the RGB48
+        # path.
+        frames = {
+            interpolation: VideoDecoder(
+                H265_10BITS.path,
+                output_dtype=output_dtype,
+                color_conversion_interpolation=interpolation,
+            )[0]
+            for interpolation in ("bilinear", "bicubic", "nearest")
+        }
+        for frame in frames.values():
+            assert frame.dtype == output_dtype
+            assert frame.shape == frames["bicubic"].shape
+        assert not torch.equal(frames["bilinear"], frames["bicubic"])
+        assert not torch.equal(frames["nearest"], frames["bicubic"])
+
+    @pytest.mark.parametrize("interpolation", ("bilinear", "bicubic", "nearest"))
+    def test_color_conversion_interpolation_8bit_unaffected(self, interpolation):
+        # 8-bit yuv420p has a dedicated RGB converter, which ignores it.
+        decoder = VideoDecoder(
+            NASA_VIDEO.path, color_conversion_interpolation=interpolation
+        )
+        assert_frames_equal(decoder[0], NASA_VIDEO.get_frame_data_by_index(0))
+
+    def test_color_conversion_interpolation_batch_apis(self):
+        decoder = VideoDecoder(
+            H265_10BITS.path, color_conversion_interpolation="bilinear"
+        )
+        indices = [0, 5, 10]
+        expected = torch.stack([decoder[i] for i in indices])
+        assert_frames_equal(decoder.get_frames_at(indices).data, expected)
+        assert_frames_equal(decoder[0:11:5], expected)
+
+    @pytest.mark.parametrize("bad_interpolation", ("lanczos", "Bilinear", 2))
+    def test_color_conversion_interpolation_invalid(self, bad_interpolation):
+        with pytest.raises(ValueError, match="Invalid color_conversion_interpolation"):
+            VideoDecoder(
+                NASA_VIDEO.path, color_conversion_interpolation=bad_interpolation
+            )
+
+    @needs_cuda
+    @pytest.mark.parametrize("backend", ("nvdec", "ffmpeg"))
+    def test_color_conversion_interpolation_cuda_raises(self, backend):
+        with set_cuda_backend(backend):
+            with pytest.raises(ValueError, match="only supported for CPU decoding"):
+                VideoDecoder(
+                    NASA_VIDEO.path,
+                    device="cuda",
+                    color_conversion_interpolation="bilinear",
+                )
 
 
 def _make_adpcm_file(tmp_path, codec, container="wav"):

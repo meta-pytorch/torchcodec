@@ -21,6 +21,11 @@ enum ColorConversionLibrary {
   SWSCALE
 };
 
+// The filter swscale uses to upsample the chroma planes during the CPU
+// YUV->RGB color conversion. Formats that swscale converts with a dedicated
+// routine (notably 8-bit yuv420p and yuv422p with an even height) ignore it.
+enum class ColorConversionInterpolation { BILINEAR, BICUBIC, NEAREST };
+
 // The resolved output dtype. Only UINT8 or FLOAT32 — no AUTO.
 // All code downstream of addVideoStream() should use this.
 enum class OutputDtype { UINT8, FLOAT32 };
@@ -54,6 +59,9 @@ struct VideoStreamOptions {
   // CpuDeviceInterface::initialze() for the logic.
   ColorConversionLibrary color_conversion_library =
       ColorConversionLibrary::FILTERGRAPH;
+
+  // CPU only. If not set, FFmpeg's default is used.
+  std::optional<ColorConversionInterpolation> color_conversion_interpolation;
 
   // By default we use CPU for decoding for both C++ and python users.
   // Note: This is not used for video encoding, because device is determined by

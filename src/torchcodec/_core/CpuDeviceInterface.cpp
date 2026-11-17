@@ -50,6 +50,34 @@ AVPixelFormat get_output_pixel_format(OutputDtype output_dtype) {
                                               : AV_PIX_FMT_RGB24;
 }
 
+// The swscale flags of the color conversion: as a value for swscale, and as a
+// flag name for the filter graph's scale_sws_opts. 0 and an empty name leave
+// the choice to FFmpeg.
+struct ColorConversionSwsFlags {
+  int value = 0;
+  std::string name;
+};
+
+ColorConversionSwsFlags to_sws_flags(
+    const std::optional<ColorConversionInterpolation>& interpolation) {
+  if (!interpolation.has_value()) {
+    return {};
+  }
+  switch (*interpolation) {
+    case ColorConversionInterpolation::BILINEAR:
+      return {SWS_BILINEAR, "bilinear"};
+    case ColorConversionInterpolation::BICUBIC:
+      return {SWS_BICUBIC, "bicubic"};
+    case ColorConversionInterpolation::NEAREST:
+      return {SWS_POINT, "neighbor"};
+    default:
+      STD_TORCH_CHECK(
+          false,
+          "Unknown color conversion interpolation: ",
+          static_cast<int>(*interpolation));
+  }
+}
+
 // Returns the format filter string for the given output pixel format.
 std::string get_format_filter_string(AVPixelFormat output_format) {
   return (output_format == AV_PIX_FMT_RGB48) ? "format=rgb48,"
@@ -279,7 +307,14 @@ void CpuDeviceInterface::convert_video_av_frame_to_frame_output(
         .output_format = output_pixel_format_};
 
     if (!sw_scale_ || sw_scale_->get_config() != sws_config) {
-      sw_scale_ = std::make_unique<SwScale>(sws_config, sws_flags_);
+      sw_scale_ = std::make_unique<SwScale>(
+          sws_config,
+          SwScaleOptions{
+              .resize_sws_flags = sws_flags_,
+              .color_conversion_sws_flags =
+                  to_sws_flags(
+                      video_stream_options_.color_conversion_interpolation)
+                      .value});
     }
 
     int result_height = sw_scale_->convert(av_frame, output_tensor);
@@ -344,6 +379,8 @@ CpuDeviceInterface::convert_av_frame_to_tensor_using_filter_graph(
       output_pixel_format_,
       filters_,
       time_base_);
+  filters_config.color_conversion_sws_flags =
+      to_sws_flags(video_stream_options_.color_conversion_interpolation).name;
 
   if (!filter_graph_ || prev_filters_config_ != filters_config) {
     filter_graph_ =
