@@ -323,3 +323,116 @@ jobs:
         run: |
           python packaging/assert_ffmpeg_version.py ${{ env.FFMPEG_VERSION }}
           FAIL_WITHOUT_IMAGE_CODECS=1 python packaging/assert_gil_disabled.py --override-ini="addopts=-v" --tb=short
+
+  build-docs:
+    runs-on: mt-l-x86aavx2-11-41-a10g
+    env:
+      PYTHON_VERSION: '3.11'
+      CUDA_VERSION: '13.2'
+      FFMPEG_VERSION: '7'
+    container:
+      image: "pytorch/manylinux2_28-builder:cuda13.2"  # must be same as env!!
+      options: "--gpus all -e NVIDIA_DRIVER_CAPABILITIES=video,compute,utility"
+    needs: build
+    steps:
+      - name: Setup env vars
+        run: |
+          cuda_version_without_periods=$(echo "${{ env.CUDA_VERSION }}" | sed 's/\.//g')
+          echo cuda_version_without_periods=${cuda_version_without_periods} >> $GITHUB_ENV
+
+      - name: Check out repo
+        uses: actions/checkout@v6
+
+      - name: Remove src/ folder
+        run: bash packaging/remove_src.sh
+
+      - name: Setup miniconda using test-infra
+        uses: pytorch/test-infra/.github/actions/setup-miniconda@main
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          # We install conda packages at the start because otherwise conda may have conflicts with dependencies.
+          default-packages: "conda-forge::cuda-version=${{ env.CUDA_VERSION }} conda-forge::cuda-nvrtc conda-forge::cuda-cudart conda-forge::cuda-driver-dev conda-forge::ffmpeg=${{ env.FFMPEG_VERSION }}"
+      - name: Check env, set LD_LIBRARY_PATH
+        run: |
+          ${CONDA_RUN} env
+          ${CONDA_RUN} conda info
+          ${CONDA_RUN} nvidia-smi
+          ${CONDA_RUN} conda list
+          echo LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/local/cuda/lib64/:${LD_LIBRARY_PATH} >> $GITHUB_ENV
+      - name: Assert ffmpeg exists
+        run: |
+          ${CONDA_RUN} ffmpeg -buildconf
+      - name: Update pip
+        run: ${CONDA_RUN} python -m pip install --upgrade pip
+      - name: Install PyTorch
+        run: |
+          ${CONDA_RUN} bash packaging/install_pytorch.sh cu${{ env.cuda_version_without_periods }} "torch torchvision"
+          ${CONDA_RUN} python -c 'import torch; print(f"{torch.__version__}"); print(f"{torch.__file__}"); print(f"{torch.cuda.is_available()=}")'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: meta-pytorch_torchcodec__3.11_cu${{ env.cuda_version_without_periods }}_x86_64
+          path: dist/
+
+      - name: Install torchcodec from the wheel
+        run: ${CONDA_RUN} bash packaging/install_torchcodec_wheel.sh "*cu${{ env.cuda_version_without_periods }}-py3-none*.whl"
+
+      - name: Install doc dependencies
+        run: |
+          cd docs
+          ${CONDA_RUN} python -m pip install -r requirements.txt
+      - name: Build docs
+        run: |
+          cd docs
+          ${CONDA_RUN} make html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Built-Docs
+          path: docs/build/html/
+
+  upload-docs:
+    # This job uploads built docs:
+    # - to the `main` folder of the gh-pages branch (https://meta-pytorch.org/torchcodec/main) on every commit to the `main` branch
+    # - to the (e.g.) `0.10` folder in the gh-pages branch whenever a corresponding tag is pushed, like `v0.10.0` (https://meta-pytorch.org/torchcodec/0.10).
+
+    needs: build-docs
+    if: github.repository == 'meta-pytorch/torchcodec' && github.event_name == 'push' &&
+        ((github.ref_type == 'branch' && github.ref_name == 'main') ||
+         (github.ref_type == 'tag' && !contains(github.ref_name, '-rc')))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out gh-pages branch
+        uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: Built-Docs
+          path: docs-artifact/
+
+      - name: Update docs and push
+        run: |
+          set -euo pipefail
+
+          REF_TYPE=${{ github.ref_type }}
+          REF_NAME=${{ github.ref_name }}
+
+          if [[ "${REF_TYPE}" == branch ]]; then
+            TARGET_FOLDER="${REF_NAME}"
+          elif [[ "${REF_TYPE}" == tag ]]; then
+            # Strip the leading "v" as well as the trailing patch version. For example:
+            # 'v0.10.2' -> '0.10'
+            TARGET_FOLDER=$(echo "${REF_NAME}" | sed 's/v\([0-9]\+\)\.\([0-9]\+\)\.[0-9]\+/\1.\2/')
+          fi
+          echo "Target Folder: ${TARGET_FOLDER}"
+
+          mkdir -p "${TARGET_FOLDER}"
+          rm -rf "${TARGET_FOLDER}"/*
+          cp -r docs-artifact/* "${TARGET_FOLDER}/"
+          git add "${TARGET_FOLDER}"
+
+          git config user.name 'pytorchbot'
+          git config user.email 'soumith+bot@pytorch.org'
+          git commit -m "auto-generating sphinx docs for ${TARGET_FOLDER}" || echo "No changes to commit"
+          git push
