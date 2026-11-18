@@ -77,7 +77,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpc4djfbs8/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmpyxrdp2p2/video.mp4'], returncode=0)
 ```
 
 ## The three stages
@@ -207,7 +207,7 @@ subprocess.run(
 ```
 
 ```
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpc4djfbs8/video.mp4', '-i', '/tmp/tmpc4djfbs8/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpc4djfbs8/av.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-i', '/tmp/tmpyxrdp2p2/video.mp4', '-i', '/tmp/tmpyxrdp2p2/audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-shortest', '/tmp/tmpyxrdp2p2/av.mp4'], returncode=0)
 ```
 
 Which streams to follow is specified at construction time of the
@@ -590,7 +590,7 @@ stream than the one it was decoded on.
 agent auto-tuned a low-level decoding pipeline by hill-climbing, which knobs
 mattered, and how it compared to an equally tuned `VideoDecoder`.
 
-**Total running time of the script:** (0 minutes 1.553 seconds)
+**Total running time of the script:** (0 minutes 1.554 seconds)
 
 [`Download Jupyter notebook: basics.ipynb`](../../_downloads/6982b776b242e8d98bf3991f1eabc245/basics.ipynb)
 
