@@ -36,6 +36,7 @@ jobs:
       os: linux
       test-infra-repository: pytorch/test-infra
       test-infra-ref: main
+      runner-fleet: osdc
       with-xpu: disable
       with-rocm: disable
       with-cuda: disable
