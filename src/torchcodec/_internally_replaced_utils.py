@@ -104,10 +104,9 @@ def _preload_librocjpeg() -> None:
             f"Install the ROCm libraries package, e.g. pip install 'rocm[libraries]' "
             f"(librocjpeg ships in rocm[libraries], not only rocm[devel])."
         )
-    lib_path = candidates[0]
     # RTLD_GLOBAL: keep the mapping visible so a subsequent RTLD_LOCAL
     # load_library of libtorchcodec_image can resolve DT_NEEDED.
-    ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL)
+    ctypes.CDLL(candidates[0], mode=ctypes.RTLD_GLOBAL)
 
 
 def load_image_library() -> None:
