@@ -167,10 +167,10 @@ jobs:
 
         echo '::group::Install PyTorch (ROCm)'
         # Channel (nightly vs test) follows the ref via install_pytorch.sh, same
-        # as the CUDA workflows. Include torchvision and rocm[devel] (devel is
-        # needed for rocm-sdk init / ROCM_PATH for rocJPEG VA-API on 10.1).
+        # as the CUDA workflows. Torch already pulls rocm[libraries]; no
+        # rocm[devel] needed for ROCM_PATH / rocJPEG VA-API.
         bash packaging/install_pytorch.sh rocm${{ matrix.rocm-version }} \
-          "torch torchvision rocm[devel]"
+          "torch torchvision"
         echo '::endgroup::'
 
         # Prevent the checked-out src/ tree from shadowing the installed wheel.
@@ -191,20 +191,16 @@ jobs:
         bash packaging/install_test_dependencies.sh false
         echo '::endgroup::'
 
-        echo '::group::Initialize ROCm SDK'
-        rocm-sdk init
-        echo '::endgroup::'
-
         # rocJPEG HARDWARE/VA-API init needs ROCM_PATH; RPATH alone is not
-        # enough for InitVAAPI. Use the SDK CLI rather than guessing the
-        # site-packages layout (see TheRock: rocm-sdk path --root).
-        export ROCM_PATH="$(rocm-sdk path --root)"
+        # enough for InitVAAPI. hipconfig comes with the ROCm torch wheel
+        # (no rocm[devel] / rocm-sdk init required).
+        export ROCM_PATH="$(hipconfig --rocmpath)"
 
         echo '::group::Assert we are on ROCm'
         if command -v amd-smi >/dev/null 2>&1; then
           amd-smi
         else
-          echo "amd-smi not found on PATH after rocm[devel]" >&2
+          echo "amd-smi not found on PATH after ROCm torch install" >&2
           exit 1
         fi
         python -c "
