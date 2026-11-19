@@ -53,6 +53,7 @@ from .utils import (
     ANIMATED_HEIC,
     assert_frames_equal,
     assert_tensor_close_on_at_least,
+    IS_ROCM,
     AV1_VIDEO,
     BAD_HUFFMAN_JPEG,
     BT2020_LIMITED_RANGE_10BIT,
@@ -3503,20 +3504,6 @@ class TestImageDecoder:
         return t.permute(2, 0, 1) if t.ndim == 3 else t.unsqueeze(0)
 
     @staticmethod
-    def _scriptable_decode(kind: str, data: torch.Tensor, mode: int) -> torch.Tensor:
-        if kind == "jpeg":
-            return torch.ops.torchcodec_ns.decode_jpeg(data, mode)
-        elif kind == "png":
-            return torch.ops.torchcodec_ns.decode_png(data, mode)
-        elif kind == "webp":
-            return torch.ops.torchcodec_ns.decode_webp(data, mode)
-        elif kind == "gif":
-            return torch.ops.torchcodec_ns.decode_gif(data, mode)
-        else:
-            assert kind == "avif"
-            return torch.ops.torchcodec_ns.decode_avif(data, mode)
-
-    @staticmethod
     def _make_transparent_png(path, kind):
         # A PNG can encode transparency via a tRNS chunk instead of a full alpha
         # channel: a transparent colorkey for gray/RGB images, or per-palette-
@@ -3542,39 +3529,10 @@ class TestImageDecoder:
             im.save(path)
 
     # ===== cross-codec tests: basics & API =====
-
-    @pytest.mark.filterwarnings(
-        "ignore:`torch.jit.script` is deprecated:DeprecationWarning"
-    )
-    @pytest.mark.parametrize(
-        "kind, asset",
-        (
-            pytest.param(
-                "jpeg", GRADIENT_JPEG, marks=pytest.mark.needs_jpeg, id="jpeg"
-            ),
-            pytest.param("png", GRADIENT_PNG, marks=pytest.mark.needs_png, id="png"),
-            pytest.param(
-                "webp", GRADIENT_WEBP, marks=pytest.mark.needs_webp, id="webp"
-            ),
-            pytest.param("gif", GRADIENT_GIF, id="gif"),
-            pytest.param(
-                "avif", GRADIENT_AVIF, marks=pytest.mark.needs_avif, id="avif"
-            ),
-        ),
-    )
-    def test_torchscript(self, kind, asset):
-        # This is just to ensure some sort of BC from torchvision. Zero
-        # guarantee we'll keep supporting torchscript.
-        data = _source_to_tensor(asset.path)
-        scripted = torch.jit.script(self._scriptable_decode)
-        eager = getattr(torch.ops.torchcodec_ns, f"decode_{kind}")
-        rgb = 3  # the raw ops take an int mode; 3 is RGB
-        torch.testing.assert_close(
-            scripted(kind, data, rgb),
-            eager(data, rgb),
-            atol=0,
-            rtol=0,
-        )
+    # Note: the former torch.jit.script BC check was removed. TorchScript is
+    # deprecated/removed on nightlies, and torch.export is not a drop-in
+    # replacement here until decode_* custom ops register FakeTensor/meta
+    # kernels.
 
     @pytest.mark.parametrize(
         "decode_fn, asset",
@@ -4172,9 +4130,11 @@ class TestImageDecoder:
     @needs_jpeg
     def test_cuda_jpeg_errors(self):
         # Corrupt input raises. The message differs by GPU backend: nvJPEG on
-        # NVIDIA, rocJPEG on AMD/ROCm.
-        with pytest.raises(RuntimeError, match="nvjpegDecode failed:|rocJPEG|rocJpeg"):
-            decode_jpeg(CORRUPT_JPEG.path, device="cuda")
+        # NVIDIA, rocJPEG on AMD/ROCm. rocJPEG's VCN hardware decoder is more
+        # lenient and does not raise on this particular corrupt JPEG.
+        if not IS_ROCM:
+            with pytest.raises(RuntimeError, match="nvjpegDecode failed:"):
+                decode_jpeg(CORRUPT_JPEG.path, device="cuda")
 
         cuda_data = torch.frombuffer(
             bytearray(GRADIENT_JPEG.path.read_bytes()), dtype=torch.uint8
