@@ -96,8 +96,6 @@ def _preload_librocjpeg() -> None:
         )
 
     lib_dir = Path(spec.origin).resolve().parent / "lib"
-    # sorted() puts the unversioned soname (librocjpeg.so) before versioned
-    # names (librocjpeg.so.1, ...), so candidates[0] is already preferred.
     candidates = sorted(glob.glob(str(lib_dir / "librocjpeg.so*")))
     if not candidates:
         raise RuntimeError(
