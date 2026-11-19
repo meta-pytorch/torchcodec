@@ -96,6 +96,8 @@ def _preload_librocjpeg() -> None:
         )
 
     lib_dir = Path(spec.origin).resolve().parent / "lib"
+    # sorted() puts the unversioned soname (librocjpeg.so) before versioned
+    # names (librocjpeg.so.1, ...), so candidates[0] is already preferred.
     candidates = sorted(glob.glob(str(lib_dir / "librocjpeg.so*")))
     if not candidates:
         raise RuntimeError(
@@ -104,12 +106,7 @@ def _preload_librocjpeg() -> None:
             f"Install the ROCm libraries package, e.g. pip install 'rocm[libraries]' "
             f"(librocjpeg ships in rocm[libraries], not only rocm[devel])."
         )
-
-    # Prefer the unversioned soname symlink when present.
-    lib_path = next(
-        (c for c in candidates if Path(c).name == "librocjpeg.so"),
-        candidates[0],
-    )
+    lib_path = candidates[0]
     # RTLD_GLOBAL: keep the mapping visible so a subsequent RTLD_LOCAL
     # load_library of libtorchcodec_image can resolve DT_NEEDED.
     ctypes.CDLL(lib_path, mode=ctypes.RTLD_GLOBAL)
