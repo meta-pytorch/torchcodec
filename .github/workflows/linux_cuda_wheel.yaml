@@ -36,6 +36,7 @@ jobs:
       os: linux
       test-infra-repository: pytorch/test-infra
       test-infra-ref: main
+      runner-fleet: osdc
       with-cpu: disable
       with-xpu: disable
       with-rocm: disable
@@ -68,7 +69,7 @@ jobs:
       build-command: "BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1 ENABLE_CUDA=1 python -m build --wheel -vvv --no-isolation"
 
   install-and-test:
-    runs-on: linux.g5.4xlarge.nvidia.gpu
+    runs-on: mt-l-x86aavx2-11-41-a10g
     strategy:
       fail-fast: false
       matrix:
@@ -324,7 +325,7 @@ jobs:
           FAIL_WITHOUT_IMAGE_CODECS=1 python packaging/assert_gil_disabled.py --override-ini="addopts=-v" --tb=short
 
   build-docs:
-    runs-on: linux.g5.4xlarge.nvidia.gpu
+    runs-on: mt-l-x86aavx2-11-41-a10g
     env:
       PYTHON_VERSION: '3.11'
       CUDA_VERSION: '13.2'
@@ -388,30 +389,6 @@ jobs:
         with:
           name: Built-Docs
           path: docs/build/html/
-
-  doc-preview:
-    runs-on: [self-hosted, linux.2xlarge]
-    needs: build-docs
-    if: github.repository == 'meta-pytorch/torchcodec' && github.event_name == 'pull_request'
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: Built-Docs
-          path: docs
-
-      # Update HTML to add the no-index tag so that search engines do not index these ephemeral docs
-      - name: Add no-index tag
-        run: |
-          find docs -name "*.html" -print0 | xargs -0 sed -i '/<head>/a \ \ <meta name="robots" content="noindex">';
-
-      - name: Upload docs preview
-        uses: seemethere/upload-artifact-s3@v5
-        with:
-          retention-days: 14
-          s3-bucket: doc-previews
-          if-no-files-found: error
-          path: docs
-          s3-prefix: meta-pytorch/torchcodec/${{ github.event.pull_request.number }}
 
   upload-docs:
     # This job uploads built docs:
