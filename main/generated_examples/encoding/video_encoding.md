@@ -86,7 +86,7 @@ print(f"Encoded to {output_path}, size: {Path(output_path).stat().st_size} bytes
 ```
 frames.shape = torch.Size([60, 3, 1080, 1920]), frames.dtype = torch.uint8
 frame_rate = 24 fps
-Encoded to /tmp/tmp8d5mppa4.mp4, size: 2509386 bytes
+Encoded to /tmp/tmpl3vk1nb8.mp4, size: 2712362 bytes
 ```
 
 Now that we have encoded data, let's decode it back to verify the
@@ -326,8 +326,8 @@ print(f"Size of slow encoded file: {Path(slow_output).stat().st_size} bytes")
 ```
 
 ```
-Size of fast encoded file: 7253009 bytes
-Size of slow encoded file: 2110051 bytes
+Size of fast encoded file: 7321746 bytes
+Size of slow encoded file: 2103065 bytes
 ```
 
 ## Extra Options
@@ -363,7 +363,7 @@ with encoder.open_file(custom_output):
  vs.add_frames(frames)
 ```
 
-**Total running time of the script:** (0 minutes 25.226 seconds)
+**Total running time of the script:** (0 minutes 32.190 seconds)
 
 [`Download Jupyter notebook: video_encoding.ipynb`](../../_downloads/e8868f804bffbeae56ed6b335353e809/video_encoding.ipynb)
 

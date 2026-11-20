@@ -69,8 +69,8 @@ print(f"Output size: {Path(output_path).stat().st_size} bytes")
 ```
 
 ```
-Encoded video + audio to /tmp/tmp6qvynfj2.mp4
-Output size: 2526674 bytes
+Encoded video + audio to /tmp/tmpe6vd6e4x.mp4
+Output size: 2729650 bytes
 ```
 
 Let's verify that both streams are present in the output file:
@@ -132,8 +132,8 @@ print(f"Output size: {Path(chunk_output).stat().st_size} bytes")
 ```
 
 ```
-Incrementally encoded to /tmp/tmpfjd7r_tm.mp4
-Output size: 2527045 bytes
+Incrementally encoded to /tmp/tmpbo80b5gw.mp4
+Output size: 2730021 bytes
 ```
 
 ## Multiple video streams, multiple audio streams
@@ -205,10 +205,10 @@ bytes_tensor = torch.frombuffer(encoded_bytes, dtype=torch.uint8)
 ```
 
 ```
-Encoded to BytesIO, size: 2526674 bytes
+Encoded to BytesIO, size: 2729650 bytes
 ```
 
-**Total running time of the script:** (0 minutes 5.728 seconds)
+**Total running time of the script:** (0 minutes 7.681 seconds)
 
 [`Download Jupyter notebook: multi_stream_encoding.ipynb`](../../_downloads/ccd7596cf7d161af13c32c87cfc7f878/multi_stream_encoding.ipynb)
 
