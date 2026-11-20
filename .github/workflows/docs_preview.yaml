@@ -51,7 +51,11 @@ jobs:
               head: `${run.head_repository.owner.login}:${run.head_branch}`,
             });
             const pr = pulls.find((p) => p.head.sha === run.head_sha);
-            if (!pr) throw new Error(`No PR has head ${run.head_sha}`);
+            // The PR may have merged or moved to a newer commit since the run started.
+            if (!pr) {
+              core.notice(`No open PR has head ${run.head_sha}`);
+              return;
+            }
             core.setOutput('number', pr.number);
 
       # Uploaded by build-docs in linux_cuda_wheel.yaml.
