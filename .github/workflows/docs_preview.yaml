@@ -29,7 +29,12 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
-            const run = context.payload.workflow_run;
+            // context.payload is empty here: the OSDC runner doesn't mount the
+            // event file into the job container.
+            const { data: run } = await github.rest.actions.getWorkflowRun({
+              ...context.repo,
+              run_id: ${{ github.event.workflow_run.id }},
+            });
             // A failed or cancelled run may not have built the docs.
             const { data: { total_count } } = await github.rest.actions.listWorkflowRunArtifacts({
               ...context.repo,
