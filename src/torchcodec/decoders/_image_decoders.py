@@ -199,6 +199,42 @@ def _decode_jpegs_cuda_with_mode(
     )
 
 
+def _is_cmyk_jpeg(data: torch.Tensor) -> bool:
+    try:
+        return _probe_jpeg(_ByteSource(data)).num_channels == 4
+    except Exception:
+        # Malformed input: let the CUDA decoder raise its usual error.
+        return False
+
+
+def _decode_jpegs_cuda_with_cmyk_fallback(
+    tensors: list[torch.Tensor], mode: ImageReadMode, device: torch.device
+) -> list[torch.Tensor]:
+    # Our nvJPEG decode fails on 4-channel (CMYK) JPEGs with
+    # NVJPEG_STATUS_INVALID_PARAMETER, and one such image fails the whole batch.
+    # Decode those on CPU, where libjpeg handles the color conversion, and move
+    # them to the device. The rest of the batch is still decoded in one nvJPEG
+    # call, in the original order.
+    is_cmyk = [_is_cmyk_jpeg(t) for t in tensors]
+    if not any(is_cmyk):
+        return _decode_jpegs_cuda_with_mode(tensors, mode, device)
+
+    gpu_indices = [i for i, cmyk in enumerate(is_cmyk) if not cmyk]
+    decoded: list[torch.Tensor | None] = [None] * len(tensors)
+    if gpu_indices:
+        gpu_decoded = _decode_jpegs_cuda_with_mode(
+            [tensors[i] for i in gpu_indices], mode, device
+        )
+        for i, img in zip(gpu_indices, gpu_decoded):
+            decoded[i] = img
+    for i, cmyk in enumerate(is_cmyk):
+        if cmyk:
+            decoded[i] = _decode_to_mode(
+                _decode_jpeg, tensors[i], mode, _JPEG_NATIVE_OUTPUT_MODES
+            ).to(device)
+    return decoded  # type: ignore[return-value]
+
+
 def decode_jpeg(
     source: str | Path | bytes | torch.Tensor | list,
     *,
@@ -245,7 +281,9 @@ def decode_jpeg(
             16-bit range (0-255 -> 0-65535).
         device (str or torch.device, optional): Device to decode on, ``"cpu"``
             (default) or a CUDA device. CUDA decoding uses nvJPEG. We recommend
-            passing a batch of sources when decoding on CUDA, for speed.
+            passing a batch of sources when decoding on CUDA, for speed. CMYK
+            JPEGs, which the nvJPEG path can't decode, are decoded on CPU and
+            moved to the CUDA device.
 
     Returns:
         torch.Tensor or list of torch.Tensor of shape ``C, H, W``: The decoded
@@ -274,7 +312,7 @@ def decode_jpeg(
         ]
     else:
         tensors = [_source_to_tensor(s) for s in sources]
-        decoded_list = _decode_jpegs_cuda_with_mode(tensors, mode, device)
+        decoded_list = _decode_jpegs_cuda_with_cmyk_fallback(tensors, mode, device)
         decoded_list = [_to_output_dtype(img, output_dtype) for img in decoded_list]
 
     return decoded_list if is_batch else decoded_list[0]

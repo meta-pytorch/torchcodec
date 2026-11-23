@@ -8254,6 +8254,46 @@ class TestImageDecoder:
 
     @needs_cuda
     @needs_jpeg
+    @pytest.mark.parametrize(
+        "mode", ("UNCHANGED", "RGB", "GRAY", "RGB_ALPHA", "GRAY_ALPHA")
+    )
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.uint16))
+    def test_cuda_jpeg_cmyk(self, mode, output_dtype):
+        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1872
+        # The nvJPEG path fails on CMYK JPEGs, so they're decoded on CPU.
+        cpu = decode_jpeg(CMYK_JPEG.path, mode=mode, output_dtype=output_dtype)
+        gpu = decode_jpeg(
+            CMYK_JPEG.path, mode=mode, output_dtype=output_dtype, device="cuda"
+        )
+        assert gpu.device.type == "cuda"
+        assert gpu.dtype == output_dtype
+        torch.testing.assert_close(gpu.cpu(), cpu, atol=0, rtol=0)
+
+    @needs_cuda
+    @needs_jpeg
+    @pytest.mark.parametrize(
+        "mode", ("UNCHANGED", "RGB", "GRAY", "RGB_ALPHA", "GRAY_ALPHA")
+    )
+    def test_cuda_jpeg_batch_with_cmyk(self, mode):
+        # A CMYK JPEG used to fail the whole batch. Each output must still land
+        # at the index of its source.
+        assets = [GRADIENT_JPEG, CMYK_JPEG, GRAYSCALE_JPEG, CMYK_JPEG, GRADIENT_JPEG]
+        batch = decode_jpeg([a.path for a in assets], mode=mode, device="cuda")
+        assert len(batch) == len(assets)
+        for decoded, asset in zip(batch, assets):
+            assert decoded.device.type == "cuda"
+            assert decoded.shape[1:] == (asset.height, asset.width)
+            single = decode_jpeg(asset.path, mode=mode, device="cuda")
+            torch.testing.assert_close(decoded, single, atol=0, rtol=0)
+
+        # A batch of only CMYK JPEGs works too.
+        batch = decode_jpeg([CMYK_JPEG.path] * 2, mode=mode, device="cuda")
+        cpu = decode_jpeg(CMYK_JPEG.path, mode=mode)
+        for decoded in batch:
+            torch.testing.assert_close(decoded.cpu(), cpu, atol=0, rtol=0)
+
+    @needs_cuda
+    @needs_jpeg
     def test_cuda_jpeg_errors(self):
         # Corrupt input raises.
         with pytest.raises(RuntimeError, match="Failed to decode JPEG"):
