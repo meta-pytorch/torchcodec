@@ -1059,6 +1059,51 @@ NVDEC_SURFACE_REUSE_VIDEO = TestVideo(
     frames={0: {}},  # Not needed yet
 )
 
+# Videos for test_nvdec_mid_stream_format_change(): two 2s encodes joined at a
+# key frame, so that the stream's sequence parameters change halfway through, as
+# in spliced recordings. Each encode repeats its parameter sets in band, which
+# carries the second one's across the join. Generated with:
+#   $ enc() { ffmpeg -f lavfi -i "$1" -t 2 -pix_fmt yuv420p "${@:2}"; }
+#   $ enc testsrc2=s=640x360:r=30 -c:v libx264 -profile:v main -level 3.0 \
+#       -refs 1 -bf 0 -x264-params repeat-headers=1 a.mp4
+#   $ enc mandelbrot=s=640x360:r=30 -c:v libx264 -profile:v high -level 4.1 \
+#       -refs 4 -bf 3 -x264-params repeat-headers=1 b.mp4
+#   $ enc testsrc2=s=1280x720:r=30 -c:v libx264 -profile:v high -level 4.1 \
+#       -bf 2 -x264-params repeat-headers=1 c.mp4
+#   $ enc testsrc2=s=640x360:r=30 -c:v libx265 -tag:v hev1 \
+#       -x265-params level-idc=31:ref=1:bframes=0:repeat-headers=1 d.mp4
+#   $ enc mandelbrot=s=640x360:r=30 -c:v libx265 -tag:v hev1 \
+#       -x265-params level-idc=51:ref=5:bframes=4:repeat-headers=1 e.mp4
+#   $ join() { printf "file %s\n" "$1" "$2" > list.txt; \
+#       ffmpeg -f concat -safe 0 -i list.txt -c copy "${@:3}"; }
+#   $ join a.mp4 b.mp4 nvdec_format_change_h264.mp4
+#   $ join a.mp4 c.mp4 nvdec_size_change_h264.mp4
+#   $ join d.mp4 e.mp4 -tag:v hev1 nvdec_format_change_hevc.mp4
+NVDEC_FORMAT_CHANGE_H264_VIDEO = TestVideo(
+    filename="nvdec_format_change_h264.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=640, height=360, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed yet
+)
+NVDEC_SIZE_CHANGE_H264_VIDEO = TestVideo(
+    filename="nvdec_size_change_h264.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=640, height=360, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed yet
+)
+NVDEC_FORMAT_CHANGE_HEVC_VIDEO = TestVideo(
+    filename="nvdec_format_change_hevc.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=640, height=360, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed yet
+)
+
 AV1_VIDEO = TestVideo(
     filename="av1_video.mkv",
     default_stream_index=0,

@@ -160,6 +160,26 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   std::deque<CUVIDPARSERDISPINFO> ready_frames_;
 
+  // Counts of the frames pushed to and popped from ready_frames_ since this
+  // interface was created, used to tell which decoder a queued frame belongs to
+  // after a mid-stream format change. See stream_property_change().
+  uint64_t num_frames_displayed_ = 0;
+  uint64_t num_frames_popped_ = 0;
+
+  // Decoders created on a mid-stream format change, with the format they were
+  // created for, oldest first. decoder_ and video_format_ stay those of the
+  // frames in ready_frames_ and of the mapped frame until the frames displayed
+  // before a pending decoder was created have been popped; that decoder then
+  // replaces them. New pictures are decoded with the newest decoder.
+  struct PendingDecoder {
+    UniqueCUvideodecoder decoder;
+    CUVIDEOFORMAT video_format;
+    // Index, in display order, of the first frame this decoder decodes.
+    uint64_t first_frame;
+  };
+  std::deque<PendingDecoder> pending_decoders_;
+  void switch_decoders_up_to(uint64_t frame_index);
+
   // Whether we track the pts ourselves, instead of relying on the NVCUVID
   // parser.
   bool track_pts_ourselves_ = false;

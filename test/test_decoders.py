@@ -133,6 +133,9 @@ from .utils import (
     needs_jpeg,
     needs_png,
     needs_webp,
+    NVDEC_FORMAT_CHANGE_H264_VIDEO,
+    NVDEC_FORMAT_CHANGE_HEVC_VIDEO,
+    NVDEC_SIZE_CHANGE_H264_VIDEO,
     NVDEC_SURFACE_REUSE_VIDEO,
     psnr,
     RGBA_AVIF,
@@ -2676,6 +2679,39 @@ class TestVideoDecoder:
         assert not decoder.cpu_fallback
 
         assert_frames_equal(frames, reference.cuda())
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "video",
+        (
+            NVDEC_FORMAT_CHANGE_H264_VIDEO,
+            NVDEC_SIZE_CHANGE_H264_VIDEO,
+            NVDEC_FORMAT_CHANGE_HEVC_VIDEO,
+        ),
+    )
+    def test_nvdec_mid_stream_format_change(self, video):
+        # The stream's sequence parameters change at a key frame halfway
+        # through. NVDEC must keep returning every frame, with the same samples
+        # as the CPU decoder, before and after the change, and after seeking to
+        # either side of it.
+        def decode(device, seek_seconds=None):
+            demuxer = Demuxer(video.path)
+            decoder = demuxer.streams[0].make_decoder(device)
+            if seek_seconds is not None:
+                demuxer.seek(seek_seconds)
+                decoder.reset()
+            frames = [f for p in demuxer for f in decoder.decode(p)]
+            return frames + decoder.drain()
+
+        for seek_seconds in (None, 0.0, 2.0, 0.0):
+            reference = decode("cpu", seek_seconds)
+            frames = decode("cuda", seek_seconds)
+            assert [f.pts for f in frames] == [f.pts for f in reference]
+            for frame, expected in zip(frames, reference):
+                for plane, expected_plane in zip(frame.planes, expected.planes):
+                    torch.testing.assert_close(
+                        plane.cpu(), expected_plane, rtol=0, atol=0
+                    )
 
     def test_cpu_fallback_no_fallback_on_cpu_device(self):
         """Test that CPU device doesn't trigger fallback (it's not a fallback scenario)."""
