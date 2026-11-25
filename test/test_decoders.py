@@ -3438,6 +3438,26 @@ class TestAudioDecoder:
         assert samples.data.shape == (2, 8)
         assert samples.pts_seconds == first_frame_pts_seconds
 
+    @pytest.mark.parametrize("offset", (-0.001, 0))
+    def test_resampled_range_before_first_frame(self, offset):
+        asset = NASA_AUDIO_MP3
+        decoder = AudioDecoder(asset.path, sample_rate=16_000)
+        stop_seconds = asset.get_frame_info(idx=0).pts_seconds + offset
+
+        with pytest.raises(RuntimeError, match="No audio frames were decoded"):
+            decoder.get_samples_played_in_range(
+                start_seconds=0, stop_seconds=stop_seconds
+            )
+
+    def test_resampled_range_after_last_frame(self):
+        asset = SINE_MONO_S32
+        decoder = AudioDecoder(asset.path, sample_rate=8_000)
+
+        with pytest.raises(RuntimeError, match="No audio frames were decoded"):
+            decoder.get_samples_played_in_range(
+                start_seconds=asset.duration_seconds + 0.001
+            )
+
     def test_single_channel(self):
         asset = SINE_MONO_S32
         decoder = AudioDecoder(asset.path)
