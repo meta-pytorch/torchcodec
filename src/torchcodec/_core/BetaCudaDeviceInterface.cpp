@@ -746,27 +746,33 @@ void BetaCudaDeviceInterface::initialize_bsf(
 // is a change in the stream's properties (like resolution change), as specified
 // by CUVIDEOFORMAT. Particularly (but not just!), this is called at the very
 // start of the stream.
-// TODONVDEC P1: Code below mostly assume this is called only once at the start,
-// we should handle the case of multiple calls. Probably need to flush buffers,
-// etc.
+//
+// A stream may change its format mid-stream, at a key frame with a new sequence
+// header: e.g. a spliced H.264 stream going from Main@L5.0 to High@L6.2, or an
+// HEVC stream changing level. When the new format needs a decoder created with
+// other parameters (see create_decoder()), we decode the new pictures with a new
+// decoder. The frames the parser has already handed to
+// frame_ready_in_display_order() were decoded by the previous decoder, so that
+// decoder and its format stay in decoder_ and video_format_ until those frames
+// are returned or dropped, see switch_decoders_up_to().
 int BetaCudaDeviceInterface::stream_property_change(
     CUVIDEOFORMAT* video_format) {
   STD_TORCH_CHECK(video_format != nullptr, "Invalid video format");
 
-  video_format_ = *video_format;
-
-  if (video_format_.min_num_decode_surfaces == 0) {
+  CUVIDEOFORMAT new_format = *video_format;
+  if (new_format.min_num_decode_surfaces == 0) {
     // Same as DALI's fallback
-    video_format_.min_num_decode_surfaces = 20;
+    new_format.min_num_decode_surfaces = 20;
   }
   // We request 4 more surfaces than the minimum, like in pynvvideocodec
   // (ffmpeg's cuviddec.c adds 3). This should help mitigate a bug where NVCUVID
   // re-uses a decode surface that we haven't yet mapped. See
   // test_nvdec_surface_reuse. 32 is the NVDEC maximum.
-  video_format_.min_num_decode_surfaces = static_cast<unsigned char>(
-      std::min(video_format_.min_num_decode_surfaces + 4, 32));
+  new_format.min_num_decode_surfaces = static_cast<unsigned char>(
+      std::min(new_format.min_num_decode_surfaces + 4, 32));
 
   if (!decoder_) {
+    video_format_ = new_format;
     decoder_ = NVDECCache::get_cache(device_).get_decoder(
         &video_format_, surface_format_);
 
@@ -778,12 +784,62 @@ int BetaCudaDeviceInterface::stream_property_change(
     }
 
     STD_TORCH_CHECK(decoder_, "Failed to get or create decoder");
+    return static_cast<int>(video_format_.min_num_decode_surfaces);
   }
+
+  CUVIDEOFORMAT& decoding_format = pending_decoders_.empty()
+      ? video_format_
+      : pending_decoders_.back().video_format;
+  STD_TORCH_CHECK(
+      new_format.chroma_format == decoding_format.chroma_format &&
+          new_format.bit_depth_luma_minus8 ==
+              decoding_format.bit_depth_luma_minus8 &&
+          new_format.bit_depth_chroma_minus8 ==
+              decoding_format.bit_depth_chroma_minus8,
+      "The stream changes its chroma format or bit depth mid-stream, which the "
+      "CUDA decoder doesn't support. Decode it on the CPU.");
+
+  bool same_decoder = new_format.codec == decoding_format.codec &&
+      new_format.coded_width == decoding_format.coded_width &&
+      new_format.coded_height == decoding_format.coded_height &&
+      new_format.min_num_decode_surfaces ==
+          decoding_format.min_num_decode_surfaces;
+  if (same_decoder) {
+    // E.g. a repeated sequence header, or the one we send after a flush.
+    decoding_format = new_format;
+    return static_cast<int>(new_format.min_num_decode_surfaces);
+  }
+
+  PendingDecoder pending{nullptr, new_format, num_frames_displayed_};
+  pending.decoder = NVDECCache::get_cache(device_).get_decoder(
+      &pending.video_format, surface_format_);
+  if (!pending.decoder) {
+    pending.decoder = create_decoder(&pending.video_format, surface_format_);
+  }
+  STD_TORCH_CHECK(pending.decoder, "Failed to get or create decoder");
+  pending_decoders_.push_back(std::move(pending));
 
   // DALI also returns min_num_decode_surfaces from this function. This
   // instructs the parser to reset its ulMaxNumDecodeSurfaces field to this
   // value.
-  return static_cast<int>(video_format_.min_num_decode_surfaces);
+  return static_cast<int>(new_format.min_num_decode_surfaces);
+}
+
+// Makes the decoder of the frame at index frame_index in display order the
+// current one, giving the previous decoders back to the cache. All the frames
+// of those decoders have been popped from ready_frames_; the one that may still
+// be mapped is unmapped first.
+void BetaCudaDeviceInterface::switch_decoders_up_to(uint64_t frame_index) {
+  while (!pending_decoders_.empty() &&
+         pending_decoders_.front().first_frame <= frame_index) {
+    surface_read_done_.synchronize();
+    unmap_previous_frame();
+    NVDECCache::get_cache(device_).return_decoder(
+        &video_format_, surface_format_, std::move(decoder_));
+    decoder_ = std::move(pending_decoders_.front().decoder);
+    video_format_ = pending_decoders_.front().video_format;
+    pending_decoders_.pop_front();
+  }
 }
 
 // Moral equivalent of avcodec_send_packet(). Here, we pass the AVPacket down to
@@ -897,7 +953,15 @@ int BetaCudaDeviceInterface::frame_ready_for_decoding(
   STD_TORCH_CHECK(pic_params != nullptr, "Invalid picture parameters");
   STD_TORCH_CHECK(decoder_, "Decoder not initialized before picture decode");
   // See the comment about surfaces in stream_property_change().
-  for (const auto& queued_frame : ready_frames_) {
+  // Surfaces of a decoder replaced on a format change can't be overwritten.
+  size_t first_frame_of_decoder = 0;
+  if (!pending_decoders_.empty() &&
+      pending_decoders_.back().first_frame > num_frames_popped_) {
+    first_frame_of_decoder = static_cast<size_t>(
+        pending_decoders_.back().first_frame - num_frames_popped_);
+  }
+  for (size_t i = first_frame_of_decoder; i < ready_frames_.size(); ++i) {
+    const auto& queued_frame = ready_frames_[i];
     if (queued_frame.picture_index == pic_params->CurrPicIdx &&
         discarded_timestamps_.count(queued_frame.timestamp) == 0) {
       TC_LOG(
@@ -918,7 +982,12 @@ int BetaCudaDeviceInterface::frame_ready_for_decoding(
   // and cuviddec.h says:
   // > cuvidDecodePicture may block the calling thread if there are too many
   //   pictures pending in the decode queue.
-  CUresult result = cuvidDecodePicture(*decoder_.get(), pic_params);
+  // New pictures go to the decoder of the latest format, see
+  // stream_property_change().
+  CUvideodecoder decoder = pending_decoders_.empty()
+      ? *decoder_.get()
+      : *pending_decoders_.back().decoder.get();
+  CUresult result = cuvidDecodePicture(decoder, pic_params);
 
   // Yes, you're reading that right, 0 means error, 1 means success
   return (result == CUDA_SUCCESS);
@@ -931,6 +1000,7 @@ int BetaCudaDeviceInterface::frame_ready_in_display_order(
     pending_pts_.pop();
   }
   ready_frames_.push_back(*disp_info);
+  num_frames_displayed_++;
   return 1; // success
 }
 
@@ -946,6 +1016,7 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   while (!ready_frames_.empty() &&
          discarded_timestamps_.erase(ready_frames_.front().timestamp) > 0) {
     ready_frames_.pop_front();
+    num_frames_popped_++;
   }
 
   if (ready_frames_.empty()) {
@@ -954,8 +1025,11 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
     return eof_sent_ ? AVERROR_EOF : AVERROR(EAGAIN);
   }
 
+  // The frame may be the first one of a decoder created on a format change.
+  switch_decoders_up_to(num_frames_popped_);
   CUVIDPARSERDISPINFO disp_info = ready_frames_.front();
   ready_frames_.pop_front();
+  num_frames_popped_++;
 
   CUVIDPROCPARAMS proc_params = {};
   proc_params.progressive_frame = disp_info.progressive_frame;
@@ -1290,6 +1364,8 @@ void BetaCudaDeviceInterface::flush() {
   eof_sent_ = false;
 
   ready_frames_.clear();
+  num_frames_popped_ = num_frames_displayed_;
+  switch_decoders_up_to(num_frames_popped_);
   discarded_timestamps_.clear();
 
   std::queue<int64_t> empty_pts;
