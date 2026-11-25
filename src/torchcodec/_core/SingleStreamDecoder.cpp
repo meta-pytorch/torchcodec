@@ -1173,10 +1173,11 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
   // When resampling, we must send the prerolled and postrolled frames through
   // the resampler!
   double output_start_seconds = is_resampling ? seek_seconds : start_seconds;
-  double output_stop_seconds = stop_seconds_optional.has_value()
-      ? *stop_seconds_optional + target_postroll_seconds
-      : std::numeric_limits<double>::infinity();
+  double stop_seconds =
+      stop_seconds_optional.value_or(std::numeric_limits<double>::infinity());
+  double output_stop_seconds = stop_seconds + target_postroll_seconds;
 
+  bool has_audio_in_range = false;
   auto finished = false;
   while (!finished) {
     try {
@@ -1188,6 +1189,12 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
                 pts_to_seconds(pts + get_duration(av_frame), time_base) &&
                 output_stop_seconds > pts_to_seconds(pts, time_base);
           });
+      double frame_start_seconds =
+          pts_to_seconds(last_decoded_av_frame_pts_, time_base);
+      double frame_end_seconds =
+          pts_to_seconds(last_decoded_av_frame_end_pts(), time_base);
+      has_audio_in_range |= start_seconds < frame_end_seconds &&
+          frame_start_seconds < stop_seconds;
       auto frame_output = convert_av_frame_to_frame_output(*av_frame);
       if (!first_frame_pts_seconds.has_value()) {
         first_frame_pts_seconds = frame_output.pts_seconds;
@@ -1216,7 +1223,7 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
   }
 
   STD_TORCH_CHECK(
-      frames.size() > 0 && first_frame_pts_seconds.has_value(),
+      has_audio_in_range,
       "No audio frames were decoded. ",
       "This is probably because start_seconds is too high(",
       start_seconds,
